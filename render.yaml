@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 services:
   - type: web
     name: solana-auth
@@ -13,3 +14,27 @@ services:
     envVars:
       - key: DATA_DIR
         value: /opt/render/project/src/data
+=======
+services:
+  - type: web
+    name: solana-auth
+    env: node
+    plan: starter
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node server.js
+    disk:
+      name: solana-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /opt/render/project/src/data
+      # Set in dashboard (receipt uploads → Cloudinary; omit to use local DATA_DIR/receipts/)
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+>>>>>>> Stashed changes
