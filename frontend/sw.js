@@ -1,7 +1,7 @@
 /* Solana PWA — app shell + fonts. Cross-origin API calls are not intercepted (network + app offline queue). */
-const CACHE = 'solana-shell-v2';
+const CACHE = 'solana-shell-v3';
 
-const SHELL = ['/', '/index.html', '/manifest.json', '/logo.png', '/icon-192.png', '/icon-512.png'];
+const SHELL = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 const FONT_STYLESHEET =
   'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap';

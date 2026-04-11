@@ -29,7 +29,6 @@
     @media(prefers-reduced-motion:reduce){
       .auth-inp,.auth-btn{transition:none!important;}
     }
-    /* Wordmark: no box behind PNG (transparent asset + filter compositing) */
     .solana-wordmark-wrap,.solana-wordmark{
       background:none!important;
       background-color:transparent!important;
@@ -1306,43 +1305,26 @@ class AppErrorBoundary extends React.Component{
   }
 }
 
-/* ── SOLANA LOGO COMPONENT ─────────────────────────────────────────────────
-   Wordmark from /logo.png. theme="light" = on #3C0A37 (invert). theme="dark" = login/light UIs.
-   variant="auth" = login hero: no wrapper fill; screen blend removes flat black if PNG isn’t alpha.
+/* ── SOLANA WORDMARK (text) ────────────────────────────────────────────────
+   theme="light" = cream text on #3C0A37 bars. theme="dark" = brand purple on light UIs.
+   variant kept for call sites; unused (was image blend tweak).
 ────────────────────────────────────────────────────────────────────────── */
-function SolanaLogo({theme="light", size="md", variant}){
-  const h={sm:26,md:34,lg:52}[size]||34;
-  const onDark=theme==="light";
-  const authHero=variant==="auth";
-  const imgStyle={
-    height:h,
-    width:"auto",
-    maxWidth:"100%",
-    objectFit:"contain",
-    display:"block",
-    background:"none",
-    backgroundColor:"transparent",
-    boxShadow:"none",
-    border:"none",
-    outline:"none",
-  };
-  if(onDark){
-    imgStyle.filter="brightness(0) invert(1)";
-    imgStyle.WebkitBackfaceVisibility="hidden";
-    imgStyle.backfaceVisibility="hidden";
-    imgStyle.transform="translateZ(0)";
-  }else{
-    imgStyle.filter="none";
-    if(authHero){
-      imgStyle.mixBlendMode="screen";
-    }
-  }
+function SolanaLogo({theme="light", size="md", variant:_v}){
+  const fontSize={sm:22,md:28,lg:44}[size]||28;
+  const onDarkBg=theme==="light";
+  const color=onDarkBg?"#FAF7F2":"#3C0A37";
   return(
     <div className="solana-wordmark-wrap" style={{
-      display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:0,
+      display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:1.05,
       background:"none",backgroundColor:"transparent",border:"none",boxShadow:"none",padding:0,margin:0,
     }} aria-label="Solana">
-      <img className="solana-wordmark" src="/logo.png" alt="Solana" style={imgStyle} decoding="async"/>
+      <span className="solana-wordmark" style={{
+        fontFamily:"'Playfair Display',Georgia,serif",
+        fontSize,
+        fontWeight:600,
+        color,
+        letterSpacing:"0.02em",
+      }}>Solana</span>
     </div>
   );
 }
@@ -1915,7 +1897,8 @@ function LoginScreen({ users, onLogin, passwords }) {
   const doLogin = async () => {
     const cleanEmail = email.trim().toLowerCase();
 
-    if (STAGING_OPEN_LOGIN) {
+    /* Open login only when there is no API — if AUTH_URL is set, we must hit /auth/login for Bearer token */
+    if (STAGING_OPEN_LOGIN && !AUTH_URL) {
       setLoading(true);
       clearMessages();
       await new Promise(r => setTimeout(r, 200));
@@ -4276,7 +4259,7 @@ function SettingsView(){
 
       <div style={{marginTop:12,padding:"8px 12px",background:"#F5F0EA",borderRadius:8,fontSize:10,color:"#9CAA9F",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <span style={{display:"flex",alignItems:"center",gap:8}}>
-          <img className="solana-wordmark" src="/logo.png" alt="" height={16} style={{height:16,width:"auto",display:"block",objectFit:"contain",background:"transparent",backgroundColor:"transparent"}} decoding="async"/>
+          <span className="solana-wordmark" style={{fontFamily:"'Playfair Display',Georgia,serif",fontSize:15,fontWeight:600,color:"#3C0A37",letterSpacing:"0.02em"}}>Solana</span>
           <span>Gestión de Gastos</span>
         </span>
         <span>Data schema v{DATA_VERSION} · {new Date().getFullYear()}</span>
