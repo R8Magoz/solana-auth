@@ -89,10 +89,9 @@ const TR = {
     "action.exportCSV": "Exportar CSV",
     "action.exportJSON": "Exportar JSON",
     "action.importJSON": "Importar JSON",
-    "action.scanCamera": "Escanear",
     "action.uploadFile": "Subir archivo",
-    "action.capturePhoto": "Capturar Foto",
-    "action.saveKey": "Guardar clave",
+    "action.scanCamera": "Hacer foto",
+    "action.capturePhoto": "Capturar foto",
     "action.addExpense": "Añadir Gasto",
     "action.restore": "Restaurar",
     "action.archive": "Archivar",
@@ -144,7 +143,6 @@ const TR = {
     "label.splitExpense": "Dividir gasto",
     "label.splitBadge": "Reparto",
     "label.divideTeam": "Dividir entre el equipo",
-    "label.apiKey": "Clave API",
     "label.currentPassword": "Contraseña actual",
     "label.newPassword": "Nueva contraseña",
     "label.confirmPassword": "Confirmar contraseña",
@@ -196,12 +194,9 @@ const TR = {
     "msg.valueMustMatch": "Los valores deben sumar ",
     "msg.resetConfirm": "¿Restablecer todos los datos al demo?",
     "msg.removeAccount": "¿Eliminar tu cuenta de este dispositivo?",
-    "msg.scanned": "Escaneado. Revisa los campos.",
-    "msg.scanning": "Leyendo recibo...",
     "msg.pdfUploaded": "PDF subido",
-    "msg.noApiKey": "Sin clave API en Ajustes. Completa manualmente.",
+    "msg.receiptLoading": "Cargando recibo…",
     "msg.cameraUnavailable": "Cámara no disponible. Intenta subir un archivo.",
-    "msg.uploaded": "Subido – escaneando...",
     "msg.passwordMismatch": "Las contraseñas no coinciden.",
     "msg.passwordTooShort": "Mínimo 6 caracteres.",
     "msg.passwordWrong": "Contraseña actual incorrecta.",
@@ -223,15 +218,9 @@ const TR = {
     "msg.attachmentRemoved": "Adjunto eliminado.",
     "msg.minPassword": "La contraseña debe tener al menos 8 caracteres.",
     "msg.pwCommon": "Contraseña demasiado común. Elige una más segura.",
-    "msg.scanKeyRejected": "La clave API fue rechazada.",
-    "msg.scanRateLimited": "Demasiadas solicitudes de escaneo. Inténtalo de nuevo en un momento.",
-    "msg.scanTimeout": "El escaneo tardó demasiado. Inténtalo de nuevo.",
-    "msg.scanNetworkErr": "Error de red durante el escaneo.",
     "msg.genericShort": "Error.",
     "msg.httpStatus": "Error del servidor (código {{status}})",
     "settings.title": "Ajustes",
-    "settings.aiScanning": "Escaneo de Recibos con IA",
-    "settings.aiDesc": "El escaneo de recibos funciona a través del servidor. No se requiere clave API en tu dispositivo.",
     "settings.teamMembers": "Miembros del equipo",
     "settings.pendingUsers": "Pendientes de aprobación",
     "settings.noPendingUsers": "No hay usuarios esperando aprobación.",
@@ -256,7 +245,6 @@ const TR = {
     "settings.approversLabel": "Aprobadores:",
     "settings.noApprovers": "ninguno",
     "settings.restoreCategory": "¿Restaurar esta categoría?",
-    "settings.keySaved": "¡Guardado!",
     "settings.pendingFirst": "Pendientes de aprobación — revisa antes que todo",
     "settings.accordion.pending": "Usuarios pendientes de aprobación",
     "settings.accordion.team": "Miembros del equipo",
@@ -265,7 +253,6 @@ const TR = {
     "settings.accordion.categories": "Categorías y aprobación",
     "settings.accordion.integrations": "Integraciones y exportación",
     "settings.accordion.danger": "Zona de peligro",
-    "settings.accordion.ai": "Escaneo de recibos con IA",
     "settings.apiIntegrations": "API e Integraciones",
     "settings.apiIntegrationsDesc": "Conecta los datos de Solana con Power BI, Excel u otras herramientas de análisis.",
     "login.email": "Correo electrónico",
@@ -482,7 +469,6 @@ const TR = {
     "audit.pending_reset": "Vuelto a pendiente tras edición",
     "receipt.tapEnlarge": "Toca para ver a tamaño completo",
     "receipt.closeZoom": "Cerrar",
-    "expense.draftFromScan": "Recibo (borrador)"
 };
 
 const mkT=()=>(key,vars={})=>{
@@ -1396,7 +1382,7 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, label, onRemove, 
   if(!receipt&&apiExpenseId&&AUTH_URL&&blobLoad){
     return(
       <div style={{padding:"8px 10px",background:"#FAFAF8",borderRadius:7,border:"1px dashed #DDD6CC",fontSize:11,color:"#6B7B72"}}>
-        {t?t("msg.scanning"):"Cargando recibo…"}
+        {t?t("msg.receiptLoading"):"Cargando recibo…"}
       </div>
     );
   }
@@ -2198,7 +2184,8 @@ function LoginScreen({ users, onLogin, passwords }) {
 /* ── NEW EXPENSE PANEL ─────────────────────────────────────────────────────── */
 function NewPanel(){
   const{t,user,cats,form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
-        receipt,setReceipt,recPrev,setRecPrev,scanning,scanMsg,formError,setFormError,startCam,handleFile,fileRef,
+        receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,handleReceiptFile,fileRef,
+        startCam,capturePhoto,stopCam,
         submitExp,resetForm,removeAttachment,editExp,deleteExp,setPanel,users,calcEqual,ivaRates}=useApp();
   const activeCats=cats.filter(c=>!c.archived);
   const expAmt=parseFloat(form.amount)||0;
@@ -2262,11 +2249,9 @@ function NewPanel(){
         <label className="lbl">{t("form.receiptOptional")}</label>
         {recPrev&&recPrev!=="PDF"&&<div style={{marginBottom:6,position:"relative"}}><img src={recPrev} alt="" style={{width:"100%",maxHeight:130,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setReceipt(null);setRecPrev(null);}}>×</button></div>}
         {recPrev==="PDF"&&<div style={{background:"#F5F0EA",borderRadius:7,padding:"6px 9px",marginBottom:6,display:"flex",justifyContent:"space-between",fontSize:11,color:"#4B5E52"}}><span>{t("msg.pdfUploaded")}</span><button style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={()=>{setReceipt(null);setRecPrev(null);}}>{t("action.remove")}</button></div>}
-        {scanning&&<div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6,fontSize:11,color:T}}><div style={{width:10,height:10,border:`2px solid ${T}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>{t("msg.scanning")}</div>}
-        {!scanning&&scanMsg&&<div style={{marginBottom:6,fontSize:11,padding:"4px 8px",borderRadius:6,background:scanMsg.includes("Scan")||scanMsg.includes("Escan")?"#D1FAE5":"#F5F0EA",color:scanMsg.includes("Scan")||scanMsg.includes("Escan")?"#065F46":"#4B5E52"}}>{scanMsg}</div>}
         <div style={{display:"flex",gap:6}}>
-          <button className="btn-sm" style={{flex:1,fontSize:11,padding:"5px 7px"}} onClick={startCam}>{t("action.scanCamera")}</button>
-          <button style={{flex:1,padding:"5px 7px",borderRadius:6,border:`1.5px solid ${G}`,background:"transparent",color:G,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>fileRef.current?.click()}>{t("action.uploadFile")}</button>
+          <button type="button" className="btn-sm" style={{flex:1,fontSize:11,padding:"5px 7px"}} onClick={startCam}>{t("action.scanCamera")}</button>
+          <button type="button" style={{flex:1,padding:"5px 7px",borderRadius:6,border:`1.5px solid ${G}`,background:"transparent",color:G,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>fileRef.current?.click()}>{t("action.uploadFile")}</button>
         </div>
       </div>
       {/* Fields */}
@@ -3768,7 +3753,7 @@ function AdminReadme(){
           <div style={S.heading}>LOCALSTORE — CLAVES</div>
           <div style={S.body}>
             <span style={S.code}>sol-users</span> usuarios · <span style={S.code}>sol-exp</span> gastos · <span style={S.code}>sol-bills</span> facturas · <span style={S.code}>sol-cats</span> categorías<br/>
-            <span style={S.code}>sol-pwd</span> contraseñas (plaintext, solo modo local) · <span style={S.code}>sol-apikey</span> clave Anthropic<br/>
+            <span style={S.code}>sol-pwd</span> contraseñas (plaintext, solo modo local)<br/>
             <span style={S.code}>sol-app-log</span> log de la app (máx {LOG_MAX} entradas) · <span style={S.code}>sol-lang</span> reservado (es)
           </div>
 
@@ -3992,7 +3977,7 @@ function IvaRatesEditorBlock({t,ivaRates,onSave}){
 
 /* ── SETTINGS VIEW ─────────────────────────────────────────────────────────── */
 function SettingsView(){
-  const{t,user,users,expenses,bills,cats,saveCats,apiKey,setApiKey,saveUsers,saveExp,saveBills,
+  const{t,user,users,expenses,bills,cats,saveCats,saveUsers,saveExp,saveBills,
         onSignOut,importRef,passwords,savePasswords,ivaRates,saveIvaRates}=useApp();
   const isSA=user?.role==="superadmin";
   const isAdm=user?.role==="admin"||user?.role==="superadmin";
@@ -4003,7 +3988,6 @@ function SettingsView(){
   const [nuErr,setNuErr]=useState("");
   const [delC,setDelC]=useState(null);
   const [dSelf,setDSelf]=useState(false);
-  const [kSaved,setKSaved]=useState(false);
   const [sf,setSf]=useState({name:user?.name||"",email:user?.email||"",phone:user?.phone||"",avatar:user?.avatar||null});
   const [catEdit,setCatEdit]=useState(null);
   const [catForm,setCatForm]=useState({});
@@ -4021,8 +4005,6 @@ function SettingsView(){
     try{localStorage.setItem(IVA_DEFAULT_KEY,JSON.stringify(v));}catch(e){}
     setIvaDefault(v);
   };
-  const saveKey=()=>{try{localStorage.setItem("sol-apikey",apiKey);}catch{}setKSaved(true);setTimeout(()=>setKSaved(false),2000);};
-
   const savePw=async()=>{
     setPwMsg("");setPwOk(false);
     const existing=passwords?.[user.id];
@@ -4303,11 +4285,7 @@ function SettingsView(){
         </div>
       </AccordionSection>
 
-      <div style={{marginTop:12,padding:"8px 12px",background:"#F5F0EA",borderRadius:8,fontSize:10,color:"#9CAA9F",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-        <span style={{display:"flex",alignItems:"center",gap:8}}>
-          <span className="solana-wordmark" style={{fontFamily:"'Playfair Display',Georgia,serif",fontSize:14,fontWeight:600,color:"#3C0A37",letterSpacing:"0.18em"}}>SOLANA</span>
-          <span>Gestión de Gastos</span>
-        </span>
+      <div style={{marginTop:12,padding:"8px 12px",background:"#F5F0EA",borderRadius:8,fontSize:10,color:"#9CAA9F",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <span>Data schema v{DATA_VERSION} · {new Date().getFullYear()}</span>
       </div>
     </div>
@@ -4343,7 +4321,6 @@ function SolanaExpenses(){
     const d=ls("sol-cats",DEF_CATS);
     return d.map(c=>normalizeItem(c,"cat"));
   });
-  const [apiKey,  setApiKeyS] =useState(()=>localStorage.getItem("sol-apikey")||"");
   const [passwords,setPasswords]=useState(()=>ls("sol-pwd",{}));
   // appReady: small deliberate delay so the root div never flashes empty
   const [appReady,setAppReady]=useState(false);
@@ -4378,18 +4355,12 @@ function SolanaExpenses(){
   const myExpFilterClearedRef=useRef(false);
 
   const [form,    setForm]    =useState(()=>({...BF,ivaRate:String(readIvaDefault())}));
-  const formRef=useRef(form);
-  useEffect(()=>{formRef.current=form;},[form]);
-  const scanDraftExpenseIdRef=useRef(null);
-  const scanLinkTicketRef=useRef(0);
   const [splitOn, setSplitOn] =useState(false);
   const [splits,  setSplits]  =useState([]);
   const [spMode,  setSpMode]  =useState("equal");
   const [receipt, setReceipt] =useState(null);
   const [recPrev, setRecPrev] =useState(null);
-  const [scanning,  setScanning]  =useState(false);
-  const [scanMsg,   setScanMsg]   =useState("");
-  const [formError, setFormError] =useState("");  // separate from scan messages
+  const [formError, setFormError] =useState("");
   const [sessionExpired, setSessionExpired]=useState(false);
   const [online,setOnline]=useState(()=>typeof navigator!=="undefined"&&navigator.onLine);
   const [toasts,setToasts]=useState([]);
@@ -4399,9 +4370,9 @@ function SolanaExpenses(){
   const [aNote,   setANote]   =useState({});
   const [addBill, setAddBill] =useState(false);
   const [newBill, setNewBill] =useState({...BB});
-  const [camOn,   setCamOn]   =useState(false);
-  const [camStr,  setCamStr]  =useState(null);
-  const videoRef =useRef(null);
+  const [camOn,setCamOn]=useState(false);
+  const [camStr,setCamStr]=useState(null);
+  const videoRef=useRef(null);
   const canvasRef=useRef(null);
   const fileRef  =useRef(null);
   const importRef=useRef(null);
@@ -4414,8 +4385,6 @@ function SolanaExpenses(){
   const onSignOut=useCallback(()=>{
     myExpFilterClearedRef.current=false;
     migrAttemptRef.current=false;
-    scanDraftExpenseIdRef.current=null;
-    scanLinkTicketRef.current+=1;
     void API.logout();
     try{sessionStorage.removeItem("sol-session-token");}catch(e){}
     API.token=null;
@@ -4431,7 +4400,6 @@ function SolanaExpenses(){
   const saveExp     =d=>{const n=d.map(e=>normalizeItem(e,"expense"));setExpenses(n);if(!AUTH_URL)lsSet("sol-exp",n);};
   const saveBills   =d=>{const n=d.map(b=>normalizeItem(b,"bill"));setBills(n);if(!AUTH_URL)lsSet("sol-bills",n);};
   const saveCats    =d=>{const n=d.map(c=>normalizeItem(c,"cat"));setCats(n);lsSet("sol-cats",n);};
-  const setApiKey   =v=>{setApiKeyS(v);};
   const savePasswords=d=>{setPasswords(d);if(!AUTH_URL)lsSet("sol-pwd",d);};
 
   /* ── HELPERS ────────────────────────────────────────────────────────────── */
@@ -4638,13 +4606,63 @@ function SolanaExpenses(){
     return()=>{cancelled=true;};
   },[user?.id,ledgerLoading,expenses.length,bills.length]);
 
-  /* ── CAMERA ─────────────────────────────────────────────────────────────── */
-  const startCam=async()=>{
-    try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}}});setCamStr(s);setCamOn(true);}
-    catch(e){setScanMsg(t("msg.cameraUnavailable")+" ("+((e&&e.message)||"denied")+")");}
+  const handleReceiptFile=e=>{
+    const f=e.target.files?.[0];if(!f)return;
+    const err=validateUpload(f,UPLOAD_RULES.receipt);
+    if(err){alert(err);e.target.value="";appLog("warn","upload_rejected",{name:f.name,size:f.size,type:f.type,reason:err});return;}
+    const r=new FileReader();
+    r.onload=ev=>{
+      const url=ev.target.result,b64=url.split(",")[1],type=f.type||"image/jpeg";
+      setReceipt({b64,type});
+      setRecPrev(type.includes("pdf")?"PDF":url);
+      appLog("info","attachment_uploaded",{name:f.name,size:f.size,type});
+    };
+    r.readAsDataURL(f);e.target.value="";
   };
-  useEffect(()=>{if(camOn&&videoRef.current&&camStr){videoRef.current.srcObject=camStr;videoRef.current.play().catch(()=>{});}},[camOn,camStr]);
+
+  /* ── Receipt camera (capture only — no AI / server scan) ───────────────── */
+  const startCam=async()=>{
+    try{
+      const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}}});
+      setCamStr(s);
+      setCamOn(true);
+    }catch(e){
+      alert(t("msg.cameraUnavailable")+(e&&e.message?" ("+e.message+")":""));
+    }
+  };
+  useEffect(()=>{
+    if(camOn&&videoRef.current&&camStr){
+      videoRef.current.srcObject=camStr;
+      videoRef.current.play().catch(()=>{});
+    }
+  },[camOn,camStr]);
   useEffect(()=>()=>{camStr?.getTracks().forEach(tr=>tr.stop());},[camStr]);
+  useEffect(()=>{
+    if(!user){
+      setCamStr(s=>{
+        if(s)try{s.getTracks().forEach(tr=>tr.stop());}catch(e){}
+        return null;
+      });
+      setCamOn(false);
+    }
+  },[user]);
+  const stopCam=()=>{
+    camStr?.getTracks().forEach(tr=>tr.stop());
+    setCamStr(null);
+    setCamOn(false);
+  };
+  const capturePhoto=()=>{
+    const v=videoRef.current,c=canvasRef.current;
+    if(!v||!c)return;
+    c.width=v.videoWidth||1280;
+    c.height=v.videoHeight||720;
+    c.getContext("2d").drawImage(v,0,0);
+    const url=c.toDataURL("image/jpeg",0.85);
+    stopCam();
+    setRecPrev(url);
+    setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
+    appLog("info","receipt_captured",{source:"camera"});
+  };
 
   /* ── SESSION IDLE TIMEOUT ─────────────────────────────────────────────────
      Resets on any user interaction. Warns 2 min before expiry.
@@ -4677,102 +4695,6 @@ function SolanaExpenses(){
     };
   },[user,resetIdleTimer]);
 
-  const stopCam=()=>{camStr?.getTracks().forEach(tr=>tr.stop());setCamStr(null);setCamOn(false);};
-  const capturePhoto=()=>{
-    const v=videoRef.current,c=canvasRef.current;if(!v||!c)return;
-    c.width=v.videoWidth||1280;c.height=v.videoHeight||720;c.getContext("2d").drawImage(v,0,0);
-    const url=c.toDataURL("image/jpeg",0.85);stopCam();
-    setRecPrev(url);setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
-    doScan(url.split(",")[1],"image/jpeg");
-  };
-  const handleFile=e=>{
-    const f=e.target.files?.[0];if(!f)return;
-    const err=validateUpload(f,UPLOAD_RULES.receipt);
-    if(err){setScanMsg(err);e.target.value="";appLog("warn","upload_rejected",{name:f.name,size:f.size,type:f.type,reason:err});return;}
-    const r=new FileReader();
-    r.onload=ev=>{const url=ev.target.result,b64=url.split(",")[1],type=f.type||"image/jpeg";setReceipt({b64,type});setRecPrev(type.includes("pdf")?"PDF":url);setScanMsg(t("msg.uploaded"));doScan(b64,type);appLog("info","attachment_uploaded",{name:f.name,size:f.size,type});};
-    r.readAsDataURL(f);e.target.value="";
-  };
-  const doScan=async(b64,type)=>{
-    if(!AUTH_URL){setScanMsg(t("msg.noApiKey"));return;}
-    scanLinkTicketRef.current+=1;
-    const linkTicket=scanLinkTicketRef.current;
-    setScanning(true);setScanMsg(t("msg.scanning"));
-    const sessionToken=API.token||(function(){try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
-    if(!sessionToken){setScanMsg(t("msg.noApiKey"));setScanning(false);return;}
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),20000);
-    try{
-      const res=await fetch(AUTH_URL+"/ai/scan-receipt",{signal:controller.signal,method:"POST",
-        headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionToken},
-        body:JSON.stringify({b64,mediaType:type})});
-      clearTimeout(timeout);
-      if(!res.ok){
-        const d=await res.json().catch(()=>({}));
-        const msg=d.error||t("msg.httpStatus",{status:String(res.status)});
-        appLog("warn","scan_api_error",{status:res.status,msg});
-        setScanMsg(msg);setScanning(false);return;
-      }
-      const data=await res.json();
-      const p=data.result||{};
-      setForm(prev=>({...prev,amount:p.amount!==undefined?String(p.amount):prev.amount,description:p.description||prev.description,date:p.date||prev.date,category:p.category||prev.category}));
-      setScanMsg(t("msg.scanned"));
-      const b64Snap=b64,typeSnap=type;
-      void (async()=>{
-        const stale=()=>linkTicket!==scanLinkTicketRef.current;
-        if(stale())return;
-        if(!AUTH_URL||typeof navigator!=="undefined"&&!navigator.onLine)return;
-        if(!receiptMimeOkForServerUpload(typeSnap)){scanDraftExpenseIdRef.current=null;return;}
-        try{
-          const draftAmount=p.amount!=null&&Number(p.amount)>0?Number(p.amount):0.01;
-          const draftDesc=(p.description&&String(p.description).trim())||t("expense.draftFromScan");
-          const draftCat=(p.category&&String(p.category).trim())||"Otro";
-          const draftDate=(p.date&&/^\d{4}-\d{2}-\d{2}$/.test(String(p.date).trim()))?String(p.date).trim():new Date().toISOString().slice(0,10);
-          const f=formRef.current;
-          const cur=(f.currency||"EUR").toUpperCase();
-          let amountEUR=null;
-          if(cur==="EUR")amountEUR=draftAmount;
-          else{const ae=parseMoney(f.amountEur||"");amountEUR=ae>0?ae:null;}
-          const notesTrim=f.notes!=null&&String(f.notes).trim()?String(f.notes).trim():undefined;
-          const existingId=scanDraftExpenseIdRef.current;
-          if(existingId){
-            await API.requestNoQueue("PUT","/expenses/"+encodeURIComponent(existingId),{
-              amount:draftAmount,description:draftDesc,category:draftCat,date:draftDate,
-              ...(notesTrim!==undefined?{notes:notesTrim}:{}),
-              status:"draft",
-            });
-            if(stale())return;
-          }else{
-            const d=await API.requestNoQueue("POST","/expenses",{
-              amount:draftAmount,currency:cur,amountEUR:amountEUR===null?undefined:amountEUR,
-              description:draftDesc,category:draftCat,date:draftDate,
-              notes:notesTrim,status:"draft",
-            });
-            if(stale())return;
-            const newId=d.expense&&d.expense.id;
-            if(!newId)return;
-            scanDraftExpenseIdRef.current=newId;
-          }
-          const effId=scanDraftExpenseIdRef.current;
-          if(!effId)return;
-          await API.requestNoQueue("POST","/expenses/"+encodeURIComponent(effId)+"/receipt",{b64:b64Snap,mediaType:typeSnap||"image/jpeg"});
-          if(stale())return;
-          const full=await API.requestNoQueue("GET","/expenses",null);
-          if(stale())return;
-          saveExp((full.expenses||[]).map(expenseFromApi));
-        }catch(e){
-          appLog("warn","scan_receipt_server_link",{message:e?.message||String(e)});
-        }
-      })();
-    }catch(e){
-      clearTimeout(timeout);
-      const msg=e?.name==="AbortError"?t("msg.scanTimeout"):t("msg.scanNetworkErr");
-      appLog("warn","scan_fetch_error",{name:e?.name,message:e?.message,msg});
-      setScanMsg(msg);
-    }
-    setScanning(false);
-  };
-
   /* ── SPLITS ─────────────────────────────────────────────────────────────── */
   const calcEqual=useCallback((spl,amt)=>{
     const on=spl.filter(s=>s.checked);const n=on.length;if(!n)return spl;
@@ -4792,57 +4714,6 @@ function SolanaExpenses(){
       if(cur==="EUR")amountEUR=amount;
       else{const ae=parseMoney(form.amountEur||"");amountEUR=ae>0?ae:null;}
       void (async()=>{
-        const linkedId=scanDraftExpenseIdRef.current;
-        if(linkedId){
-          try{
-            await API.put("/expenses/"+encodeURIComponent(linkedId),{
-              amount,
-              description:form.description,
-              category:form.category,
-              date:form.date||new Date().toISOString().slice(0,10),
-              notes:form.notes||undefined,
-              status:"submitted",
-            });
-            if(receipt?.b64&&receiptMimeOkForServerUpload(receipt.type||"image/jpeg")){
-              try{
-                await API.post("/expenses/"+encodeURIComponent(linkedId)+"/receipt",{b64:receipt.b64,mediaType:receipt.type||"image/jpeg"});
-              }catch(e2){
-                if(!isOfflineQueuedError(e2))appLog("warn","draft_receipt_reupload",{message:e2?.message});
-              }
-            }
-            const full=await API.get("/expenses");
-            saveExp((full.expenses||[]).map(expenseFromApi));
-            scanDraftExpenseIdRef.current=null;
-            try{localStorage.removeItem("sol-exp-draft");}catch(e){}
-            resetForm();setPanel("detail");setDetailId(linkedId);
-            appLog("info","expense_submitted",{itemCode:linkedId,amount,category:form.category,userId:user.id,hasAttachment:!!receipt,fromDraftScan:true});
-            return;
-          }catch(err){
-            if(isOfflineQueuedError(err)){
-              scanDraftExpenseIdRef.current=null;
-              saveExp(expenses.map(x=>{
-                if(x.id!==linkedId)return x;
-                return normalizeItem({
-                  ...x,
-                  amount,
-                  description:form.description,
-                  category:form.category,
-                  date:form.date||new Date().toISOString().slice(0,10),
-                  notes:form.notes||"",
-                  status:"submitted",
-                  paidBy:[{userId:user.id,amount}],
-                  _pendingSync:true,
-                },"expense");
-              }));
-              try{localStorage.removeItem("sol-exp-draft");}catch(e){}
-              resetForm();setPanel("detail");setDetailId(linkedId);
-              appLog("info","expense_submitted",{itemCode:linkedId,amount,category:form.category,userId:user.id,hasAttachment:!!receipt,fromDraftScan:true,pendingSync:true});
-              return;
-            }
-            alert(err.message||"Error al guardar el gasto.");
-            return;
-          }
-        }
         const clientRef="tmp_exp_"+genUuid();
         const meta={clientRef};
         if(receipt?.b64)meta.pendingReceipt={b64:receipt.b64,mediaType:receipt.type||"image/jpeg"};
@@ -4945,7 +4816,7 @@ function SolanaExpenses(){
     saveExp(expenses.map(x=>x.id===expId?{...x,receipt:null,receiptType:null,auditTrail:trail}:x));
     appLog("info","attachment_removed",{itemCode:e.itemCode,userId:user.id});
   };
-  const resetForm=()=>{scanDraftExpenseIdRef.current=null;scanLinkTicketRef.current+=1;setForm({...BF,date:new Date().toISOString().slice(0,10),ivaRate:String(readIvaDefault()),currency:"EUR",amountEur:""});setSplitOn(false);setSplits([]);setReceipt(null);setRecPrev(null);setScanMsg("");setFormError("");try{localStorage.removeItem("sol-exp-draft");}catch(e){}};
+  const resetForm=()=>{setForm({...BF,date:new Date().toISOString().slice(0,10),ivaRate:String(readIvaDefault()),currency:"EUR",amountEur:""});setSplitOn(false);setSplits([]);setReceipt(null);setRecPrev(null);setFormError("");try{localStorage.removeItem("sol-exp-draft");}catch(e){}};
   const openNew  =()=>{resetForm();setDetailId(null);setPanel("new");setView("expenses");};
 
   /* deleteExp — removes expense with permission check and audit trail */
@@ -5268,14 +5139,14 @@ function SolanaExpenses(){
 
   /* ── CONTEXT VALUE ──────────────────────────────────────────────────────── */
   const ctxVal={
-    t,user,users,expenses,bills,cats,apiKey,passwords,ivaRates,saveIvaRates,
-    saveUsers,saveExp,saveBills,saveCats,setApiKey,savePasswords,
+    t,user,users,expenses,bills,cats,passwords,ivaRates,saveIvaRates,
+    saveUsers,saveExp,saveBills,saveCats,savePasswords,
     isAdmin,isSA,getUser,ledgerLoading,markBillPaid,
     view,setView,go,panel,setPanel,openNew,
     detailId,setDetailId,
     form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
-    receipt,setReceipt,recPrev,setRecPrev,scanning,scanMsg,formError,setFormError,
-    startCam,handleFile,capturePhoto,stopCam,calcEqual,fileRef,
+    receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,
+    handleReceiptFile,calcEqual,fileRef,startCam,capturePhoto,stopCam,
     submitExp,resetForm,
     aNote,setANote,approve,
     addBill,setAddBill,newBill,setNewBill,
@@ -5509,16 +5380,15 @@ function SolanaExpenses(){
           r.readAsText(f);e.target.value="";
         }}/>
         {/* Hidden file ref for receipt upload */}
-        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{display:"none"}} onChange={handleFile}/>
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{display:"none"}} onChange={handleReceiptFile}/>
 
-        {/* Camera overlay */}
         {camOn&&(
           <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000",zIndex:9999,display:"flex",flexDirection:"column"}}>
             <video ref={videoRef} autoPlay playsInline muted style={{flex:1,width:"100%",minHeight:0,objectFit:"cover"}}/>
             <canvas ref={canvasRef} style={{display:"none"}}/>
             <div style={{background:"rgba(0,0,0,0.92)",padding:"14px 18px 22px",display:"flex",gap:11,justifyContent:"center",alignItems:"center",flexShrink:0}}>
-              <button style={{background:T,color:"#fff",border:"none",borderRadius:9,padding:"13px 36px",fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}} onClick={capturePhoto}>{t("action.capturePhoto")}</button>
-              <button style={{background:"transparent",color:"rgba(255,255,255,0.6)",border:"1.5px solid rgba(255,255,255,0.22)",borderRadius:9,padding:"13px 20px",fontSize:13,cursor:"pointer",fontFamily:"inherit"}} onClick={stopCam}>{t("action.cancel")}</button>
+              <button type="button" style={{background:T,color:"#fff",border:"none",borderRadius:9,padding:"13px 36px",fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}} onClick={capturePhoto}>{t("action.capturePhoto")}</button>
+              <button type="button" style={{background:"transparent",color:"rgba(255,255,255,0.6)",border:"1.5px solid rgba(255,255,255,0.22)",borderRadius:9,padding:"13px 20px",fontSize:13,cursor:"pointer",fontFamily:"inherit"}} onClick={stopCam}>{t("action.cancel")}</button>
             </div>
           </div>
         )}
