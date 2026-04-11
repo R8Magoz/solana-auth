@@ -593,6 +593,17 @@ const API = {
   token: null,
   _flushBusy: false,
 
+  /** Bearer for requests: memory token, or sync from sessionStorage (login / refresh). */
+  ensureSessionToken() {
+    if (this.token) return;
+    try {
+      const s = sessionStorage.getItem("sol-session-token");
+      if (s) this.token = s;
+    } catch (e) {
+      this.token = null;
+    }
+  },
+
   mergeMeta(meta) {
     if (!meta || typeof meta !== "object") return {};
     const o = { ...meta };
@@ -601,6 +612,7 @@ const API = {
   },
 
   async _rawFetch(method, path, body) {
+    this.ensureSessionToken();
     const opts = { method, headers: {} };
     if (this.token) opts.headers.Authorization = "Bearer " + this.token;
     if (body != null && method !== "GET" && method !== "HEAD" && method !== "DELETE") {
@@ -671,6 +683,7 @@ const API = {
 
   async refresh() {
     if (!AUTH_URL) return false;
+    this.ensureSessionToken();
     try {
       const res = await fetch(AUTH_URL + "/auth/refresh", {
         method: "POST",
@@ -708,7 +721,9 @@ const API = {
 
   async flushOfflineQueue() {
     if (this._flushBusy) return;
-    if (!this.base || !this.token) return;
+    if (!this.base) return;
+    this.ensureSessionToken();
+    if (!this.token) return;
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
     if (readOfflineQueue().length === 0) return;
     this._flushBusy = true;
@@ -750,6 +765,7 @@ const API = {
 
   async fetchBinary(path) {
     if (!this.base) throw new Error("API no configurada.");
+    this.ensureSessionToken();
     const opts = { method: "GET", headers: {} };
     if (this.token) opts.headers.Authorization = "Bearer " + this.token;
     let res = await fetch(this.base + path, opts);
