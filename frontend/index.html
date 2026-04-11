@@ -31,8 +31,10 @@
     }
     /* Wordmark: no box behind PNG (transparent asset + filter compositing) */
     .solana-wordmark-wrap,.solana-wordmark{
-      background:transparent!important;
-      box-shadow:none;
+      background:none!important;
+      background-color:transparent!important;
+      box-shadow:none!important;
+      border:none!important;
     }
   </style>
 </head>
@@ -1281,7 +1283,7 @@ class AppErrorBoundary extends React.Component{
     return(
       <div style={{minHeight:"100vh",background:"#F5F0EA",display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'DM Sans',system-ui,sans-serif"}}>
         <div style={{maxWidth:420,width:"100%"}}>
-          <SolanaLogo theme="dark" size="lg"/>
+          <SolanaLogo theme="dark" size="lg" variant="auth"/>
           <div style={{background:"#fff",borderRadius:12,padding:20,boxShadow:"0 1px 6px rgba(0,0,0,0.08)",marginTop:12}}>
             <div style={{fontWeight:700,fontSize:15,color:"#991B1B",marginBottom:8}}>Algo ha salido mal</div>
             <div style={{fontSize:12,color:"#4B5E52",lineHeight:1.6,marginBottom:14}}>
@@ -1305,22 +1307,24 @@ class AppErrorBoundary extends React.Component{
 }
 
 /* ── SOLANA LOGO COMPONENT ─────────────────────────────────────────────────
-   Wordmark from /logo.png (transparent PNG). theme="light" = on #3C0A37 (invert for contrast).
-   theme="dark" = on light backgrounds — no filter, sits on AUTH.page #F5F0EA.
-   Wrapper/img stay background-transparent (avoids black matte from filters / UA defaults).
+   Wordmark from /logo.png. theme="light" = on #3C0A37 (invert). theme="dark" = login/light UIs.
+   variant="auth" = login hero: no wrapper fill; screen blend removes flat black if PNG isn’t alpha.
 ────────────────────────────────────────────────────────────────────────── */
-function SolanaLogo({theme="light", size="md"}){
+function SolanaLogo({theme="light", size="md", variant}){
   const h={sm:26,md:34,lg:52}[size]||34;
   const onDark=theme==="light";
+  const authHero=variant==="auth";
   const imgStyle={
     height:h,
     width:"auto",
     maxWidth:"100%",
     objectFit:"contain",
     display:"block",
-    background:"transparent",
+    background:"none",
     backgroundColor:"transparent",
     boxShadow:"none",
+    border:"none",
+    outline:"none",
   };
   if(onDark){
     imgStyle.filter="brightness(0) invert(1)";
@@ -1329,11 +1333,14 @@ function SolanaLogo({theme="light", size="md"}){
     imgStyle.transform="translateZ(0)";
   }else{
     imgStyle.filter="none";
+    if(authHero){
+      imgStyle.mixBlendMode="screen";
+    }
   }
   return(
     <div className="solana-wordmark-wrap" style={{
-      display:"flex",alignItems:"center",userSelect:"none",lineHeight:0,
-      background:"transparent",backgroundColor:"transparent",
+      display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:0,
+      background:"none",backgroundColor:"transparent",border:"none",boxShadow:"none",padding:0,margin:0,
     }} aria-label="Solana">
       <img className="solana-wordmark" src="/logo.png" alt="Solana" style={imgStyle} decoding="async"/>
     </div>
@@ -1632,7 +1639,7 @@ function AuthStatusCard({statusType,tl,onBack}){
     <div style={AUTH.page}>
       <div style={{...AUTH.card,maxWidth:420,textAlign:"center"}}>
         <div style={{...AUTH.logoWrap,marginBottom:20}}>
-          <SolanaLogo theme="dark" size="md"/>
+          <SolanaLogo theme="dark" size="md" variant="auth"/>
         </div>
         {cfg.icon!=null?(<div style={{fontSize:40,marginBottom:16,lineHeight:1}}>{cfg.icon}</div>):<div style={{height:4,marginBottom:8}} aria-hidden="true"/>}
         <h1 style={{...AUTH.title,marginTop:0,marginBottom:8,fontSize:20}}>
@@ -1693,7 +1700,7 @@ function SignupScreen({onBack}){
     <div style={AUTH.page}>
       <div style={{...AUTH.card,maxWidth:420,textAlign:"center"}}>
         <div style={{...AUTH.logoWrap,marginBottom:20}}>
-          <SolanaLogo theme="dark" size="md"/>
+          <SolanaLogo theme="dark" size="md" variant="auth"/>
         </div>
         <div style={{fontSize:40,marginBottom:16,lineHeight:1,color:"#16A34A",fontWeight:700}}>✓</div>
         <h1 style={{...AUTH.title,marginTop:0,marginBottom:8,fontSize:20}}>
@@ -1721,7 +1728,7 @@ function SignupScreen({onBack}){
       <div style={{width:"100%",maxWidth:400}}>
         {/* Logo + heading */}
         <div style={{...AUTH.logoWrap,marginBottom:0}}>
-          <SolanaLogo theme="dark" size="md"/>
+          <SolanaLogo theme="dark" size="md" variant="auth"/>
           <h1 style={AUTH.title}>{tl("signup.title")}</h1>
           <p style={AUTH.subtitle}>{tl("signup.subtitle")}</p>
         </div>
@@ -1839,7 +1846,7 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
     <div style={AUTH.page}>
       <div style={{width:"100%",maxWidth:400}}>
         <div style={AUTH.logoWrap}>
-          <SolanaLogo theme="dark" size="md"/>
+          <SolanaLogo theme="dark" size="md" variant="auth"/>
           <h1 style={AUTH.title}>{t("forceChange.title")}</h1>
           <p style={AUTH.subtitle}>{t("forceChange.subtitle")}</p>
         </div>
@@ -1962,7 +1969,10 @@ function LoginScreen({ users, onLogin, passwords }) {
           return;
         }
 
-        const tok = d.sessionToken != null ? String(d.sessionToken).trim() : "";
+        const rawTok = d.sessionToken != null && d.sessionToken !== ""
+          ? d.sessionToken
+          : (d.token != null && d.token !== "" ? d.token : null);
+        const tok = rawTok != null ? String(rawTok).trim() : "";
         if (!tok) {
           setLoading(false);
           setErr(tl("login.invalidCreds"));
@@ -1980,7 +1990,14 @@ function LoginScreen({ users, onLogin, passwords }) {
         setLoading(false);
         const srv = d.user;
         const loc = users.find(u => (u.email || "").toLowerCase() === (srv.email || "").toLowerCase());
-        onLogin(loc ? { ...loc, ...srv, id: srv.id != null ? srv.id : loc.id } : srv);
+        const mergedUser = loc ? { ...loc, ...srv, id: srv.id != null ? srv.id : loc.id } : srv;
+        if (typeof ReactDOM !== "undefined" && ReactDOM.flushSync) {
+          ReactDOM.flushSync(() => {
+            onLogin(mergedUser);
+          });
+        } else {
+          onLogin(mergedUser);
+        }
         return;
       } catch {
         appLog("warn", "auth_server_unreachable", { fallback: "local" });
@@ -2055,7 +2072,7 @@ function LoginScreen({ users, onLogin, passwords }) {
       <div style={{ width: "100%", maxWidth: 400 }}>
         {/* Logo + heading */}
         <div style={AUTH.logoWrap}>
-          <SolanaLogo theme="dark" size="md" />
+          <SolanaLogo theme="dark" size="md" variant="auth" />
           <h1 style={AUTH.title}>{tl("login.title")}</h1>
           <p style={AUTH.subtitle}>{tl("login.loginSubtitle")}</p>
         </div>
@@ -4394,9 +4411,17 @@ function SolanaExpenses(){
   const isAdmin   =user?.role==="admin"||user?.role==="superadmin";
   const isSA      =user?.role==="superadmin";
 
+  /* Sync token from storage when user is set — never wipe API.token with null/empty
+     (login sets sessionStorage + API.token before setUser; a blind ||null here caused 403). */
   useEffect(()=>{
-    if(!user){API.token=null;return;}
-    try{API.token=sessionStorage.getItem("sol-session-token")||null;}catch(e){API.token=null;}
+    if(!user){
+      API.token=null;
+      return;
+    }
+    try{
+      const s=sessionStorage.getItem("sol-session-token");
+      if(s) API.token=s;
+    }catch(e){/* keep existing API.token from login */}
   },[user]);
 
   useEffect(()=>{
@@ -5316,7 +5341,7 @@ function SolanaExpenses(){
               width:"90%",textAlign:"center",
               boxShadow:"0 4px 32px rgba(60,10,55,0.14),0 1px 4px rgba(0,0,0,0.06)",
               border:"1px solid #EDE8E0"}}>
-              <div style={{marginBottom:20}}><SolanaLogo theme="dark" size="md"/></div>
+              <div style={{marginBottom:20}}><SolanaLogo theme="dark" size="md" variant="auth"/></div>
               <div style={{fontSize:18,fontWeight:700,color:"#3C0A37",marginBottom:8,
                 fontFamily:"'Playfair Display',serif"}}>{t("session.expiredTitle")}</div>
               <p style={{fontSize:13,color:"#8A7A87",marginBottom:24,lineHeight:1.6}}>{t("session.expiredMsg")}</p>
