@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <meta name="theme-color" content="#3C0A37"/>
   <link rel="manifest" href="/manifest.json"/>
-  <link rel="apple-touch-icon" href="/icon-192.png"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <title>Solana — Gestión de Gastos</title>
@@ -206,6 +205,8 @@ const TR = {
     "msg.passwordMismatch": "Las contraseñas no coinciden.",
     "msg.passwordTooShort": "Mínimo 6 caracteres.",
     "msg.passwordWrong": "Contraseña actual incorrecta.",
+    "msg.currentPasswordRequired": "Introduce tu contraseña actual.",
+    "msg.sessionExpired": "Tu sesión ha expirado. Cierra sesión y vuelve a entrar.",
     "msg.passwordChanged": "Contraseña cambiada correctamente.",
     "forceChange.title": "Cambia tu contraseña",
     "forceChange.subtitle": "Tu cuenta usa una contraseña temporal. Establece una nueva para continuar.",
@@ -1306,25 +1307,24 @@ class AppErrorBoundary extends React.Component{
 }
 
 /* ── SOLANA WORDMARK (text) ────────────────────────────────────────────────
-   theme="light" = cream text on #3C0A37 bars. theme="dark" = brand purple on light UIs.
-   variant kept for call sites; unused (was image blend tweak).
+   theme="light" = light text on #3C0A37 bars. theme="dark" = brand purple on light UIs.
 ────────────────────────────────────────────────────────────────────────── */
 function SolanaLogo({theme="light", size="md", variant:_v}){
-  const fontSize={sm:22,md:28,lg:44}[size]||28;
+  const fontSize={sm:20,md:26,lg:40}[size]||26;
   const onDarkBg=theme==="light";
-  const color=onDarkBg?"#FAF7F2":"#3C0A37";
+  const color=onDarkBg?"#FFFFFF":"#3C0A37";
   return(
     <div className="solana-wordmark-wrap" style={{
       display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:1.05,
       background:"none",backgroundColor:"transparent",border:"none",boxShadow:"none",padding:0,margin:0,
-    }} aria-label="Solana">
+    }} aria-label="SOLANA">
       <span className="solana-wordmark" style={{
         fontFamily:"'Playfair Display',Georgia,serif",
         fontSize,
         fontWeight:600,
         color,
-        letterSpacing:"0.02em",
-      }}>Solana</span>
+        letterSpacing:"0.18em",
+      }}>SOLANA</span>
     </div>
   );
 }
@@ -1800,16 +1800,22 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
 
     // 1. Persist to backend (clears mustChangePassword in users.json — prevents loop on next login)
     if(AUTH_URL){
-      const sessionToken=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
-      if(sessionToken){
-        try{
-          const r=await fetch(AUTH_URL+"/auth/change-password",{
-            method:"POST",
-            headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionToken},
-            body:JSON.stringify({userId:user.id,newPassword:nw})
-          });
-          if(!r.ok){const d=await r.json();setMsg(d.error||t("forceChange.tooShort"));return;}
-        }catch{/* server unreachable — fall through to local-only save */}
+      const sessionToken=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+      if(!sessionToken){
+        setMsg(t("msg.sessionExpired"));
+        return;
+      }
+      try{
+        const r=await fetch(AUTH_URL+"/auth/change-password",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionToken},
+          body:JSON.stringify({userId:user.id,newPassword:nw}),
+        });
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok){setMsg(d.error||t("forceChange.tooShort"));return;}
+      }catch{
+        setMsg(t("signup.serverDown"));
+        return;
       }
     }
 
@@ -4008,6 +4014,7 @@ function SettingsView(){
   const [pwForm,setPwForm]=useState({cur:"",nw:"",cn:""});
   const [pwMsg,setPwMsg]=useState("");
   const [pwOk, setPwOk] =useState(false);
+  const [pwSaving,setPwSaving]=useState(false);
   const [ivaDefault,setIvaDefault]=useState(()=>readIvaDefault());
   useEffect(()=>{setIvaDefault(readIvaDefault());},[ivaRates]);
   const saveIvaDefault=v=>{
@@ -4016,13 +4023,52 @@ function SettingsView(){
   };
   const saveKey=()=>{try{localStorage.setItem("sol-apikey",apiKey);}catch{}setKSaved(true);setTimeout(()=>setKSaved(false),2000);};
 
-  const savePw=()=>{
+  const savePw=async()=>{
     setPwMsg("");setPwOk(false);
     const existing=passwords?.[user.id];
-    if(existing&&pwForm.cur!==existing){setPwMsg(t("msg.passwordWrong"));return;}
     if(pwForm.nw.length<8){setPwMsg(t("msg.minPassword"));return;}
     if(COMMON_PASSWORDS.has(pwForm.nw.toLowerCase())){setPwMsg(t("msg.pwCommon"));return;}
     if(pwForm.nw!==pwForm.cn){setPwMsg(t("msg.passwordMismatch"));return;}
+
+    if(AUTH_URL){
+      setPwSaving(true);
+      try{
+        let token=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+        if(!token){setPwMsg(t("msg.sessionExpired"));return;}
+        if(existing){
+          if(!String(pwForm.cur||"").trim()){setPwMsg(t("msg.currentPasswordRequired"));return;}
+          const lr=await fetch(AUTH_URL+"/auth/login",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({email:String(user.email||"").trim().toLowerCase(),password:pwForm.cur}),
+          });
+          if(!lr.ok){setPwMsg(t("msg.passwordWrong"));return;}
+          const ld=await lr.json().catch(()=>({}));
+          const t2=ld.sessionToken!=null&&String(ld.sessionToken).trim()!==""?String(ld.sessionToken).trim():null;
+          if(t2){
+            token=t2;
+            try{sessionStorage.setItem("sol-session-token",token);}catch(e){}
+            API.token=token;
+          }
+        }
+        const r=await fetch(AUTH_URL+"/auth/change-password",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
+          body:JSON.stringify({userId:user.id,newPassword:pwForm.nw}),
+        });
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok){setPwMsg(d.error||t("msg.genericShort"));return;}
+      }catch{
+        setPwMsg(t("signup.serverDown"));
+        return;
+      }finally{
+        setPwSaving(false);
+      }
+    }else if(existing&&pwForm.cur!==existing){
+      setPwMsg(t("msg.passwordWrong"));
+      return;
+    }
+
     savePasswords({...passwords,[user.id]:pwForm.nw});
     appLog("info","password_changed",{userId:user.id});
     setPwForm({cur:"",nw:"",cn:""});setPwMsg(t("msg.passwordChanged"));setPwOk(true);
@@ -4169,7 +4215,7 @@ function SettingsView(){
           <div><label className="lbl">{t("label.confirmPassword")}</label><input className="inp" type="password" value={pwForm.cn} onChange={e=>setPwForm(p=>({...p,cn:e.target.value}))}/></div>
         </div>
         {pwMsg&&<div style={{marginTop:7,fontSize:11,padding:"5px 8px",borderRadius:6,background:pwOk?"#D1FAE5":"#FEE2E2",color:pwOk?"#065F46":"#7F1D1D"}}>{pwMsg}</div>}
-        <button className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} onClick={savePw}>{passwords?.[user.id]?t("action.changePassword"):t("action.setPassword")}</button>
+        <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={pwSaving} onClick={()=>void savePw()}>{pwSaving?"…":(passwords?.[user.id]?t("action.changePassword"):t("action.setPassword"))}</button>
       </AccordionSection>
 
       {/* ── Categories ── */}
@@ -4259,7 +4305,7 @@ function SettingsView(){
 
       <div style={{marginTop:12,padding:"8px 12px",background:"#F5F0EA",borderRadius:8,fontSize:10,color:"#9CAA9F",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <span style={{display:"flex",alignItems:"center",gap:8}}>
-          <span className="solana-wordmark" style={{fontFamily:"'Playfair Display',Georgia,serif",fontSize:15,fontWeight:600,color:"#3C0A37",letterSpacing:"0.02em"}}>Solana</span>
+          <span className="solana-wordmark" style={{fontFamily:"'Playfair Display',Georgia,serif",fontSize:14,fontWeight:600,color:"#3C0A37",letterSpacing:"0.18em"}}>SOLANA</span>
           <span>Gestión de Gastos</span>
         </span>
         <span>Data schema v{DATA_VERSION} · {new Date().getFullYear()}</span>
