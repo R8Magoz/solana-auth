@@ -29,6 +29,11 @@
     @media(prefers-reduced-motion:reduce){
       .auth-inp,.auth-btn{transition:none!important;}
     }
+    /* Wordmark: no box behind PNG (transparent asset + filter compositing) */
+    .solana-wordmark-wrap,.solana-wordmark{
+      background:transparent!important;
+      box-shadow:none;
+    }
   </style>
 </head>
 <body>
@@ -1301,27 +1306,36 @@ class AppErrorBoundary extends React.Component{
 
 /* ── SOLANA LOGO COMPONENT ─────────────────────────────────────────────────
    Wordmark from /logo.png (transparent PNG). theme="light" = on #3C0A37 (invert for contrast).
-   theme="dark" = on light backgrounds — natural logo colors.
-   size scales approximate visual height of the stacked mark.
+   theme="dark" = on light backgrounds — no filter, sits on AUTH.page #F5F0EA.
+   Wrapper/img stay background-transparent (avoids black matte from filters / UA defaults).
 ────────────────────────────────────────────────────────────────────────── */
 function SolanaLogo({theme="light", size="md"}){
   const h={sm:26,md:34,lg:52}[size]||34;
   const onDark=theme==="light";
+  const imgStyle={
+    height:h,
+    width:"auto",
+    maxWidth:"100%",
+    objectFit:"contain",
+    display:"block",
+    background:"transparent",
+    backgroundColor:"transparent",
+    boxShadow:"none",
+  };
+  if(onDark){
+    imgStyle.filter="brightness(0) invert(1)";
+    imgStyle.WebkitBackfaceVisibility="hidden";
+    imgStyle.backfaceVisibility="hidden";
+    imgStyle.transform="translateZ(0)";
+  }else{
+    imgStyle.filter="none";
+  }
   return(
-    <div style={{display:"flex",alignItems:"center",userSelect:"none",lineHeight:0}} aria-label="Solana">
-      <img
-        src="/logo.png"
-        alt="Solana"
-        style={{
-          height:h,
-          width:"auto",
-          maxWidth:"100%",
-          objectFit:"contain",
-          display:"block",
-          filter:onDark?"brightness(0) invert(1)":"none",
-        }}
-        decoding="async"
-      />
+    <div className="solana-wordmark-wrap" style={{
+      display:"flex",alignItems:"center",userSelect:"none",lineHeight:0,
+      background:"transparent",backgroundColor:"transparent",
+    }} aria-label="Solana">
+      <img className="solana-wordmark" src="/logo.png" alt="Solana" style={imgStyle} decoding="async"/>
     </div>
   );
 }
@@ -1534,9 +1548,9 @@ const AUTH={
   card:{background:"#fff",borderRadius:16,padding:"36px 32px",
     boxShadow:"0 2px 24px rgba(60,10,55,0.10),0 1px 3px rgba(0,0,0,0.05)",
     border:"1px solid #EDE8E0",width:"100%",maxWidth:400},
-  /* Logo lockup */
+  /* Logo lockup (no fill — logo PNG alpha shows against AUTH.page) */
   logoWrap:{display:"flex",flexDirection:"column",alignItems:"center",
-    marginBottom:28,textAlign:"center"},
+    marginBottom:28,textAlign:"center",background:"transparent",backgroundColor:"transparent"},
   title:{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:700,
     color:"#3C0A37",marginTop:16,marginBottom:4,lineHeight:1.2},
   subtitle:{fontSize:13,color:"#8A7A87",marginBottom:0,lineHeight:1.5},
@@ -1948,14 +1962,24 @@ function LoginScreen({ users, onLogin, passwords }) {
           return;
         }
 
+        const tok = d.sessionToken != null ? String(d.sessionToken).trim() : "";
+        if (!tok) {
+          setLoading(false);
+          setErr(tl("login.invalidCreds"));
+          return;
+        }
+        try {
+          sessionStorage.setItem("sol-session-token", tok);
+        } catch (e) {
+          setLoading(false);
+          setErr(tl("login.invalidCreds"));
+          return;
+        }
+        API.token = tok;
+
         setLoading(false);
         const srv = d.user;
         const loc = users.find(u => (u.email || "").toLowerCase() === (srv.email || "").toLowerCase());
-        // Store session token in memory (not localStorage) for admin actions
-        if (d.sessionToken) {
-          try { sessionStorage.setItem("sol-session-token", d.sessionToken); } catch(e) {}
-          API.token = d.sessionToken;
-        }
         onLogin(loc ? { ...loc, ...srv, id: srv.id != null ? srv.id : loc.id } : srv);
         return;
       } catch {
@@ -4235,7 +4259,7 @@ function SettingsView(){
 
       <div style={{marginTop:12,padding:"8px 12px",background:"#F5F0EA",borderRadius:8,fontSize:10,color:"#9CAA9F",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <span style={{display:"flex",alignItems:"center",gap:8}}>
-          <img src="/logo.png" alt="" height={16} style={{height:16,width:"auto",display:"block",objectFit:"contain"}} decoding="async"/>
+          <img className="solana-wordmark" src="/logo.png" alt="" height={16} style={{height:16,width:"auto",display:"block",objectFit:"contain",background:"transparent",backgroundColor:"transparent"}} decoding="async"/>
           <span>Gestión de Gastos</span>
         </span>
         <span>Data schema v{DATA_VERSION} · {new Date().getFullYear()}</span>
