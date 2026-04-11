@@ -25,6 +25,20 @@ function canAccessBill(req, bill) {
   return bill.userId === req.userId;
 }
 
+function departmentIdFromBody(body, required) {
+  const raw = body && Object.prototype.hasOwnProperty.call(body, 'departmentId')
+    ? body.departmentId
+    : undefined;
+  if (raw == null || raw === '') {
+    if (required) return { error: 'departmentId requerido.' };
+    return { id: null };
+  }
+  const id = String(raw).trim().slice(0, 128);
+  const row = db.prepare('SELECT id FROM departments WHERE id = ?').get(id);
+  if (!row) return { error: 'Departamento no válido.' };
+  return { id };
+}
+
 function listBills(req) {
   const admin = isAdminRole(req.userRole);
   const { status, from, to, category, userId: qUser } = req.query;
@@ -63,10 +77,10 @@ function listBills(req) {
 const insertBill = db.prepare(`
   INSERT INTO bills (
     id, userId, vendor, amount, currency, amountEUR, category, dueDate, status,
-    recurring, recurrenceRule, paidAt, paidBy, notes, createdAt, updatedAt
+    recurring, recurrenceRule, paidAt, paidBy, notes, createdAt, updatedAt, departmentId
   ) VALUES (
     @id, @userId, @vendor, @amount, @currency, @amountEUR, @category, @dueDate, @status,
-    @recurring, @recurrenceRule, @paidAt, @paidBy, @notes, @createdAt, @updatedAt
+    @recurring, @recurrenceRule, @paidAt, @paidBy, @notes, @createdAt, @updatedAt, @departmentId
   )
 `);
 
@@ -89,6 +103,8 @@ function createBillsRouter({ audit, requireAuth }) {
       vendor, amount, currency, amountEUR, category, dueDate, notes,
       recurring, recurrenceRule,
     } = req.body || {};
+    const dept = departmentIdFromBody(req.body, true);
+    if (dept.error) return res.status(400).json({ error: dept.error });
 
     const vendorStr = typeof vendor === 'string' ? vendor.trim().slice(0, 256) : '';
     const categoryStr = typeof category === 'string' ? category.trim().slice(0, 128) : '';
@@ -142,6 +158,7 @@ function createBillsRouter({ audit, requireAuth }) {
       notes: notes != null ? String(notes).trim().slice(0, 4000) : null,
       createdAt: now,
       updatedAt: now,
+      departmentId: dept.id,
     });
 
     const bill = getBillById(id);
@@ -160,6 +177,13 @@ function createBillsRouter({ audit, requireAuth }) {
       vendor, amount, category, dueDate, notes, status,
       recurring, recurrenceRule,
     } = req.body || {};
+
+    let nextDeptId = bill.departmentId;
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'departmentId')) {
+      const dept = departmentIdFromBody(req.body, true);
+      if (dept.error) return res.status(400).json({ error: dept.error });
+      nextDeptId = dept.id;
+    }
 
     if (amount != null && (typeof amount !== 'number' || !Number.isFinite(amount))) {
       return res.status(400).json({ error: 'amount inválido.' });
@@ -202,7 +226,7 @@ function createBillsRouter({ audit, requireAuth }) {
     db.prepare(`
       UPDATE bills SET
         vendor = ?, amount = ?, category = ?, dueDate = ?, notes = ?, status = ?,
-        recurring = ?, recurrenceRule = ?, updatedAt = ?
+        recurring = ?, recurrenceRule = ?, departmentId = ?, updatedAt = ?
       WHERE id = ?
     `).run(
       nextVendor,
@@ -213,6 +237,7 @@ function createBillsRouter({ audit, requireAuth }) {
       nextStatus,
       rec,
       rule,
+      nextDeptId,
       now,
       bill.id,
     );

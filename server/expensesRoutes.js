@@ -28,6 +28,20 @@ function canAccessExpense(req, exp) {
   return exp.userId === req.userId;
 }
 
+function departmentIdFromBody(body, required) {
+  const raw = body && Object.prototype.hasOwnProperty.call(body, 'departmentId')
+    ? body.departmentId
+    : undefined;
+  if (raw == null || raw === '') {
+    if (required) return { error: 'departmentId requerido.' };
+    return { id: null };
+  }
+  const id = String(raw).trim().slice(0, 128);
+  const row = db.prepare('SELECT id FROM departments WHERE id = ?').get(id);
+  if (!row) return { error: 'Departamento no válido.' };
+  return { id };
+}
+
 function listExpenses(req) {
   const admin = isAdminRole(req.userRole);
   const { status, from, to, category, userId: qUser, includeDeleted } = req.query;
@@ -71,18 +85,22 @@ function listExpenses(req) {
 const insertExp = db.prepare(`
   INSERT INTO expenses (
     id, userId, amount, currency, amountEUR, description, category, date, status,
-    approvedBy, approvedAt, rejectedBy, rejectedAt, rejectionNote, receiptPath, notes, createdAt, updatedAt
+    approvedBy, approvedAt, rejectedBy, rejectedAt, rejectionNote, receiptPath, notes, createdAt, updatedAt, departmentId
   ) VALUES (
     @id, @userId, @amount, @currency, @amountEUR, @description, @category, @date, @status,
-    @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt
+    @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt, @departmentId
   )
 `);
 
 function mimeToExt(mime) {
   const m = (mime || '').toLowerCase();
-  if (m === 'image/jpeg') return 'jpg';
+  if (m === 'image/jpeg' || m === 'image/jpg') return 'jpg';
   if (m === 'image/png') return 'png';
   if (m === 'image/webp') return 'webp';
+  if (m === 'image/gif') return 'gif';
+  if (m === 'image/tiff' || m === 'image/tif' || m === 'image/x-tiff') return 'tiff';
+  if (m === 'image/heic' || m === 'image/heif') return 'heic';
+  if (m === 'application/pdf') return 'pdf';
   return null;
 }
 
@@ -192,6 +210,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
   router.post('/', (req, res) => {
     const { amount, currency, amountEUR, description, category, date, notes, status } = req.body || {};
+    const dept = departmentIdFromBody(req.body, true);
+    if (dept.error) return res.status(400).json({ error: dept.error });
     if (amount == null || typeof amount !== 'number' || !Number.isFinite(amount)) {
       return res.status(400).json({ error: 'amount numérico requerido.' });
     }
@@ -239,6 +259,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       notes: notes != null ? String(notes).trim().slice(0, 4000) : null,
       createdAt: now,
       updatedAt: now,
+      departmentId: dept.id,
     });
 
     const expense = getExpenseById(id);
@@ -262,6 +283,12 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     const { amount, description, category, date, notes, status } = req.body || {};
+    let nextDeptId = exp.departmentId;
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'departmentId')) {
+      const dept = departmentIdFromBody(req.body, true);
+      if (dept.error) return res.status(400).json({ error: dept.error });
+      nextDeptId = dept.id;
+    }
     if (amount != null && (typeof amount !== 'number' || !Number.isFinite(amount))) {
       return res.status(400).json({ error: 'amount inválido.' });
     }
@@ -291,9 +318,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     db.prepare(`
       UPDATE expenses SET
-        amount = ?, description = ?, category = ?, date = ?, notes = ?, status = ?, updatedAt = ?
+        amount = ?, description = ?, category = ?, date = ?, notes = ?, status = ?, departmentId = ?, updatedAt = ?
       WHERE id = ?
-    `).run(nextAmount, nextDesc, nextCat, nextDate, nextNotes, nextStatus, now, exp.id);
+    `).run(nextAmount, nextDesc, nextCat, nextDate, nextNotes, nextStatus, nextDeptId, now, exp.id);
 
     const updated = getExpenseById(exp.id);
     audit('expense_updated', {
@@ -370,7 +397,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     res.json({ ok: true, expense: updated });
   });
 
-  const receiptJson = express.json({ limit: '6mb' });
+  const receiptJson = express.json({ limit: '8mb' });
 
   router.post('/:id/receipt', receiptLimit, receiptJson, async (req, res) => {
     const exp = getExpenseById(req.params.id);
@@ -386,8 +413,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (!b64 || typeof b64 !== 'string') {
       return res.status(400).json({ error: 'Falta b64.' });
     }
-    if (b64.length > 5_600_000) {
-      return res.status(413).json({ error: 'Archivo demasiado grande (max ~4 MB).' });
+    if (b64.length > 8_400_000) {
+      return res.status(413).json({ error: 'Archivo demasiado grande (máx. 6 MB).' });
     }
     const mime = String(mediaType || 'image/jpeg').trim().toLowerCase().slice(0, 128);
     const ext = mimeToExt(mime);
@@ -399,8 +426,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     } catch {
       return res.status(400).json({ error: 'Base64 inválido.' });
     }
-    if (buf.length > 4 * 1024 * 1024) {
-      return res.status(413).json({ error: 'Archivo demasiado grande (max 4 MB).' });
+    if (buf.length > 6 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Archivo demasiado grande (máx. 6 MB).' });
     }
 
     if (ensureCloudinary()) {

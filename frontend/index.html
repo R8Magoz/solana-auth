@@ -69,6 +69,7 @@ const TR = {
     "nav.approvals": "Aprobaciones",
     "nav.bills": "Facturas",
     "nav.reports": "Informes",
+    "nav.budgets": "Presupuestos",
     "nav.settings": "Ajustes",
     "nav.signOut": "Cerrar sesión",
     "action.newExpense": "Nuevo gasto",
@@ -123,6 +124,7 @@ const TR = {
     "label.amount": "Importe (EUR)",
     "label.description": "Descripción",
     "label.category": "Categoría",
+    "label.department": "Departamento",
     "label.date": "Fecha",
     "label.notes": "Notas",
     "label.paidBy": "Pagado por",
@@ -251,6 +253,20 @@ const TR = {
     "settings.accordion.profile": "Tu perfil",
     "settings.accordion.password": "Contraseña",
     "settings.accordion.categories": "Categorías y aprobación",
+    "settings.accordion.budgets": "Presupuestos (departamentos)",
+    "settings.deptIntro": "Define presupuestos anuales por departamento. El gasto contabilizado son gastos aprobados y facturas marcadas como pagadas.",
+    "settings.deptName": "Nombre del departamento",
+    "settings.deptBudget": "Presupuesto (EUR)",
+    "settings.deptAdd": "Añadir departamento",
+    "settings.deptSaved": "Departamentos actualizados.",
+    "settings.deptDeleteBlocked": "Hay gastos o facturas vinculados; reasígnalos antes de eliminar.",
+    "dept.budget": "Presupuesto",
+    "dept.spent": "Gastado",
+    "dept.remaining": "Restante",
+    "dept.usedPct": "% usado",
+    "msg.deptRequired": "Selecciona un departamento.",
+    "dash.deptBudgetsTitle": "Presupuestos por departamento",
+    "budgets.empty": "No hay departamentos. Un superadmin puede crearlos en Ajustes → Presupuestos.",
     "settings.accordion.integrations": "Integraciones y exportación",
     "settings.accordion.danger": "Zona de peligro",
     "settings.apiIntegrations": "API e Integraciones",
@@ -496,20 +512,20 @@ const DEF_CATS=[
   {id:"c9",name:"Otro",           archived:false,approverIds:["sergio","marc"]},
 ];
 const SEED_EXP=[
-  {id:"e1",amount:45.80, description:"Verduras de mercado – prueba proveedor",category:"Food & Beverage",date:"2026-03-10",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:45.80}], approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"Mercat de la Boqueria",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-10T10:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-10T14:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-10T15:30:00Z",note:""}]},
-  {id:"e2",amount:1200.0,description:"Depósito máquina de espresso",         category:"Equipment",       date:"2026-03-08",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:600},{userId:"marc",amount:600}],approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"La Marzocco Linea Mini",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-08T09:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-08T09:01:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-08T12:00:00Z",note:""}]},
-  {id:"e3",amount:850.0, description:"Diseño de marca – Janneke",           category:"Marketing",       date:"2026-03-12",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:850}],  approvals:{sergio:"approved"},receipt:null,receiptType:null,notes:"Logo, tipografía, tarjetas",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-12T11:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-12T11:01:00Z",note:""}]},
-  {id:"e4",amount:320.0, description:"Consultoría legal – contrato de alquiler",        category:"Legal",           date:"2026-03-14",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:320}], approvals:{},receipt:null,receiptType:null,notes:"Condiciones del contrato",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-14T16:00:00Z"}]},
-  {id:"e5",amount:180.0, description:"Material de investigación de mercado",         category:"Marketing",       date:"2026-03-15",submittedBy:"anna",   paidBy:[{userId:"anna",amount:90},{userId:"humbert",amount:90}],approvals:{marc:"approved"},receipt:null,receiptType:null,notes:"Análisis de competencia",auditTrail:[{action:"submitted",by:"anna",at:"2026-03-15T10:00:00Z"},{action:"approved",by:"marc",at:"2026-03-15T14:00:00Z",note:""}]},
+  {id:"e1",amount:45.80, description:"Verduras de mercado – prueba proveedor",category:"Food & Beverage",date:"2026-03-10",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:45.80}], approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"Mercat de la Boqueria",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-10T10:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-10T14:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-10T15:30:00Z",note:""}],departmentId:"dept_operaciones"},
+  {id:"e2",amount:1200.0,description:"Depósito máquina de espresso",         category:"Equipment",       date:"2026-03-08",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:600},{userId:"marc",amount:600}],approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"La Marzocco Linea Mini",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-08T09:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-08T09:01:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-08T12:00:00Z",note:""}],departmentId:"dept_estrategia"},
+  {id:"e3",amount:850.0, description:"Diseño de marca – Janneke",           category:"Marketing",       date:"2026-03-12",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:850}],  approvals:{sergio:"approved"},receipt:null,receiptType:null,notes:"Logo, tipografía, tarjetas",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-12T11:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-12T11:01:00Z",note:""}],departmentId:"dept_branding"},
+  {id:"e4",amount:320.0, description:"Consultoría legal – contrato de alquiler",        category:"Legal",           date:"2026-03-14",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:320}], approvals:{},receipt:null,receiptType:null,notes:"Condiciones del contrato",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-14T16:00:00Z"}],departmentId:"dept_estrategia"},
+  {id:"e5",amount:180.0, description:"Material de investigación de mercado",         category:"Marketing",       date:"2026-03-15",submittedBy:"anna",   paidBy:[{userId:"anna",amount:90},{userId:"humbert",amount:90}],approvals:{marc:"approved"},receipt:null,receiptType:null,notes:"Análisis de competencia",auditTrail:[{action:"submitted",by:"anna",at:"2026-03-15T10:00:00Z"},{action:"approved",by:"marc",at:"2026-03-15T14:00:00Z",note:""}],departmentId:"dept_branding"},
 ];
 const SEED_BILLS=[
-  {id:"b1",name:"Notion workspace",amount:89, frequency:"monthly",category:"Software",dayOfMonth:"1", submittedBy:"marc",   approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"marc",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}]},
-  {id:"b2",name:"Unidad de almacenamiento",    amount:150,frequency:"monthly",category:"Rent",    dayOfMonth:"5", submittedBy:"sergio", approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"sergio",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}]},
-  {id:"b3",name:"Dominio y hosting",amount:20, frequency:"monthly",category:"Software",dayOfMonth:"15",submittedBy:"sergio", approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"sergio",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}]},
+  {id:"b1",name:"Notion workspace",amount:89, frequency:"monthly",category:"Software",dayOfMonth:"1", submittedBy:"marc",   approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"marc",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}],departmentId:"dept_branding"},
+  {id:"b2",name:"Unidad de almacenamiento",    amount:150,frequency:"monthly",category:"Rent",    dayOfMonth:"5", submittedBy:"sergio", approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"sergio",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}],departmentId:"dept_operaciones"},
+  {id:"b3",name:"Dominio y hosting",amount:20, frequency:"monthly",category:"Software",dayOfMonth:"15",submittedBy:"sergio", approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"sergio",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}],departmentId:"dept_branding"},
 ];
 
 /* ── VERSION & SCHEMA ──────────────────────────────────────────────────────── */
-const DATA_VERSION=5; // increment when schema changes; triggers normalize()
+const DATA_VERSION=6; // increment when schema changes; triggers normalize()
 /** Backend auth server URL. Set to empty string to use local-only mode (no signup/server login). */
 const AUTH_URL = (typeof window !== "undefined" && window.__SOLANA_AUTH_URL__) || "";
 /** Staging: allow sign-in without password (local users only). Email match if filled; otherwise first user. Set false for production. */
@@ -827,14 +843,14 @@ const lsSet=(k,v)=>{
 const normalizeItem=(item,type)=>{
   if(type==="expense"){
     const merged={paidBy:[],notes:"",receipt:null,receiptType:null,ivaRate:null,ivaAmount:null,comments:[],seenBy:[],
-      ...item,approvals:item.approvals||{},auditTrail:item.auditTrail||[]};
+      ...item,approvals:item.approvals||{},auditTrail:item.auditTrail||[],departmentId:item.departmentId??null};
     merged.comments=Array.isArray(merged.comments)?merged.comments:[];
     merged.seenBy=Array.isArray(merged.seenBy)?merged.seenBy:[];
     if(merged.ivaRate!==null&&merged.ivaRate!==undefined&&typeof merged.ivaRate!=="number")merged.ivaRate=null;
     if(merged.ivaAmount!==null&&merged.ivaAmount!==undefined&&typeof merged.ivaAmount!=="number")merged.ivaAmount=null;
     return merged;
   }
-  if(type==="bill")    return{active:false,notes:"",description:"",receipt:null,receiptType:null,...item,approvals:item.approvals||{},auditTrail:item.auditTrail||[],submittedBy:item.submittedBy||"unknown",seenBy:Array.isArray(item.seenBy)?item.seenBy:[]};
+  if(type==="bill")    return{active:false,notes:"",description:"",receipt:null,receiptType:null,...item,approvals:item.approvals||{},auditTrail:item.auditTrail||[],submittedBy:item.submittedBy||"unknown",seenBy:Array.isArray(item.seenBy)?item.seenBy:[],departmentId:item.departmentId??null};
   if(type==="user")    return{color:"#6B7280",title:"",email:"",phone:"",role:"user",...item};
   if(type==="cat"){
     const merged={archived:false,budget:null,...item,approverIds:Array.isArray(item.approverIds)?item.approverIds:["sergio","marc"]};
@@ -869,6 +885,30 @@ const getItemStatus=(item,cats,users)=>{
   if(approverIds.every(id=>a[id]==="approved"))return"approved";
   return"pending";
 };
+function billCountsTowardDeptSpend(b,cats,users){
+  if(b&&b._apiType==="bill")return b.apiBillStatus==="paid";
+  return getItemStatus(b,cats,users)==="approved"&&!!b.active;
+}
+/** @param useServerTotals when true and rows include spent from GET /departments, keep server figures */
+function enrichDepartmentsForUI(depts,expenses,bills,cats,users,useServerTotals){
+  return(depts||[]).map(d=>{
+    if(useServerTotals&&typeof d.spent==="number"){
+      const budget=Number(d.budget)||0;
+      const spent=Number(d.spent)||0;
+      const remaining=typeof d.remaining==="number"?d.remaining:budget-spent;
+      const pctUsed=typeof d.pctUsed==="number"?d.pctUsed:(budget>0?Math.min(100,Math.round((spent/budget)*1000)/10):(spent>0?100:0));
+      return{...d,budget,spent,remaining,pctUsed};
+    }
+    const id=d.id;
+    const spentExp=expenses.filter(e=>e.departmentId===id&&getItemStatus(e,cats,users)==="approved").reduce((s,e)=>s+eurForExpense(e),0);
+    const spentBills=bills.filter(b=>b.departmentId===id&&billCountsTowardDeptSpend(b,cats,users)).reduce((s,b)=>s+eurForExpense(b),0);
+    const spentF=spentExp+spentBills;
+    const budget=Number(d.budget)||0;
+    const remaining=budget-spentF;
+    const pctUsed=budget>0?Math.min(100,Math.round((spentF/budget)*1000)/10):(spentF>0?100:0);
+    return{...d,budget,spent:spentF,remaining,pctUsed};
+  });
+}
 const eurForExpense=x=>{
   if(x==null)return 0;
   const v=x.amountEUR;
@@ -918,6 +958,7 @@ function expenseFromApi(row){
     ivaAmount:null,
     comments:[],
     seenBy:[],
+    departmentId:row.departmentId||null,
   },"expense");
 }
 function billDueISOFromForm(nb){
@@ -976,6 +1017,7 @@ function billFromApi(row){
     paidAt:row.paidAt,
     paidByBill:row.paidBy,
     itemCode:row.id,
+    departmentId:row.departmentId||null,
   },"bill");
 }
 const ST={
@@ -1065,11 +1107,42 @@ const COMMON_PASSWORDS  = new Set([
   "baseball","superman","michael","password1","12345678","111111","1234567",
 ]);
 
+/** Browser `accept` + extension fallback for HEIC etc. when `file.type` is empty */
+const RECEIPT_FILE_ACCEPT="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif,image/tiff,image/tif,application/pdf,.heic,.heif,.gif,.tif,.tiff";
+
+const RECEIPT_EXT_TO_MIME={
+  ".jpg":"image/jpeg",".jpeg":"image/jpeg",".jpe":"image/jpeg",
+  ".png":"image/png",
+  ".webp":"image/webp",
+  ".heic":"image/heic",".heif":"image/heif",
+  ".gif":"image/gif",
+  ".tif":"image/tiff",".tiff":"image/tiff",
+  ".pdf":"application/pdf",
+};
+
+function receiptEffectiveMime(file){
+  const raw=(file&&file.type||"").toLowerCase().trim();
+  if(raw&&raw!=="application/octet-stream")return raw;
+  const n=String(file&&file.name||"").toLowerCase();
+  const dot=n.lastIndexOf(".");
+  if(dot===-1)return raw||"";
+  const ext=n.slice(dot);
+  return RECEIPT_EXT_TO_MIME[ext]||raw||"";
+}
+
 const UPLOAD_RULES={
   receipt:{
-    maxBytes:4*1024*1024,   // 4 MB — generous for high-res receipts/PDFs
-    allowedTypes:["image/jpeg","image/jpg","image/png","image/webp","application/pdf"],
-    allowedExts:[".jpg",".jpeg",".png",".webp",".pdf"],
+    maxBytes:6*1024*1024,   // 6 MB
+    allowedTypes:[
+      "image/jpeg","image/jpg","image/png","image/webp",
+      "image/heic","image/heif",
+      "image/gif",
+      "image/tiff","image/tif","image/x-tiff",
+      "application/pdf",
+    ],
+    allowedExts:[".jpg",".jpeg",".jpe",".png",".webp",".heic",".heif",".gif",".tif",".tiff",".pdf"],
+    inferFromExtension:true,
+    rejectHint:"Formato no admitido. Puedes adjuntar recibos en: JPEG, PNG, WebP, HEIC/HEIF (iPhone), GIF, TIFF o PDF. Tamaño máximo: 6 MB.",
   },
   avatar:{
     maxBytes:1*1024*1024,   // 1 MB — profile images don't need to be large
@@ -1078,12 +1151,18 @@ const UPLOAD_RULES={
   },
 };
 function validateUpload(file,rules){
-  if(file.size>rules.maxBytes)return`Archivo demasiado grande (máx ${Math.round(rules.maxBytes/1024)}KB).`;
-  const mimeOk=rules.allowedTypes.includes(file.type.toLowerCase());
-  const ext=(file.name||"").toLowerCase().split(".").pop();
-  const extOk=rules.allowedExts.some(e=>e==="."+ext);
-  if(!mimeOk&&!extOk)return"Tipo de archivo no permitido.";
-  return null; // OK
+  if(!file)return"Archivo no válido.";
+  if(file.size>rules.maxBytes){
+    const mb=rules.maxBytes/(1024*1024);
+    const mbLabel=Number.isInteger(mb)?String(mb):mb.toFixed(1).replace(/\.0$/,"");
+    return`Archivo demasiado grande (máximo ${mbLabel} MB).`;
+  }
+  const name=String(file.name||"").toLowerCase();
+  const extOk=rules.allowedExts.some(e=>name.endsWith(e));
+  const effMime=rules.inferFromExtension?receiptEffectiveMime(file):String(file.type||"").toLowerCase().trim();
+  const mimeOk=!!effMime&&rules.allowedTypes.includes(effMime);
+  if(!mimeOk&&!extOk)return rules.rejectHint||"Tipo de archivo no permitido.";
+  return null;
 }
 
 /* ── STRUCTURED APP LOGGER ─────────────────────────────────────────────────── */
@@ -1138,6 +1217,7 @@ function migrateDataModel(){
           if(x.ivaAmount===undefined){x.ivaAmount=null;dirty=true;}
           if(!Array.isArray(x.comments)){x.comments=[];dirty=true;}
           if(!Array.isArray(x.seenBy)){x.seenBy=[];dirty=true;}
+          if(x.departmentId===undefined||x.departmentId===""){x.departmentId="dept_estrategia";dirty=true;}
           return x;
         });
         if(dirty)localStorage.setItem("sol-exp",JSON.stringify(out));
@@ -1166,6 +1246,7 @@ function migrateDataModel(){
           if(!b||typeof b!=="object")return b;
           const x={...b};
           if(!Array.isArray(x.seenBy)){x.seenBy=[];dirty=true;}
+          if(x.departmentId===undefined||x.departmentId===""){x.departmentId="dept_estrategia";dirty=true;}
           return x;
         });
         if(dirty)localStorage.setItem("sol-bills",JSON.stringify(out));
@@ -1241,10 +1322,28 @@ const autoApprove=(submitterId,approverIds,existingApprovals,auditTrail)=>{
   return{approvals,auditTrail:trail};
 };
 /* BF.date is intentionally omitted — resetForm() injects today's date dynamically */
-const BF={amount:"",description:"",category:"Otro",date:"",notes:"",ivaRate:String(readIvaDefault()),currency:"EUR",amountEur:""};
+const DEPTS_LS_KEY="sol-departments";
+const DEFAULT_DEPT_ID="dept_estrategia";
+const SEED_DEPARTMENTS=[
+  {id:"dept_estrategia",name:"Estrategia",budget:0,createdAt:0},
+  {id:"dept_operaciones",name:"Operaciones",budget:0,createdAt:0},
+  {id:"dept_branding",name:"Branding",budget:0,createdAt:0},
+];
+function readLocalDepartments(){
+  try{
+    const raw=localStorage.getItem(DEPTS_LS_KEY);
+    if(!raw)return SEED_DEPARTMENTS.map(d=>({...d,createdAt:Date.now()}));
+    const arr=JSON.parse(raw);
+    if(!Array.isArray(arr)||arr.length===0)return SEED_DEPARTMENTS.map(d=>({...d,createdAt:Date.now()}));
+    return arr.map(d=>({id:String(d.id),name:String(d.name),budget:Number(d.budget)||0,createdAt:d.createdAt||Date.now()}));
+  }catch(e){
+    return SEED_DEPARTMENTS.map(d=>({...d,createdAt:Date.now()}));
+  }
+}
+const BF={amount:"",description:"",category:"Otro",date:"",notes:"",ivaRate:String(readIvaDefault()),currency:"EUR",amountEur:"",departmentId:DEFAULT_DEPT_ID};
 const API_CURRENCIES=["EUR","USD","GBP","CHF","SEK","DKK","NOK","PLN"];
 const DRAFT_KEY="sol-exp-draft";
-const BB={name:"",amount:"",frequency:"monthly",category:"Otro",dayOfMonth:"1",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:""};
+const BB={name:"",amount:"",frequency:"monthly",category:"Otro",dayOfMonth:"1",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",departmentId:DEFAULT_DEPT_ID};
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
 const Ctx=createContext(null);
@@ -1316,7 +1415,7 @@ function SolanaLogo({theme="light", size="md", variant:_v}){
 }
 
 /* ── REAPPROVAL_FIELDS ─────────────────────────────────────────────────────── */
-const REAPPROVAL_FIELDS = ["amount","description","category","date","paidBy","receipt","receiptType","ivaRate","ivaAmount"];
+const REAPPROVAL_FIELDS = ["amount","description","category","date","paidBy","receipt","receiptType","ivaRate","ivaAmount","departmentId"];
 
 /* ── ATTACHMENT VIEWER ─────────────────────────────────────────────────────────
    Shared component for displaying attachments on both expenses and bills.
@@ -1326,7 +1425,8 @@ const REAPPROVAL_FIELDS = ["amount","description","category","date","paidBy","re
 function receiptMimeOkForServerUpload(mediaType){
   const m=String(mediaType||"").toLowerCase();
   if(m.includes("pdf"))return false;
-  return m.includes("jpeg")||m.includes("jpg")||m.includes("png")||m.includes("webp");
+  return m.includes("jpeg")||m.includes("jpg")||m.includes("png")||m.includes("webp")
+    ||m.includes("heic")||m.includes("heif")||m.includes("gif")||m.includes("tiff")||m.includes("tif");
 }
 
 function AttachmentViewer({receipt, receiptType, apiExpenseId, label, onRemove, t}){
@@ -2186,7 +2286,7 @@ function NewPanel(){
   const{t,user,cats,form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
         receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,handleReceiptFile,fileRef,
         startCam,capturePhoto,stopCam,
-        submitExp,resetForm,removeAttachment,editExp,deleteExp,setPanel,users,calcEqual,ivaRates}=useApp();
+        submitExp,resetForm,removeAttachment,editExp,deleteExp,setPanel,users,calcEqual,ivaRates,departments}=useApp();
   const activeCats=cats.filter(c=>!c.archived);
   const expAmt=parseFloat(form.amount)||0;
   const [draftPrompt,setDraftPrompt]=useState(null);
@@ -2204,7 +2304,7 @@ function NewPanel(){
     clearTimeout(draftTimer.current);
     draftTimer.current=setTimeout(()=>{
       try{
-        const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate||String(readIvaDefault()),currency:form.currency||"EUR",amountEur:form.amountEur||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
+        const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate||String(readIvaDefault()),currency:form.currency||"EUR",amountEur:form.amountEur||"",departmentId:form.departmentId||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
         localStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
       }catch(e){}
     },500);
@@ -2236,7 +2336,7 @@ function NewPanel(){
           <div style={{display:"flex",gap:8}}>
             <button type="button" className="btn-sm" style={{flex:1,fontSize:11}} onClick={()=>{
               const f=draftPrompt.form||{};
-              setForm(p=>({...p,...f,date:f.date||p.date,ivaRate:f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):String(readIvaDefault()),currency:f.currency||p.currency||"EUR",amountEur:f.amountEur!=null?String(f.amountEur):p.amountEur||""}));
+              setForm(p=>({...p,...f,date:f.date||p.date,ivaRate:f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):String(readIvaDefault()),currency:f.currency||p.currency||"EUR",amountEur:f.amountEur!=null?String(f.amountEur):p.amountEur||"",departmentId:f.departmentId!=null&&f.departmentId!==""?f.departmentId:p.departmentId}));
               if(draftPrompt.splitOn&&draftPrompt.splits?.length){setSplitOn(true);setSpMode(draftPrompt.spMode||"equal");setSplits(draftPrompt.splits);}
               setDraftPrompt(null);
             }}>{t("draft.restore")}</button>
@@ -2286,6 +2386,11 @@ function NewPanel(){
       <div style={{marginBottom:8}}><label className="lbl">{t("label.category")}</label>
         <select className="inp" value={form.category} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
           {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
+        </select>
+      </div>
+      <div style={{marginBottom:8}}><label className="lbl">{t("label.department")} *</label>
+        <select className="inp" value={form.departmentId||""} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))} required>
+          {departments.length===0?<option value="">{t("msg.deptRequired")}</option>:departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
       </div>
       {!AUTH_URL&&<div style={{marginBottom:12,background:GL,borderRadius:8,padding:10}}>
@@ -2343,14 +2448,14 @@ function NewPanel(){
         )}
       </div>}
       {formError&&<div style={{marginBottom:7,padding:"5px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:500}}>{formError}</div>}
-      <button className="btn-primary" style={{width:"100%",padding:11,opacity:(!form.amount||!form.description)?0.5:1}} onClick={()=>{setFormError("");submitExp();}} disabled={!form.amount||!form.description}>{t("action.submit")}</button>
+      <button className="btn-primary" style={{width:"100%",padding:11,opacity:(!form.amount||!form.description||!form.departmentId)?0.5:1}} onClick={()=>{setFormError("");submitExp();}} disabled={!form.amount||!form.description||!form.departmentId}>{t("action.submit")}</button>
     </div>
   );
 }
 
 /* ── DETAIL PANEL ──────────────────────────────────────────────────────────── */
 function DetailPanel(){
-  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,ivaRates}=useApp();
+  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,ivaRates,departments,defaultDeptId}=useApp();
   const [editMode,setEditMode]=useState(false);
   const [ef,setEf]=useState({});        // edit form fields
   const [efDirty,setEfDirty]=useState(false);
@@ -2375,7 +2480,8 @@ function DetailPanel(){
     setEf({description:e.description,amount:String(e.amount),category:e.category,
       date:e.date,notes:e.notes||"",receipt:e.receipt||null,receiptType:e.receiptType||null,
       paidBy:e.paidBy,
-      ivaRate:defIva});
+      ivaRate:defIva,
+      departmentId:e.departmentId||defaultDeptId});
     setEfRecPrev(e.receipt?(e.receiptType?.includes("pdf")?"PDF":`data:${e.receiptType||"image/jpeg"};base64,${e.receipt}`):null);
     setEditMode(true);setEfDirty(false);
   };
@@ -2385,6 +2491,7 @@ function DetailPanel(){
   };
   const saveEdit=()=>{
     if(!ef.description||!ef.amount){return;}
+    if(!ef.departmentId){alert(t("msg.deptRequired"));return;}
     if(!confirm(t("expense.confirmEdit")))return;
     const amt=parseMoney(ef.amount)||e.amount;
     const rp=parseFloat(ef.ivaRate);
@@ -2398,6 +2505,7 @@ function DetailPanel(){
       receiptType:ef.receiptType||null,
       paidBy:ef.paidBy,
       ivaRate,ivaAmount,
+      departmentId:ef.departmentId||defaultDeptId,
     },e);
     setEditMode(false);setEfDirty(false);
   };
@@ -2406,7 +2514,7 @@ function DetailPanel(){
     const err=validateUpload(f,UPLOAD_RULES.receipt);
     if(err){alert(err);ev.target.value="";return;}
     const r=new FileReader();
-    r.onload=evr=>{const url=evr.target.result,b64=url.split(",")[1],type=f.type||"image/jpeg";
+    r.onload=evr=>{const url=evr.target.result,b64=url.split(",")[1],type=receiptEffectiveMime(f)||f.type||"image/jpeg";
       setEf(p=>({...p,receipt:b64,receiptType:type}));
       setEfRecPrev(type.includes("pdf")?"PDF":url);setEfDirty(true);};
     r.readAsDataURL(f);ev.target.value="";
@@ -2434,6 +2542,7 @@ function DetailPanel(){
             <div><label className="lbl">{t("label.date")}</label><input className="inp" type="date" value={ef.date||""} onChange={ev=>{setEf(p=>({...p,date:ev.target.value}));setEfDirty(true);}}/></div>
           </div>
           <div style={{marginBottom:8}}><label className="lbl">{t("label.category")}</label><select className="inp" value={ef.category||"Otro"} onChange={ev=>{setEf(p=>({...p,category:ev.target.value}));setEfDirty(true);}}>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
+          <div style={{marginBottom:8}}><label className="lbl">{t("label.department")} *</label><select className="inp" value={ef.departmentId||""} onChange={ev=>{setEf(p=>({...p,departmentId:ev.target.value}));setEfDirty(true);}}>{departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
           <div style={{marginBottom:10,background:GL,borderRadius:8,padding:10}}>
             <label className="lbl">{t("form.ivaRate")}</label>
             <select className="inp" value={ef.ivaRate||String(readIvaDefault())} onChange={ev=>{setEf(p=>({...p,ivaRate:ev.target.value}));setEfDirty(true);}}>
@@ -2459,10 +2568,10 @@ function DetailPanel(){
               <button style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={()=>{if(confirm(t("msg.attachmentRemoved")+"?")){setEf(p=>({...p,receipt:null,receiptType:null}));setEfRecPrev(null);setEfDirty(true);}}}>✕</button>
             </div>}
             {!efRecPrev&&<button style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>editFileRef.current?.click()}>+ Añadir adjunto</button>}
-            <input ref={editFileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{display:"none"}} onChange={handleEditFile}/>
+            <input ref={editFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} style={{display:"none"}} onChange={handleEditFile}/>
           </div>
           <div style={{display:"flex",gap:6}}>
-            <button className="btn-primary" style={{flex:1,fontSize:13,padding:"8px"}} onClick={saveEdit} disabled={!ef.description||!ef.amount}>{t("action.saveChanges")||"Guardar"}</button>
+            <button className="btn-primary" style={{flex:1,fontSize:13,padding:"8px"}} onClick={saveEdit} disabled={!ef.description||!ef.amount||!ef.departmentId}>{t("action.saveChanges")||"Guardar"}</button>
             <button className="btn-secondary" style={{flex:1,fontSize:13,padding:"8px"}} onClick={cancelEdit}>{t("action.cancel")}</button>
           </div>
         </div>
@@ -2477,7 +2586,7 @@ function DetailPanel(){
       {e.itemCode&&(
         <ItemCodeBadge code={e.itemCode}/>
       )}
-      {[{l:t("label.date"),v:fmtDate(e.date)},{l:t("label.category"),v:e.category},{l:t("label.by"),v:getU(e.submittedBy).name}].map(({l,v})=>(
+      {[{l:t("label.date"),v:fmtDate(e.date)},{l:t("label.category"),v:e.category},{l:t("label.department"),v:(departments.find(d=>d.id===e.departmentId)||{}).name||"—"},{l:t("label.by"),v:getU(e.submittedBy).name}].map(({l,v})=>(
         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}><span style={{color:"#9CAA9F"}}>{l}</span><span style={{fontWeight:500}}>{v}</span></div>
       ))}
       <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}>
@@ -2661,7 +2770,7 @@ function PersonDrilldown({userId, onClose}){
 /* ── DASHBOARD ─────────────────────────────────────────────────────────────── */
 function DashboardView(){
   const{t,user,expenses,bills,cats,users,isAdmin,myPending,myPendingBills,
-        totApproved,totFixed,perPerson,go,openNew,setView,setAddBill,setDetailId,setPanel,goToMyRejected}=useApp();
+        totApproved,totFixed,perPerson,go,openNew,setView,setAddBill,setDetailId,setPanel,goToMyRejected,departmentsWithStats}=useApp();
   const today=new Date();
   const m0=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
   const ym=today.toISOString().slice(0,7);
@@ -2739,6 +2848,7 @@ function DashboardView(){
         </div>
         {rejCnt>0&&<button type="button" style={{width:"100%",marginTop:10,background:"none",border:"none",color:T,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}} onClick={goToMyRejected}>{t("dash.fixRejectedLink").replace("{n}",String(rejCnt))}</button>}
       </div>
+      <DepartmentBudgetBars t={t} rows={departmentsWithStats} title={t("dash.deptBudgetsTitle")}/>
       {watchCats.length>0&&(
         <div className="card" style={{marginBottom:11}}>
           <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>{t("dash.budgetStatus")}</div>
@@ -2994,7 +3104,7 @@ function ApprovalsView(){
 
 /* ── BILLS VIEW ────────────────────────────────────────────────────────────── */
 function BillsView(){
-  const{t,user,users,bills,cats,saveBills,isAdmin,totFixed,addBill,setAddBill,newBill,setNewBill,markBillPaid}=useApp();
+  const{t,user,users,bills,cats,saveBills,isAdmin,totFixed,addBill,setAddBill,newBill,setNewBill,markBillPaid,departments,defaultDeptId}=useApp();
   const [selBillId,setSelBillId]=useState(null);
   const [editBillId,setEditBillId]=useState(null);
   const [billSearch,setBillSearch]=useState("");
@@ -3024,7 +3134,8 @@ function BillsView(){
     setEditBillForm({name:b.name,amount:String(b.amount),frequency:b.frequency,
       category:b.category,dayOfMonth:b.dayOfMonth||"1",description:b.description||"",
       notes:b.notes||"",receipt:b.receipt||null,receiptType:b.receiptType||null,
-      intervalMonths:b.intervalMonths||"",endDate:b.endDate||""});
+      intervalMonths:b.intervalMonths||"",endDate:b.endDate||"",
+      departmentId:b.departmentId||defaultDeptId});
     setEditBillId(b.id);setEditBillDirty(false);
   };
   const cancelEditBill=()=>{
@@ -3032,6 +3143,7 @@ function BillsView(){
     setEditBillId(null);setEditBillDirty(false);
   };
   const saveBillEdit=(b)=>{
+    if(!editBillForm.departmentId){alert(t("msg.deptRequired"));return;}
     if(!confirm(t("bills.confirmEdit")))return;
     if(AUTH_URL&&b._apiType==="bill"){
       if(b._pendingSync){alert("Espera a sincronizar esta factura antes de editarla.");return;}
@@ -3048,6 +3160,7 @@ function BillsView(){
             notes:editBillForm.notes||undefined,
             recurring:freq==="monthly"||freq==="annual"||freq==="custom",
             recurrenceRule:rule,
+            departmentId:editBillForm.departmentId||defaultDeptId,
           });
           const d=await API.get("/bills");
           saveBills((d.bills||[]).map(billFromApi));
@@ -3088,7 +3201,7 @@ function BillsView(){
     const err=validateUpload(f,UPLOAD_RULES.receipt);
     if(err){alert(err);e.target.value="";return;}
     const r=new FileReader();
-    r.onload=ev=>{const url=ev.target.result,b64=url.split(",")[1],type=f.type||"image/jpeg";
+    r.onload=ev=>{const url=ev.target.result,b64=url.split(",")[1],type=receiptEffectiveMime(f)||f.type||"image/jpeg";
       setEditBillForm(p=>({...p,receipt:b64,receiptType:type}));setEditBillDirty(true);};
     r.readAsDataURL(f);e.target.value="";
   };
@@ -3098,7 +3211,7 @@ function BillsView(){
     const err=validateUpload(f,UPLOAD_RULES.receipt);
     if(err){alert(err);e.target.value="";return;}
     const r=new FileReader();
-    r.onload=ev=>{const url=ev.target.result,b64=url.split(",")[1],type=f.type||"image/jpeg";
+    r.onload=ev=>{const url=ev.target.result,b64=url.split(",")[1],type=receiptEffectiveMime(f)||f.type||"image/jpeg";
       setNewBill(p=>({...p,receipt:b64,receiptType:type}));
       setNewBillRecPrev(type.includes("pdf")?"PDF":url);};
     r.readAsDataURL(f);e.target.value="";
@@ -3106,6 +3219,7 @@ function BillsView(){
 
   const submitBill=()=>{
     if(!newBill.name||!newBill.amount)return;
+    if(!newBill.departmentId){alert(t("msg.deptRequired"));return;}
     if(AUTH_URL){
       void (async()=>{
         const clientRef="tmp_bill_"+genUuid();
@@ -3122,6 +3236,7 @@ function BillsView(){
             notes:newBill.description||undefined,
             recurring:freq==="monthly"||freq==="annual"||freq==="custom",
             recurrenceRule:rule,
+            departmentId:newBill.departmentId,
           },{clientRef});
           saveBills([...bills,billFromApi(d.bill)]);
           appLog("info","bill_submitted",{name:newBill.name,userId:user.id});
@@ -3157,6 +3272,7 @@ function BillsView(){
               auditTrail:[],
               seenBy:[],
               itemCode:mkCode("FAC"),
+              departmentId:newBill.departmentId||null,
             },"bill");
             saveBills([...bills,ob]);
             appLog("info","bill_submitted",{name:newBill.name,userId:user.id,pendingSync:true});
@@ -3177,7 +3293,7 @@ function BillsView(){
     const attachTrail=newBill.receipt?[...auditTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:newBill.receiptType}}]:auditTrail;
     const b={id:"b"+Date.now(),itemCode:mkCode("FAC"),...newBill,amount:parseMoney(newBill.amount),
       submittedBy:user.id,approvals,auditTrail:attachTrail,active:allApproved,
-      receipt:newBill.receipt||null,receiptType:newBill.receiptType||null};
+      receipt:newBill.receipt||null,receiptType:newBill.receiptType||null,departmentId:newBill.departmentId||DEFAULT_DEPT_ID};
     appLog("info","bill_submitted",{itemCode:b.itemCode,name:b.name,amount:b.amount,userId:user.id,autoApproved:allApproved,hasAttachment:!!newBill.receipt});
     saveBills([...bills,b]);
     setNewBill({...BB});setNewBillRecPrev(null);setAddBill(false);
@@ -3244,6 +3360,7 @@ function BillsView(){
             <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.billName")}</label><input className="inp" placeholder={t("label.billName")} value={newBill.name} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
             <div><label className="lbl">{t("label.amount")}</label><input className="inp" type="text" inputMode="decimal" placeholder="0,00" value={newBill.amount} onChange={e=>setNewBill(p=>({...p,amount:e.target.value}))}/></div>
             <div><label className="lbl">{t("label.category")}</label><select className="inp" value={newBill.category} onChange={e=>setNewBill(p=>({...p,category:e.target.value}))}>{activeCats.map(c=><option key={c.id}>{c.name}</option>)}</select></div>
+            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")} *</label><select className="inp" value={newBill.departmentId||""} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}>{departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
           </div>
           {/* BLOQUE B — Periodicidad */}
           <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Periodicidad</div>
@@ -3277,7 +3394,7 @@ function BillsView(){
             {!newBillRecPrev&&(
               <button style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>billNewFileRef.current?.click()}>+ {t("item.attachment")||"Añadir adjunto"}</button>
             )}
-            <input ref={billNewFileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{display:"none"}} onChange={handleNewBillFile}/>
+            <input ref={billNewFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} style={{display:"none"}} onChange={handleNewBillFile}/>
           </div>
           <div style={{marginTop:9,padding:"8px 10px",background:"#FEF3C7",borderRadius:7,fontSize:11,color:"#92400E",marginBottom:9}}>{t("bills.approvalNote")}</div>
           <button className="btn-primary" style={{width:"100%",fontSize:13}} onClick={submitBill}>{t("action.submitBill")}</button>
@@ -3378,6 +3495,7 @@ function BillsView(){
                       {editBillForm.frequency==="custom"&&<div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" style={{fontSize:12}} type="number" min="1" max="24" value={editBillForm.intervalMonths||""} onChange={e=>{setEditBillForm(p=>({...p,intervalMonths:e.target.value}));setEditBillDirty(true);}}/></div>}
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.endDate")}</label><input className="inp" style={{fontSize:12}} type="date" value={editBillForm.endDate||""} onChange={e=>{setEditBillForm(p=>({...p,endDate:e.target.value}));setEditBillDirty(true);}}/><div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>
                       <div><label className="lbl">{t("label.category")}</label><select className="inp" style={{fontSize:12}} value={editBillForm.category||"Otro"} onChange={e=>{setEditBillForm(p=>({...p,category:e.target.value}));setEditBillDirty(true);}}>{activeCats.map(c=><option key={c.id}>{c.name}</option>)}</select></div>
+                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")} *</label><select className="inp" style={{fontSize:12}} value={editBillForm.departmentId||""} onChange={e=>{setEditBillForm(p=>({...p,departmentId:e.target.value}));setEditBillDirty(true);}}>{departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("bills.description")}</label><textarea className="inp" rows={2} style={{resize:"vertical",fontSize:12}} value={editBillForm.description||""} onChange={e=>{setEditBillForm(p=>({...p,description:e.target.value}));setEditBillDirty(true);}}/></div>
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.notes")}</label><textarea className="inp" rows={1} style={{resize:"vertical",fontSize:12}} value={editBillForm.notes||""} onChange={e=>{setEditBillForm(p=>({...p,notes:e.target.value}));setEditBillDirty(true);}}/></div>
                     </div>
@@ -3391,7 +3509,7 @@ function BillsView(){
                           </div>
                         : <button style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>billFileRef.current?.click()}>+ Añadir adjunto</button>
                       }
-                      <input ref={billFileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{display:"none"}} onChange={e=>handleBillFile(e,b.id)}/>
+                      <input ref={billFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} style={{display:"none"}} onChange={e=>handleBillFile(e,b.id)}/>
                     </div>
                     <div style={{display:"flex",gap:6}}>
                       <button className="btn-primary" style={{flex:1,fontSize:12,padding:"6px"}} onClick={()=>saveBillEdit(b)}>{t("bills.saveChanges")}</button>
@@ -3403,6 +3521,7 @@ function BillsView(){
                 {editBillId!==b.id&&<div>
                 {[
                   {l:t("label.category"),v:b.category},
+                  {l:t("label.department"),v:(departments.find(d=>d.id===b.departmentId)||{}).name||"—"},
                   {l:t("label.frequency"),v:t("label."+b.frequency)},
                   {l:t("bills.day"),v:b.dayOfMonth||"—"},
                   {l:t("bills.submittedBy"),v:(users.find(u=>u.id===b.submittedBy)||{name:"?"}).name},
@@ -3958,20 +4077,177 @@ function IvaRatesEditorBlock({t,ivaRates,onSave}){
       <div style={{fontSize:9,color:"#9CAA9F",marginBottom:6}}>{t("settings.ivaPctShort")} · {t("settings.ivaNameField")}</div>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {rows.map((r,i)=>(
-          <div key={i}>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-              <input type="number" min={0} max={99} className="inp" style={{width:72,fontSize:12}} value={r.value} onChange={e=>{
-                const v=Math.max(0,Math.min(99,parseInt(e.target.value,10)||0));
-                setRows(prev=>prev.map((row,idx)=>idx===i?{...row,value:v}:row));
-              }}/>
-              <input type="text" className="inp" style={{flex:1,minWidth:120,fontSize:12}} value={r.name} onChange={e=>setRows(prev=>prev.map((row,idx)=>idx===i?{...row,name:e.target.value}:row))} placeholder={t("settings.ivaNameField")}/>
-            </div>
-            <div style={{fontSize:10,color:"#9CAA9F",marginTop:3}}>{formatIvaOptionLabel(r)}</div>
+          <div key={i} style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+            <input type="number" min={0} max={99} className="inp" style={{width:72,fontSize:12}} value={r.value} onChange={e=>{
+              const v=Math.max(0,Math.min(99,parseInt(e.target.value,10)||0));
+              setRows(prev=>prev.map((row,idx)=>idx===i?{...row,value:v}:row));
+            }}/>
+            <input type="text" className="inp" style={{flex:1,minWidth:120,fontSize:12}} value={r.name} onChange={e=>setRows(prev=>prev.map((row,idx)=>idx===i?{...row,name:e.target.value}:row))} placeholder={t("settings.ivaNameField")}/>
           </div>
         ))}
       </div>
       <button type="button" className="btn-primary" style={{marginTop:10,fontSize:12,padding:"6px 12px"}} onClick={()=>onSave(normalizeIvaRatesPayload(rows))}>{t("settings.saveIvaTypes")}</button>
     </div>
+  );
+}
+
+/* ── DEPARTMENT BUDGET BARS (dashboard + presupuestos view) ───────────────── */
+function DepartmentBudgetBars({t,rows,title}){
+  if(!rows||rows.length===0)return null;
+  return(
+    <div className="card" style={{marginBottom:14}}>
+      {title&&<div style={{fontWeight:600,fontSize:13,marginBottom:10}}>{title}</div>}
+      {rows.map(d=>{
+        const pct=Math.min(100,Number(d.pctUsed)||0);
+        const barColor=pct<75?"#16A34A":pct<=100?"#D97706":"#DC2626";
+        return(
+          <div key={d.id} style={{marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3,flexWrap:"wrap",gap:6}}>
+              <span style={{fontWeight:600}}>{d.name}</span>
+              <span style={{fontWeight:600,color:"#4B5E52",fontVariantNumeric:"tabular-nums"}}>{fmt(d.spent)} / {fmt(d.budget)} · {t("dept.remaining")}: {fmt(d.remaining)}</span>
+            </div>
+            <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>{t("dept.usedPct")}: {pct}%</div>
+            <div style={{height:6,background:"#EDE8E0",borderRadius:3}}>
+              <div style={{height:"100%",width:`${pct}%`,background:barColor,transition:"width 0.4s",borderRadius:3}}/>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BudgetsView(){
+  const{t,departmentsWithStats}=useApp();
+  return(
+    <div style={{maxWidth:560}}>
+      <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:12}}>{t("nav.budgets")}</h1>
+      {(!departmentsWithStats||departmentsWithStats.length===0)
+        ?<div className="card" style={{fontSize:12,color:"#9CAA9F",padding:16}}>{t("budgets.empty")}</div>
+        :<DepartmentBudgetBars t={t} rows={departmentsWithStats} title={null}/>}
+    </div>
+  );
+}
+
+/* ── DEPARTMENTS CRUD (superadmin, settings) ───────────────────────────────── */
+function DepartmentsSettingsBlock({t}){
+  const{departments,refreshDepartments,isSA}=useApp();
+  const [name,setName]=useState("");
+  const [bud,setBud]=useState("");
+  const [editId,setEditId]=useState(null);
+  const [ef,setEf]=useState({name:"",budget:""});
+  const [msg,setMsg]=useState("");
+  const [err,setErr]=useState("");
+  const [delId,setDelId]=useState(null);
+  if(!isSA)return null;
+  const sessionTok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
+  const saveLocal=(next)=>{
+    lsSet(DEPTS_LS_KEY,next.map(x=>({id:x.id,name:x.name,budget:Number(x.budget)||0,createdAt:x.createdAt||Date.now()})));
+    void refreshDepartments();
+  };
+  const addDept=async()=>{
+    setErr("");setMsg("");
+    const n=name.trim();
+    if(!n){setErr("Nombre requerido.");return;}
+    const b=parseFloat(String(bud).replace(",","."))||0;
+    if(AUTH_URL){
+      if(!sessionTok){setErr(t("msg.sessionExpired"));return;}
+      try{
+        const r=await fetch(AUTH_URL+"/departments",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionTok},body:JSON.stringify({name:n,budget:b})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok){setErr(d.error||t("msg.genericShort"));return;}
+        setName("");setBud("");setMsg(t("settings.deptSaved"));void refreshDepartments();
+      }catch(e){setErr(e.message||t("msg.genericShort"));}
+    }else{
+      const id="dept_"+Date.now();
+      saveLocal([...departments,{id,name:n,budget:b,createdAt:Date.now()}]);
+      setName("");setBud("");setMsg(t("settings.deptSaved"));
+    }
+  };
+  const saveEdit=async row=>{
+    setErr("");setMsg("");
+    const n=(ef.name||"").trim();
+    if(!n){setErr("Nombre requerido.");return;}
+    const b=parseFloat(String(ef.budget).replace(",","."))||0;
+    if(AUTH_URL){
+      if(!sessionTok){setErr(t("msg.sessionExpired"));return;}
+      try{
+        const r=await fetch(AUTH_URL+"/departments/"+encodeURIComponent(row.id),{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionTok},body:JSON.stringify({name:n,budget:b})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok){setErr(d.error||t("msg.genericShort"));return;}
+        setEditId(null);setMsg(t("settings.deptSaved"));void refreshDepartments();
+      }catch(e){setErr(e.message||t("msg.genericShort"));}
+    }else{
+      saveLocal(departments.map(x=>x.id===row.id?{...x,name:n,budget:b}:x));
+      setEditId(null);setMsg(t("settings.deptSaved"));
+    }
+  };
+  const doDelete=async row=>{
+    setErr("");setMsg("");
+    if(AUTH_URL){
+      if(!sessionTok){setErr(t("msg.sessionExpired"));return;}
+      try{
+        const r=await fetch(AUTH_URL+"/departments/"+encodeURIComponent(row.id),{method:"DELETE",headers:{Authorization:"Bearer "+sessionTok}});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok){setErr(d.error||t("msg.genericShort"));return;}
+        setDelId(null);setMsg(t("settings.deptSaved"));void refreshDepartments();
+      }catch(e){setErr(e.message||t("msg.genericShort"));}
+    }else{
+      saveLocal(departments.filter(x=>x.id!==row.id));
+      setDelId(null);setMsg(t("settings.deptSaved"));
+    }
+  };
+  return(
+    <AccordionSection title={t("settings.accordion.budgets")}>
+      <p style={{fontSize:11,color:"#6B7B72",marginBottom:10,lineHeight:1.45}}>{t("settings.deptIntro")}</p>
+      {msg&&<div style={{fontSize:11,padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",marginBottom:8}}>{msg}</div>}
+      {err&&<div style={{fontSize:11,padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",marginBottom:8}}>{err}</div>}
+      <div style={{background:"#F5F0EA",borderRadius:9,padding:12,marginBottom:12}}>
+        <div style={{fontWeight:600,fontSize:12,marginBottom:8}}>{t("settings.deptAdd")}</div>
+        <label className="lbl">{t("settings.deptName")}</label>
+        <input className="inp" style={{fontSize:13,marginBottom:8}} value={name} onChange={e=>setName(e.target.value)}/>
+        <label className="lbl">{t("settings.deptBudget")}</label>
+        <input className="inp" style={{fontSize:13,marginBottom:8}} type="text" inputMode="decimal" value={bud} onChange={e=>setBud(e.target.value)}/>
+        <button type="button" className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} onClick={()=>void addDept()}>{t("action.add")}</button>
+      </div>
+      <div style={{fontSize:9,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>{t("settings.deptBudget")}</div>
+      {departments.map(d=>(
+        <div key={d.id} style={{borderBottom:"1px solid #F5F0EA",padding:"8px 0"}}>
+          {editId===d.id?(
+            <div style={{background:"#F5F0EA",borderRadius:8,padding:10}}>
+              <label className="lbl">{t("settings.deptName")}</label>
+              <input className="inp" style={{fontSize:12,marginBottom:6}} value={ef.name} onChange={e=>setEf(p=>({...p,name:e.target.value}))}/>
+              <label className="lbl">{t("settings.deptBudget")}</label>
+              <input className="inp" style={{fontSize:12,marginBottom:8}} value={ef.budget} onChange={e=>setEf(p=>({...p,budget:e.target.value}))}/>
+              <div style={{display:"flex",gap:6}}>
+                <button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>void saveEdit(d)}>{t("action.save")}</button>
+                <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setEditId(null)}>{t("action.cancel")}</button>
+              </div>
+            </div>
+          ):(
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:120}}>
+                <div style={{fontSize:12,fontWeight:600}}>{d.name}</div>
+                <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)} EUR</div>
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(d.id);setEf({name:d.name,budget:String(d.budget!=null?d.budget:"")});setDelId(null);}}>{t("action.edit")}</button>
+                <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelId(d.id)}>{t("action.delete")}</button>
+              </div>
+            </div>
+          )}
+          {delId===d.id&&(
+            <div style={{background:"#FEE2E2",borderRadius:7,padding:"8px 10px",marginTop:6}}>
+              <div style={{fontSize:11,color:"#7F1D1D",marginBottom:6}}>¿Eliminar «{d.name}»?</div>
+              <div style={{display:"flex",gap:6}}>
+                <button type="button" className="btn-danger" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>void doDelete(d)}>{t("action.confirm")}</button>
+                <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setDelId(null)}>{t("action.cancel")}</button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </AccordionSection>
   );
 }
 
@@ -4200,6 +4476,8 @@ function SettingsView(){
         <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={pwSaving} onClick={()=>void savePw()}>{pwSaving?"…":(passwords?.[user.id]?t("action.changePassword"):t("action.setPassword"))}</button>
       </AccordionSection>
 
+      <DepartmentsSettingsBlock t={t}/>
+
       {/* ── Categories ── */}
       {isSA&&<AccordionSection title={t("settings.accordion.categories")}>
         <div style={{marginBottom:12}}>
@@ -4370,6 +4648,31 @@ function SolanaExpenses(){
   const [aNote,   setANote]   =useState({});
   const [addBill, setAddBill] =useState(false);
   const [newBill, setNewBill] =useState({...BB});
+  const [departments,setDepartments]=useState([]);
+  const refreshDepartments=useCallback(async()=>{
+    if(AUTH_URL){
+      try{
+        API.ensureSessionToken();
+        if(!API.token)return;
+        const d=await API.get("/departments");
+        setDepartments(d.departments||[]);
+      }catch(e){/* keep list */}
+    }else{
+      setDepartments(readLocalDepartments());
+    }
+  },[]);
+  useEffect(()=>{
+    if(!user)return;
+    void refreshDepartments();
+  },[user?.id,refreshDepartments]);
+  const departmentsWithStats=React.useMemo(
+    ()=>enrichDepartmentsForUI(departments,expenses,bills,cats,users,false),
+    [departments,expenses,bills,cats,users],
+  );
+  const defaultDeptId=React.useMemo(()=>{
+    const hit=departments.find(d=>d.id===DEFAULT_DEPT_ID);
+    return hit?.id||departments[0]?.id||DEFAULT_DEPT_ID;
+  },[departments]);
   const [camOn,setCamOn]=useState(false);
   const [camStr,setCamStr]=useState(null);
   const videoRef=useRef(null);
@@ -4393,6 +4696,7 @@ function SolanaExpenses(){
     setDetailId(null);
     setPanel(null);
     if(AUTH_URL){setExpenses([]);setBills([]);}
+    setDepartments([]);
   },[]);
 
   /* ── SAVES ──────────────────────────────────────────────────────────────── */
@@ -4570,6 +4874,7 @@ function SolanaExpenses(){
             currency:cur,
             amountEUR:amountEUR===null?undefined:amountEUR,
             status:ex.status==="draft"?"draft":"submitted",
+            departmentId:ex.departmentId||DEFAULT_DEPT_ID,
           },{skipOfflineQueue:true});
         }
         for(const bi of localBills){
@@ -4586,6 +4891,7 @@ function SolanaExpenses(){
             notes:[bi.notes,bi.description].filter(Boolean).join("\n")||undefined,
             recurring:freq==="monthly"||freq==="annual"||freq==="custom",
             recurrenceRule:rule,
+            departmentId:bi.departmentId||DEFAULT_DEPT_ID,
           },{skipOfflineQueue:true});
         }
         try{
@@ -4612,7 +4918,7 @@ function SolanaExpenses(){
     if(err){alert(err);e.target.value="";appLog("warn","upload_rejected",{name:f.name,size:f.size,type:f.type,reason:err});return;}
     const r=new FileReader();
     r.onload=ev=>{
-      const url=ev.target.result,b64=url.split(",")[1],type=f.type||"image/jpeg";
+      const url=ev.target.result,b64=url.split(",")[1],type=receiptEffectiveMime(f)||f.type||"image/jpeg";
       setReceipt({b64,type});
       setRecPrev(type.includes("pdf")?"PDF":url);
       appLog("info","attachment_uploaded",{name:f.name,size:f.size,type});
@@ -4707,6 +5013,7 @@ function SolanaExpenses(){
   /* ── SUBMIT EXPENSE ─────────────────────────────────────────────────────── */
   const submitExp=()=>{
     const amount=parseMoney(form.amount);if(!form.description||!amount||amount<=0)return;
+    if(!form.departmentId){setFormError(t("msg.deptRequired"));return;}
     if(AUTH_URL){
       if(splitOn){setFormError("La división entre personas no está disponible con el servidor.");return;}
       const cur=(form.currency||"EUR").toUpperCase();
@@ -4723,6 +5030,7 @@ function SolanaExpenses(){
             description:form.description,category:form.category,
             date:form.date||new Date().toISOString().slice(0,10),
             notes:form.notes||undefined,status:"submitted",
+            departmentId:form.departmentId,
           },meta);
           let exp=expenseFromApi(d.expense);
           if(receipt?.b64){
@@ -4776,6 +5084,7 @@ function SolanaExpenses(){
               comments:[],
               seenBy:[],
               receiptPath:null,
+              departmentId:form.departmentId||null,
             },"expense");
             saveExp([optimistic,...expenses]);
             try{localStorage.removeItem("sol-exp-draft");}catch(e){}
@@ -4804,7 +5113,7 @@ function SolanaExpenses(){
     const rp=parseFloat(form.ivaRate);
     const ivaRate=isNaN(rp)?readIvaDefault():rp;
     const ivaAmount=calcIvaParts(amount,ivaRate).iva;
-    const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,paidBy,approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id]};
+    const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,paidBy,approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID};
     appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
     saveExp([exp,...expenses]);resetForm();setPanel("detail");setDetailId(exp.id);
@@ -4816,7 +5125,11 @@ function SolanaExpenses(){
     saveExp(expenses.map(x=>x.id===expId?{...x,receipt:null,receiptType:null,auditTrail:trail}:x));
     appLog("info","attachment_removed",{itemCode:e.itemCode,userId:user.id});
   };
-  const resetForm=()=>{setForm({...BF,date:new Date().toISOString().slice(0,10),ivaRate:String(readIvaDefault()),currency:"EUR",amountEur:""});setSplitOn(false);setSplits([]);setReceipt(null);setRecPrev(null);setFormError("");try{localStorage.removeItem("sol-exp-draft");}catch(e){}};
+  const resetForm=useCallback(()=>{
+    setForm({...BF,date:new Date().toISOString().slice(0,10),ivaRate:String(readIvaDefault()),currency:"EUR",amountEur:"",departmentId:defaultDeptId});
+    setSplitOn(false);setSplits([]);setReceipt(null);setRecPrev(null);setFormError("");
+    try{localStorage.removeItem("sol-exp-draft");}catch(e){}
+  },[defaultDeptId]);
   const openNew  =()=>{resetForm();setDetailId(null);setPanel("new");setView("expenses");};
 
   /* deleteExp — removes expense with permission check and audit trail */
@@ -4863,6 +5176,7 @@ function SolanaExpenses(){
             category:updates.category,
             date:updates.date,
             notes:updates.notes,
+            departmentId:updates.departmentId,
           };
           if(oldExp.status==="rejected")body.status="submitted";
           await API.put("/expenses/"+encodeURIComponent(expId),body);
@@ -4889,6 +5203,7 @@ function SolanaExpenses(){
       if(k==="receipt") return (updates.receipt||null)!==(oldExp.receipt||null);
       if(k==="ivaRate") return Number(updates.ivaRate??NaN)!==Number(oldExp.ivaRate??NaN);
       if(k==="ivaAmount") return Number(updates.ivaAmount??NaN)!==Number(oldExp.ivaAmount??NaN);
+      if(k==="departmentId") return String(updates.departmentId||"")!==String(oldExp.departmentId||"");
       return String(updates[k]||"")!==String(oldExp[k]||"");
     });
     const wasApproved=getItemStatus(oldExp,cats,users)==="approved";
@@ -4900,6 +5215,7 @@ function SolanaExpenses(){
         if(k==="receipt") return (updates.receipt||null)!==(oldExp.receipt||null);
         if(k==="ivaRate") return Number(updates.ivaRate??NaN)!==Number(oldExp.ivaRate??NaN);
         if(k==="ivaAmount") return Number(updates.ivaAmount??NaN)!==Number(oldExp.ivaAmount??NaN);
+        if(k==="departmentId") return String(updates.departmentId||"")!==String(oldExp.departmentId||"");
         return String(updates[k]||"")!==String(oldExp[k]||"");
       })}}];
     let newApprovals=oldExp.approvals;
@@ -5125,6 +5441,7 @@ function SolanaExpenses(){
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     ...(isAdmin?[{id:"approvals",label:t("nav.approvals"),badge:totalBadge}]:[]),
     {id:"bills",    label:t("nav.bills")},
+    {id:"budgets",  label:t("nav.budgets")},
     {id:"reports",  label:t("nav.reports")},
     // Settings removed from nav — accessed via profile avatar
   ];
@@ -5133,6 +5450,7 @@ function SolanaExpenses(){
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     ...(isAdmin?[{id:"approvals",label:t("nav.approvals"),badge:totalBadge}]:[]),
     {id:"bills",    label:t("nav.bills"),badge:0},
+    {id:"budgets",  label:t("nav.budgets"),badge:0},
     {id:"reports",  label:t("nav.reports"),badge:0},
     // Settings accessed via mobile header avatar
   ];
@@ -5141,6 +5459,7 @@ function SolanaExpenses(){
   const ctxVal={
     t,user,users,expenses,bills,cats,passwords,ivaRates,saveIvaRates,
     saveUsers,saveExp,saveBills,saveCats,savePasswords,
+    departments,departmentsWithStats,refreshDepartments,defaultDeptId,
     isAdmin,isSA,getUser,ledgerLoading,markBillPaid,
     view,setView,go,panel,setPanel,openNew,
     detailId,setDetailId,
@@ -5316,6 +5635,7 @@ function SolanaExpenses(){
               {view==="expenses" &&<ExpensesView/>}
               {view==="approvals"&&<ApprovalsView/>}
               {view==="bills"    &&<BillsView/>}
+              {view==="budgets"  &&<BudgetsView/>}
               {view==="reports"  &&<ReportsView/>}
               {view==="settings" &&<SettingsView/>}
             </div>
@@ -5380,7 +5700,7 @@ function SolanaExpenses(){
           r.readAsText(f);e.target.value="";
         }}/>
         {/* Hidden file ref for receipt upload */}
-        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{display:"none"}} onChange={handleReceiptFile}/>
+        <input ref={fileRef} type="file" accept={RECEIPT_FILE_ACCEPT} style={{display:"none"}} onChange={handleReceiptFile}/>
 
         {camOn&&(
           <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000",zIndex:9999,display:"flex",flexDirection:"column"}}>

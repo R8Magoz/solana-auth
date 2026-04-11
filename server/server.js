@@ -304,6 +304,14 @@ const billsApiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const departmentsApiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  message: { error: 'Demasiadas solicitudes a /departments. Inténtalo en un minuto.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const reportsLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -387,8 +395,17 @@ function requireAuth(req, res, next) {
   next();
 }
 
+function requireSuperAdmin(req, res, next) {
+  if (req.userRole !== 'superadmin') {
+    audit('failed_superadmin', { ip: req.ip, path: req.path, userId: req.userId });
+    return res.status(403).json({ error: 'Solo superadministrador.' });
+  }
+  next();
+}
+
 const { createExpensesRouter } = require('./expensesRoutes');
 const { createBillsRouter } = require('./billsRoutes');
+const { createDepartmentsRouter } = require('./departmentsRoutes');
 const { createReportsRouter } = require('./reportsRoutes');
 const { runBillMaintenance } = require('./billJobs');
 
@@ -396,6 +413,11 @@ app.use('/expenses', expensesApiLimiter, createExpensesRouter({
   audit, requireAuth, requireAdminSession, DATA_DIR, receiptUploadLimiter: expenseReceiptUploadLimiter,
 }));
 app.use('/bills', billsApiLimiter, createBillsRouter({ audit, requireAuth }));
+app.use(
+  '/departments',
+  departmentsApiLimiter,
+  createDepartmentsRouter({ audit, requireAuth, requireSuperAdmin }),
+);
 app.use('/reports', reportsLimiter, createReportsRouter({ requireAdminSession, userStore }));
 
 // ── ROUTES ────────────────────────────────────────────────────────────────────

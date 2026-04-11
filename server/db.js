@@ -87,7 +87,34 @@ db.exec(`
     detail    TEXT,
     ip        TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS departments (
+    id        TEXT PRIMARY KEY,
+    name      TEXT NOT NULL,
+    budget    REAL NOT NULL DEFAULT 0,
+    createdAt INTEGER NOT NULL
+  );
 `);
+
+function addColumnIfMissing(table, column, colDef) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (cols.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${colDef}`);
+}
+
+addColumnIfMissing('expenses', 'departmentId', 'TEXT');
+addColumnIfMissing('bills', 'departmentId', 'TEXT');
+
+const _deptCount = db.prepare('SELECT COUNT(*) AS c FROM departments').get();
+if (_deptCount.c === 0) {
+  const now = Date.now();
+  const ins = db.prepare(
+    'INSERT INTO departments (id, name, budget, createdAt) VALUES (?, ?, ?, ?)',
+  );
+  ins.run('dept_estrategia', 'Estrategia', 0, now);
+  ins.run('dept_operaciones', 'Operaciones', 0, now);
+  ins.run('dept_branding', 'Branding', 0, now);
+}
 
 module.exports = db;
 module.exports.DATA_DIR = DATA_DIR;
