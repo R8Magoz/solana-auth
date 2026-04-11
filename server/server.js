@@ -19,6 +19,10 @@
  *   APP_URL           — public URL of the app, e.g. https://solana.netlify.app
  *   CORS_ORIGIN       — allowed origin for the frontend
  *   TOKEN_SECRET      — random 32-byte hex string for HMAC token signing
+ *
+ * Receipts (Cloudinary — recommended on Render; if unset, files go to DATA_DIR/receipts/):
+ *   CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
+ *   CLOUDINARY_RECEIPTS_FOLDER — optional, default solana-receipts
  * ─────────────────────────────────────────────────────────────────────────────
  */
 

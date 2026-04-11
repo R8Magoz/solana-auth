@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('./db');
+const cloudinary = require('cloudinary').v2;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
@@ -83,6 +84,93 @@ function mimeToExt(mime) {
   if (m === 'image/png') return 'png';
   if (m === 'image/webp') return 'webp';
   return null;
+}
+
+function cloudinaryEnvOk() {
+  return !!(
+    process.env.CLOUDINARY_CLOUD_NAME
+    && process.env.CLOUDINARY_API_KEY
+    && process.env.CLOUDINARY_API_SECRET
+  );
+}
+
+let cloudinaryConfigured = false;
+function ensureCloudinary() {
+  if (cloudinaryConfigured) return true;
+  if (!cloudinaryEnvOk()) return false;
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true,
+  });
+  cloudinaryConfigured = true;
+  return true;
+}
+
+/** Extract Cloudinary public_id (with folder) from a delivery URL for destroy(). */
+function cloudinaryPublicIdFromUrl(url) {
+  try {
+    const u = new URL(url);
+    const marker = '/upload/';
+    const idx = u.pathname.indexOf(marker);
+    if (idx === -1) return null;
+    let tail = u.pathname.slice(idx + marker.length);
+    tail = tail.replace(/^v\d+\//, '');
+    return tail.replace(/\.[^/.]+$/, '') || null;
+  } catch {
+    return null;
+  }
+}
+
+function isRemoteReceiptPath(p) {
+  return typeof p === 'string' && /^https?:\/\//i.test(p);
+}
+
+function uploadReceiptToCloudinary(buf, mime, expenseId) {
+  const dataUri = `data:${mime};base64,${buf.toString('base64')}`;
+  const folder = (process.env.CLOUDINARY_RECEIPTS_FOLDER || 'solana-receipts').replace(/^\/+|\/+$/g, '');
+  const publicId = String(expenseId).replace(/[^a-zA-Z0-9_-]/g, '_');
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader.upload(
+      dataUri,
+      {
+        folder,
+        public_id: publicId,
+        overwrite: true,
+        resource_type: 'image',
+        unique_filename: false,
+        use_filename: false,
+      },
+      (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      },
+    );
+  });
+}
+
+function destroyCloudinaryPublicId(publicId) {
+  return new Promise((resolve) => {
+    cloudinary.uploader.destroy(publicId, (err, result) => {
+      if (err) console.warn('[receipt] cloudinary destroy:', err.message || err);
+      resolve(result);
+    });
+  });
+}
+
+async function removeReceiptAsset(receiptPath, DATA_DIR) {
+  if (!receiptPath) return;
+  if (isRemoteReceiptPath(receiptPath)) {
+    if (!ensureCloudinary()) return;
+    const pid = cloudinaryPublicIdFromUrl(receiptPath);
+    if (pid) await destroyCloudinaryPublicId(pid);
+    return;
+  }
+  const abs = path.join(DATA_DIR, receiptPath);
+  try {
+    if (fs.existsSync(abs)) fs.unlinkSync(abs);
+  } catch (_) { /* ignore */ }
 }
 
 function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DIR, receiptUploadLimiter }) {
@@ -217,7 +305,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     res.json({ ok: true, expense: updated });
   });
 
-  router.delete('/:id', (req, res) => {
+  router.delete('/:id', async (req, res) => {
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (!canAccessExpense(req, exp)) {
@@ -234,9 +322,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const prev = { ...exp };
     const now = Date.now();
     db.prepare(`UPDATE expenses SET status = 'deleted', updatedAt = ? WHERE id = ?`).run(now, exp.id);
-    if (exp.receiptPath) {
-      const abs = path.join(DATA_DIR, exp.receiptPath);
-      try { if (fs.existsSync(abs)) fs.unlinkSync(abs); } catch (_) { /* ignore */ }
+    try {
+      await removeReceiptAsset(exp.receiptPath, DATA_DIR);
+    } catch (e) {
+      console.warn('[receipt] remove on expense delete:', e.message);
     }
     audit('expense_deleted', { userId: req.userId, targetId: exp.id, previous: prev });
     res.json({ ok: true });
@@ -283,7 +372,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
   const receiptJson = express.json({ limit: '6mb' });
 
-  router.post('/:id/receipt', receiptLimit, receiptJson, (req, res) => {
+  router.post('/:id/receipt', receiptLimit, receiptJson, async (req, res) => {
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (!canAccessExpense(req, exp)) {
@@ -314,14 +403,28 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       return res.status(413).json({ error: 'Archivo demasiado grande (max 4 MB).' });
     }
 
+    if (ensureCloudinary()) {
+      try {
+        await removeReceiptAsset(exp.receiptPath, DATA_DIR);
+        const result = await uploadReceiptToCloudinary(buf, mime, exp.id);
+        const secureUrl = result.secure_url;
+        const now = Date.now();
+        db.prepare(`UPDATE expenses SET receiptPath = ?, updatedAt = ? WHERE id = ?`).run(secureUrl, now, exp.id);
+        audit('expense_receipt_uploaded', { userId: req.userId, targetId: exp.id, receiptPath: secureUrl });
+        return res.json({ ok: true, receiptPath: secureUrl });
+      } catch (e) {
+        console.error('[receipt] cloudinary upload', e.message || e);
+        return res.status(500).json({ error: 'No se pudo guardar el recibo en el almacenamiento.' });
+      }
+    }
+
     if (!fs.existsSync(RECEIPTS_DIR)) fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
 
     const rel = path.join('receipts', `${exp.id}.${ext}`).replace(/\\/g, '/');
     const abs = path.join(DATA_DIR, 'receipts', `${exp.id}.${ext}`);
 
     if (exp.receiptPath && exp.receiptPath !== rel) {
-      const oldAbs = path.join(DATA_DIR, exp.receiptPath);
-      try { if (fs.existsSync(oldAbs)) fs.unlinkSync(oldAbs); } catch (_) { /* ignore */ }
+      await removeReceiptAsset(exp.receiptPath, DATA_DIR);
     }
 
     fs.writeFileSync(abs, buf);
@@ -331,7 +434,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     res.json({ ok: true, receiptPath: rel });
   });
 
-  router.get('/:id/receipt', (req, res) => {
+  router.get('/:id/receipt', async (req, res) => {
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (!canAccessExpense(req, exp)) {
@@ -340,6 +443,21 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (!exp.receiptPath) {
       return res.status(404).json({ error: 'Sin recibo.' });
     }
+
+    if (isRemoteReceiptPath(exp.receiptPath)) {
+      try {
+        const r = await fetch(exp.receiptPath);
+        if (!r.ok) return res.status(502).json({ error: 'No se pudo cargar el recibo.' });
+        const ct = (r.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+        res.setHeader('Content-Type', ct);
+        res.send(Buffer.from(await r.arrayBuffer()));
+      } catch (e) {
+        console.error('[receipt] proxy', e.message || e);
+        return res.status(502).json({ error: 'No se pudo cargar el recibo.' });
+      }
+      return;
+    }
+
     const abs = path.join(DATA_DIR, exp.receiptPath);
     if (!fs.existsSync(abs)) {
       return res.status(404).json({ error: 'Archivo no encontrado.' });
