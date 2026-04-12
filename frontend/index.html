@@ -4,6 +4,8 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <meta name="theme-color" content="#3C0A37"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png"/>
+  <link rel="apple-touch-icon" href="/icon-192.png"/>
   <link rel="manifest" href="/manifest.json"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -81,7 +83,19 @@ const GH = "#52114B"; // primary hover
 const GL = "rgba(60,10,55,0.07)"; // primary light tint (hover backgrounds)
 const T  = "#C4622D"; // terracotta accent — earthy complement, in palette grid
 const BL = "#7A4F9A"; // muted violet for notification badges
-const ADMIN_IDS=["sergio","marc"]; // default fallback approvers
+const ADMIN_IDS=["marc","sergio"]; // default fallback approvers (superadmin IDs; must match seed)
+/** Prefer superadmins, then admins, then ADMIN_IDS — at least unique IDs for category defaults. */
+function defaultCategoryApproverIds(users){
+  const u=users||[];
+  const out=[];
+  const push=id=>{if(id&&typeof id==="string"&&!out.includes(id))out.push(id);};
+  u.filter(x=>x.role==="superadmin").forEach(x=>push(x.id));
+  if(out.length<2)u.filter(x=>x.role==="admin").forEach(x=>push(x.id));
+  ADMIN_IDS.forEach(push);
+  return out.slice(0,2);
+}
+/** Shown when a user id is not in the local users list (e.g. server sync lag). */
+const UNKNOWN_USER_NAME="Usuario";
 
 /* ── TRANSLATIONS ──────────────────────────────────────────────────────────── */
 const TR = {
@@ -98,7 +112,7 @@ const TR = {
     "action.addUser": "+ Añadir usuario",
     "label.tempPassword": "Contraseña temporal",
     "label.tempPasswordHint": "El usuario deberá cambiarla tras el primer inicio de sesión.",
-    "msg.tempPwRequired": "Establece una contraseña temporal (mín. 8 caracteres).",
+    "msg.tempPwRequired": "Establece una contraseña temporal, mín. 8 caracteres.",
     "action.approve": "Aprobar",
     "action.reject": "Rechazar",
     "action.save": "Guardar",
@@ -113,6 +127,7 @@ const TR = {
     "action.importJSON": "Importar JSON",
     "action.uploadFile": "Subir archivo",
     "action.scanCamera": "Hacer foto",
+    "action.scanBill": "Escanear",
     "action.capturePhoto": "Capturar foto",
     "action.addExpense": "Añadir Gasto",
     "action.restore": "Restaurar",
@@ -142,7 +157,7 @@ const TR = {
     "action.editItem": "Editar",
     "action.openFile": "Abrir archivo",
     "action.downloadFile": "Descargar",
-    "label.amount": "Importe (EUR)",
+    "label.amount": "Importe",
     "label.description": "Descripción",
     "label.category": "Categoría",
     "label.department": "Departamento",
@@ -162,7 +177,7 @@ const TR = {
     "label.receipt": "Recibo",
     "label.activity": "Actividad",
     "label.decision": "Decisión",
-    "label.note": "Nota (opcional)",
+    "label.note": "Nota",
     "label.splitExpense": "Dividir gasto",
     "label.splitBadge": "Reparto",
     "label.divideTeam": "Dividir entre el equipo",
@@ -174,11 +189,11 @@ const TR = {
     "label.billName": "Nombre de factura",
     "label.monthly": "Mensual",
     "label.everyXMonths": "Cada X meses",
-    "label.intervalMonths": "Repetir cada (meses)",
-    "label.endDate": "Hasta (opcional)",
+    "label.intervalMonths": "Intervalo en meses",
+    "label.endDate": "Hasta",
     "label.endDateHint": "Dejar vacío si es indefinido",
     "label.annual": "Anual",
-    "label.optional": "Opcional...",
+    "label.once": "Pago único",
     "label.itemCode": "Código de ítem",
     "status.approved": "Aprobado",
     "status.rejected": "Rechazado",
@@ -247,7 +262,7 @@ const TR = {
     "msg.minPassword": "La contraseña debe tener al menos 8 caracteres.",
     "msg.pwCommon": "Contraseña demasiado común. Elige una más segura.",
     "msg.genericShort": "Error.",
-    "msg.httpStatus": "Error del servidor (código {{status}})",
+    "msg.httpStatus": "Error del servidor, código {{status}}",
     "settings.title": "Ajustes",
     "settings.teamMembers": "Miembros del equipo",
     "settings.pendingUsers": "Pendientes de aprobación",
@@ -268,7 +283,7 @@ const TR = {
     "settings.passwordDesc": "Protege tu cuenta con una contraseña.",
     "settings.newCategory": "Nueva categoría",
     "settings.editCategory": "Editar categoría",
-    "settings.defaultApprovers": "Aprobadores por defecto (cuando no hay regla para la categoría)",
+    "settings.defaultApprovers": "Aprobadores por defecto cuando no hay regla para la categoría",
     "settings.approverAutoNote": "Si un aprobador sube un gasto, su aprobación es automática; el resto de aprobadores de la categoría deben aprobar manualmente.",
     "settings.categoryName.placeholder": "Nombre de la categoría",
     "settings.approversLabel": "Aprobadores:",
@@ -276,14 +291,15 @@ const TR = {
     "settings.restoreCategory": "¿Restaurar esta categoría?",
     "settings.pendingFirst": "Pendientes de aprobación — revisa antes que todo",
     "settings.accordion.pending": "Usuarios pendientes de aprobación",
+    "settings.accordion.appLog": "Registro de la aplicación",
     "settings.accordion.team": "Miembros del equipo",
     "settings.accordion.profile": "Tu perfil",
     "settings.accordion.password": "Contraseña",
     "settings.accordion.categories": "Categorías y aprobación",
-    "settings.accordion.budgets": "Presupuestos (departamentos)",
+    "settings.accordion.budgets": "Presupuestos por departamento",
     "settings.deptIntro": "Define presupuestos anuales por departamento. El gasto contabilizado son gastos aprobados y facturas marcadas como pagadas.",
     "settings.deptName": "Nombre del departamento",
-    "settings.deptBudget": "Presupuesto (EUR)",
+    "settings.deptBudget": "Presupuesto",
     "settings.deptAdd": "Añadir departamento",
     "settings.deptSaved": "Departamentos actualizados.",
     "settings.deptDeleteBlocked": "Hay gastos o facturas vinculados; reasígnalos antes de eliminar.",
@@ -295,6 +311,11 @@ const TR = {
     "dept.overBudgetMsg": "{{amount}} por encima del presupuesto",
     "dept.remainingLine": "{{amount}} restante",
     "msg.deptRequired": "Selecciona un departamento.",
+    "msg.categoryRequired": "Selecciona una categoría.",
+    "msg.expenseDateRequired": "Selecciona la fecha del gasto.",
+    "msg.amountRequired": "Indica un importe válido.",
+    "msg.descriptionRequired": "Añade una descripción.",
+    "msg.dayOfMonthRequired": "Indica el día del mes para facturas recurrentes.",
     "dash.deptBudgetsTitle": "Presupuestos por departamento",
     "settings.accordion.integrations": "Integraciones y exportación",
     "settings.accordion.danger": "Zona de peligro",
@@ -327,7 +348,7 @@ const TR = {
     "signup.helperNote": "Tu solicitud será revisada por un administrador, que aprobará o denegará tu acceso.",
     "signup.loginLink": "¿Ya tienes cuenta? Iniciar sesión",
     "signup.title": "Crear cuenta",
-    "signup.name": "Nombre (opcional)",
+    "signup.name": "Nombre",
     "signup.namePlaceholder": "Tu nombre",
     "signup.email": "Correo electrónico",
     "signup.pw": "Contraseña",
@@ -365,7 +386,7 @@ const TR = {
     "reports.perPerson": "Inversión por persona",
     "reports.personLogHint": "Total aprobado según tu parte en el reparto. La lista incluye gastos aprobados y pendientes.",
     "reports.submittedCount": "{{count}} gastos subidos",
-    "reports.personNoSplitExpenses": "Sin gastos en el reparto (aprobados o pendientes).",
+    "reports.personNoSplitExpenses": "Sin gastos en el reparto aprobados o pendientes.",
     "reports.forecast": "Previsión de costes",
     "reports.monthlyFixed": "Mensual fijo",
     "reports.annualFixed": "Anual fijo",
@@ -397,7 +418,7 @@ const TR = {
     "bills.description": "Descripción",
     "bills.descPlaceholder": "Notas internas o propósito de esta factura",
     "bills.submittedBy": "Enviado por",
-    "bills.autoApproved": "Autoaprobado (remitente)",
+    "bills.autoApproved": "Autoaprobado por remitente",
     "bills.attachment": "Adjunto",
     "bills.noAttachment": "Sin adjunto",
     "bills.editBill": "Editar factura",
@@ -430,17 +451,16 @@ const TR = {
     "dash.addExpense": "Añadir Gasto",
     "dash.logCost": "Registrar un nuevo coste",
     "dash.recurringCost": "Coste recurrente",
-    "dash.upcomingBills": "Próximas facturas (15 días)",
+    "dash.upcomingBills": "Próximas facturas · 15 días",
     "dash.noBillsSoon": "No hay facturas en los próximos 15 días.",
     "dash.dueIn": "Vence en {n} días",
     "dash.dueToday": "Vence hoy",
     "dash.dueTomorrow": "Vence mañana",
     "form.newExpense": "Nuevo gasto",
-    "form.receiptOptional": "Recibo (opcional)",
+    "form.receiptOptional": "Recibo",
     "form.splitEq": "Equitativo",
     "form.splitPct": "Por %",
     "form.splitEur": "Por importe",
-    "form.moreOptions": "Más opciones",
     "cal.mon": "Lun",
     "cal.tue": "Mar",
     "cal.wed": "Mié",
@@ -457,13 +477,13 @@ const TR = {
     "audit.exported": "Exportado",
     "audit.submitted": "Enviado",
     "audit.approved": "Aprobado",
-    "audit.auto_approved": "Aprobación automática (aprobador remitente)",
+    "audit.auto_approved": "Aprobación automática — aprobador remitente",
     "audit.autoApprovedDetail": "El remitente figuraba como aprobador de la categoría.",
     "audit.rejected": "Rechazado",
     "audit.edited": "Editado",
     "audit.deleted": "Eliminado",
     "audit.delete_requested": "Solicitud de borrado",
-    "audit.reapproval_required": "Vuelto a pendiente (reaprobación requerida)",
+    "audit.reapproval_required": "Vuelto a pendiente — reaprobación requerida",
     "expense.editTitle": "Editar gasto",
     "expense.confirmEdit": "¿Guardar cambios en este gasto?",
     "expense.reapprovalWarning": "Este gasto estaba aprobado. Los cambios en campos clave resetearán la aprobación y requerirán revisión.",
@@ -485,7 +505,7 @@ const TR = {
     "page.billsDefTitle": "Facturas recurrentes",
     "page.billsDefBody": "Costes fijos periódicos: suscripciones, alquiler, proveedores.",
     "form.ivaRate": "Tipo de IVA",
-    "form.ivaBase": "Base (neto)",
+    "form.ivaBase": "Base imponible",
     "form.ivaAmountLabel": "Cuota IVA",
     "form.ivaAmountDash": "—",
     "expense.ivaRow": "IVA",
@@ -502,17 +522,17 @@ const TR = {
     "dash.fixRejectedLink": "Tienes {n} gasto(s) rechazado(s) — Corregir →",
     "dash.budgetStatus": "Presupuesto",
     "reports.budgetVsActual": "Presupuesto vs real",
-    "reports.budgetTotal": "Total presupuestos mensuales vs gasto aprobado (este mes)",
-    "csv.baseAmount": "Importe base (EUR)",
-    "csv.ivaRatePct": "Tipo IVA (%)",
-    "csv.ivaEur": "IVA (EUR)",
+    "reports.budgetTotal": "Total presupuestos mensuales vs gasto aprobado, este mes",
+    "csv.baseAmount": "Importe base",
+    "csv.ivaRatePct": "Tipo IVA %",
+    "csv.ivaEur": "IVA",
     "draft.banner": "Tienes un borrador sin guardar del {date}. ¿Recuperarlo?",
     "draft.restore": "Recuperar",
     "draft.discard": "Descartar",
-    "settings.monthlyBudget": "Presupuesto mensual (€)",
-    "settings.ivaDefault": "Tipo de IVA por defecto (nuevos gastos)",
-    "settings.ivaTypesSection": "Tipos de IVA (editables)",
-    "settings.ivaPctShort": "Porcentaje (0–99)",
+    "settings.monthlyBudget": "Presupuesto mensual",
+    "settings.ivaDefault": "Tipo de IVA por defecto para nuevos gastos",
+    "settings.ivaTypesSection": "Tipos de IVA editables",
+    "settings.ivaPctShort": "Porcentaje 0–99",
     "settings.ivaNameField": "Nombre",
     "settings.saveIvaTypes": "Guardar tipos",
     "settings.sectionCategories": "Categorías",
@@ -521,11 +541,6 @@ const TR = {
     "audit.pending_reset": "Vuelto a pendiente tras edición",
     "receipt.tapEnlarge": "Toca para ver a tamaño completo",
     "receipt.closeZoom": "Cerrar",
-    "search.placeholder": "Buscar gastos, facturas…",
-    "search.noResults": "Sin resultados",
-    "search.groupExpenses": "Gastos",
-    "search.groupBills": "Facturas",
-    "search.billTag": "Factura",
     "detail.noDepartment": "Sin departamento",
 };
 
@@ -543,15 +558,15 @@ const DEF_USERS=[
   {id:"anna",   name:"Anna Font",        title:"Equipo",      email:"anna@solana.com",        phone:"",                 role:"user",       color:"#6B7280"},
 ];
 const DEF_CATS=[
-  {id:"c1",name:"Equipment",       archived:false,approverIds:["sergio","marc"]},
-  {id:"c2",name:"Supplies",        archived:false,approverIds:["sergio","marc"]},
-  {id:"c3",name:"Marketing",       archived:false,approverIds:["sergio","marc"]},
-  {id:"c4",name:"Legal",           archived:false,approverIds:["sergio","marc"]},
-  {id:"c5",name:"Rent",            archived:false,approverIds:["sergio","marc"]},
-  {id:"c6",name:"Software",        archived:false,approverIds:["sergio","marc"]},
-  {id:"c7",name:"Food & Beverage", archived:false,approverIds:["sergio","marc"]},
-  {id:"c8",name:"Travel",          archived:false,approverIds:["sergio","marc"]},
-  {id:"c9",name:"Otro",           archived:false,approverIds:["sergio","marc"]},
+  {id:"c1",name:"Equipment",       archived:false,approverIds:["marc","sergio"]},
+  {id:"c2",name:"Supplies",        archived:false,approverIds:["marc","sergio"]},
+  {id:"c3",name:"Marketing",       archived:false,approverIds:["marc","sergio"]},
+  {id:"c4",name:"Legal",           archived:false,approverIds:["marc","sergio"]},
+  {id:"c5",name:"Rent",            archived:false,approverIds:["marc","sergio"]},
+  {id:"c6",name:"Software",        archived:false,approverIds:["marc","sergio"]},
+  {id:"c7",name:"Food & Beverage", archived:false,approverIds:["marc","sergio"]},
+  {id:"c8",name:"Travel",          archived:false,approverIds:["marc","sergio"]},
+  {id:"c9",name:"Otro",           archived:false,approverIds:["marc","sergio"]},
 ];
 const SEED_EXP=[
   {id:"e1",amount:45.80, description:"Verduras de mercado – prueba proveedor",category:"Food & Beverage",date:"2026-03-10",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:45.80}], approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"Mercat de la Boqueria",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-10T10:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-10T14:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-10T15:30:00Z",note:""}],departmentId:"dept_operaciones"},
@@ -925,23 +940,13 @@ function SplitDivergeIcon({size=16,color="#4B5E52"}){
 }
 /** Collapsible paidBy breakdown (multi-participant); hover or click keeps panel useful on touch */
 function ExpenseSplitBreakdown({e,t,users}){
-  const getU=id=>users.find(u=>u.id===id)||{name:id,color:"#999"};
+  const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const [stick,setStick]=useState(false);
   const [hover,setHover]=useState(false);
   const paid=e.paidBy||[];
   const n=paid.length;
   useEffect(()=>{setStick(false);setHover(false);},[e.id]);
-  if(n<=1){
-    const p=paid[0];
-    const denom=Number(e.amount)||1;
-    const pct=p&&p.pct!=null&&!isNaN(Number(p.pct))?Number(p.pct):p?Math.round((p.amount/denom)*1000)/10:100;
-    return(
-      <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}}>
-        <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>{t("label.paidBy")}</div>
-        {p?<div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span>{getU(p.userId).name}</span><span style={{fontWeight:600}}>{fmt(p.amount)} ({pct}%)</span></div>:<div style={{fontSize:11,color:"#9CAA9F"}}>—</div>}
-      </div>
-    );
-  }
+  if(n<=1)return null;
   const open=stick||hover;
   const denom=Number(e.amount)||1;
   return(
@@ -965,7 +970,7 @@ function ExpenseSplitBreakdown({e,t,users}){
             return(
               <div key={p.userId} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,fontSize:11,marginBottom:6}}>
                 <span style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}><UserAvatar user={u} size={22} fontSize={8}/><span style={{fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</span></span>
-                <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(p.amount)} <span style={{color:"#9CAA9F",fontWeight:500,fontSize:10}}>({pct}%)</span></span>
+                <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(p.amount)}<span style={{color:"#9CAA9F",fontWeight:500,fontSize:10}}> · {pct}%</span></span>
               </div>
             );
           })}
@@ -1007,7 +1012,7 @@ const normalizeItem=(item,type)=>{
   if(type==="bill")    return{active:false,notes:"",description:"",receipt:null,receiptType:null,...item,approvals:item.approvals||{},auditTrail:item.auditTrail||[],submittedBy:item.submittedBy||"unknown",seenBy:Array.isArray(item.seenBy)?item.seenBy:[],departmentId:item.departmentId??null};
   if(type==="user")    return{color:"#6B7280",title:"",email:"",phone:"",role:"user",...item};
   if(type==="cat"){
-    const merged={archived:false,budget:null,...item,approverIds:Array.isArray(item.approverIds)?item.approverIds:["sergio","marc"]};
+    const merged={archived:false,budget:null,...item,approverIds:Array.isArray(item.approverIds)?item.approverIds:[...ADMIN_IDS]};
     if(merged.budget===undefined||merged.budget===""||merged.budget===null)merged.budget=null;
     else if(typeof merged.budget==="string"){const v=parseFloat(merged.budget.replace(",","."));merged.budget=isNaN(v)?null:v;}
     return merged;
@@ -1020,7 +1025,7 @@ const getAdminIds=users=>users.filter(u=>u.role==="admin"||u.role==="superadmin"
 const effectiveExpenseApproverIds=(e,cats,users)=>{
   if(e&&e._apiType==="expense"&&Array.isArray(e.approvalRequired)&&e.approvalRequired.length>0)return e.approvalRequired;
   const cat=cats?.find(c=>c.name===e?.category&&!c.archived);
-  const adminIds=users?getAdminIds(users):["sergio","marc"];
+  const adminIds=users?getAdminIds(users):[...ADMIN_IDS];
   return cat?.approverIds?.length>0?cat.approverIds:adminIds;
 };
 const getItemStatus=(item,cats,users)=>{
@@ -1048,7 +1053,7 @@ const getItemStatus=(item,cats,users)=>{
   }
   const cat=cats?.find(c=>c.name===item.category&&!c.archived);
   // fall back to actual admin users, not a hardcoded constant
-  const adminIds=users?getAdminIds(users):["sergio","marc"];
+  const adminIds=users?getAdminIds(users):[...ADMIN_IDS];
   const approverIds=cat?.approverIds?.length>0?cat.approverIds:adminIds;
   const a=item.approvals||{};
   if(approverIds.some(id=>a[id]==="rejected"))return"rejected";
@@ -1172,9 +1177,15 @@ function expenseFromApi(row){
   },"expense");
 }
 function billDueISOFromForm(nb){
+  const ts=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const f=nb&&nb.frequency;
+  if(f===""||f==="once"){
+    const raw=nb.dueDate&&String(nb.dueDate).trim();
+    if(raw&&raw.length>=10)return raw.slice(0,10);
+    return ts(new Date());
+  }
   const dm=parseInt(nb.dayOfMonth,10)||1;
   const t=new Date();
-  const ts=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   let y=t.getFullYear(),mo=t.getMonth();
   const ld=new Date(y,mo+1,0).getDate();
   let d=new Date(y,mo,Math.min(dm,ld));
@@ -1186,15 +1197,26 @@ function billDueISOFromForm(nb){
   }
   return ts(d);
 }
+function isBillRecurringFrequency(freq){
+  return freq==="monthly"||freq==="annual"||freq==="custom";
+}
+const billFreqLabel=(f,t)=>!f||f==="once"?t("label.once"):t("label."+f);
+function billListAmountSuffix(b,t){
+  if(!isBillRecurringFrequency(b.frequency))return null;
+  return b.frequency==="monthly"?"/"+t("bills.perMonth"):"/"+t("bills.perYear");
+}
 function billFromApi(row){
   if(!row)return null;
+  const recurring=!!row.recurring;
   const rule=row.recurrenceRule||"monthly";
   let frequency="monthly";
-  if(rule==="yearly")frequency="annual";
+  if(!recurring)frequency="once";
+  else if(rule==="yearly")frequency="annual";
   else if(rule==="quarterly")frequency="custom";
   const due=row.dueDate||"";
   let dayOfMonth="1";
-  if(due.length>=10)dayOfMonth=String(Math.min(31,parseInt(due.slice(8,10),10)||1));
+  if(recurring&&due.length>=10)dayOfMonth=String(Math.min(31,parseInt(due.slice(8,10),10)||1));
+  if(!recurring)dayOfMonth="";
   const amt=Number(row.amount)||0;
   const eur=row.amountEUR!=null&&!isNaN(Number(row.amountEUR))?Number(row.amountEUR):amt;
   return normalizeItem({
@@ -1211,9 +1233,9 @@ function billFromApi(row){
     endDate:"",
     submittedBy:row.userId,
     apiBillStatus:row.status,
-    recurring:!!row.recurring,
+    recurring,
     recurrenceRule:row.recurrenceRule,
-    active:!!row.recurring&&(row.status==="pending"||row.status==="overdue"),
+    active:recurring&&(row.status==="pending"||row.status==="overdue"),
     notes:row.notes||"",
     description:"",
     receipt:null,
@@ -1243,7 +1265,13 @@ const tCat=(name,t)=>{const k="cat."+name.toLowerCase().replace(/[^a-z]/g,"");co
 
 /** Fecha YYYY-MM-DD para filtros de facturas: próximo vencimiento (dayOfMonth) o fecha de envío */
 function getBillFilterDateRef(b){
-  if(b._apiType==="bill"&&b.dueDate)return b.dueDate;
+  if(b._apiType==="bill"&&b.dueDate&&String(b.dueDate).length>=10)return String(b.dueDate).slice(0,10);
+  if(b.frequency==="once"||b.frequency===""||b.frequency===undefined){
+    if(b.dueDate&&String(b.dueDate).length>=10)return String(b.dueDate).slice(0,10);
+    const sub=(b.auditTrail||[]).find(a=>a.action==="submitted");
+    if(sub&&sub.at)return sub.at.slice(0,10);
+    return"1970-01-01";
+  }
   const dm=parseInt(b.dayOfMonth,10);
   const today=new Date();
   const tsLocal=d=>{const y=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,"0"),da=String(d.getDate()).padStart(2,"0");return`${y}-${mo}-${da}`;};
@@ -1533,7 +1561,7 @@ const autoApprove=(submitterId,approverIds,existingApprovals,auditTrail)=>{
   const trail=[...auditTrail,{action:"auto_approved",by:submitterId,at:new Date().toISOString(),meta:{reason:"submitter_is_approver"}}];
   return{approvals,auditTrail:trail};
 };
-/* BF.date is intentionally omitted — resetForm() injects today's date dynamically */
+/* BF: all empty by default; resetForm() clears to BF (+ ivaRate from settings default). */
 const DEPTS_LS_KEY="sol-departments";
 const DEFAULT_DEPT_ID="dept_estrategia";
 const SEED_DEPARTMENTS=[
@@ -1552,9 +1580,9 @@ function readLocalDepartments(){
     return SEED_DEPARTMENTS.map(d=>({...d,createdAt:Date.now()}));
   }
 }
-const BF={amount:"",description:"",category:"Otro",date:"",notes:"",ivaRate:String(readIvaDefault()),departmentId:DEFAULT_DEPT_ID};
+const BF={amount:"",description:"",category:"",date:"",notes:"",ivaRate:"21",departmentId:""};
 const DRAFT_KEY="sol-exp-draft";
-const BB={name:"",amount:"",frequency:"monthly",category:"Otro",dayOfMonth:"1",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",departmentId:DEFAULT_DEPT_ID};
+const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",dueDate:"",departmentId:""};
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
 const Ctx=createContext(null);
@@ -2500,8 +2528,14 @@ function NewPanel(){
         submitExp,resetForm,removeAttachment,editExp,deleteExp,setPanel,users,calcEqual,ivaRates,departments}=useApp();
   const activeCats=cats.filter(c=>!c.archived);
   const expAmt=parseFloat(form.amount)||0;
+  const amountNum=parseMoney(form.amount);
+  const amountOk=amountNum>0;
+  const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim();
+  const [submitAttempt,setSubmitAttempt]=useState(false);
+  useEffect(()=>{if(expenseValid)setSubmitAttempt(false);},[expenseValid]);
+  const hi=submitAttempt&&!expenseValid;
+  const rs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
   const [draftPrompt,setDraftPrompt]=useState(null);
-  const [showAdvanced,setShowAdvanced]=useState(false);
   const draftTimer=useRef(null);
   const ivaScanB64Ref=useRef(null);
   useEffect(()=>{
@@ -2516,7 +2550,6 @@ function NewPanel(){
         if(cancelled||!hint||hint.ivaRate==null)return;
         const vr=Number(hint.ivaRate);
         if(Number.isNaN(vr))return;
-        if(vr>0)setShowAdvanced(true);
         const match=ivaRates.reduce((best,r)=>{
           const d=Math.abs(Number(r.value)-vr);
           if(!best||d<best.d)return{r,d};
@@ -2561,7 +2594,6 @@ function NewPanel(){
     setSpMode("equal");
     setSplits(calcEqual(next,expAmt));
     setSplitOn(true);
-    setShowAdvanced(true);
   };
   const togUsr=uid=>{
     if(uid===user.id)return;
@@ -2582,7 +2614,7 @@ function NewPanel(){
           <div style={{display:"flex",gap:8}}>
             <button type="button" className="btn-sm" style={{flex:1,fontSize:11}} onClick={()=>{
               const f=draftPrompt.form||{};
-              setForm(p=>({...p,...f,date:f.date||p.date,ivaRate:f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):String(readIvaDefault()),departmentId:f.departmentId!=null&&f.departmentId!==""?f.departmentId:p.departmentId}));
+              setForm(p=>({...p,...f,date:f.date!=null?String(f.date):"",ivaRate:f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):String(readIvaDefault()),departmentId:f.departmentId!=null?String(f.departmentId):""}));
               if(draftPrompt.splitOn&&draftPrompt.splits?.length){
                 let m=draftPrompt.spMode||"equal";
                 if(m==="percent")m="percentage";
@@ -2590,7 +2622,6 @@ function NewPanel(){
                 if(!["equal","percentage","amount"].includes(m))m="equal";
                 setSplitOn(true);setSpMode(m);setSplits(draftPrompt.splits);
               }
-              setShowAdvanced(!!(f.notes&&String(f.notes).trim())||!!draftPrompt.splitOn||(f.ivaRate!=null&&String(f.ivaRate)!==String(readIvaDefault())));
               setDraftPrompt(null);
             }}>{t("draft.restore")}</button>
             <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>{try{localStorage.removeItem(DRAFT_KEY);}catch(e){}setDraftPrompt(null);}}>{t("draft.discard")}</button>
@@ -2598,24 +2629,26 @@ function NewPanel(){
         </div>
       )}
       {/* Zona principal: importe, descripción, categoría, fecha, departamento, recibo */}
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.amount")} *</label>
-        <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount}
+      <div style={{marginBottom:8}}><label className="lbl">{t("label.amount")}</label>
+        <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount} style={rs(hi&&!amountOk)}
           onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amount:v}));}}/>
       </div>
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.description")} *</label>
-        <input className="inp" placeholder={t("label.description")} value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
+      <div style={{marginBottom:8}}><label className="lbl">{t("label.description")}</label>
+        <input className="inp" placeholder={t("label.description")} value={form.description} style={rs(hi&&!String(form.description||"").trim())} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
       </div>
       <div style={{marginBottom:8}}><label className="lbl">{t("label.category")}</label>
-        <select className="inp" value={form.category} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
+        <select className="inp" value={form.category} style={rs(hi&&!String(form.category||"").trim())} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
+          <option value="">{t("label.category")}</option>
           {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
         </select>
       </div>
       <div style={{marginBottom:8}}><label className="lbl">{t("label.date")}</label>
-        <input className="inp" type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
+        <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
       </div>
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.department")} *</label>
-        <select className="inp" value={form.departmentId||""} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))} required>
-          {departments.length===0?<option value="">{t("msg.deptRequired")}</option>:departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+      <div style={{marginBottom:8}}><label className="lbl">{t("label.department")}</label>
+        <select className="inp" value={form.departmentId||""} style={rs(hi&&!String(form.departmentId||"").trim())} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))}>
+          <option value="">{departments.length===0?t("msg.deptRequired"):t("label.department")}</option>
+          {departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
       </div>
       <div style={{marginBottom:10}}>
@@ -2627,21 +2660,8 @@ function NewPanel(){
           <button type="button" style={{flex:1,padding:"5px 7px",borderRadius:6,border:`1.5px solid ${G}`,background:"transparent",color:G,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>fileRef.current?.click()}>{t("action.uploadFile")}</button>
         </div>
       </div>
-      <button
-        type="button"
-        onClick={()=>setShowAdvanced(v=>!v)}
-        style={{
-          background:"none",border:"none",color:T,
-          fontSize:11,fontWeight:600,cursor:"pointer",
-          fontFamily:"inherit",padding:"8px 0",
-          display:"flex",alignItems:"center",gap:4,
-        }}
-      >
-        {showAdvanced?"▲":"▼"} {t("form.moreOptions")}
-      </button>
-      {showAdvanced&&(
       <div style={{marginBottom:12}}>
-      {!AUTH_URL&&<div style={{marginBottom:12,background:GL,borderRadius:8,padding:10}}>
+      <div style={{marginBottom:12,background:GL,borderRadius:8,padding:10}}>
         <label className="lbl">{t("form.ivaRate")}</label>
         <select className="inp" value={form.ivaRate||String(readIvaDefault())} onChange={e=>setForm(p=>({...p,ivaRate:e.target.value}))}>
           {ivaRates.map(r=><option key={String(r.value)+"-"+r.name} value={r.value}>{formatIvaOptionLabel(r)}</option>)}
@@ -2652,9 +2672,9 @@ function NewPanel(){
             <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#9CAA9F",fontSize:10}}>{t("form.ivaAmountLabel")}</span><span style={{fontWeight:700,color:G}}>{rp===0?t("form.ivaAmountDash"):fmt(p.iva)}</span></div>
           </div>
         );})()}
-      </div>}
+      </div>
       <div style={{marginBottom:12}}><label className="lbl">{t("label.notes")}</label>
-        <textarea className="inp" rows={2} placeholder={t("label.optional")} value={form.notes}
+        <textarea className="inp" rows={2} value={form.notes}
           onChange={e=>setForm(p=>({...p,notes:e.target.value}))} style={{resize:"vertical"}}/>
       </div>
       {!AUTH_URL&&<div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:0,opacity:users.length<2?0.92:1}} title={users.length<2?t("split.minTwoTeam"):""}>
@@ -2680,7 +2700,7 @@ function NewPanel(){
             </div>
             <div style={{display:"flex",flexWrap:"wrap",gap:10,justifyContent:"flex-start"}}>
               {splits.map(s=>{
-                const u=users.find(x=>x.id===s.userId)||{name:s.userId,color:"#999"};
+                const u=users.find(x=>x.id===s.userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
                 const locked=s.userId===user.id;
                 const shareAmt=expAmt>0&&s.checked?parseFloat((expAmt*(Number(s.percent)||0)/100).toFixed(2)):0;
                 return(
@@ -2694,10 +2714,10 @@ function NewPanel(){
                       <UserAvatar user={u} size={32} fontSize={10}/>
                       <div style={{fontSize:10,fontWeight:600,marginTop:4,color:G,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
                     </button>
-                    {s.checked&&spMode==="equal"&&expAmt>0&&(
+                    {s.checked&&spMode==="equal"&&expAmt>0&&checkedSplitCount>1&&(
                       <div style={{fontSize:9,color:"#4B5E52",marginTop:6,fontVariantNumeric:"tabular-nums",lineHeight:1.35}}>
                         <div style={{fontWeight:700}}>{fmt(shareAmt)}</div>
-                        <div style={{color:"#9CAA9F"}}>({Number(s.percent).toFixed(2)}%)</div>
+                        <div style={{color:"#9CAA9F"}}>· {Number(s.percent).toFixed(2)}%</div>
                       </div>
                     )}
                     {s.checked&&spMode==="percentage"&&(
@@ -2731,9 +2751,15 @@ function NewPanel(){
         )}
       </div>}
       </div>
-      )}
       {formError&&<div style={{marginBottom:7,padding:"5px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:500}}>{formError}</div>}
-      <button className="btn-primary" style={{width:"100%",padding:11,opacity:(!form.amount||!form.description||!form.departmentId||splitSubmitBlocked)?0.5:1}} onClick={()=>{setFormError("");submitExp();}} disabled={!form.amount||!form.description||!form.departmentId||splitSubmitBlocked}>{t("action.submit")}</button>
+      <div style={{position:"relative",width:"100%"}}>
+        <button type="button" className="btn-primary" style={{width:"100%",padding:11,opacity:(!expenseValid||splitSubmitBlocked)?0.5:1,cursor:(!expenseValid||splitSubmitBlocked)?"not-allowed":"pointer"}}
+          disabled={splitSubmitBlocked}
+          onClick={()=>{setFormError("");if(!expenseValid)return;submitExp();}}>{t("action.submit")}</button>
+        {!expenseValid&&!splitSubmitBlocked&&(
+          <button type="button" aria-label="Completar campos obligatorios" style={{position:"absolute",inset:0,opacity:0.001,width:"100%",height:"100%",cursor:"pointer"}}
+            onClick={()=>setSubmitAttempt(true)}/>)}
+      </div>
     </div>
   );
 }
@@ -2752,7 +2778,7 @@ function DetailPanel(){
     if(detailId)markExpenseRead(detailId);
   },[detailId]);
   if(!e)return null;
-  const getU=id=>users.find(u=>u.id===id)||{name:id,color:"#999"};
+  const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const cat=cats.find(c=>c.name===e.category);
   const approverIds=effectiveExpenseApproverIds(e,cats,users);
   const st=getItemStatus(e,cats,users);
@@ -2875,7 +2901,7 @@ function DetailPanel(){
         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}><span style={{color:"#9CAA9F"}}>{l}</span><span style={{fontWeight:500}}>{v}</span></div>
       ))}
       <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}>
-        <span style={{color:"#9CAA9F"}}>{t("expense.ivaRow")} ({ivaRowLabel})</span>
+        <span style={{color:"#9CAA9F"}}>{t("expense.ivaRow")} · {ivaRowLabel}</span>
         <span style={{fontWeight:500}}>{e.ivaRate!==null&&e.ivaRate!==undefined?(e.ivaRate===0?t("form.ivaAmountDash"):fmt(e.ivaAmount||0)):t("expense.ivaNotTracked")}</span>
       </div>
       <ExpenseSplitBreakdown e={e} t={t} users={users}/>
@@ -2921,7 +2947,7 @@ function DetailPanel(){
       <div style={{marginTop:9}}>
         <label className="lbl" style={{marginBottom:4}}>{t("label.activity")}</label>
         {e.auditTrail.map((a,i)=>{
-          const actor=users.find(u=>u.id===a.by)||{name:a.by,color:"#999"};
+          const actor=users.find(u=>u.id===a.by)||{name:UNKNOWN_USER_NAME,color:"#999"};
           const actionLabel=t("audit."+a.action)||a.action;
           const isSystem=["exported","attachment_uploaded","attachment_removed","edited","reapproval_required"].includes(a.action);
           return(
@@ -2974,7 +3000,7 @@ function DetailPanel(){
 /* ── PERSON DRILLDOWN MODAL ─────────────────────────────────────────────────── */
 function PersonDrilldown({userId, onClose}){
   const{t,expenses,bills,cats,users}=useApp();
-  const u=users.find(x=>x.id===userId)||{name:userId,color:"#999"};
+  const u=users.find(x=>x.id===userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const userExpenses=expenses.filter(e=>
     (e.paidBy||[]).some(p=>p&&p.userId===userId)
     ||(!(e.paidBy||[]).length&&(e.submittedBy===userId||e.userId===userId))
@@ -3007,7 +3033,7 @@ function PersonDrilldown({userId, onClose}){
           {userExpenses.length===0
             ?<div style={{fontSize:11,color:"#9CAA9F",marginBottom:11}}>{t("person.noExpenses")}</div>
             :<div style={{marginBottom:14}}>
-              {userExpenses.map(e=>{const st=getItemStatus(e,cats,users);const sub=(users.find(x=>x.id===e.submittedBy)||{name:e.submittedBy||"—"}).name;return(
+              {userExpenses.map(e=>{const st=getItemStatus(e,cats,users);const sub=(users.find(x=>x.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;return(
                 <div key={e.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F5F0EA",alignItems:"flex-start"}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.description}</div>
@@ -3024,16 +3050,16 @@ function PersonDrilldown({userId, onClose}){
           {/* Bills */}
           <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:7}}>{t("person.bills")} ({userBills.length})</div>
           {userBills.length===0
-            ?<div style={{fontSize:11,color:"#9CAA9F"}}>{t("person.noBills")} <span style={{fontSize:9}}>(criterio: enviado por)</span></div>
+            ?<div style={{fontSize:11,color:"#9CAA9F"}}>{t("person.noBills")}</div>
             :<div>
-              {userBills.map(b=>{const bst=getItemStatus(b,cats,users);return(
+              {userBills.map(b=>{const bst=getItemStatus(b,cats,users);const amtSuf=billListAmountSuffix(b,t);return(
                 <div key={b.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F5F0EA",alignItems:"flex-start"}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
-                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{b.category} · {t("label."+b.frequency)}</div>
+                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{b.category} · {billFreqLabel(b.frequency,t)}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
-                    <div style={{fontSize:12,fontWeight:700,color:G}}>{fmtExpenseAmt(b)}<span style={{fontSize:8,color:"#9CAA9F"}}>/{b.frequency==="monthly"?t("bills.perMonth"):t("bills.perYear")}</span></div>
+                    <div style={{fontSize:12,fontWeight:700,color:G}}>{fmtExpenseAmt(b)}{amtSuf&&<span style={{fontSize:8,color:"#9CAA9F"}}>{amtSuf}</span>}</div>
                     <div style={{display:"inline-block",padding:"1px 5px",borderRadius:5,fontSize:8,fontWeight:600,background:ST[bst].bg,color:ST[bst].color,marginTop:1}}>{t("status."+bst)}</div>
                   </div>
                 </div>
@@ -3184,7 +3210,7 @@ function DashboardView(){
           const pool=isAdmin?expenses.slice():expenses.filter(e=>e.submittedBy===user.id);
           const sorted=[...pool].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
           if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{isAdmin?"—":t("dash.recentEmpty")}</div>;
-          return sorted.map((e,i)=>{const st=getItemStatus(e,cats);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;const sub=(users.find(x=>x.id===e.submittedBy)||{name:e.submittedBy||"—"}).name;return(
+          return sorted.map((e,i)=>{const st=getItemStatus(e,cats);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;const sub=(users.find(x=>x.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;return(
             <div key={e.id} className="row-hover" style={{display:"flex",alignItems:"flex-start",padding:"7px 3px",borderBottom:i<sorted.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}} onClick={()=>{go("expenses");setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3279,7 +3305,7 @@ function ExpensesView(){
         {filtered.map((e,idx)=>{
           const st=getItemStatus(e,cats),sel=detailId===e.id&&panel==="detail";
           const approverIds=effectiveExpenseApproverIds(e,cats,users);
-          const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:e.submittedBy||"—"}).name;
+          const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
           return(
             <div key={e.id} className="row-hover" style={{padding:"9px 13px",borderBottom:idx<filtered.length-1?"1px solid #F5F0EA":"none",cursor:"pointer",background:sel?"#F5F0EA":"transparent",display:"flex",alignItems:"flex-start",gap:8}}
               onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
@@ -3289,7 +3315,7 @@ function ExpensesView(){
                   {e.itemCode&&<span style={{fontFamily:"monospace",fontSize:9,marginRight:5,opacity:0.7}}>{e.itemCode}</span>}
                   {fmtDate(e.date)} · {t("filter.submitter")}: {submitterName} · {e.category}
                 </div>
-                {st==="pending"&&<div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>{approverIds.map(aid=>{const a=(e.approvals||{})[aid];return<span key={aid} style={{fontSize:9,display:"flex",alignItems:"center",gap:2}}><span style={{width:4,height:4,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",display:"inline-block"}}/><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{(users.find(u=>u.id===aid)||{name:aid}).name}</span></span>})}</div>}
+                {st==="pending"&&<div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>{approverIds.map(aid=>{const a=(e.approvals||{})[aid];return<span key={aid} style={{fontSize:9,display:"flex",alignItems:"center",gap:2}}><span style={{width:4,height:4,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",display:"inline-block"}}/><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{(users.find(u=>u.id===aid)||{name:UNKNOWN_USER_NAME}).name}</span></span>})}</div>}
               </div>
               <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -3335,7 +3361,7 @@ function ApprovalsView(){
   const [tab,setTab]=useState("expenses");
   useEffect(()=>{if(AUTH_URL&&tab==="bills")setTab("expenses");},[tab]);
   if(!isAdmin)return null;
-  const getU=id=>users.find(u=>u.id===id)||{name:id,color:"#999"};
+  const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const approvalTabs=AUTH_URL
     ?[["expenses",t("nav.expenses"),myPending.length]]
     :[["expenses",t("nav.expenses"),myPending.length],["bills",t("nav.bills"),myPendingBills.length]];
@@ -3376,7 +3402,7 @@ function ApprovalsView(){
               </div>
               {(e.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={e} t={t} users={users}/></div>}
               <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=(e.approvals||{})[aid];return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {AUTH_URL?(rowApproverIds.includes(user.id)&&!(e.approvals||{})[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder={t("label.optional")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):((e.approvals||{})[user.id]?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+(e.approvals||{})[user.id])}</div>:null)):(!(e.approvals||{})[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder={t("label.optional")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+(e.approvals||{})[user.id])}</div>))}
+              {AUTH_URL?(rowApproverIds.includes(user.id)&&!(e.approvals||{})[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):((e.approvals||{})[user.id]?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+(e.approvals||{})[user.id])}</div>:null)):(!(e.approvals||{})[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+(e.approvals||{})[user.id])}</div>))}
             </div>
           );
         })
@@ -3390,11 +3416,11 @@ function ApprovalsView(){
           return(
             <div key={b.id} className="card" style={{marginBottom:9}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:7}}>
-                <div><div style={{fontWeight:600,fontSize:13}}>{b.name}</div><div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{b.category} · {t("label."+b.frequency)} · {t("bills.day")} {b.dayOfMonth}</div></div>
+                <div><div style={{fontWeight:600,fontSize:13}}>{b.name}</div><div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{b.category} · {billFreqLabel(b.frequency,t)}{isBillRecurringFrequency(b.frequency)&&b.dayOfMonth?` · ${t("bills.day")} ${b.dayOfMonth}`:""}</div></div>
                 <div style={{fontSize:17,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(b)}</div>
               </div>
               <div style={{marginBottom:7}}>{approverIds.map(aid=>{const a=bApprovals[aid];return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {!(b.approvals||{})[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder={t("label.optional")} value={aNote[b.id]||""} onChange={ev=>setANote(p=>({...p,[b.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"approved","bill")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"rejected","bill")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+(bApprovals[user.id]||"pending"))}</div>)}
+              {!(b.approvals||{})[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[b.id]||""} onChange={ev=>setANote(p=>({...p,[b.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"approved","bill")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"rejected","bill")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+(bApprovals[user.id]||"pending"))}</div>)}
             </div>
           );
         })
@@ -3404,8 +3430,8 @@ function ApprovalsView(){
 }
 
 /* ── BILLS VIEW ────────────────────────────────────────────────────────────── */
-function BillsView({focusBillId,onFocusBillConsumed}={}){
-  const{t,user,users,bills,cats,saveBills,isAdmin,totFixed,addBill,setAddBill,newBill,setNewBill,markBillPaid,departments,defaultDeptId}=useApp();
+function BillsView(){
+  const{t,user,users,bills,cats,saveBills,isAdmin,totFixed,addBill,setAddBill,newBill,setNewBill,markBillPaid,departments,defaultDeptId,newBillRecPrev,setNewBillRecPrev,startCamForNewBill}=useApp();
   const [selBillId,setSelBillId]=useState(null);
   const [editBillId,setEditBillId]=useState(null);
   const [billSearch,setBillSearch]=useState("");
@@ -3418,16 +3444,15 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
   const [editBillDirty,setEditBillDirty]=useState(false);
   const billFileRef=useRef(null);
   const billNewFileRef=useRef(null);
-  const [newBillRecPrev,setNewBillRecPrev]=useState(null);
-  useEffect(()=>{
-    if(focusBillId===null||focusBillId===undefined)return;
-    const b=bills.find(x=>String(x.id)===String(focusBillId));
-    if(b){
-      setSelBillId(b.id);
-      onFocusBillConsumed?.();
-    }
-  },[focusBillId,bills,onFocusBillConsumed]);
   const activeCats=cats.filter(c=>!c.archived);
+  const freqNb=newBill.frequency||"once";
+  const recNb=isBillRecurringFrequency(freqNb);
+  const billAmtOk=parseMoney(newBill.amount)>0;
+  const billValid=!!String(newBill.name||"").trim()&&billAmtOk&&!!String(newBill.category||"").trim()&&!!String(newBill.departmentId||"").trim()&&(!recNb||!!String(newBill.dayOfMonth||"").trim());
+  const [billSubmitAttempt,setBillSubmitAttempt]=useState(false);
+  useEffect(()=>{if(billValid)setBillSubmitAttempt(false);},[billValid]);
+  const bh=billSubmitAttempt&&!billValid;
+  const brs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
   const today=new Date();
   const upcoming=[];
   bills.filter(b=>{
@@ -3440,10 +3465,11 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
   });
   upcoming.sort((a,b)=>a.dueDate-b.dueDate);
   const startEditBill=(b)=>{
-    setEditBillForm({name:b.name,amount:String(b.amount),frequency:b.frequency,
-      category:b.category,dayOfMonth:b.dayOfMonth||"1",description:b.description||"",
+    setEditBillForm({name:b.name,amount:String(b.amount),frequency:b.frequency||"once",
+      category:b.category,dayOfMonth:b.dayOfMonth||"",description:b.description||"",
       notes:b.notes||"",receipt:b.receipt||null,receiptType:b.receiptType||null,
       intervalMonths:b.intervalMonths||"",endDate:b.endDate||"",
+      dueDate:(b.dueDate&&String(b.dueDate).slice(0,10))||"",
       departmentId:b.departmentId||defaultDeptId});
     setEditBillId(b.id);setEditBillDirty(false);
   };
@@ -3453,13 +3479,16 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
   };
   const saveBillEdit=(b)=>{
     if(!editBillForm.departmentId){alert(t("msg.deptRequired"));return;}
+    const editFreq=editBillForm.frequency||"";
+    if(isBillRecurringFrequency(editFreq)&&!editBillForm.dayOfMonth){alert(t("msg.dayOfMonthRequired"));return;}
     if(!confirm(t("bills.confirmEdit")))return;
     if(AUTH_URL&&b._apiType==="bill"){
       if(b._pendingSync){alert("Espera a sincronizar esta factura antes de editarla.");return;}
       void (async()=>{
         try{
-          const due=billDueISOFromForm({dayOfMonth:editBillForm.dayOfMonth||"1",frequency:editBillForm.frequency||"monthly",intervalMonths:editBillForm.intervalMonths||""});
-          const freq=editBillForm.frequency||"monthly";
+          const freq=editBillForm.frequency||"once";
+          const rec=isBillRecurringFrequency(freq);
+          const due=billDueISOFromForm({...editBillForm,frequency:freq});
           const rule=freq==="annual"?"yearly":freq==="custom"&&String(editBillForm.intervalMonths)==="3"?"quarterly":"monthly";
           await API.put("/bills/"+encodeURIComponent(b.id),{
             vendor:editBillForm.name,
@@ -3467,7 +3496,7 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
             category:editBillForm.category,
             dueDate:due,
             notes:editBillForm.notes||undefined,
-            recurring:freq==="monthly"||freq==="annual"||freq==="custom",
+            recurring:rec,
             recurrenceRule:rule,
             departmentId:editBillForm.departmentId||defaultDeptId,
           });
@@ -3527,13 +3556,13 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
   };
 
   const submitBill=()=>{
-    if(!newBill.name||!newBill.amount)return;
-    if(!newBill.departmentId){alert(t("msg.deptRequired"));return;}
+    if(!billValid){setBillSubmitAttempt(true);return;}
+    const freq=newBill.frequency||"once";
+    const rec=isBillRecurringFrequency(freq);
     if(AUTH_URL){
       void (async()=>{
         const clientRef="tmp_bill_"+genUuid();
         const due=billDueISOFromForm(newBill);
-        const freq=newBill.frequency||"monthly";
         const rule=freq==="annual"?"yearly":freq==="custom"&&String(newBill.intervalMonths)==="3"?"quarterly":"monthly";
         try{
           const d=await API.post("/bills",{
@@ -3542,7 +3571,7 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
             category:newBill.category,
             dueDate:due,
             notes:newBill.description||undefined,
-            recurring:freq==="monthly"||freq==="annual"||freq==="custom",
+            recurring:rec,
             recurrenceRule:rule,
             departmentId:newBill.departmentId,
           },{clientRef});
@@ -3561,15 +3590,15 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
               amount:amt,
               category:newBill.category,
               dueDate:billDueISOFromForm(newBill),
-              dayOfMonth:newBill.dayOfMonth||"1",
-              frequency:newBill.frequency||"monthly",
+              dayOfMonth:rec?(newBill.dayOfMonth||"1"):"",
+              frequency:freq,
               intervalMonths:newBill.intervalMonths||"",
               endDate:newBill.endDate||"",
               submittedBy:user.id,
               apiBillStatus:"pending",
-              recurring:freq==="monthly"||freq==="annual"||freq==="custom",
+              recurring:rec,
               recurrenceRule:rule,
-              active:(freq==="monthly"||freq==="annual"||freq==="custom"),
+              active:rec,
               notes:"",
               description:newBill.description||"",
               receipt:newBill.receipt||null,
@@ -3616,7 +3645,7 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
         <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G}}>{t("nav.bills")}</h1>
-        <button className="btn-primary" style={{fontSize:13,padding:"7px 14px"}} onClick={()=>setAddBill(v=>!v)}>{addBill?t("action.cancel"):t("action.addBill")}</button>
+        <button className="btn-primary" style={{fontSize:13,padding:"7px 14px"}} onClick={()=>setAddBill(v=>{const n=!v;if(n)setBillSubmitAttempt(false);return n;})}>{addBill?t("action.cancel"):t("action.addBill")}</button>
       </div>
       <div style={{marginBottom:11,fontSize:11,lineHeight:1.5,color:"#9CAA9F"}}>{t("bills.summary",{monthly:fmt(totFixed),annual:fmt(totFixed*12)})}</div>
       <div style={{marginBottom:11,fontSize:11,lineHeight:1.5,maxWidth:"100%"}}>
@@ -3663,20 +3692,29 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
 {/* BLOQUE A — Datos básicos */}
           <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Datos básicos</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.billName")}</label><input className="inp" placeholder={t("label.billName")} value={newBill.name} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
-            <div><label className="lbl">{t("label.amount")}</label><input className="inp" type="text" inputMode="decimal" placeholder="0,00" value={newBill.amount} onChange={e=>setNewBill(p=>({...p,amount:e.target.value}))}/></div>
-            <div><label className="lbl">{t("label.category")}</label><select className="inp" value={newBill.category} onChange={e=>setNewBill(p=>({...p,category:e.target.value}))}>{activeCats.map(c=><option key={c.id}>{c.name}</option>)}</select></div>
-            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")} *</label><select className="inp" value={newBill.departmentId||""} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}>{departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.billName")}</label><input className="inp" placeholder={t("label.billName")} value={newBill.name} style={brs(bh&&!String(newBill.name||"").trim())} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
+            <div><label className="lbl">{t("label.amount")}</label><input className="inp" type="text" inputMode="decimal" placeholder="0,00" value={newBill.amount} style={brs(bh&&!billAmtOk)} onChange={e=>setNewBill(p=>({...p,amount:e.target.value}))}/></div>
+            <div><label className="lbl">{t("label.category")}</label><select className="inp" value={newBill.category} style={brs(bh&&!String(newBill.category||"").trim())} onChange={e=>setNewBill(p=>({...p,category:e.target.value}))}><option value="">{t("label.category")}</option>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
+            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")}</label><select className="inp" value={newBill.departmentId||""} style={brs(bh&&!String(newBill.departmentId||"").trim())} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}><option value="">{t("label.department")}</option>{departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
           </div>
           {/* BLOQUE B — Periodicidad */}
           <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Periodicidad</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:6}}>
-            <div><label className="lbl">{t("label.frequency")}</label><select className="inp" value={newBill.frequency} onChange={e=>setNewBill(p=>({...p,frequency:e.target.value}))}><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
-            {(newBill.frequency==="monthly"||newBill.frequency==="custom")&&<div><label className="lbl">{t("label.dayOfMonth")}</label><input className="inp" type="number" min="1" max="31" placeholder="1" value={newBill.dayOfMonth} onChange={e=>setNewBill(p=>({...p,dayOfMonth:e.target.value}))}/></div>}
+            <div><label className="lbl">{t("label.frequency")}</label><select className="inp" value={newBill.frequency===""||newBill.frequency==="once"?"once":newBill.frequency} onChange={e=>{
+              const v=e.target.value;
+              setNewBill(p=>{
+                const next={...p,frequency:v==="once"?"":v};
+                if(!isBillRecurringFrequency(next.frequency))next.dayOfMonth="";
+                else if(!next.dayOfMonth)next.dayOfMonth="1";
+                return next;
+              });
+            }}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
+            {!isBillRecurringFrequency(newBill.frequency)&&<div><label className="lbl">{t("label.date")}</label><input className="inp" type="date" value={newBill.dueDate||""} onChange={e=>setNewBill(p=>({...p,dueDate:e.target.value}))}/></div>}
+            {isBillRecurringFrequency(newBill.frequency)&&<div><label className="lbl">{t("label.dayOfMonth")}</label><input className="inp" type="number" min="1" max="31" placeholder="1" value={newBill.dayOfMonth} style={brs(bh&&recNb&&!String(newBill.dayOfMonth||"").trim())} onChange={e=>setNewBill(p=>({...p,dayOfMonth:e.target.value}))}/></div>}
             {newBill.frequency==="custom"&&<div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" type="number" min="2" max="24" placeholder="2" value={newBill.intervalMonths||""} onChange={e=>setNewBill(p=>({...p,intervalMonths:e.target.value}))}/></div>}
-            {(newBill.frequency==="custom"||newBill.frequency==="monthly")&&<div style={{gridColumn:newBill.frequency==="monthly"?"1/-1":undefined}}><label className="lbl">{t("label.endDate")}</label><input className="inp" type="date" value={newBill.endDate||""} onChange={e=>setNewBill(p=>({...p,endDate:e.target.value}))}/><div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>}
+            {isBillRecurringFrequency(newBill.frequency)&&<div style={{gridColumn:newBill.frequency==="monthly"?"1/-1":undefined}}><label className="lbl">{t("label.endDate")}</label><input className="inp" type="date" value={newBill.endDate||""} onChange={e=>setNewBill(p=>({...p,endDate:e.target.value}))}/><div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>}
           </div>
-          {(()=>{const f=newBill.frequency;if(f==="monthly"&&newBill.dayOfMonth){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá cada mes, el día {newBill.dayOfMonth}{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}if(f==="custom"&&newBill.intervalMonths&&newBill.dayOfMonth){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá cada {newBill.intervalMonths} meses, el día {newBill.dayOfMonth}{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}if(f==="annual"){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá una vez al año{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}return null;})()}
+          {(()=>{const f=newBill.frequency;if(!isBillRecurringFrequency(f))return newBill.dueDate?<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Vencimiento: {fmtDate(newBill.dueDate)}</div>:null;if(f==="monthly"&&newBill.dayOfMonth){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá cada mes, el día {newBill.dayOfMonth}{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}if(f==="custom"&&newBill.intervalMonths&&newBill.dayOfMonth){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá cada {newBill.intervalMonths} meses, el día {newBill.dayOfMonth}{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}if(f==="annual"){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá una vez al año{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}return null;})()}
           {/* BLOQUE C — Soporte y contexto */}
           <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Soporte y contexto</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
@@ -3684,7 +3722,7 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
           </div>
           {/* New bill attachment */}
           <div style={{marginTop:10}}>
-            <label className="lbl">{t("bills.attachment")} <span style={{fontWeight:400,color:"#B5C0B8",fontSize:9}}>({t("label.optional")||"opcional"})</span></label>
+            <label className="lbl">{t("bills.attachment")}</label>
             {newBillRecPrev&&newBillRecPrev!=="PDF"&&(
               <div style={{position:"relative",marginBottom:6}}>
                 <img src={newBillRecPrev} alt="" style={{width:"100%",maxHeight:90,objectFit:"contain",borderRadius:7,background:"#F5F0EA"}}/>
@@ -3698,23 +3736,31 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
               </div>
             )}
             {!newBillRecPrev&&(
-              <button style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>billNewFileRef.current?.click()}>+ {t("item.attachment")||"Añadir adjunto"}</button>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <button type="button" className="btn-sm" style={{fontSize:10,padding:"4px 10px"}} onClick={startCamForNewBill}>{t("action.scanBill")}</button>
+                <button type="button" style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>billNewFileRef.current?.click()}>+ {t("item.attachment")||"Añadir adjunto"}</button>
+              </div>
             )}
-            <input ref={billNewFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} style={{display:"none"}} onChange={handleNewBillFile}/>
+            <input ref={billNewFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} capture="environment" style={{display:"none"}} onChange={handleNewBillFile}/>
           </div>
           <div style={{marginTop:9,padding:"8px 10px",background:"#FEF3C7",borderRadius:7,fontSize:11,color:"#92400E",marginBottom:9}}>{t("bills.approvalNote")}</div>
-          <button className="btn-primary" style={{width:"100%",fontSize:13}} onClick={submitBill}>{t("action.submitBill")}</button>
+          <div style={{position:"relative",width:"100%"}}>
+            <button type="button" className="btn-primary" style={{width:"100%",fontSize:13,opacity:billValid?1:0.5,cursor:billValid?"pointer":"not-allowed"}} onClick={submitBill}>{t("action.submitBill")}</button>
+            {!billValid&&(
+              <button type="button" aria-label="Completar campos obligatorios" style={{position:"absolute",inset:0,opacity:0.001,width:"100%",height:"100%",cursor:"pointer"}}
+                onClick={()=>setBillSubmitAttempt(true)}/>)}
+          </div>
         </div>
       )}
       <div className="card" style={{padding:0,overflow:"hidden"}}>
-        {(()=>{const pool=(byBillStatus[billStatusFlt]||bills);const visible=pool.filter(b=>{if(billCatFlt&&b.category!==billCatFlt)return false;if(billSubmFlt&&b.submittedBy!==billSubmFlt)return false;const refD=getBillFilterDateRef(b);if(billDateFrom&&refD<billDateFrom)return false;if(billDateTo&&refD>billDateTo)return false;if(billSearch&&!b.name.toLowerCase().includes(billSearch.toLowerCase())&&!(b.description||"").toLowerCase().includes(billSearch.toLowerCase()))return false;return true;});if(visible.length===0)return<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{bills.length===0?t("empty.bills"):t("empty.billsFiltered")}</div>;return visible.map((b,i)=>{const bst=getItemStatus(b,cats);const isSelBill=selBillId===b.id;return(
+        {(()=>{const pool=(byBillStatus[billStatusFlt]||bills);const visible=pool.filter(b=>{if(billCatFlt&&b.category!==billCatFlt)return false;if(billSubmFlt&&b.submittedBy!==billSubmFlt)return false;const refD=getBillFilterDateRef(b);if(billDateFrom&&refD<billDateFrom)return false;if(billDateTo&&refD>billDateTo)return false;if(billSearch&&!b.name.toLowerCase().includes(billSearch.toLowerCase())&&!(b.description||"").toLowerCase().includes(billSearch.toLowerCase()))return false;return true;});if(visible.length===0)return<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{bills.length===0?t("empty.bills"):t("empty.billsFiltered")}</div>;return visible.map((b,i)=>{const bst=getItemStatus(b,cats);const isSelBill=selBillId===b.id;const refD=getBillFilterDateRef(b);const calDay=(b.dayOfMonth&&String(b.dayOfMonth).trim())||(refD.length>=10?String(parseInt(refD.slice(8,10),10)||""):"");const badgeSub=b.frequency==="monthly"?t("bills.perMonth"):isBillRecurringFrequency(b.frequency)?t("bills.perYear"):t("label.once");const amtSuf=billListAmountSuffix(b,t);return(
             <div key={b.id}>
             <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"center",gap:8,padding:"10px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:(AUTH_URL&&b._apiType==="bill"&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue"))||(b.active&&bst==="approved")?1:0.65,cursor:"pointer",background:isSelBill?"#F5F0EA":"transparent"}}>
               {/* Date badge */}
               <div style={{width:40,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              {b.dayOfMonth&&<div style={{width:36,height:36,borderRadius:7,background:bst==="approved"?G:"#EDE8E0",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",transition:"background 0.2s"}}>
-                <div style={{fontSize:14,fontWeight:800,color:bst==="approved"?"#FAF7F2":"#9CAA9F",lineHeight:1}}>{b.dayOfMonth}</div>
-                <div style={{fontSize:7,color:bst==="approved"?"rgba(250,247,242,0.6)":"#B5C0B8",textTransform:"uppercase",marginTop:1}}>{t("bills.perMonth")}</div>
+              {calDay&&<div style={{width:36,height:36,borderRadius:7,background:bst==="approved"?G:"#EDE8E0",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",transition:"background 0.2s"}}>
+                <div style={{fontSize:14,fontWeight:800,color:bst==="approved"?"#FAF7F2":"#9CAA9F",lineHeight:1}}>{calDay}</div>
+                <div style={{fontSize:7,color:bst==="approved"?"rgba(250,247,242,0.6)":"#B5C0B8",textTransform:"uppercase",marginTop:1}}>{badgeSub}</div>
               </div>}
             </div>
               <div style={{flex:1,minWidth:0}}>
@@ -3724,9 +3770,9 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
                   {bst==="approved"&&!b.active&&<span style={{padding:"1px 5px",borderRadius:7,fontSize:8,fontWeight:600,background:"#F5F0EA",color:"#9CAA9F"}}>{t("status.paused")}</span>}
                 </div>
                 {b.description&&<div style={{fontSize:10,color:"#6B7B72",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.description}</div>}
-                <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{b.category} · {t("label."+b.frequency)} · {(users.find(u=>u.id===b.submittedBy)||{name:"?"}).name}</div>
+                <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{b.category} · {billFreqLabel(b.frequency,t)} · {(users.find(u=>u.id===b.submittedBy)||{name:UNKNOWN_USER_NAME}).name}</div>
               </div>
-              <div style={{fontWeight:700,color:G,fontVariantNumeric:"tabular-nums",fontSize:12,marginRight:5,flexShrink:0}}>{fmtExpenseAmt(b)}<span style={{fontSize:8,fontWeight:400,color:"#9CAA9F"}}>/{b.frequency==="monthly"?t("bills.perMonth"):t("bills.perYear")}</span></div>
+              <div style={{fontWeight:700,color:G,fontVariantNumeric:"tabular-nums",fontSize:12,marginRight:5,flexShrink:0}}>{fmtExpenseAmt(b)}{amtSuf&&<span style={{fontSize:8,fontWeight:400,color:"#9CAA9F"}}>{amtSuf}</span>}</div>
               {isAdmin&&<div style={{display:"flex",gap:3}} onClick={e=>e.stopPropagation()}>
                 <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer"}} onClick={()=>{setSelBillId(b.id);startEditBill(b);}}>{t("action.editItem")}</button>
                 {bst==="approved"&&<button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"#F5F0EA",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{
@@ -3796,12 +3842,13 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:9}}>
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.billName")}</label><input className="inp" style={{fontSize:12}} value={editBillForm.name||""} onChange={e=>{setEditBillForm(p=>({...p,name:e.target.value}));setEditBillDirty(true);}}/></div>
                       <div><label className="lbl">{t("label.amount")}</label><input className="inp" type="text" inputMode="decimal" style={{fontSize:12}} value={editBillForm.amount||""} onChange={e=>{setEditBillForm(p=>({...p,amount:e.target.value}));setEditBillDirty(true);}}/></div>
-                      <div><label className="lbl">{t("label.dayOfMonth")}</label><input className="inp" type="number" min="1" max="31" style={{fontSize:12}} value={editBillForm.dayOfMonth||""} onChange={e=>{setEditBillForm(p=>({...p,dayOfMonth:e.target.value}));setEditBillDirty(true);}}/></div>
-                      <div><label className="lbl">{t("label.frequency")}</label><select className="inp" style={{fontSize:12}} value={editBillForm.frequency||"monthly"} onChange={e=>{setEditBillForm(p=>({...p,frequency:e.target.value}));setEditBillDirty(true);}}><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
+                      <div><label className="lbl">{t("label.frequency")}</label><select className="inp" style={{fontSize:12}} value={editBillForm.frequency===""||editBillForm.frequency==="once"?"once":editBillForm.frequency||"once"} onChange={e=>{const v=e.target.value;setEditBillDirty(true);setEditBillForm(p=>{const next={...p,frequency:v==="once"?"":v};if(!isBillRecurringFrequency(next.frequency))next.dayOfMonth="";else if(!next.dayOfMonth)next.dayOfMonth="1";return next;});}}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
+                      {!isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">{t("label.date")}</label><input className="inp" style={{fontSize:12}} type="date" value={editBillForm.dueDate||""} onChange={e=>{setEditBillForm(p=>({...p,dueDate:e.target.value}));setEditBillDirty(true);}}/></div>}
+                      {isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">{t("label.dayOfMonth")}</label><input className="inp" type="number" min="1" max="31" style={{fontSize:12}} value={editBillForm.dayOfMonth||""} onChange={e=>{setEditBillForm(p=>({...p,dayOfMonth:e.target.value}));setEditBillDirty(true);}}/></div>}
                       {editBillForm.frequency==="custom"&&<div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" style={{fontSize:12}} type="number" min="1" max="24" value={editBillForm.intervalMonths||""} onChange={e=>{setEditBillForm(p=>({...p,intervalMonths:e.target.value}));setEditBillDirty(true);}}/></div>}
-                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.endDate")}</label><input className="inp" style={{fontSize:12}} type="date" value={editBillForm.endDate||""} onChange={e=>{setEditBillForm(p=>({...p,endDate:e.target.value}));setEditBillDirty(true);}}/><div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>
+                      {isBillRecurringFrequency(editBillForm.frequency)&&<div style={{gridColumn:editBillForm.frequency==="monthly"?"1/-1":undefined}}><label className="lbl">{t("label.endDate")}</label><input className="inp" style={{fontSize:12}} type="date" value={editBillForm.endDate||""} onChange={e=>{setEditBillForm(p=>({...p,endDate:e.target.value}));setEditBillDirty(true);}}/><div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>}
                       <div><label className="lbl">{t("label.category")}</label><select className="inp" style={{fontSize:12}} value={editBillForm.category||"Otro"} onChange={e=>{setEditBillForm(p=>({...p,category:e.target.value}));setEditBillDirty(true);}}>{activeCats.map(c=><option key={c.id}>{c.name}</option>)}</select></div>
-                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")} *</label><select className="inp" style={{fontSize:12}} value={editBillForm.departmentId||""} onChange={e=>{setEditBillForm(p=>({...p,departmentId:e.target.value}));setEditBillDirty(true);}}>{departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")}</label><select className="inp" style={{fontSize:12}} value={editBillForm.departmentId||""} onChange={e=>{setEditBillForm(p=>({...p,departmentId:e.target.value}));setEditBillDirty(true);}}>{departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("bills.description")}</label><textarea className="inp" rows={2} style={{resize:"vertical",fontSize:12}} value={editBillForm.description||""} onChange={e=>{setEditBillForm(p=>({...p,description:e.target.value}));setEditBillDirty(true);}}/></div>
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.notes")}</label><textarea className="inp" rows={1} style={{resize:"vertical",fontSize:12}} value={editBillForm.notes||""} onChange={e=>{setEditBillForm(p=>({...p,notes:e.target.value}));setEditBillDirty(true);}}/></div>
                     </div>
@@ -3828,16 +3875,17 @@ function BillsView({focusBillId,onFocusBillConsumed}={}){
                 {[
                   {l:t("label.category"),v:b.category},
                   {l:t("label.department"),v:(b.departmentId&&(departments.find(d=>d.id===b.departmentId)||{}).name)||t("detail.noDepartment")},
-                  {l:t("label.frequency"),v:t("label."+b.frequency)},
-                  {l:t("bills.day"),v:b.dayOfMonth||"—"},
-                  {l:t("bills.submittedBy"),v:(users.find(u=>u.id===b.submittedBy)||{name:"?"}).name},
+                  {l:t("label.frequency"),v:billFreqLabel(b.frequency,t)},
+                  ...(isBillRecurringFrequency(b.frequency)?[{l:t("bills.day"),v:b.dayOfMonth||"—"}]:[]),
+                  ...(!isBillRecurringFrequency(b.frequency)?[{l:t("label.date"),v:fmtDate((b.dueDate&&String(b.dueDate).slice(0,10))||getBillFilterDateRef(b))}]:[]),
+                  {l:t("bills.submittedBy"),v:(users.find(u=>u.id===b.submittedBy)||{name:UNKNOWN_USER_NAME}).name},
                   {l:t("label.status"),v:t("status."+bst)},
                 ].map(({l,v})=>(
                   <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #F5F0EA",fontSize:11}}><span style={{color:"#9CAA9F"}}>{l}</span><span style={{fontWeight:500}}>{v}</span></div>
                 ))}
                 {!(AUTH_URL&&b._apiType==="bill")&&<div style={{marginTop:8}}>
                   <div style={{fontSize:9,color:"#9CAA9F",marginBottom:5}}>{t("label.approval")}</div>
-                  {(()=>{const cat=cats.find(c=>c.name===b.category);const approverIds=cat?.approverIds?.length>0?cat.approverIds:getAdminIds(users);return approverIds.map(aid=>{const a=(b.approvals||{})[aid];return(<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",flexShrink:0}}/><span>{(users.find(u=>u.id===aid)||{name:aid}).name}</span><span style={{marginLeft:"auto",fontWeight:500,color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>);})})()}
+                  {(()=>{const cat=cats.find(c=>c.name===b.category);const approverIds=cat?.approverIds?.length>0?cat.approverIds:getAdminIds(users);return approverIds.map(aid=>{const a=(b.approvals||{})[aid];return(<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",flexShrink:0}}/><span>{(users.find(u=>u.id===aid)||{name:UNKNOWN_USER_NAME}).name}</span><span style={{marginLeft:"auto",fontWeight:500,color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>);})})()}
                 </div>}
                 {AUTH_URL&&b._apiType==="bill"&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue")&&(
                   <button type="button" className="btn-primary" style={{width:"100%",marginTop:10,fontSize:12,padding:"8px"}} onClick={()=>markBillPaid(b.id)}>Marcar como pagada</button>
@@ -3954,7 +4002,8 @@ function ReportsView(){
       return(e.paidBy||[]).some(p=>p&&p.userId===u.id);
     }).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
     return{...u,approvedTotal,submittedCount,logExpenses};
-  }).sort((a,b)=>b.approvedTotal-a.approvedTotal),[users,expenses,cats]);
+  }).filter(u=>u.approvedTotal>0||u.submittedCount>0)
+    .sort((a,b)=>b.approvedTotal-a.approvedTotal),[users,expenses,cats]);
   const catTotals=cats.filter(c=>!c.archived).map(c=>({cat:c.name,total:expenses.filter(e=>e.category===c.name&&getItemStatus(e,cats)==="approved").reduce((s,e)=>s+eurForExpense(e),0)})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const maxC=catTotals[0]?.total||1;
   const monthlyTrend=(()=>{
@@ -3992,7 +4041,7 @@ function ReportsView(){
         const base=e.ivaRate!==null&&e.ivaRate!==undefined?Math.round((amtEur-(e.ivaAmount||0))*100)/100:amtEur;
         const ivr=e.ivaRate!==null&&e.ivaRate!==undefined?e.ivaRate:"";
         const ivam=e.ivaAmount!==null&&e.ivaAmount!==undefined?e.ivaAmount:"";
-        return[e.itemCode||e.id,e.date,e.description,amtEur,base,ivr,ivam,e.category,getItemStatus(e,cats,users),(users.find(u=>u.id===e.submittedBy)||{name:e.submittedBy}).name,e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:p.userId}).name}:${fmt(p.amount)}`).join(";"),e.notes||"",approverIds.map(id=>(users.find(u=>u.id===id)||{name:id}).name).join(";")];
+        return[e.itemCode||e.id,e.date,e.description,amtEur,base,ivr,ivam,e.category,getItemStatus(e,cats,users),(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name,e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),e.notes||"",approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";")];
       })];
     const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
     const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`solana-${data}-${new Date().toISOString().slice(0,10)}.csv`});
@@ -4104,7 +4153,7 @@ function ReportsView(){
                         const st=getItemStatus(e,cats,users);
                         const share=shareEurInExpense(e,u.id);
                         const pend=st==="pending";
-                        const subN=(users.find(x=>x.id===e.submittedBy)||{name:e.submittedBy||"—"}).name;
+                        const subN=(users.find(x=>x.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
                         return(
                           <div key={e.id} className="row-hover" role="button" tabIndex={0} onKeyDown={ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();setView("expenses");setDetailId(e.id);setPanel("detail");}}} onClick={()=>{setView("expenses");setDetailId(e.id);setPanel("detail");}} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 0",borderBottom:"1px solid #F0EBE3",cursor:"pointer"}}>
                             <div style={{flex:1,minWidth:0}}>
@@ -4285,14 +4334,10 @@ function AdminReadme(){
   );
 }
 
-/* ── APP LOG VIEWER ───────────────────────────────────────────────────────
-   Shows the structured in-browser application log for admins.
-   Displays: timestamp, level, event type, key metadata.
-   Useful for diagnosing upload failures, auth events, export errors.
+/* ── APP LOG (Settings accordion body) ─────────────────────────────────────
+   Structured in-browser log: timestamp, level, event, metadata.
 ─────────────────────────────────────────────────────────────────────────── */
-function AppLogViewer(){
-  const{t}=useApp();
-  const [open,setOpen]=useState(false);
+function AppLogPanelBody(){
   const [entries,setEntries]=useState([]);
   const loadLog=()=>{
     try{setEntries(JSON.parse(localStorage.getItem(APP_LOG_KEY)||"[]").reverse());}
@@ -4311,41 +4356,31 @@ function AppLogViewer(){
     "csv_exported":"#2563EB","attachment_uploaded":"#7A4F9A",
     "attachment_removed":"#991B1B","upload_rejected":"#DC2626",
   };
+  useEffect(()=>{loadLog();},[]);
   return(
-    <div className="card" style={{marginBottom:12}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}
-        onClick={()=>{if(!open)loadLog();setOpen(v=>!v);}}>
-        <div style={{fontWeight:600,fontSize:13}}>App Log</div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          {open&&<button className="btn-sm" style={{fontSize:9,padding:"2px 7px",background:"transparent",
-            color:"#991B1B",border:"1px solid #ECA3A3"}} onClick={e=>{e.stopPropagation();clearLog();}}>
-            Borrar
-          </button>}
-          <span style={{fontSize:11,color:"#9CAA9F"}}>{open?"▲":"▼"}</span>
-        </div>
+    <div>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginBottom:8}}>
+        <button type="button" className="btn-sm" style={{fontSize:9,padding:"2px 7px",background:"transparent",
+          color:"#991B1B",border:"1px solid #ECA3A3"}} onClick={clearLog}>Borrar</button>
+        <button type="button" className="btn-sm" style={{fontSize:10}} onClick={loadLog}>Actualizar</button>
       </div>
-      {open&&(
-        <div style={{marginTop:9}}>
-          <div style={{fontSize:10,color:"#9CAA9F",marginBottom:7}}>
-            Últimas {entries.length} entradas · eventos de autenticación, uploads, aprobaciones, exportaciones.
+      <div style={{fontSize:10,color:"#9CAA9F",marginBottom:7}}>
+        Últimas {entries.length} entradas · autenticación, uploads, aprobaciones, exportaciones.
+      </div>
+      <div style={{maxHeight:300,overflowY:"auto",fontFamily:"monospace",fontSize:10}}>
+        {entries.length===0&&<div style={{color:"#9CAA9F",padding:"8px 0"}}>Sin entradas.</div>}
+        {entries.map((e,i)=>(
+          <div key={i} style={{padding:"4px 0",borderBottom:"1px solid #F5F0EA",display:"flex",gap:7,alignItems:"baseline"}}>
+            <span style={{color:"#9CAA9F",flexShrink:0,width:68}}>{(e.ts||"").slice(11,19)}</span>
+            <span style={{fontWeight:700,color:LEVEL_COLOR[e.level]||"#9CAA9F",flexShrink:0,width:36}}>{(e.level||"info").toUpperCase()}</span>
+            <span style={{color:EVENT_COLOR[e.event]||"#3C0A37",fontWeight:600,flexShrink:0,minWidth:140}}>{e.event}</span>
+            <span style={{color:"#6B7B72",wordBreak:"break-all"}}>
+              {Object.entries(e).filter(([k])=>!["ts","level","event"].includes(k))
+                .map(([k,v])=>`${k}=${typeof v==="object"?JSON.stringify(v):v}`).join(" · ")}
+            </span>
           </div>
-          <div style={{maxHeight:300,overflowY:"auto",fontFamily:"monospace",fontSize:10}}>
-            {entries.length===0&&<div style={{color:"#9CAA9F",padding:"8px 0"}}>Sin entradas.</div>}
-            {entries.map((e,i)=>(
-              <div key={i} style={{padding:"4px 0",borderBottom:"1px solid #F5F0EA",display:"flex",gap:7,alignItems:"baseline"}}>
-                <span style={{color:"#9CAA9F",flexShrink:0,width:68}}>{(e.ts||"").slice(11,19)}</span>
-                <span style={{fontWeight:700,color:LEVEL_COLOR[e.level]||"#9CAA9F",flexShrink:0,width:36}}>{(e.level||"info").toUpperCase()}</span>
-                <span style={{color:EVENT_COLOR[e.event]||"#3C0A37",fontWeight:600,flexShrink:0,minWidth:140}}>{e.event}</span>
-                <span style={{color:"#6B7B72",wordBreak:"break-all"}}>
-                  {Object.entries(e).filter(([k])=>!["ts","level","event"].includes(k))
-                    .map(([k,v])=>`${k}=${typeof v==="object"?JSON.stringify(v):v}`).join(" · ")}
-                </span>
-              </div>
-            ))}
-          </div>
-          <button className="btn-sm" style={{marginTop:8,fontSize:10}} onClick={loadLog}>Actualizar</button>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
@@ -4463,7 +4498,13 @@ function AccordionSection({title, children, defaultOpen=false, badge=0, accent=n
 /* ── IVA RATES EDITOR (superadmin, settings) ─────────────────────────────── */
 function IvaRatesEditorBlock({t,ivaRates,onSave}){
   const [rows,setRows]=useState(()=>ivaRates.map(r=>({...r})));
+  const [saved,setSaved]=useState(false);
   useEffect(()=>{setRows(ivaRates.map(r=>({...r})));},[ivaRates]);
+  const doSave=()=>{
+    onSave(normalizeIvaRatesPayload(rows));
+    setSaved(true);
+    setTimeout(()=>setSaved(false),2500);
+  };
   return(
     <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid #EDE8E0"}}>
       <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:10}}>{t("settings.ivaTypesSection")}</div>
@@ -4479,7 +4520,7 @@ function IvaRatesEditorBlock({t,ivaRates,onSave}){
           </div>
         ))}
       </div>
-      <button type="button" className="btn-primary" style={{marginTop:10,fontSize:12,padding:"6px 12px"}} onClick={()=>onSave(normalizeIvaRatesPayload(rows))}>{t("settings.saveIvaTypes")}</button>
+      <button type="button" className="btn-primary" style={{marginTop:10,fontSize:12,padding:"6px 12px",background:saved?"#16A34A":G}} onClick={doSave}>{saved?"✓ Guardado":t("settings.saveIvaTypes")}</button>
     </div>
   );
 }
@@ -4622,9 +4663,8 @@ function DepartmentsSettingsBlock({t}){
 /* ── SETTINGS VIEW ─────────────────────────────────────────────────────────── */
 function SettingsView(){
   const{t,user,users,expenses,bills,cats,saveCats,saveUsers,saveExp,saveBills,
-        onSignOut,importRef,passwords,savePasswords,ivaRates,saveIvaRates}=useApp();
+        onSignOut,passwords,savePasswords,ivaRates,saveIvaRates}=useApp();
   const isSA=user?.role==="superadmin";
-  const isAdm=user?.role==="admin"||user?.role==="superadmin";
   const [editId,setEditId]=useState(null);
   const [ef,setEf]=useState({});
   const [addU,setAddU]=useState(false);
@@ -4636,7 +4676,7 @@ function SettingsView(){
   const [catEdit,setCatEdit]=useState(null);
   const [catForm,setCatForm]=useState({});
   const [addCat,setAddCat]=useState(false);
-  const [newCat,setNewCat]=useState({name:"",approverIds:["sergio","marc"],budget:""});
+  const [newCat,setNewCat]=useState({name:"",approverIds:defaultCategoryApproverIds([]),budget:""});
   const [archC,setArchC]=useState(null);
   // password
   const [pwForm,setPwForm]=useState({cur:"",nw:"",cn:""});
@@ -4646,8 +4686,10 @@ function SettingsView(){
   const [ivaDefault,setIvaDefault]=useState(()=>readIvaDefault());
   useEffect(()=>{setIvaDefault(readIvaDefault());},[ivaRates]);
   const saveIvaDefault=v=>{
-    try{localStorage.setItem(IVA_DEFAULT_KEY,JSON.stringify(v));}catch(e){}
-    setIvaDefault(v);
+    const n=Number(v);
+    if(Number.isNaN(n))return;
+    try{localStorage.setItem(IVA_DEFAULT_KEY,JSON.stringify(n));}catch(e){}
+    setIvaDefault(n);
   };
   const savePw=async()=>{
     setPwMsg("");setPwOk(false);
@@ -4850,7 +4892,7 @@ function SettingsView(){
       {isSA&&<AccordionSection title={t("settings.accordion.categories")}>
         <div style={{marginBottom:12}}>
           <label className="lbl">{t("settings.ivaDefault")}</label>
-          <select className="inp" style={{fontSize:13}} value={String(ivaDefault)} onChange={e=>saveIvaDefault(parseInt(e.target.value,10))} aria-label={t("settings.ivaDefault")}>
+          <select className="inp" style={{fontSize:13}} value={String(ivaDefault)} onChange={e=>saveIvaDefault(Number(e.target.value))} aria-label={t("settings.ivaDefault")}>
             {ivaRates.map(r=><option key={String(r.value)+"-"+r.name} value={r.value}>{formatIvaOptionLabel(r)}</option>)}
           </select>
         </div>
@@ -4858,7 +4900,7 @@ function SettingsView(){
         <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"16px 0"}}/>
         <div style={{fontSize:9,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>{t("settings.sectionCategories")}</div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <button className="btn-sm" style={{fontSize:10}} onClick={()=>{setAddCat(v=>!v);setCatEdit(null);}}>{t("action.addCategory")}</button>
+            <button className="btn-sm" style={{fontSize:10}} onClick={()=>{setCatEdit(null);setAddCat(v=>{const n=!v;if(n)setNewCat({name:"",approverIds:defaultCategoryApproverIds(users),budget:""});return n;});}}>{t("action.addCategory")}</button>
           </div>
           <p style={{fontSize:10,color:"#9CAA9F",marginBottom:10,lineHeight:1.4}}>{t("settings.defaultApprovers")}</p>
           <p style={{fontSize:10,color:"#7A8B82",marginBottom:10,lineHeight:1.4}}>{t("settings.approverAutoNote")}</p>
@@ -4877,7 +4919,7 @@ function SettingsView(){
               <label className="lbl">{t("settings.monthlyBudget")}</label>
               <input className="inp" style={{marginBottom:8,fontSize:13}} type="text" inputMode="decimal" placeholder="—" value={newCat.budget||""} onChange={e=>setNewCat(p=>({...p,budget:e.target.value}))}/>
               <div style={{display:"flex",gap:7,marginTop:8}}>
-                <button className="btn-primary" style={{flex:1,fontSize:12,padding:"6px 10px"}} onClick={()=>{if(!newCat.name)return;const b=newCat.budget===""||newCat.budget==null?null:parseFloat(String(newCat.budget).replace(",","."));saveCats([...cats,{id:"c"+Date.now(),name:newCat.name,approverIds:newCat.approverIds,archived:false,budget:isNaN(b)?null:b}]);setNewCat({name:"",approverIds:["sergio","marc"],budget:""});setAddCat(false);}}>{t("action.add")}</button>
+                <button className="btn-primary" style={{flex:1,fontSize:12,padding:"6px 10px"}} onClick={()=>{if(!newCat.name)return;const approverIds=newCat.approverIds||[];if(approverIds.length<2){alert("Se requieren al menos 2 aprobadores por categoría.");return;}const b=newCat.budget===""||newCat.budget==null?null:parseFloat(String(newCat.budget).replace(",","."));saveCats([...cats,{id:"c"+Date.now(),name:newCat.name,approverIds,archived:false,budget:isNaN(b)?null:b}]);setNewCat({name:"",approverIds:defaultCategoryApproverIds(users),budget:""});setAddCat(false);}}>{t("action.add")}</button>
                 <button className="btn-secondary" style={{flex:1,fontSize:12,padding:"6px 10px"}} onClick={()=>setAddCat(false)}>{t("action.cancel")}</button>
               </div>
             </div>
@@ -4887,7 +4929,7 @@ function SettingsView(){
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA",opacity:c.archived?0.5:1}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:600}}>{c.name}{c.archived&&<span style={{fontSize:9,color:"#9CAA9F",marginLeft:5}}>[archived]</span>}</div>
-                  <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{t("settings.approversLabel")} {c.approverIds.map(id=>(users.find(u=>u.id===id)||{name:id}).name).join(", ")||t("settings.noApprovers")}</div>
+                  <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{t("settings.approversLabel")} {c.approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(", ")||t("settings.noApprovers")}</div>
                 </div>
                 <div style={{display:"flex",gap:3,flexShrink:0}}>
                   {!c.archived&&<button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setCatEdit(c.id);setCatForm({name:c.name,approverIds:[...c.approverIds],budget:c.budget!=null&&c.budget!==""?String(c.budget):""});setAddCat(false);}}>{t("action.edit")}</button>}
@@ -4909,16 +4951,20 @@ function SettingsView(){
                   ))}
                   <label className="lbl">{t("settings.monthlyBudget")}</label>
                   <input className="inp" style={{marginBottom:8,fontSize:13}} type="text" inputMode="decimal" placeholder="—" value={catForm.budget||""} onChange={e=>setCatForm(p=>({...p,budget:e.target.value}))}/>
-                  <div style={{display:"flex",gap:7,marginTop:8}}><button className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>{const b=catForm.budget===""||catForm.budget==null?null:parseFloat(String(catForm.budget).replace(",","."));saveCats(cats.map(x=>x.id===c.id?{...x,name:catForm.name,approverIds:catForm.approverIds,budget:isNaN(b)?null:b}:x));setCatEdit(null);}}>{t("action.save")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setCatEdit(null)}>{t("action.cancel")}</button></div>
+                  <div style={{display:"flex",gap:7,marginTop:8}}><button className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>{const approverIds=catForm.approverIds||[];if(approverIds.length<2){alert("Se requieren al menos 2 aprobadores por categoría.");return;}const b=catForm.budget===""||catForm.budget==null?null:parseFloat(String(catForm.budget).replace(",","."));saveCats(cats.map(x=>x.id===c.id?{...x,name:catForm.name,approverIds,budget:isNaN(b)?null:b}:x));setCatEdit(null);}}>{t("action.save")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setCatEdit(null)}>{t("action.cancel")}</button></div>
                 </div>
               )}
             </div>
           ))}
       </AccordionSection>}
 
-      {/* ── Data sync + Integrations — admin+ only ── */}
-      {/* ── Admin tools ── */}
-      {isAdm&&<AppLogViewer/>}
+      {isSA&&AUTH_URL&&<AccordionSection title={t("settings.accordion.pending")}>
+        <PendingUsersPanel/>
+      </AccordionSection>}
+
+      {isSA&&<AccordionSection title={t("settings.accordion.appLog")}>
+        <AppLogPanelBody/>
+      </AccordionSection>}
 
       {/* ── Danger zone ── */}
       <AccordionSection title={t("settings.accordion.danger")} accent={"#991B1B"}>
@@ -5012,20 +5058,6 @@ function SolanaExpenses(){
     setExpSrc("");
   },[setExpFlt,setCatFlt,setSubmFlt,setDateFrom,setDateTo,setExpSrc]);
 
-  const [globalSearch,setGlobalSearch]=useState("");
-  const [searchOpen,setSearchOpen]=useState(false);
-  const [billSearchFocusId,setBillSearchFocusId]=useState(null);
-  const consumeBillFocus=useCallback(()=>setBillSearchFocusId(null),[]);
-  const [narrowSearchUi,setNarrowSearchUi]=useState(false);
-  useEffect(()=>{
-    if(typeof window==="undefined"||!window.matchMedia)return;
-    const mq=window.matchMedia("(max-width:639px)");
-    const fn=()=>setNarrowSearchUi(mq.matches);
-    fn();
-    mq.addEventListener("change",fn);
-    return()=>mq.removeEventListener("change",fn);
-  },[]);
-
   const [form,    setForm]    =useState(()=>({...BF,ivaRate:String(readIvaDefault())}));
   const [splitOn, setSplitOn] =useState(false);
   const [splits,  setSplits]  =useState([]);
@@ -5042,6 +5074,8 @@ function SolanaExpenses(){
   const [aNote,   setANote]   =useState({});
   const [addBill, setAddBill] =useState(false);
   const [newBill, setNewBill] =useState({...BB});
+  const [newBillRecPrev,setNewBillRecPrev]=useState(null);
+  const camCaptureForBillRef=useRef(false);
   const [departments,setDepartments]=useState([]);
   const refreshDepartments=useCallback(async()=>{
     if(AUTH_URL){
@@ -5102,7 +5136,7 @@ function SolanaExpenses(){
   const savePasswords=d=>{setPasswords(d);if(!AUTH_URL)lsSet("sol-pwd",d);};
 
   /* ── HELPERS ────────────────────────────────────────────────────────────── */
-  const getUser   =id=>users.find(u=>u.id===id)||{id,name:id,color:"#999",role:"user",title:""};
+  const getUser   =id=>users.find(u=>u.id===id)||{id,name:UNKNOWN_USER_NAME,color:"#999",role:"user",title:""};
   const adminIds  =React.useMemo(()=>getAdminIds(users),[users]); // dynamic, never hardcoded
   const isAdmin   =user?.role==="admin"||user?.role==="superadmin";
   const isSA      =user?.role==="superadmin";
@@ -5278,8 +5312,9 @@ function SolanaExpenses(){
         }
         for(const bi of localBills){
           if(cancelled)return;
-          const due=(getBillFilterDateRef(bi)||billDueISOFromForm({...BB,dayOfMonth:bi.dayOfMonth||"1"})).toString().slice(0,10);
           const freq=bi.frequency||"monthly";
+          const rec=isBillRecurringFrequency(freq);
+          const due=(getBillFilterDateRef(bi)||billDueISOFromForm({...BB,dayOfMonth:bi.dayOfMonth||"1",frequency:freq})).toString().slice(0,10);
           const rule=freq==="annual"?"yearly":freq==="custom"&&String(bi.intervalMonths)==="3"?"quarterly":"monthly";
           await API.post("/bills",{
             vendor:bi.name||"Factura",
@@ -5287,7 +5322,7 @@ function SolanaExpenses(){
             category:bi.category||"Otro",
             dueDate:due,
             notes:[bi.notes,bi.description].filter(Boolean).join("\n")||undefined,
-            recurring:freq==="monthly"||freq==="annual"||freq==="custom",
+            recurring:rec,
             recurrenceRule:rule,
             departmentId:bi.departmentId||DEFAULT_DEPT_ID,
           },{skipOfflineQueue:true});
@@ -5325,14 +5360,23 @@ function SolanaExpenses(){
   };
 
   /* ── Receipt camera (capture only — no AI / server scan) ───────────────── */
-  const startCam=async()=>{
+  const openCamStream=async()=>{
     try{
       const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}}});
       setCamStr(s);
       setCamOn(true);
     }catch(e){
-      alert(t("msg.cameraUnavailable")+(e&&e.message?" ("+e.message+")":""));
+      camCaptureForBillRef.current=false;
+      alert(t("msg.cameraUnavailable")+(e&&e.message?" — "+e.message:""));
     }
+  };
+  const startCam=async()=>{
+    camCaptureForBillRef.current=false;
+    await openCamStream();
+  };
+  const startCamForNewBill=async()=>{
+    camCaptureForBillRef.current=true;
+    await openCamStream();
   };
   useEffect(()=>{
     if(camOn&&videoRef.current&&camStr){
@@ -5351,6 +5395,7 @@ function SolanaExpenses(){
     }
   },[user]);
   const stopCam=()=>{
+    camCaptureForBillRef.current=false;
     camStr?.getTracks().forEach(tr=>tr.stop());
     setCamStr(null);
     setCamOn(false);
@@ -5362,7 +5407,14 @@ function SolanaExpenses(){
     c.height=v.videoHeight||720;
     c.getContext("2d").drawImage(v,0,0);
     const url=c.toDataURL("image/jpeg",0.85);
+    const forBill=camCaptureForBillRef.current;
     stopCam();
+    if(forBill){
+      setNewBill(p=>({...p,receipt:url.split(",")[1],receiptType:"image/jpeg"}));
+      setNewBillRecPrev(url);
+      appLog("info","bill_receipt_captured",{source:"camera"});
+      return;
+    }
     setRecPrev(url);
     setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
     appLog("info","receipt_captured",{source:"camera"});
@@ -5411,7 +5463,11 @@ function SolanaExpenses(){
 
   /* ── SUBMIT EXPENSE ─────────────────────────────────────────────────────── */
   const submitExp=()=>{
-    const amount=parseMoney(form.amount);if(!form.description||!amount||amount<=0)return;
+    const amount=parseMoney(form.amount);
+    if(!amount||amount<=0){setFormError(t("msg.amountRequired"));return;}
+    if(!String(form.description||"").trim()){setFormError(t("msg.descriptionRequired"));return;}
+    if(!String(form.category||"").trim()){setFormError(t("msg.categoryRequired"));return;}
+    if(!String(form.date||"").trim()){setFormError(t("msg.expenseDateRequired"));return;}
     if(!form.departmentId){setFormError(t("msg.deptRequired"));return;}
       if(AUTH_URL){
       if(splitOn){setFormError("La división entre personas no está disponible con el servidor.");return;}
@@ -5422,11 +5478,11 @@ function SolanaExpenses(){
         const meta={clientRef};
         if(receipt?.b64)meta.pendingReceipt={b64:receipt.b64,mediaType:receipt.type||"image/jpeg"};
         try{
-          /* Autor del gasto: el servidor guarda userId desde la sesión; expenseFromApi lo expone como submittedBy. */
+          /* Server: resolveApproverIds + computeSubmittedVotes(req.userId) — si el autor está en approvalRequired, queda approved en approvalVotesJson (mismo efecto que autoApprove local). */
           const d=await API.post("/expenses",{
             amount,
             description:form.description,category:form.category,
-            date:form.date||new Date().toISOString().slice(0,10),
+            date:form.date,
             notes:form.notes||undefined,status:"submitted",
             departmentId:form.departmentId,
             approvalRequired:expApproverIdsAuth,
@@ -5469,7 +5525,7 @@ function SolanaExpenses(){
               amount,
               description:form.description,
               category:form.category,
-              date:form.date||new Date().toISOString().slice(0,10),
+              date:form.date,
               notes:form.notes||"",
               submittedBy:user.id,
               paidBy:[{userId:user.id,amount}],
@@ -5535,10 +5591,10 @@ function SolanaExpenses(){
     appLog("info","attachment_removed",{itemCode:e.itemCode,userId:user.id});
   };
   const resetForm=useCallback(()=>{
-    setForm({...BF,date:new Date().toISOString().slice(0,10),ivaRate:String(readIvaDefault()),departmentId:defaultDeptId});
+    setForm({...BF,ivaRate:String(readIvaDefault())});
     setSplitOn(false);setSplits([]);setSpMode("equal");setReceipt(null);setRecPrev(null);setFormError("");
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
-  },[defaultDeptId]);
+  },[]);
   const openNew  =()=>{resetForm();setDetailId(null);setPanel("new");setView("expenses");};
 
   /* deleteExp — removes expense with permission check and audit trail */
@@ -5694,13 +5750,29 @@ function SolanaExpenses(){
     appLog("info","expense_fix_resubmit",{itemCode:exp.itemCode,userId:user.id});
   };
   const addExpenseComment=(expId,text)=>{
-    if(AUTH_URL)return;
     const tx=(text||"").trim();
     if(!tx)return;
     const exp=expenses.find(e=>e.id===expId);
     if(!exp)return;
     const at=new Date().toISOString();
     const c={id:genUuid(),by:user.id,at:at,text:tx};
+    if(AUTH_URL){
+      void (async()=>{
+        try{
+          await API.post("/expenses/"+encodeURIComponent(expId)+"/comments",{text:tx});
+          const full=await API.get("/expenses");
+          saveExp((full.expenses||[]).map(expenseFromApi));
+        }catch(e){
+          saveExp(expenses.map(x=>x.id!==expId?x:{
+            ...x,
+            comments:[...(x.comments||[]),c],
+            seenBy:seenByAfterActor(user.id),
+            auditTrail:[...(x.auditTrail||[]),{action:"comment_added",by:user.id,at:at,note:tx}],
+          }));
+        }
+      })();
+      return;
+    }
     saveExp(expenses.map(e=>e.id!==expId?e:{
       ...e,
       comments:[...(e.comments||[]),c],
@@ -5790,62 +5862,6 @@ function SolanaExpenses(){
     setANote(p=>({...p,[itemId]:""}));
   };
 
-  const searchResults=useMemo(()=>{
-    if(globalSearch.length<2)return{expenses:[],bills:[]};
-    const q=globalSearch.toLowerCase().trim();
-    if(!q)return{expenses:[],bills:[]};
-    const matchExp=expenses.filter(e=>{
-      if(getItemStatus(e,cats,users)==="deleted")return false;
-      const subName=(users.find(u=>u.id===e.submittedBy)?.name||"").toLowerCase();
-      const code=String(e.itemCode||e.id||"").toLowerCase();
-      return (
-        (e.description||"").toLowerCase().includes(q)||
-        code.includes(q)||
-        (e.category||"").toLowerCase().includes(q)||
-        subName.includes(q)
-      );
-    }).slice(0,5);
-    const matchBill=bills.filter(b=>{
-      const subName=(users.find(u=>u.id===b.submittedBy)?.name||"").toLowerCase();
-      const code=String(b.itemCode||b.id||"").toLowerCase();
-      return (
-        (b.name||"").toLowerCase().includes(q)||
-        code.includes(q)||
-        (b.category||"").toLowerCase().includes(q)||
-        subName.includes(q)||
-        (b.description||"").toLowerCase().includes(q)
-      );
-    }).slice(0,3);
-    return{expenses:matchExp,bills:matchBill};
-  },[globalSearch,expenses,bills,users,cats]);
-
-  useEffect(()=>{
-    const onKey=e=>{
-      if((e.key!=="k"&&e.key!=="K")||!(e.metaKey||e.ctrlKey))return;
-      const el=e.target;
-      if(!el)return;
-      const tag=el.tagName||"";
-      if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return;
-      if(el.isContentEditable)return;
-      e.preventDefault();
-      setSearchOpen(true);
-    };
-    document.addEventListener("keydown",onKey);
-    return()=>document.removeEventListener("keydown",onKey);
-  },[]);
-
-  useEffect(()=>{
-    if(!searchOpen)return;
-    const onEsc=e=>{
-      if(e.key==="Escape"){
-        setSearchOpen(false);
-        setGlobalSearch("");
-      }
-    };
-    document.addEventListener("keydown",onEsc);
-    return()=>document.removeEventListener("keydown",onEsc);
-  },[searchOpen]);
-
   /* ── EARLY RETURN — after all hooks, before derived values that need user ── */
   if(!appReady)return<div style={{minHeight:"100vh",background:"#3C0A37",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{opacity:0.6}}><SolanaLogo theme="light" size="lg"/></div></div>;
   if(!user)return<LoginScreen users={users} onLogin={u=>{appLog("info","auth:login",{userId:u.id,role:u.role});setUser(u);}} passwords={passwords}/>;
@@ -5916,6 +5932,7 @@ function SolanaExpenses(){
       return s+ev;
     }
     if(getItemStatus(b,cats,users)==="approved"&&b.active){
+      if(b.frequency==="once"||b.frequency==="")return s;
       if(b.endDate&&new Date(b.endDate)<new Date())return s;
       if(b.frequency==="monthly")return s+eurForExpense(b);
       if(b.frequency==="annual")return s+(eurForExpense(b)/12);
@@ -5925,72 +5942,6 @@ function SolanaExpenses(){
   },0);
 
   const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
-  const renderGlobalSearch=()=>(
-    <div style={{position:"relative",flexShrink:0}}>
-      {searchOpen?(
-        <div style={{display:"flex",alignItems:"center",gap:4}}>
-          <input
-            autoFocus
-            className="inp"
-            style={{width:narrowSearchUi?"calc(100vw - 120px)":200,fontSize:12,padding:"5px 10px",maxWidth:"100%"}}
-            placeholder={t("search.placeholder")}
-            value={globalSearch}
-            onChange={e=>setGlobalSearch(e.target.value)}
-            onBlur={()=>setTimeout(()=>{setSearchOpen(false);setGlobalSearch("");},200)}
-          />
-        </div>
-      ):(
-        <button type="button" onClick={()=>setSearchOpen(true)}
-          style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#FAF7F2",padding:4,lineHeight:1}}
-          title="Ctrl+K / ⌘K"
-          aria-label={t("search.placeholder")}
-        >🔍</button>
-      )}
-      {searchOpen&&globalSearch.length>=2&&(
-        <div style={{
-          position:"absolute",top:"100%",right:0,marginTop:4,
-          background:"#fff",borderRadius:9,boxShadow:"0 4px 20px rgba(0,0,0,0.15)",
-          width:280,maxWidth:narrowSearchUi?"calc(100vw - 40px)":280,maxHeight:300,overflow:"auto",zIndex:9999,
-          color:"#1A0E18",textAlign:"left",
-        }}>
-          {searchResults.expenses.length===0&&searchResults.bills.length===0&&(
-            <div style={{padding:14,fontSize:12,color:"#9CAA9F"}}>{t("search.noResults")}</div>
-          )}
-          {searchResults.expenses.length>0&&(
-            <>
-              <div style={{padding:"8px 12px 4px",fontSize:8,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.06em"}}>{t("search.groupExpenses")}</div>
-              {searchResults.expenses.map(e=>(
-                <div key={"gs-exp-"+e.id} className="row-hover"
-                  style={{padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid #F5F0EA"}}
-                  onMouseDown={()=>{
-                    resetForm();
-                    go("expenses");
-                    setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);
-                  }}>
-                  <div style={{fontSize:11,fontWeight:600}}>{e.description||"—"}</div>
-                  <div style={{fontSize:9,color:"#9CAA9F"}}>{e.itemCode||e.id} · {e.category||""} · {fmt(eurForExpense(e))}</div>
-                </div>
-              ))}
-            </>
-          )}
-          {searchResults.bills.length>0&&(
-            <>
-              {searchResults.expenses.length>0&&<div style={{height:1,background:"#EDE8E0",margin:"4px 0"}}/>}
-              <div style={{padding:"8px 12px 4px",fontSize:8,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.06em"}}>{t("search.groupBills")}</div>
-              {searchResults.bills.map(b=>(
-                <div key={"gs-bill-"+b.id} className="row-hover"
-                  style={{padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid #F5F0EA"}}
-                  onMouseDown={()=>{go("bills");setBillSearchFocusId(b.id);}}>
-                  <div style={{fontSize:11,fontWeight:600}}>{b.name||"—"}</div>
-                  <div style={{fontSize:9,color:"#9CAA9F"}}>{t("search.billTag")} · {fmt(eurForExpense(b))}</div>
-                </div>
-              ))}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
   const rpOpen=view==="expenses"&&(panel==="new"||(panel==="detail"&&detailId));
   const totalBadge=(myPending.length+myPendingBills.length);
   const expenseNavBadge=expenses.filter(e=>e.submittedBy===user.id&&!(e.seenBy||[]).includes(user.id)).length;
@@ -6031,7 +5982,8 @@ function SolanaExpenses(){
     detailId,setDetailId,
     form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
     receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,
-    handleReceiptFile,calcEqual,fileRef,startCam,capturePhoto,stopCam,
+    handleReceiptFile,calcEqual,fileRef,startCam,startCamForNewBill,capturePhoto,stopCam,
+    newBillRecPrev,setNewBillRecPrev,
     submitExp,resetForm,
     aNote,setANote,approve,
     addBill,setAddBill,newBill,setNewBill,
@@ -6166,7 +6118,6 @@ function SolanaExpenses(){
           ))}
           <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
-              {renderGlobalSearch()}
               <div onClick={()=>go("settings")} title={t("login.profile")} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,cursor:"pointer",borderRadius:7,padding:"4px 6px",transition:"background 0.15s",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent"}}
                 onMouseEnter={e=>e.currentTarget.style.background="rgba(250,247,242,0.12)"}
                 onMouseLeave={e=>e.currentTarget.style.background=view==="settings"?"rgba(250,247,242,0.12)":"transparent"}>
@@ -6191,7 +6142,6 @@ function SolanaExpenses(){
           <div className="mob-only" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="light" size="sm"/></div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
-              {renderGlobalSearch()}
               <div onClick={()=>go("settings")} title={t("login.profile")} style={{cursor:"pointer",flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%"}}>
                 {user.avatar
                   ?<img src={user.avatar} alt="" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(250,247,242,0.5)"}}/>
@@ -6206,7 +6156,7 @@ function SolanaExpenses(){
               {view==="dashboard"&&<DashboardView/>}
               {view==="expenses" &&<ExpensesView/>}
               {view==="approvals"&&<ApprovalsView/>}
-              {view==="bills"    &&<BillsView focusBillId={billSearchFocusId} onFocusBillConsumed={consumeBillFocus}/>}
+              {view==="bills"    &&<BillsView/>}
               {view==="reports"  &&<ReportsView/>}
               {view==="settings" &&<SettingsView/>}
             </div>

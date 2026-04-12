@@ -6,10 +6,13 @@ alwaysApply: false
 
 # Solana — project context
 
+Repo layout: **`frontend/`** (static SPA), **`server/`** (Node API), **`docs/`** (DEPLOY + checklist).
+
 ## Frontend (`frontend/index.html`, Babel in browser)
 
+- Deployed on **Cloudflare Pages** (publish directory **`frontend/`**).
 - All **user-facing strings in Spanish**. Add keys to the existing **`TR`** object; same pattern as current translations.
-- **Do not** refactor into Vite/modules or change the build: edits stay inside the existing **`<script type="text/babel">`** block (~4k lines).
+- **Do not** refactor into Vite/modules or change the build: edits stay inside the existing **`<script type="text/babel">`** block (~6k+ lines).
 
 ## Brand (new UI)
 
@@ -23,9 +26,9 @@ alwaysApply: false
 
 ## Server / data
 
-- **Render disk**: `/opt/render/project/src/data` — SQLite DB, backups, receipts.
-- **Receipts**: `data/receipts/` on that disk; filename keyed by **expense id** (as today).
-- **`seed.js` / bootstrap endpoints**: keep working with SQLite; disaster recovery only.
+- **Render disk**: `/opt/render/project/src/data` — SQLite DB, backups; local receipts under `data/receipts/` unless **Cloudinary** env vars are set.
+- **Receipts**: Cloudinary when configured; otherwise on-disk paths keyed by **expense id**.
+- **`server/seed.js`** / bootstrap endpoints: keep working with SQLite; disaster recovery only.
 - **Errors**: Spanish, match existing phrases (`No autorizado.`, `Datos incompletos.`, `Usuario no encontrado.`, etc.).
 
 ## Security
@@ -36,9 +39,9 @@ alwaysApply: false
 
 - **localStorage** key **`solana_offline_queue`**: array of `{ method, path, body, meta?, … }`; replay **FIFO** (see existing `API.flushOfflineQueue`).
 
-## Currency
+## Money
 
-- Default **EUR**. **`amountEUR`**: for reporting; if currency is EUR then `amountEUR = amount`; if non-EUR, user enters EUR equivalent in the UI (**no** live FX API in v1).
+- **EUR only** in the product UI and primary reporting paths.
 
 ## Cursor workspace
 

@@ -9,14 +9,14 @@
  *           Set RESEND_API_KEY env variable.
  *
  * Deploy  : node server.js   (PORT env, default 3001)
- *           Runs alongside the static HTML file served by Netlify / any CDN.
+ *           Runs alongside the static SPA served by Cloudflare Pages / any CDN.
  *
  * ENV VARIABLES (required in production, see .env.example):
  *   PORT              — default 3001
  *   RESEND_API_KEY    — from resend.com
  *   FROM_EMAIL        — verified sender domain, e.g. noreply@solana.app
- *   ADMIN_EMAIL       — notification recipient, r8magoz@gmail.com
- *   APP_URL           — public URL of the app, e.g. https://solana.netlify.app
+ *   ADMIN_EMAIL       — notification recipient (admin email)
+ *   APP_URL           — public URL of the app, e.g. https://your-app.pages.dev
  *   CORS_ORIGIN       — allowed origin for the frontend
  *   TOKEN_SECRET      — random 32-byte hex string for HMAC token signing
  *
@@ -41,7 +41,7 @@ const { Resend } = require('resend');
 const PORT         = process.env.PORT         || 3001;
 const RESEND_KEY   = process.env.RESEND_API_KEY;
 const FROM_EMAIL   = process.env.FROM_EMAIL   || 'noreply@solana.app';
-const ADMIN_EMAIL  = process.env.ADMIN_EMAIL  || 'r8magoz@gmail.com';
+const ADMIN_EMAIL  = process.env.ADMIN_EMAIL  || '';
 const APP_URL      = process.env.APP_URL      || 'http://localhost:3001';
 const CORS_ORIGIN  = process.env.CORS_ORIGIN  || '*';
 const TOKEN_SECRET = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
@@ -149,7 +149,7 @@ async function sendEmail({ to, subject, html, logEvent, logData = {} }) {
 }
 
 // ── EMAIL TEMPLATES ───────────────────────────────────────────────────────────
-/** Absolute logo URL for HTML emails (same host as the static app / Netlify). */
+/** Absolute logo URL for HTML emails (same host as the static app / Cloudflare Pages). */
 function emailLogoHeaderHtml() {
   const base = String(APP_URL || '').replace(/\/+$/, '');
   if (!base) {
@@ -248,7 +248,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Trust proxy for rate-limit IP detection (Netlify, Railway, etc.)
+// Trust proxy for rate-limit IP detection (Render, Railway, etc.)
 app.set('trust proxy', 1);
 
 app.use((req, res, next) => {

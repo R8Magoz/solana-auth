@@ -1,5 +1,5 @@
 /* Solana PWA — app shell + fonts. Cross-origin API calls are not intercepted (network + app offline queue). */
-const CACHE = 'solana-shell-v3';
+const CACHE = 'solana-shell-v4';
 
 const SHELL = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
