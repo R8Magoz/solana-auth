@@ -57,9 +57,8 @@ Use **Bearer** of a normal user unless noted.
 - [ ] **DELETE** `/expenses/:id` (owner, `draft`/`submitted`/`rejected`) → deleted / soft-deleted per implementation.
 - [ ] **POST** `/expenses/:id/approve` (**admin session**: Bearer admin *or* **X-Admin-Key** per `requireAdminSession`) → `approved`.
 - [ ] **POST** `/expenses/:id/reject` (same admin auth) → `rejected`.
-- [ ] **POST** `/expenses/:id/receipt` (JSON `b64`, `mediaType` jpeg/png/webp) → `200`, `receiptPath` set.
+- [ ] **POST** `/expenses/:id/receipt` (JSON `b64`, `mediaType` jpeg/png/webp) → `200`, `receiptPath` set (or Cloudinary URL per deployment).
 - [ ] **GET** `/expenses/:id/receipt` → image bytes, correct `Content-Type`.
-- [ ] Non-EUR expense → `currency` + `amountEUR` persisted (`POST` body).
 
 ---
 
@@ -105,7 +104,7 @@ All **X-Admin-Key**.
 - [ ] Session fully invalid → user returned to login.
 - [ ] Reports → CSV export downloads.
 - [ ] Receipt scan → fields filled + image on server (`POST …/receipt` / detail thumbnail).
-- [ ] Currency selector → non-EUR + EUR equivalent path works.
+- [ ] Amounts display and save in **EUR** as expected in the UI.
 - [ ] Approvals tab → approve / reject (admin).
 - [ ] **localStorage migration** (AUTH mode): old local data uploads once, local cleared as implemented.
 - [ ] **PWA** — Add to Home Screen → standalone, icon, splash as configured in `manifest.json` / meta tags.
@@ -114,7 +113,7 @@ All **X-Admin-Key**.
 
 ## Security & hardening
 
-- [ ] **Security headers** on responses: at least `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` (see `server.js` middleware).
+- [ ] **Security headers** on responses: at least `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` (see `server/server.js` middleware).
 - [ ] **Rate limits** trigger after thresholds (signup, login, forgot-password, scan, expenses, bills, reports, receipt upload, backup) — expect `429` or JSON error with limit message.
 - [ ] **IDOR**: cannot **GET/PUT/DELETE** another user’s expense/bill by guessing `id` (403/404 as implemented).
 - [ ] **Seed / bootstrap**: **`ALLOW_SEED` not `true` in production** → `POST /admin/seed/bootstrap` (and related seed routes) → `403` disabled. When enabled in dev: also requires **`X-Admin-Key`** + **`X-Bootstrap-Secret`** matching `BOOTSTRAP_SECRET`.
@@ -140,4 +139,4 @@ curl -sS "$BASE/admin/users/pending" -H "X-Admin-Key: $ADMIN_KEY" | jq .
 
 ---
 
-*Generated to match `server/server.js`, `expensesRoutes.js`, `billsRoutes.js`, `reportsRoutes.js`, `billJobs.js` as of the repo revision that added this file.*
+*Targets `server/server.js`, route modules under `server/`, and `frontend/index.html`.*
