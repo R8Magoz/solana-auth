@@ -105,7 +105,14 @@ function addColumnIfMissing(table, column, colDef) {
 addColumnIfMissing('expenses', 'departmentId', 'TEXT');
 addColumnIfMissing('expenses', 'approversJson', 'TEXT');
 addColumnIfMissing('expenses', 'approvalVotesJson', 'TEXT');
+addColumnIfMissing('expenses', 'paidByJson', 'TEXT');
+addColumnIfMissing('expenses', 'splitMode', 'TEXT');
+addColumnIfMissing('expenses', 'ivaRate', 'REAL');
+addColumnIfMissing('expenses', 'ivaAmount', 'REAL');
+addColumnIfMissing('expenses', 'commentsJson', 'TEXT');
 addColumnIfMissing('bills', 'departmentId', 'TEXT');
+addColumnIfMissing('bills', 'receiptPath', 'TEXT');
+addColumnIfMissing('users', 'avatar', 'TEXT');
 
 const _deptCount = db.prepare('SELECT COUNT(*) AS c FROM departments').get();
 if (_deptCount.c === 0) {
@@ -113,9 +120,9 @@ if (_deptCount.c === 0) {
   const ins = db.prepare(
     'INSERT INTO departments (id, name, budget, createdAt) VALUES (?, ?, ?, ?)',
   );
-  ins.run('dept_estrategia', 'Estrategia', 0, now);
-  ins.run('dept_operaciones', 'Operaciones', 0, now);
-  ins.run('dept_branding', 'Branding', 0, now);
+  ins.run('dept_branding', 'Branding', 10000, now);
+  ins.run('dept_estrategia', 'Estrategia', 5000, now);
+  ins.run('dept_operaciones', 'Operaciones', 3000, now);
 }
 
 module.exports = db;

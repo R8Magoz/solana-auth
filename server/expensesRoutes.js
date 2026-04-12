@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('./db');
-const cloudinary = require('cloudinary').v2;
+const receiptStorage = require('./receiptStorage');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
@@ -26,6 +26,23 @@ function parseJsonObject(str) {
   } catch {
     return {};
   }
+}
+
+/** Total TTC (EUR) and optional client IVA fields → stored ivaRate / ivaAmount */
+function ivaFromBody(body, totalEur) {
+  if (!body || body.ivaRate == null) return { ivaRate: null, ivaAmount: null };
+  const rate = Number(body.ivaRate);
+  if (!Number.isFinite(rate) || rate < 0 || rate > 100) return { error: 'ivaRate inválido.' };
+  if (rate === 0) return { ivaRate: 0, ivaAmount: 0 };
+  let ivaAmt = body.ivaAmount != null ? Number(body.ivaAmount) : null;
+  if (ivaAmt != null && (!Number.isFinite(ivaAmt) || ivaAmt < 0)) return { error: 'ivaAmount inválido.' };
+  const tot = Number(totalEur);
+  if (ivaAmt == null) {
+    if (!Number.isFinite(tot) || tot <= 0) return { ivaRate: rate, ivaAmount: 0 };
+    const r = rate / 100;
+    ivaAmt = Math.round((tot / (1 + r)) * r * 100) / 100;
+  }
+  return { ivaRate: rate, ivaAmount: Math.round(ivaAmt * 100) / 100 };
 }
 
 /** @param {any} body */
@@ -59,6 +76,113 @@ function computeSubmittedVotes(submitterId, approverIds) {
   if (approverIds.includes(submitterId)) votes[submitterId] = 'approved';
   const allDone = approverIds.length > 0 && approverIds.every((id) => votes[id] === 'approved');
   return { votes, allDone };
+}
+
+/**
+ * Resolve client tokens to DB user ids — no hardcoded roster.
+ * Accepts real user ids (e.g. u_…) or full email when the client sends an email string.
+ */
+function resolveApproverTokenToUserId(token, userStore) {
+  const t = String(token || '').trim();
+  if (!t) return t;
+  const byId = userStore.findUserById(t);
+  if (byId) return byId.id;
+  if (t.includes('@')) {
+    const u = userStore.findUserByEmail(t.toLowerCase().slice(0, 254));
+    if (u) return u.id;
+  }
+  return t;
+}
+
+function canonicalizeApproverIds(approverIds, userStore) {
+  const seen = new Set();
+  const out = [];
+  for (const x of approverIds || []) {
+    const c = resolveApproverTokenToUserId(x, userStore);
+    if (c && !seen.has(c)) {
+      seen.add(c);
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+function remapVotesWithCanonicalKeys(votesRaw, userStore) {
+  const out = {};
+  if (!votesRaw || typeof votesRaw !== 'object') return out;
+  for (const [k, v] of Object.entries(votesRaw)) {
+    if (v !== 'approved' && v !== 'rejected') continue;
+    const cid = resolveApproverTokenToUserId(k, userStore);
+    out[cid] = v;
+  }
+  return out;
+}
+
+function userIdInRawApproverList(approverTokens, userId, userStore) {
+  const uid = String(userId || '');
+  for (const tok of approverTokens || []) {
+    if (resolveApproverTokenToUserId(tok, userStore) === uid) return true;
+  }
+  return false;
+}
+
+/**
+ * Validate client paidBy[] against total EUR; resolve legacy user tokens; require submitter in list.
+ * @returns {{ paidBy: Array<{userId:string,amount:number,pct?:number}>, splitMode: string|null }|{ error: string }}
+ */
+function normalizePaidByFromBody(body, submitterId, totalEur, userStore) {
+  const total = Number(totalEur);
+  if (!Number.isFinite(total) || total <= 0) return { error: 'Importe total inválido para el reparto.' };
+  const raw = body && body.paidBy;
+  const submit = String(submitterId || '').trim();
+
+  if (raw == null) {
+    return {
+      paidBy: [{ userId: submit, amount: Math.round(total * 100) / 100, pct: 100 }],
+      splitMode: null,
+    };
+  }
+  if (!Array.isArray(raw)) return { error: 'paidBy debe ser un array.' };
+  if (raw.length < 1 || raw.length > 30) return { error: 'paidBy: entre 1 y 30 participantes.' };
+
+  const rows = [];
+  const seen = new Set();
+  let sum = 0;
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') return { error: 'paidBy: entrada inválida.' };
+    let uid = String(row.userId || '').trim().slice(0, 128);
+    if (!uid) return { error: 'paidBy: falta userId.' };
+    uid = resolveApproverTokenToUserId(uid, userStore);
+    const u = userStore.findUserById(uid);
+    if (!u) return { error: 'Usuario del reparto no encontrado.' };
+    if (seen.has(u.id)) return { error: 'paidBy: participante duplicado.' };
+    seen.add(u.id);
+    const rowAmt = Number(row.amount);
+    if (!Number.isFinite(rowAmt) || rowAmt < 0) return { error: 'paidBy: importe inválido.' };
+    const amtRounded = Math.round(rowAmt * 100) / 100;
+    const out = { userId: u.id, amount: amtRounded };
+    if (typeof row.pct === 'number' && Number.isFinite(row.pct)) {
+      out.pct = Math.round(row.pct * 10000) / 10000;
+    }
+    rows.push(out);
+    sum += amtRounded;
+  }
+
+  if (Math.abs(sum - total) > 0.02) {
+    return { error: 'Los importes del reparto deben sumar el total del gasto.' };
+  }
+  if (!rows.some((r) => r.userId === submit)) {
+    return { error: 'Quien envía el gasto debe participar en el reparto.' };
+  }
+
+  let splitMode = null;
+  if (rows.length > 1) {
+    const sm = body && body.splitMode;
+    if (sm === 'equal' || sm === 'percentage' || sm === 'amount') splitMode = sm;
+    else splitMode = 'equal';
+  }
+
+  return { paidBy: rows, splitMode };
 }
 
 function isAdminRole(role) {
@@ -137,116 +261,19 @@ const insertExp = db.prepare(`
   INSERT INTO expenses (
     id, userId, amount, currency, amountEUR, description, category, date, status,
     approvedBy, approvedAt, rejectedBy, rejectedAt, rejectionNote, receiptPath, notes, createdAt, updatedAt, departmentId,
-    approversJson, approvalVotesJson
+    approversJson, approvalVotesJson, paidByJson, splitMode,
+    ivaRate, ivaAmount, commentsJson
   ) VALUES (
     @id, @userId, @amount, @currency, @amountEUR, @description, @category, @date, @status,
     @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt, @departmentId,
-    @approversJson, @approvalVotesJson
+    @approversJson, @approvalVotesJson, @paidByJson, @splitMode,
+    @ivaRate, @ivaAmount, @commentsJson
   )
 `);
 
-function mimeToExt(mime) {
-  const m = (mime || '').toLowerCase();
-  if (m === 'image/jpeg' || m === 'image/jpg') return 'jpg';
-  if (m === 'image/png') return 'png';
-  if (m === 'image/webp') return 'webp';
-  if (m === 'image/gif') return 'gif';
-  if (m === 'image/tiff' || m === 'image/tif' || m === 'image/x-tiff') return 'tiff';
-  if (m === 'image/heic' || m === 'image/heif') return 'heic';
-  if (m === 'application/pdf') return 'pdf';
-  return null;
-}
-
-function cloudinaryEnvOk() {
-  return !!(
-    process.env.CLOUDINARY_CLOUD_NAME
-    && process.env.CLOUDINARY_API_KEY
-    && process.env.CLOUDINARY_API_SECRET
-  );
-}
-
-let cloudinaryConfigured = false;
-function ensureCloudinary() {
-  if (cloudinaryConfigured) return true;
-  if (!cloudinaryEnvOk()) return false;
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-    secure: true,
-  });
-  cloudinaryConfigured = true;
-  return true;
-}
-
-/** Extract Cloudinary public_id (with folder) from a delivery URL for destroy(). */
-function cloudinaryPublicIdFromUrl(url) {
-  try {
-    const u = new URL(url);
-    const marker = '/upload/';
-    const idx = u.pathname.indexOf(marker);
-    if (idx === -1) return null;
-    let tail = u.pathname.slice(idx + marker.length);
-    tail = tail.replace(/^v\d+\//, '');
-    return tail.replace(/\.[^/.]+$/, '') || null;
-  } catch {
-    return null;
-  }
-}
-
-function isRemoteReceiptPath(p) {
-  return typeof p === 'string' && /^https?:\/\//i.test(p);
-}
-
-function uploadReceiptToCloudinary(buf, mime, expenseId) {
-  const dataUri = `data:${mime};base64,${buf.toString('base64')}`;
-  const folder = (process.env.CLOUDINARY_RECEIPTS_FOLDER || 'solana-receipts').replace(/^\/+|\/+$/g, '');
-  const publicId = String(expenseId).replace(/[^a-zA-Z0-9_-]/g, '_');
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload(
-      dataUri,
-      {
-        folder,
-        public_id: publicId,
-        overwrite: true,
-        resource_type: 'image',
-        unique_filename: false,
-        use_filename: false,
-      },
-      (err, result) => {
-        if (err) reject(err);
-        else resolve(result);
-      },
-    );
-  });
-}
-
-function destroyCloudinaryPublicId(publicId) {
-  return new Promise((resolve) => {
-    cloudinary.uploader.destroy(publicId, (err, result) => {
-      if (err) console.warn('[receipt] cloudinary destroy:', err.message || err);
-      resolve(result);
-    });
-  });
-}
-
-async function removeReceiptAsset(receiptPath, DATA_DIR) {
-  if (!receiptPath) return;
-  if (isRemoteReceiptPath(receiptPath)) {
-    if (!ensureCloudinary()) return;
-    const pid = cloudinaryPublicIdFromUrl(receiptPath);
-    if (pid) await destroyCloudinaryPublicId(pid);
-    return;
-  }
-  const abs = path.join(DATA_DIR, receiptPath);
-  try {
-    if (fs.existsSync(abs)) fs.unlinkSync(abs);
-  } catch (_) { /* ignore */ }
-}
-
-function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DIR, receiptUploadLimiter }) {
+function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DIR, receiptUploadLimiter, userStore }) {
+  if (!userStore) throw new Error('createExpensesRouter: userStore is required');
   const router = express.Router();
-  const RECEIPTS_DIR = path.join(DATA_DIR, 'receipts');
   const receiptLimit = receiptUploadLimiter || ((req, res, next) => next());
 
   router.use(requireAuth);
@@ -293,7 +320,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     let eur = amountEUR != null && typeof amountEUR === 'number' ? amountEUR : null;
     if (cur === 'EUR') eur = amount;
 
-    const approverIds = resolveApproverIdsForCreate(req.body);
+    let approverIds = resolveApproverIdsForCreate(req.body);
+    approverIds = canonicalizeApproverIds(approverIds, userStore);
     let finalStatus = st;
     let approvedByVal = null;
     let approvedAtVal = null;
@@ -307,6 +335,13 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         approvedAtVal = now;
       }
     }
+
+    const totalForSplit = eur != null && Number.isFinite(eur) ? eur : amount;
+    const paidNorm = normalizePaidByFromBody(req.body, req.userId, totalForSplit, userStore);
+    if (paidNorm.error) return res.status(400).json({ error: paidNorm.error });
+
+    const ivaParsed = ivaFromBody(req.body, totalForSplit);
+    if (ivaParsed.error) return res.status(400).json({ error: ivaParsed.error });
 
     insertExp.run({
       id,
@@ -330,11 +365,49 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       departmentId: dept.id,
       approversJson: JSON.stringify(approverIds),
       approvalVotesJson: JSON.stringify(votesObj),
+      paidByJson: JSON.stringify(paidNorm.paidBy),
+      splitMode: paidNorm.splitMode != null ? paidNorm.splitMode : null,
+      ivaRate: ivaParsed.ivaRate,
+      ivaAmount: ivaParsed.ivaAmount,
+      commentsJson: '[]',
     });
 
     const expense = getExpenseById(id);
     audit('expense_created', { userId: req.userId, targetId: id, amount, currency: cur, status: finalStatus });
     res.json({ ok: true, expense });
+  });
+
+  router.post('/:id/comments', (req, res) => {
+    const exp = getExpenseById(req.params.id);
+    if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
+    if (!canAccessExpense(req, exp)) {
+      return res.status(403).json({ error: 'No autorizado.' });
+    }
+    if (exp.status === 'deleted') {
+      return res.status(400).json({ error: 'Gasto eliminado.' });
+    }
+    const textRaw = req.body && req.body.text;
+    const text = typeof textRaw === 'string' ? textRaw.trim().slice(0, 4000) : '';
+    if (!text) {
+      return res.status(400).json({ error: 'text requerido.' });
+    }
+    const list = parseJsonArray(exp.commentsJson);
+    const entry = {
+      id: `cmt_${crypto.randomBytes(8).toString('hex')}`,
+      userId: req.userId,
+      text,
+      createdAt: Date.now(),
+    };
+    list.push(entry);
+    const now = Date.now();
+    db.prepare('UPDATE expenses SET commentsJson = ?, updatedAt = ? WHERE id = ?').run(
+      JSON.stringify(list),
+      now,
+      exp.id,
+    );
+    const updated = getExpenseById(exp.id);
+    audit('expense_comment_added', { userId: req.userId, targetId: exp.id });
+    res.json({ ok: true, expense: updated });
   });
 
   router.put('/:id', (req, res) => {
@@ -386,6 +459,35 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       : exp.notes;
     const nextStatus = status !== undefined ? String(status).trim().slice(0, 32) : exp.status;
 
+    const curExpCur = String(exp.currency || 'EUR').toUpperCase();
+    const totalForIva = curExpCur === 'EUR'
+      ? nextAmount
+      : (exp.amountEUR != null && Number.isFinite(Number(exp.amountEUR)) ? Number(exp.amountEUR) : nextAmount);
+
+    let nextIvaRate = exp.ivaRate != null && exp.ivaRate !== '' ? Number(exp.ivaRate) : null;
+    let nextIvaAmount = exp.ivaAmount != null && exp.ivaAmount !== '' ? Number(exp.ivaAmount) : null;
+    if (Number.isNaN(nextIvaRate)) nextIvaRate = null;
+    if (Number.isNaN(nextIvaAmount)) nextIvaAmount = null;
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'ivaRate')) {
+      const iv = ivaFromBody(req.body, totalForIva);
+      if (iv.error) return res.status(400).json({ error: iv.error });
+      nextIvaRate = iv.ivaRate;
+      nextIvaAmount = iv.ivaAmount;
+    }
+
+    let nextPaidByJson = exp.paidByJson ?? null;
+    let nextSplitMode = exp.splitMode ?? null;
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'paidBy')) {
+      const curExp = String(exp.currency || 'EUR').toUpperCase();
+      const totalForSplit = curExp === 'EUR'
+        ? nextAmount
+        : (exp.amountEUR != null && Number.isFinite(Number(exp.amountEUR)) ? Number(exp.amountEUR) : nextAmount);
+      const pn = normalizePaidByFromBody(req.body, exp.userId, totalForSplit, userStore);
+      if (pn.error) return res.status(400).json({ error: pn.error });
+      nextPaidByJson = JSON.stringify(pn.paidBy);
+      nextSplitMode = pn.splitMode;
+    }
+
     let finalStatus = nextStatus;
     let nextApproversJson = exp.approversJson ?? null;
     let nextVotesJson = exp.approvalVotesJson ?? null;
@@ -402,6 +504,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       const bodyList = normalizeApprovalRequiredFromBody(req.body);
       let approverIds = bodyList.length > 0 ? bodyList : parseJsonArray(exp.approversJson);
       if (approverIds.length === 0) approverIds = defaultApproverIdsFromDb();
+      approverIds = canonicalizeApproverIds(approverIds, userStore);
       const { votes, allDone } = computeSubmittedVotes(exp.userId, approverIds);
       nextApproversJson = JSON.stringify(approverIds);
       nextVotesJson = JSON.stringify(votes);
@@ -422,6 +525,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       UPDATE expenses SET
         amount = ?, description = ?, category = ?, date = ?, notes = ?, status = ?, departmentId = ?,
         approversJson = ?, approvalVotesJson = ?,
+        paidByJson = ?, splitMode = ?,
+        ivaRate = ?, ivaAmount = ?,
         approvedBy = ?, approvedAt = ?,
         rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
         updatedAt = ?
@@ -429,6 +534,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     `).run(
       nextAmount, nextDesc, nextCat, nextDate, nextNotes, finalStatus, nextDeptId,
       nextApproversJson, nextVotesJson,
+      nextPaidByJson, nextSplitMode,
+      nextIvaRate, nextIvaAmount,
       nextApprovedBy, nextApprovedAt,
       nextRejectedBy, nextRejectedAt, nextRejectionNote,
       now, exp.id,
@@ -462,7 +569,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const now = Date.now();
     db.prepare(`UPDATE expenses SET status = 'deleted', updatedAt = ? WHERE id = ?`).run(now, exp.id);
     try {
-      await removeReceiptAsset(exp.receiptPath, DATA_DIR);
+      await receiptStorage.removeReceiptAsset(exp.receiptPath, DATA_DIR);
     } catch (e) {
       console.warn('[receipt] remove on expense delete:', e.message);
     }
@@ -470,15 +577,18 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     res.json({ ok: true });
   });
 
-  router.post('/:id/approve', requireAdminSession, (req, res) => {
+  router.post('/:id/approve', requireAuth, (req, res) => {
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
     const now = Date.now();
     const adminId = req.userId || null;
-    const approvers = parseJsonArray(exp.approversJson);
+    const approversRaw = parseJsonArray(exp.approversJson);
 
-    if (approvers.length === 0) {
+    if (approversRaw.length === 0) {
+      if (!isAdminRole(req.userRole)) {
+        return res.status(403).json({ error: 'Solo administradores pueden aprobar este gasto.' });
+      }
       db.prepare(`
         UPDATE expenses SET
           status = 'approved',
@@ -496,29 +606,31 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (exp.status !== 'submitted') {
       return res.status(400).json({ error: 'El gasto no está pendiente de aprobación.' });
     }
-    if (!approvers.includes(adminId)) {
+    if (!userIdInRawApproverList(approversRaw, adminId, userStore)) {
       return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
     }
 
-    const votes = parseJsonObject(exp.approvalVotesJson);
+    const approversCanon = canonicalizeApproverIds(approversRaw, userStore);
+    const votes = remapVotesWithCanonicalKeys(parseJsonObject(exp.approvalVotesJson), userStore);
     votes[adminId] = 'approved';
-    const allDone = approvers.every((id) => votes[id] === 'approved');
+    const allDone = approversCanon.length > 0 && approversCanon.every((id) => votes[id] === 'approved');
 
     if (allDone) {
       db.prepare(`
         UPDATE expenses SET
           status = 'approved',
+          approversJson = ?,
           approvalVotesJson = ?,
           approvedBy = ?, approvedAt = ?,
           rejectedBy = NULL, rejectedAt = NULL, rejectionNote = NULL,
           updatedAt = ?
         WHERE id = ?
-      `).run(JSON.stringify(votes), adminId, now, now, exp.id);
+      `).run(JSON.stringify(approversCanon), JSON.stringify(votes), adminId, now, now, exp.id);
     } else {
       db.prepare(`
-        UPDATE expenses SET approvalVotesJson = ?, updatedAt = ?
+        UPDATE expenses SET approversJson = ?, approvalVotesJson = ?, updatedAt = ?
         WHERE id = ?
-      `).run(JSON.stringify(votes), now, exp.id);
+      `).run(JSON.stringify(approversCanon), JSON.stringify(votes), now, exp.id);
     }
     const updated = getExpenseById(exp.id);
     const approveNote = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : undefined;
@@ -526,22 +638,24 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     res.json({ ok: true, expense: updated });
   });
 
-  router.post('/:id/reject', requireAdminSession, (req, res) => {
+  router.post('/:id/reject', requireAuth, (req, res) => {
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
     const now = Date.now();
     const adminId = req.userId || null;
     const note = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : null;
-    const approvers = parseJsonArray(exp.approversJson);
+    const approversRaw = parseJsonArray(exp.approversJson);
 
-    if (approvers.length > 0) {
+    if (approversRaw.length > 0) {
       if (exp.status !== 'submitted') {
         return res.status(400).json({ error: 'El gasto no está pendiente de aprobación.' });
       }
-      if (!approvers.includes(adminId)) {
+      if (!userIdInRawApproverList(approversRaw, adminId, userStore)) {
         return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
       }
+    } else if (!isAdminRole(req.userRole)) {
+      return res.status(403).json({ error: 'No autorizado.' });
     }
 
     db.prepare(`
@@ -570,55 +684,26 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     const { b64, mediaType } = req.body || {};
-    if (!b64 || typeof b64 !== 'string') {
-      return res.status(400).json({ error: 'Falta b64.' });
-    }
-    if (b64.length > 8_400_000) {
-      return res.status(413).json({ error: 'Archivo demasiado grande (máx. 6 MB).' });
-    }
-    const mime = String(mediaType || 'image/jpeg').trim().toLowerCase().slice(0, 128);
-    const ext = mimeToExt(mime);
-    if (!ext) return res.status(400).json({ error: `Tipo no soportado: ${mime}` });
-
-    let buf;
     try {
-      buf = Buffer.from(b64, 'base64');
-    } catch {
-      return res.status(400).json({ error: 'Base64 inválido.' });
-    }
-    if (buf.length > 6 * 1024 * 1024) {
-      return res.status(413).json({ error: 'Archivo demasiado grande (máx. 6 MB).' });
-    }
-
-    if (ensureCloudinary()) {
-      try {
-        await removeReceiptAsset(exp.receiptPath, DATA_DIR);
-        const result = await uploadReceiptToCloudinary(buf, mime, exp.id);
-        const secureUrl = result.secure_url;
-        const now = Date.now();
-        db.prepare(`UPDATE expenses SET receiptPath = ?, updatedAt = ? WHERE id = ?`).run(secureUrl, now, exp.id);
-        audit('expense_receipt_uploaded', { userId: req.userId, targetId: exp.id, receiptPath: secureUrl });
-        return res.json({ ok: true, receiptPath: secureUrl });
-      } catch (e) {
-        console.error('[receipt] cloudinary upload', e.message || e);
-        return res.status(500).json({ error: 'No se pudo guardar el recibo en el almacenamiento.' });
+      await receiptStorage.removeReceiptAsset(exp.receiptPath, DATA_DIR);
+      const { receiptPath } = await receiptStorage.saveReceiptB64ToStorage({
+        b64,
+        mediaType,
+        entityId: exp.id,
+        DATA_DIR,
+      });
+      const now = Date.now();
+      db.prepare(`UPDATE expenses SET receiptPath = ?, updatedAt = ? WHERE id = ?`).run(receiptPath, now, exp.id);
+      audit('expense_receipt_uploaded', { userId: req.userId, targetId: exp.id, receiptPath });
+      return res.json({ ok: true, receiptPath });
+    } catch (e) {
+      const code = e.statusCode || 500;
+      if (code >= 400 && code < 500) {
+        return res.status(code).json({ error: e.message || 'Solicitud inválida.' });
       }
+      console.error('[receipt] upload', e.message || e);
+      return res.status(500).json({ error: 'No se pudo guardar el recibo.' });
     }
-
-    if (!fs.existsSync(RECEIPTS_DIR)) fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
-
-    const rel = path.join('receipts', `${exp.id}.${ext}`).replace(/\\/g, '/');
-    const abs = path.join(DATA_DIR, 'receipts', `${exp.id}.${ext}`);
-
-    if (exp.receiptPath && exp.receiptPath !== rel) {
-      await removeReceiptAsset(exp.receiptPath, DATA_DIR);
-    }
-
-    fs.writeFileSync(abs, buf);
-    const now = Date.now();
-    db.prepare(`UPDATE expenses SET receiptPath = ?, updatedAt = ? WHERE id = ?`).run(rel, now, exp.id);
-    audit('expense_receipt_uploaded', { userId: req.userId, targetId: exp.id, receiptPath: rel });
-    res.json({ ok: true, receiptPath: rel });
   });
 
   router.get('/:id/receipt', async (req, res) => {
@@ -631,7 +716,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       return res.status(404).json({ error: 'Sin recibo.' });
     }
 
-    if (isRemoteReceiptPath(exp.receiptPath)) {
+    if (receiptStorage.isRemoteReceiptPath(exp.receiptPath)) {
       try {
         const r = await fetch(exp.receiptPath);
         if (!r.ok) return res.status(502).json({ error: 'No se pudo cargar el recibo.' });

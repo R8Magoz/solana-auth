@@ -1,8 +1,11 @@
 'use strict';
 
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 const db = require('./db');
+const receiptStorage = require('./receiptStorage');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
@@ -23,6 +26,21 @@ function canAccessBill(req, bill) {
   if (!bill) return false;
   if (isAdminRole(req.userRole)) return true;
   return bill.userId === req.userId;
+}
+
+/** Body.paidAt: YYYY-MM-DD, ISO string, or epoch ms — default fallbackMs */
+function parsePaidAtFromBody(body, fallbackMs) {
+  const raw = body && body.paidAt;
+  if (raw == null || raw === '') return fallbackMs;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.round(raw);
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(`${s}T12:00:00.000Z`);
+    if (!Number.isNaN(d.getTime())) return d.getTime();
+  }
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.getTime();
+  return fallbackMs;
 }
 
 function departmentIdFromBody(body, required) {
@@ -77,15 +95,17 @@ function listBills(req) {
 const insertBill = db.prepare(`
   INSERT INTO bills (
     id, userId, vendor, amount, currency, amountEUR, category, dueDate, status,
-    recurring, recurrenceRule, paidAt, paidBy, notes, createdAt, updatedAt, departmentId
+    recurring, recurrenceRule, paidAt, paidBy, notes, createdAt, updatedAt, departmentId, receiptPath
   ) VALUES (
     @id, @userId, @vendor, @amount, @currency, @amountEUR, @category, @dueDate, @status,
-    @recurring, @recurrenceRule, @paidAt, @paidBy, @notes, @createdAt, @updatedAt, @departmentId
+    @recurring, @recurrenceRule, @paidAt, @paidBy, @notes, @createdAt, @updatedAt, @departmentId, @receiptPath
   )
 `);
 
-function createBillsRouter({ audit, requireAuth }) {
+function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter }) {
   const router = express.Router();
+  const receiptLimit = receiptUploadLimiter || ((req, res, next) => next());
+  const receiptJson = express.json({ limit: '8mb' });
   router.use(requireAuth);
 
   router.get('/', (req, res) => {
@@ -141,6 +161,16 @@ function createBillsRouter({ audit, requireAuth }) {
     const now = Date.now();
     const id = 'bill_' + crypto.randomBytes(8).toString('hex');
 
+    const wantPaid = req.body && (req.body.alreadyPaid === true || req.body.paymentState === 'paid');
+    let billStatus = 'pending';
+    let paidAtVal = null;
+    let paidByVal = null;
+    if (wantPaid && !rec) {
+      billStatus = 'paid';
+      paidAtVal = parsePaidAtFromBody(req.body, now);
+      paidByVal = req.userId;
+    }
+
     insertBill.run({
       id,
       userId: req.userId,
@@ -150,15 +180,16 @@ function createBillsRouter({ audit, requireAuth }) {
       amountEUR: eur,
       category: categoryStr,
       dueDate: dueStr,
-      status: 'pending',
+      status: billStatus,
       recurring: rec ? 1 : 0,
       recurrenceRule: rule,
-      paidAt: null,
-      paidBy: null,
+      paidAt: paidAtVal,
+      paidBy: paidByVal,
       notes: notes != null ? String(notes).trim().slice(0, 4000) : null,
       createdAt: now,
       updatedAt: now,
       departmentId: dept.id,
+      receiptPath: null,
     });
 
     const bill = getBillById(id);
@@ -247,13 +278,87 @@ function createBillsRouter({ audit, requireAuth }) {
     res.json({ ok: true, bill: updated });
   });
 
-  router.delete('/:id', (req, res) => {
+  router.post('/:id/receipt', receiptLimit, receiptJson, async (req, res) => {
+    if (!DATA_DIR) {
+      return res.status(500).json({ error: 'Servidor sin directorio de datos.' });
+    }
+    const bill = getBillById(req.params.id);
+    if (!bill) return res.status(404).json({ error: 'Factura no encontrada.' });
+    if (!canAccessBill(req, bill)) {
+      return res.status(403).json({ error: 'No autorizado.' });
+    }
+    const { b64, mediaType } = req.body || {};
+    try {
+      await receiptStorage.removeReceiptAsset(bill.receiptPath, DATA_DIR);
+      const { receiptPath } = await receiptStorage.saveReceiptB64ToStorage({
+        b64,
+        mediaType,
+        entityId: bill.id,
+        DATA_DIR,
+      });
+      const now = Date.now();
+      db.prepare('UPDATE bills SET receiptPath = ?, updatedAt = ? WHERE id = ?').run(receiptPath, now, bill.id);
+      audit('bill_receipt_uploaded', { userId: req.userId, targetId: bill.id, receiptPath });
+      return res.json({ ok: true, receiptPath });
+    } catch (e) {
+      const code = e.statusCode || 500;
+      if (code >= 400 && code < 500) {
+        return res.status(code).json({ error: e.message || 'Solicitud inválida.' });
+      }
+      console.error('[bill receipt] upload', e.message || e);
+      return res.status(500).json({ error: 'No se pudo guardar el recibo.' });
+    }
+  });
+
+  router.get('/:id/receipt', async (req, res) => {
+    if (!DATA_DIR) {
+      return res.status(500).json({ error: 'Servidor sin directorio de datos.' });
+    }
+    const bill = getBillById(req.params.id);
+    if (!bill) return res.status(404).json({ error: 'Factura no encontrada.' });
+    if (!canAccessBill(req, bill)) {
+      return res.status(403).json({ error: 'No autorizado.' });
+    }
+    if (!bill.receiptPath) {
+      return res.status(404).json({ error: 'Sin recibo.' });
+    }
+    if (receiptStorage.isRemoteReceiptPath(bill.receiptPath)) {
+      try {
+        const r = await fetch(bill.receiptPath);
+        if (!r.ok) return res.status(502).json({ error: 'No se pudo cargar el recibo.' });
+        const ct = (r.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+        res.setHeader('Content-Type', ct);
+        res.send(Buffer.from(await r.arrayBuffer()));
+      } catch (e) {
+        console.error('[bill receipt] proxy', e.message || e);
+        return res.status(502).json({ error: 'No se pudo cargar el recibo.' });
+      }
+      return;
+    }
+    const abs = path.join(DATA_DIR, bill.receiptPath);
+    if (!fs.existsSync(abs)) {
+      return res.status(404).json({ error: 'Archivo no encontrado.' });
+    }
+    const ext = path.extname(abs).toLowerCase();
+    const type = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.pdf' ? 'application/pdf' : 'image/jpeg';
+    res.setHeader('Content-Type', type);
+    res.sendFile(path.resolve(abs));
+  });
+
+  router.delete('/:id', async (req, res) => {
     const bill = getBillById(req.params.id);
     if (!bill) return res.status(404).json({ error: 'Factura no encontrada.' });
     if (!canAccessBill(req, bill)) {
       return res.status(403).json({ error: 'No autorizado.' });
     }
     const prev = { ...bill };
+    if (DATA_DIR) {
+      try {
+        await receiptStorage.removeReceiptAsset(bill.receiptPath, DATA_DIR);
+      } catch (e) {
+        console.warn('[bill receipt] remove on delete:', e.message);
+      }
+    }
     db.prepare('DELETE FROM bills WHERE id = ?').run(bill.id);
     audit('bill_deleted', { userId: req.userId, targetId: bill.id, previous: prev });
     res.json({ ok: true });
@@ -269,10 +374,11 @@ function createBillsRouter({ audit, requireAuth }) {
       return res.status(400).json({ error: 'Factura cancelada.' });
     }
     const now = Date.now();
+    const paidMs = parsePaidAtFromBody(req.body, now);
     db.prepare(`
       UPDATE bills SET status = 'paid', paidAt = ?, paidBy = ?, updatedAt = ?
       WHERE id = ?
-    `).run(now, req.userId, now, bill.id);
+    `).run(paidMs, req.userId, now, bill.id);
     const updated = getBillById(bill.id);
     audit('bill_marked_paid', { userId: req.userId, targetId: bill.id });
     res.json({ ok: true, bill: updated });
