@@ -10,6 +10,57 @@ const cloudinary = require('cloudinary').v2;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
 
+function parseJsonArray(str) {
+  try {
+    const x = JSON.parse(str || 'null');
+    return Array.isArray(x) ? x : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonObject(str) {
+  try {
+    const x = JSON.parse(str || 'null');
+    return x && typeof x === 'object' && !Array.isArray(x) ? x : {};
+  } catch {
+    return {};
+  }
+}
+
+/** @param {any} body */
+function normalizeApprovalRequiredFromBody(body) {
+  const raw = body && body.approvalRequired;
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const x of raw) {
+    const id = String(x).trim().slice(0, 128);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+
+function defaultApproverIdsFromDb() {
+  return db.prepare("SELECT id FROM users WHERE role IN ('admin', 'superadmin')").all().map((r) => r.id);
+}
+
+function resolveApproverIdsForCreate(body) {
+  const fromBody = normalizeApprovalRequiredFromBody(body);
+  if (fromBody.length > 0) return fromBody;
+  return defaultApproverIdsFromDb();
+}
+
+function computeSubmittedVotes(submitterId, approverIds) {
+  const votes = {};
+  if (approverIds.includes(submitterId)) votes[submitterId] = 'approved';
+  const allDone = approverIds.length > 0 && approverIds.every((id) => votes[id] === 'approved');
+  return { votes, allDone };
+}
+
 function isAdminRole(role) {
   return role === 'admin' || role === 'superadmin';
 }
@@ -85,10 +136,12 @@ function listExpenses(req) {
 const insertExp = db.prepare(`
   INSERT INTO expenses (
     id, userId, amount, currency, amountEUR, description, category, date, status,
-    approvedBy, approvedAt, rejectedBy, rejectedAt, rejectionNote, receiptPath, notes, createdAt, updatedAt, departmentId
+    approvedBy, approvedAt, rejectedBy, rejectedAt, rejectionNote, receiptPath, notes, createdAt, updatedAt, departmentId,
+    approversJson, approvalVotesJson
   ) VALUES (
     @id, @userId, @amount, @currency, @amountEUR, @description, @category, @date, @status,
-    @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt, @departmentId
+    @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt, @departmentId,
+    @approversJson, @approvalVotesJson
   )
 `);
 
@@ -240,6 +293,21 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     let eur = amountEUR != null && typeof amountEUR === 'number' ? amountEUR : null;
     if (cur === 'EUR') eur = amount;
 
+    const approverIds = resolveApproverIdsForCreate(req.body);
+    let finalStatus = st;
+    let approvedByVal = null;
+    let approvedAtVal = null;
+    let votesObj = {};
+    if (st === 'submitted') {
+      const { votes, allDone } = computeSubmittedVotes(req.userId, approverIds);
+      votesObj = votes;
+      if (allDone) {
+        finalStatus = 'approved';
+        approvedByVal = req.userId;
+        approvedAtVal = now;
+      }
+    }
+
     insertExp.run({
       id,
       userId: req.userId,
@@ -249,9 +317,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       description: desc,
       category: cat,
       date: dateStr,
-      status: st,
-      approvedBy: null,
-      approvedAt: null,
+      status: finalStatus,
+      approvedBy: approvedByVal,
+      approvedAt: approvedAtVal,
       rejectedBy: null,
       rejectedAt: null,
       rejectionNote: null,
@@ -260,10 +328,12 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       createdAt: now,
       updatedAt: now,
       departmentId: dept.id,
+      approversJson: JSON.stringify(approverIds),
+      approvalVotesJson: JSON.stringify(votesObj),
     });
 
     const expense = getExpenseById(id);
-    audit('expense_created', { userId: req.userId, targetId: id, amount, currency: cur, status: st });
+    audit('expense_created', { userId: req.userId, targetId: id, amount, currency: cur, status: finalStatus });
     res.json({ ok: true, expense });
   });
 
@@ -316,11 +386,53 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       : exp.notes;
     const nextStatus = status !== undefined ? String(status).trim().slice(0, 32) : exp.status;
 
+    let finalStatus = nextStatus;
+    let nextApproversJson = exp.approversJson ?? null;
+    let nextVotesJson = exp.approvalVotesJson ?? null;
+    let nextApprovedBy = exp.approvedBy ?? null;
+    let nextApprovedAt = exp.approvedAt ?? null;
+    let nextRejectedBy = exp.rejectedBy ?? null;
+    let nextRejectedAt = exp.rejectedAt ?? null;
+    let nextRejectionNote = exp.rejectionNote ?? null;
+
+    const becomingSubmitted = finalStatus === 'submitted'
+      && (exp.status === 'rejected' || exp.status === 'draft');
+
+    if (becomingSubmitted) {
+      const bodyList = normalizeApprovalRequiredFromBody(req.body);
+      let approverIds = bodyList.length > 0 ? bodyList : parseJsonArray(exp.approversJson);
+      if (approverIds.length === 0) approverIds = defaultApproverIdsFromDb();
+      const { votes, allDone } = computeSubmittedVotes(exp.userId, approverIds);
+      nextApproversJson = JSON.stringify(approverIds);
+      nextVotesJson = JSON.stringify(votes);
+      nextRejectedBy = null;
+      nextRejectedAt = null;
+      nextRejectionNote = null;
+      if (allDone) {
+        finalStatus = 'approved';
+        nextApprovedBy = exp.userId;
+        nextApprovedAt = now;
+      } else {
+        nextApprovedBy = null;
+        nextApprovedAt = null;
+      }
+    }
+
     db.prepare(`
       UPDATE expenses SET
-        amount = ?, description = ?, category = ?, date = ?, notes = ?, status = ?, departmentId = ?, updatedAt = ?
+        amount = ?, description = ?, category = ?, date = ?, notes = ?, status = ?, departmentId = ?,
+        approversJson = ?, approvalVotesJson = ?,
+        approvedBy = ?, approvedAt = ?,
+        rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
+        updatedAt = ?
       WHERE id = ?
-    `).run(nextAmount, nextDesc, nextCat, nextDate, nextNotes, nextStatus, nextDeptId, now, exp.id);
+    `).run(
+      nextAmount, nextDesc, nextCat, nextDate, nextNotes, finalStatus, nextDeptId,
+      nextApproversJson, nextVotesJson,
+      nextApprovedBy, nextApprovedAt,
+      nextRejectedBy, nextRejectedAt, nextRejectionNote,
+      now, exp.id,
+    );
 
     const updated = getExpenseById(exp.id);
     audit('expense_updated', {
@@ -364,14 +476,50 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
     const now = Date.now();
     const adminId = req.userId || null;
-    db.prepare(`
-      UPDATE expenses SET
-        status = 'approved',
-        approvedBy = ?, approvedAt = ?,
-        rejectedBy = NULL, rejectedAt = NULL, rejectionNote = NULL,
-        updatedAt = ?
-      WHERE id = ?
-    `).run(adminId, now, now, exp.id);
+    const approvers = parseJsonArray(exp.approversJson);
+
+    if (approvers.length === 0) {
+      db.prepare(`
+        UPDATE expenses SET
+          status = 'approved',
+          approvedBy = ?, approvedAt = ?,
+          rejectedBy = NULL, rejectedAt = NULL, rejectionNote = NULL,
+          updatedAt = ?
+        WHERE id = ?
+      `).run(adminId, now, now, exp.id);
+      const updated = getExpenseById(exp.id);
+      const approveNote = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : undefined;
+      audit('expense_approved', { userId: adminId, targetId: exp.id, note: approveNote });
+      return res.json({ ok: true, expense: updated });
+    }
+
+    if (exp.status !== 'submitted') {
+      return res.status(400).json({ error: 'El gasto no está pendiente de aprobación.' });
+    }
+    if (!approvers.includes(adminId)) {
+      return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
+    }
+
+    const votes = parseJsonObject(exp.approvalVotesJson);
+    votes[adminId] = 'approved';
+    const allDone = approvers.every((id) => votes[id] === 'approved');
+
+    if (allDone) {
+      db.prepare(`
+        UPDATE expenses SET
+          status = 'approved',
+          approvalVotesJson = ?,
+          approvedBy = ?, approvedAt = ?,
+          rejectedBy = NULL, rejectedAt = NULL, rejectionNote = NULL,
+          updatedAt = ?
+        WHERE id = ?
+      `).run(JSON.stringify(votes), adminId, now, now, exp.id);
+    } else {
+      db.prepare(`
+        UPDATE expenses SET approvalVotesJson = ?, updatedAt = ?
+        WHERE id = ?
+      `).run(JSON.stringify(votes), now, exp.id);
+    }
     const updated = getExpenseById(exp.id);
     const approveNote = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : undefined;
     audit('expense_approved', { userId: adminId, targetId: exp.id, note: approveNote });
@@ -385,13 +533,25 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const now = Date.now();
     const adminId = req.userId || null;
     const note = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : null;
+    const approvers = parseJsonArray(exp.approversJson);
+
+    if (approvers.length > 0) {
+      if (exp.status !== 'submitted') {
+        return res.status(400).json({ error: 'El gasto no está pendiente de aprobación.' });
+      }
+      if (!approvers.includes(adminId)) {
+        return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
+      }
+    }
+
     db.prepare(`
       UPDATE expenses SET
         status = 'rejected',
         rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
+        approvalVotesJson = ?,
         updatedAt = ?
       WHERE id = ?
-    `).run(adminId, now, note, now, exp.id);
+    `).run(adminId, now, note, JSON.stringify({}), now, exp.id);
     const updated = getExpenseById(exp.id);
     audit('expense_rejected', { userId: adminId, targetId: exp.id, note });
     res.json({ ok: true, expense: updated });

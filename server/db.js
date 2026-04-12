@@ -103,6 +103,8 @@ function addColumnIfMissing(table, column, colDef) {
 }
 
 addColumnIfMissing('expenses', 'departmentId', 'TEXT');
+addColumnIfMissing('expenses', 'approversJson', 'TEXT');
+addColumnIfMissing('expenses', 'approvalVotesJson', 'TEXT');
 addColumnIfMissing('bills', 'departmentId', 'TEXT');
 
 const _deptCount = db.prepare('SELECT COUNT(*) AS c FROM departments').get();

@@ -47,7 +47,29 @@
    All view components defined OUTSIDE SolanaExpenses → fixes focus loss bug
    State shared via React.createContext
 ───────────────────────────────────────────────────────────────────────────── */
-const{useState,useEffect,useRef,useCallback,createContext,useContext}=React;
+const{useState,useEffect,useRef,useCallback,useMemo,createContext,useContext}=React;
+
+/** Persist state in sessionStorage (tab session only). Removes key when value equals default. */
+function useSessionState(key,defaultVal){
+  const [val,setVal]=useState(()=>{
+    try{
+      const s=sessionStorage.getItem(key);
+      if(s==null)return defaultVal;
+      return JSON.parse(s);
+    }catch(e){return defaultVal;}
+  });
+  const setter=useCallback((v)=>{
+    setVal(prev=>{
+      const next=typeof v==="function"?v(prev):v;
+      try{
+        if(JSON.stringify(next)===JSON.stringify(defaultVal))sessionStorage.removeItem(key);
+        else sessionStorage.setItem(key,JSON.stringify(next));
+      }catch(e){/* quota / private mode */}
+      return next;
+    });
+  },[key,defaultVal]);
+  return[val,setter];
+}
 /* ── BRAND PALETTE ─────────────────────────────────────────────────────────
    Primary  #3C0A37  Deep aubergine — brand primary
    Accent   #C4622D  Terracotta — earthy complement (from brand palette grid)
@@ -69,7 +91,6 @@ const TR = {
     "nav.approvals": "Aprobaciones",
     "nav.bills": "Facturas",
     "nav.reports": "Informes",
-    "nav.budgets": "Presupuestos",
     "nav.settings": "Ajustes",
     "nav.signOut": "Cerrar sesión",
     "action.newExpense": "Nuevo gasto",
@@ -193,6 +214,11 @@ const TR = {
     "msg.importSuccess": "Importado correctamente.",
     "msg.splitMustTotal100": "Los porcentajes deben sumar 100%",
     "msg.splitEqual100Hint": "Debe sumar 100%",
+    "split.warnPctSum": "Los porcentajes suman {{sum}}% — deben sumar 100%",
+    "split.warnAmtSum": "Los importes suman {{sum}} — el total es {{total}}",
+    "split.minTwoTeam": "Hace falta al menos dos personas en el equipo para dividir el gasto.",
+    "split.minParticipants": "Selecciona al menos dos participantes en el reparto.",
+    "split.submitterLocked": "Quien envía el gasto siempre participa en el reparto.",
     "msg.valueMustMatch": "Los valores deben sumar ",
     "msg.resetConfirm": "¿Restablecer todos los datos al demo?",
     "msg.removeAccount": "¿Eliminar tu cuenta de este dispositivo?",
@@ -243,6 +269,7 @@ const TR = {
     "settings.newCategory": "Nueva categoría",
     "settings.editCategory": "Editar categoría",
     "settings.defaultApprovers": "Aprobadores por defecto (cuando no hay regla para la categoría)",
+    "settings.approverAutoNote": "Si un aprobador sube un gasto, su aprobación es automática; el resto de aprobadores de la categoría deben aprobar manualmente.",
     "settings.categoryName.placeholder": "Nombre de la categoría",
     "settings.approversLabel": "Aprobadores:",
     "settings.noApprovers": "ninguno",
@@ -264,9 +291,11 @@ const TR = {
     "dept.spent": "Gastado",
     "dept.remaining": "Restante",
     "dept.usedPct": "% usado",
+    "dept.spentLine": "{{spent}} de {{budget}} gastado",
+    "dept.overBudgetMsg": "{{amount}} por encima del presupuesto",
+    "dept.remainingLine": "{{amount}} restante",
     "msg.deptRequired": "Selecciona un departamento.",
     "dash.deptBudgetsTitle": "Presupuestos por departamento",
-    "budgets.empty": "No hay departamentos. Un superadmin puede crearlos en Ajustes → Presupuestos.",
     "settings.accordion.integrations": "Integraciones y exportación",
     "settings.accordion.danger": "Zona de peligro",
     "settings.apiIntegrations": "API e Integraciones",
@@ -331,8 +360,12 @@ const TR = {
     "cat.travel": "Viajes",
     "cat.other": "Otros",
     "reports.title": "Informes",
+    "reports.monthlyTrend": "Tendencia mensual",
     "reports.byCategory": "Gasto por categoría",
     "reports.perPerson": "Inversión por persona",
+    "reports.personLogHint": "Total aprobado según tu parte en el reparto. La lista incluye gastos aprobados y pendientes.",
+    "reports.submittedCount": "{{count}} gastos subidos",
+    "reports.personNoSplitExpenses": "Sin gastos en el reparto (aprobados o pendientes).",
     "reports.forecast": "Previsión de costes",
     "reports.monthlyFixed": "Mensual fijo",
     "reports.annualFixed": "Anual fijo",
@@ -404,9 +437,10 @@ const TR = {
     "dash.dueTomorrow": "Vence mañana",
     "form.newExpense": "Nuevo gasto",
     "form.receiptOptional": "Recibo (opcional)",
-    "form.splitEq": "Igual",
+    "form.splitEq": "Equitativo",
     "form.splitPct": "Por %",
-    "form.splitEur": "Por €",
+    "form.splitEur": "Por importe",
+    "form.moreOptions": "Más opciones",
     "cal.mon": "Lun",
     "cal.tue": "Mar",
     "cal.wed": "Mié",
@@ -423,6 +457,8 @@ const TR = {
     "audit.exported": "Exportado",
     "audit.submitted": "Enviado",
     "audit.approved": "Aprobado",
+    "audit.auto_approved": "Aprobación automática (aprobador remitente)",
+    "audit.autoApprovedDetail": "El remitente figuraba como aprobador de la categoría.",
     "audit.rejected": "Rechazado",
     "audit.edited": "Editado",
     "audit.deleted": "Eliminado",
@@ -485,6 +521,12 @@ const TR = {
     "audit.pending_reset": "Vuelto a pendiente tras edición",
     "receipt.tapEnlarge": "Toca para ver a tamaño completo",
     "receipt.closeZoom": "Cerrar",
+    "search.placeholder": "Buscar gastos, facturas…",
+    "search.noResults": "Sin resultados",
+    "search.groupExpenses": "Gastos",
+    "search.groupBills": "Facturas",
+    "search.billTag": "Factura",
+    "detail.noDepartment": "Sin departamento",
 };
 
 const mkT=()=>(key,vars={})=>{
@@ -513,10 +555,10 @@ const DEF_CATS=[
 ];
 const SEED_EXP=[
   {id:"e1",amount:45.80, description:"Verduras de mercado – prueba proveedor",category:"Food & Beverage",date:"2026-03-10",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:45.80}], approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"Mercat de la Boqueria",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-10T10:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-10T14:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-10T15:30:00Z",note:""}],departmentId:"dept_operaciones"},
-  {id:"e2",amount:1200.0,description:"Depósito máquina de espresso",         category:"Equipment",       date:"2026-03-08",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:600},{userId:"marc",amount:600}],approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"La Marzocco Linea Mini",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-08T09:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-08T09:01:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-08T12:00:00Z",note:""}],departmentId:"dept_estrategia"},
-  {id:"e3",amount:850.0, description:"Diseño de marca – Janneke",           category:"Marketing",       date:"2026-03-12",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:850}],  approvals:{sergio:"approved"},receipt:null,receiptType:null,notes:"Logo, tipografía, tarjetas",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-12T11:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-12T11:01:00Z",note:""}],departmentId:"dept_branding"},
+  {id:"e2",amount:1200.0,description:"Depósito máquina de espresso",         category:"Equipment",       date:"2026-03-08",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:600,pct:50},{userId:"marc",amount:600,pct:50}],splitMode:"equal",approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"La Marzocco Linea Mini",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-08T09:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-08T09:01:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-08T12:00:00Z",note:""}],departmentId:"dept_estrategia"},
+  {id:"e3",amount:850.0, description:"Diseño de marca – Janneke",           category:"Marketing",       date:"2026-03-12",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:850}],  approvals:{sergio:"approved"},receipt:null,receiptType:null,notes:"Logo, tipografía, tarjetas",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-12T11:00:00Z"},{action:"auto_approved",by:"sergio",at:"2026-03-12T11:01:00Z",meta:{reason:"submitter_is_approver"}}],departmentId:"dept_branding"},
   {id:"e4",amount:320.0, description:"Consultoría legal – contrato de alquiler",        category:"Legal",           date:"2026-03-14",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:320}], approvals:{},receipt:null,receiptType:null,notes:"Condiciones del contrato",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-14T16:00:00Z"}],departmentId:"dept_estrategia"},
-  {id:"e5",amount:180.0, description:"Material de investigación de mercado",         category:"Marketing",       date:"2026-03-15",submittedBy:"anna",   paidBy:[{userId:"anna",amount:90},{userId:"humbert",amount:90}],approvals:{marc:"approved"},receipt:null,receiptType:null,notes:"Análisis de competencia",auditTrail:[{action:"submitted",by:"anna",at:"2026-03-15T10:00:00Z"},{action:"approved",by:"marc",at:"2026-03-15T14:00:00Z",note:""}],departmentId:"dept_branding"},
+  {id:"e5",amount:180.0, description:"Material de investigación de mercado",         category:"Marketing",       date:"2026-03-15",submittedBy:"anna",   paidBy:[{userId:"anna",amount:90,pct:50},{userId:"humbert",amount:90,pct:50}],splitMode:"equal",approvals:{marc:"approved"},receipt:null,receiptType:null,notes:"Análisis de competencia",auditTrail:[{action:"submitted",by:"anna",at:"2026-03-15T10:00:00Z"},{action:"approved",by:"marc",at:"2026-03-15T14:00:00Z",note:""}],departmentId:"dept_branding"},
 ];
 const SEED_BILLS=[
   {id:"b1",name:"Notion workspace",amount:89, frequency:"monthly",category:"Software",dayOfMonth:"1", submittedBy:"marc",   approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"marc",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}],departmentId:"dept_branding"},
@@ -800,6 +842,57 @@ const API = {
 
 /* ── HELPERS ───────────────────────────────────────────────────────────────── */
 const fmt=n=>`€${Number(n||0).toFixed(2)}`;
+/** Presupuestos / informes: 2 decimales si |importe| < 100; sin céntimos si ≥ 100 o > 999 (es-ES). */
+function formatBudgetCurrencyEUR(amount){
+  const n=Number(amount)||0;
+  const abs=Math.abs(n);
+  if(abs<100){
+    return new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR",minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
+  }
+  return new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR",maximumFractionDigits:0}).format(n);
+}
+const BUDGET_VS_BAR_MAX_PX=360;
+function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,noBottomMargin}){
+  const spentN=Number(spent)||0;
+  const budgetN=Number(budget)||0;
+  const rem=remaining!=null&&Number.isFinite(Number(remaining))?Number(remaining):(budgetN-spentN);
+  const pctRaw=budgetN>0?(spentN/budgetN)*100:(spentN>0?100:0);
+  const pctBar=Math.min(100,Math.max(0,pctRaw));
+  const fill=barColorIn||(pctRaw<75?"#16A34A":pctRaw<=100?"#D97706":"#DC2626");
+  const fs=formatBudgetCurrencyEUR;
+  const nameStr=name!=null&&name!==""?String(name):"";
+  return(
+    <div style={{marginBottom:noBottomMargin?0:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6,minWidth:0}}>
+        {nameStr?(
+          <span style={{fontWeight:600,fontSize:12,flex:"0 1 38%",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={nameStr.length>20?nameStr:undefined}>{nameStr}</span>
+        ):null}
+        <div style={{
+          flex:nameStr?"1 1 0":"1 1 auto",
+          minWidth:0,
+          maxWidth:nameStr?BUDGET_VS_BAR_MAX_PX:"none",
+          width:nameStr?undefined:"100%",
+        }}>
+          <div style={{height:6,background:"#EDE8E0",borderRadius:3,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${pctBar}%`,background:fill,transition:"width 0.4s",borderRadius:3}}/>
+          </div>
+        </div>
+      </div>
+      <div style={{fontSize:10,color:"#6B7B72",fontVariantNumeric:"tabular-nums",lineHeight:1.45}}>
+        {t("dept.spentLine",{spent:fs(spentN),budget:fs(budgetN)})}
+      </div>
+      {rem<0?(
+        <div style={{fontSize:10,color:"#DC2626",fontWeight:600,fontVariantNumeric:"tabular-nums",marginTop:3}}>
+          {t("dept.overBudgetMsg",{amount:fs(Math.abs(rem))})}
+        </div>
+      ):(
+        <div style={{fontSize:10,color:rem===0?"#9CAA9F":"#15803d",fontWeight:500,fontVariantNumeric:"tabular-nums",marginTop:3}}>
+          {t("dept.remainingLine",{amount:fs(rem)})}
+        </div>
+      )}
+    </div>
+  );
+}
 const fmtDate=d=>{try{return new Date(d).toLocaleDateString("es-ES",{day:"2-digit",month:"short",year:"numeric"});}catch{return d;}};
 // parseMoney: accepts "12,50" or "12.50" → 12.5 (shared utility used by all amount inputs)
 const parseMoney=s=>{if(s===null||s===undefined||s==="")return 0;const n=String(s).trim().replace(/\./g,"").replace(",",".");const v=parseFloat(n);return isNaN(v)?0:v;};
@@ -819,6 +912,65 @@ function UserAvatar({user, size=24, fontSize=null}){
   return(
     <div style={{width:size,height:size,borderRadius:"50%",background:user.color||"#6B7280",display:"flex",alignItems:"center",justifyContent:"center",fontSize:fs,fontWeight:700,color:"#fff",flexShrink:0}}>
       {inits(user.name||"?")}
+    </div>
+  );
+}
+/** Fork / split — for expense reparto UI */
+function SplitDivergeIcon({size=16,color="#4B5E52"}){
+  return(
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" style={{flexShrink:0,display:"block"}}>
+      <path fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M8 14V9M8 9L3.5 3M8 9l4.5-6M3.5 3H2M14 3h-1.5"/>
+    </svg>
+  );
+}
+/** Collapsible paidBy breakdown (multi-participant); hover or click keeps panel useful on touch */
+function ExpenseSplitBreakdown({e,t,users}){
+  const getU=id=>users.find(u=>u.id===id)||{name:id,color:"#999"};
+  const [stick,setStick]=useState(false);
+  const [hover,setHover]=useState(false);
+  const paid=e.paidBy||[];
+  const n=paid.length;
+  useEffect(()=>{setStick(false);setHover(false);},[e.id]);
+  if(n<=1){
+    const p=paid[0];
+    const denom=Number(e.amount)||1;
+    const pct=p&&p.pct!=null&&!isNaN(Number(p.pct))?Number(p.pct):p?Math.round((p.amount/denom)*1000)/10:100;
+    return(
+      <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}}>
+        <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>{t("label.paidBy")}</div>
+        {p?<div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span>{getU(p.userId).name}</span><span style={{fontWeight:600}}>{fmt(p.amount)} ({pct}%)</span></div>:<div style={{fontSize:11,color:"#9CAA9F"}}>—</div>}
+      </div>
+    );
+  }
+  const open=stick||hover;
+  const denom=Number(e.amount)||1;
+  return(
+    <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}} onMouseLeave={()=>setHover(false)}>
+      <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>{t("label.paidBy")}</div>
+      <button type="button"
+        aria-expanded={open}
+        onMouseEnter={()=>setHover(true)}
+        onClick={()=>setStick(s=>!s)}
+        style={{display:"flex",alignItems:"center",gap:8,width:"100%",border:"1px solid #EDE8E0",borderRadius:8,padding:"7px 10px",background:"#FAF7F2",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+        <SplitDivergeIcon size={16} color={G}/>
+        <span style={{fontSize:11,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {n}</span>
+        {e.splitMode&&<span style={{fontSize:9,color:"#6B7B72"}}>{t("label.splitBadge")}: {e.splitMode==="equal"?t("form.splitEq"):e.splitMode==="percentage"?t("form.splitPct"):t("form.splitEur")}</span>}
+        <span style={{marginLeft:"auto",fontSize:10,color:"#9CAA9F"}}>{open?"▼":"▶"}</span>
+      </button>
+      {open&&(
+        <div style={{marginTop:8,padding:"9px 11px",background:"#F5F0EA",borderRadius:8}} onMouseEnter={()=>setHover(true)}>
+          {paid.map(p=>{
+            const pct=p.pct!=null&&!isNaN(Number(p.pct))?Number(p.pct):Math.round((p.amount/denom)*1000)/10;
+            const u=getU(p.userId);
+            return(
+              <div key={p.userId} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,fontSize:11,marginBottom:6}}>
+                <span style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}><UserAvatar user={u} size={22} fontSize={8}/><span style={{fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</span></span>
+                <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(p.amount)} <span style={{color:"#9CAA9F",fontWeight:500,fontSize:10}}>({pct}%)</span></span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -848,6 +1000,8 @@ const normalizeItem=(item,type)=>{
     merged.seenBy=Array.isArray(merged.seenBy)?merged.seenBy:[];
     if(merged.ivaRate!==null&&merged.ivaRate!==undefined&&typeof merged.ivaRate!=="number")merged.ivaRate=null;
     if(merged.ivaAmount!==null&&merged.ivaAmount!==undefined&&typeof merged.ivaAmount!=="number")merged.ivaAmount=null;
+    if(!merged.submittedBy&&item.userId)merged.submittedBy=item.userId;
+    if(!merged.submittedBy&&merged.paidBy?.[0]?.userId)merged.submittedBy=merged.paidBy[0].userId;
     return merged;
   }
   if(type==="bill")    return{active:false,notes:"",description:"",receipt:null,receiptType:null,...item,approvals:item.approvals||{},auditTrail:item.auditTrail||[],submittedBy:item.submittedBy||"unknown",seenBy:Array.isArray(item.seenBy)?item.seenBy:[],departmentId:item.departmentId??null};
@@ -862,13 +1016,29 @@ const normalizeItem=(item,type)=>{
 };
 /** Derive admin IDs from live user list — no hardcoded constant needed */
 const getAdminIds=users=>users.filter(u=>u.role==="admin"||u.role==="superadmin").map(u=>u.id);
+/** Approver list for an expense: server snapshot (API) or category / admins (local). */
+const effectiveExpenseApproverIds=(e,cats,users)=>{
+  if(e&&e._apiType==="expense"&&Array.isArray(e.approvalRequired)&&e.approvalRequired.length>0)return e.approvalRequired;
+  const cat=cats?.find(c=>c.name===e?.category&&!c.archived);
+  const adminIds=users?getAdminIds(users):["sergio","marc"];
+  return cat?.approverIds?.length>0?cat.approverIds:adminIds;
+};
 const getItemStatus=(item,cats,users)=>{
   if(item&&item._apiType==="expense"&&item.status){
     const s=item.status;
     if(s==="deleted")return"deleted";
-    if(s==="approved")return"approved";
     if(s==="rejected")return"rejected";
-    if(s==="submitted"||s==="draft")return"pending";
+    if(s==="approved")return"approved";
+    if(s==="submitted"||s==="draft"){
+      const reqIds=Array.isArray(item.approvalRequired)&&item.approvalRequired.length>0?item.approvalRequired:null;
+      if(reqIds){
+        const a=item.approvals||{};
+        if(reqIds.some(id=>a[id]==="rejected"))return"rejected";
+        if(reqIds.every(id=>a[id]==="approved"))return"approved";
+        return"pending";
+      }
+      return"pending";
+    }
   }
   if(item&&item._apiType==="bill"&&item.apiBillStatus){
     const s=item.apiBillStatus;
@@ -909,19 +1079,46 @@ function enrichDepartmentsForUI(depts,expenses,bills,cats,users,useServerTotals)
     return{...d,budget,spent:spentF,remaining,pctUsed};
   });
 }
-const eurForExpense=x=>{
-  if(x==null)return 0;
-  const v=x.amountEUR;
-  if(v!=null&&!isNaN(Number(v)))return Number(v);
-  return Number(x.amount)||0;
+const eurForExpense=x=>Number(x?.amountEUR??x?.amount)||0;
+/** Build paidBy with amount + pct from NewPanel split state; fixes cent drift on last row. */
+const buildPaidByFromSplitState=(splits,totalAmt,spMode)=>{
+  const sel=(splits||[]).filter(s=>s.checked);
+  if(sel.length===0)return[];
+  const rows=sel.map(s=>{
+    let am,P;
+    if(spMode==="amount"){
+      am=parseFloat(Number(s.value||0).toFixed(2));
+      P=totalAmt>0?(am/totalAmt)*100:0;
+    }else{
+      P=Number(s.percent)||0;
+      am=parseFloat((totalAmt*P/100).toFixed(2));
+    }
+    return{userId:s.userId,amount:am,pct:Math.round(P*100)/100};
+  });
+  const sum=rows.reduce((a,r)=>a+r.amount,0);
+  if(rows.length&&totalAmt>0&&Math.abs(sum-totalAmt)>0.01){
+    const last={...rows[rows.length-1]};
+    last.amount=parseFloat((last.amount+(totalAmt-sum)).toFixed(2));
+    last.pct=Math.round((last.amount/totalAmt)*10000)/100;
+    rows[rows.length-1]=last;
+  }
+  return rows;
 };
-const fmtExpenseAmt=e=>{
-  if(!e)return fmt(0);
-  const cur=e.currency||"EUR";
-  const amt=Number(e.amount)||0;
-  if(cur==="EUR")return fmt(amt);
-  return cur+" "+amt.toFixed(2);
+/** EUR attributed to one participant from paidBy (same weighting as reports / dashboard per-person). */
+const shareEurInExpense=(e,userId)=>{
+  const rows=e.paidBy||[];
+  const tot=eurForExpense(e);
+  if(rows.length===0){
+    const owner=e.submittedBy||e.userId;
+    return owner===userId?tot:0;
+  }
+  const p=rows.find(x=>x&&x.userId===userId);
+  if(!p)return 0;
+  const base=Number(e.amount)||0;
+  if(base<=0)return 0;
+  return(Number(p.amount)||0)/base*tot;
 };
+const fmtExpenseAmt=e=>fmt(Number(e?.amount)||0);
 function guessMimeFromReceiptPath(p){
   if(!p)return"image/jpeg";
   const ext=(String(p).split(".").pop()||"").toLowerCase();
@@ -931,29 +1128,42 @@ function guessMimeFromReceiptPath(p){
 }
 function expenseFromApi(row){
   if(!row)return null;
-  const cur=(row.currency||"EUR").toUpperCase();
   const amt=Number(row.amount)||0;
-  const eur=row.amountEUR!=null&&!isNaN(Number(row.amountEUR))?Number(row.amountEUR):(cur==="EUR"?amt:null);
+  const eur=row.amountEUR!=null&&!isNaN(Number(row.amountEUR))?Number(row.amountEUR):amt;
+  let approvalRequired=[];
+  try{
+    const aj=JSON.parse(row.approversJson||"null");
+    if(Array.isArray(aj))approvalRequired=aj;
+  }catch(e){}
+  let approvals={};
+  try{
+    const vj=JSON.parse(row.approvalVotesJson||"null");
+    if(vj&&typeof vj==="object"&&!Array.isArray(vj))approvals=vj;
+  }catch(e){}
+  const submitter=row.userId;
+  const auditTrail=[];
+  if((row.status==="submitted"||row.status==="approved")&&submitter&&approvals[submitter]==="approved"&&approvalRequired.includes(submitter)){
+    auditTrail.push({action:"auto_approved",by:submitter,at:new Date(Number(row.createdAt)||Date.now()).toISOString(),meta:{reason:"submitter_is_approver"}});
+  }
   return normalizeItem({
     id:row.id,
     _apiType:"expense",
     status:row.status,
-    amount:amt,
-    currency:cur,
-    amountEUR:eur,
+    amount:eur,
     description:row.description,
     category:row.category,
     date:row.date,
     notes:row.notes||"",
     submittedBy:row.userId,
-    paidBy:[{userId:row.userId,amount:amt}],
+    paidBy:[{userId:row.userId,amount:eur}],
     receipt:null,
     receiptType:row.receiptPath?guessMimeFromReceiptPath(row.receiptPath):null,
     receiptPath:row.receiptPath||null,
     rejectionNote:row.rejectionNote||null,
     itemCode:row.id,
-    approvals:{},
-    auditTrail:[],
+    approvals,
+    approvalRequired,
+    auditTrail,
     ivaRate:null,
     ivaAmount:null,
     comments:[],
@@ -986,16 +1196,13 @@ function billFromApi(row){
   let dayOfMonth="1";
   if(due.length>=10)dayOfMonth=String(Math.min(31,parseInt(due.slice(8,10),10)||1));
   const amt=Number(row.amount)||0;
-  const cur=(row.currency||"EUR").toUpperCase();
-  const eur=row.amountEUR!=null&&!isNaN(Number(row.amountEUR))?Number(row.amountEUR):(cur==="EUR"?amt:null);
+  const eur=row.amountEUR!=null&&!isNaN(Number(row.amountEUR))?Number(row.amountEUR):amt;
   return normalizeItem({
     id:row.id,
     _apiType:"bill",
     name:row.vendor,
     vendor:row.vendor,
-    amount:amt,
-    currency:cur,
-    amountEUR:eur,
+    amount:eur,
     category:row.category,
     dueDate:row.dueDate,
     dayOfMonth,
@@ -1266,6 +1473,11 @@ const calcIvaParts=(amount,ratePercent)=>{
   return{base,iva};
 };
 
+/** Reservado para OCR / análisis de recibo: si devuelve { ivaRate }, se abre «Más opciones» y se ajusta el IVA. Por ahora null (sin detección). */
+async function detectReceiptIvaFromImage(_b64,_mime){
+  return null;
+}
+
 const DEFAULT_IVA_RATES=[
   {value:0,name:"exento"},
   {value:4,name:"superreducido"},
@@ -1316,9 +1528,9 @@ const seenByAfterActor=(actorId)=>[actorId];
  *  Does not mutate. Idempotent — safe to call even if approvals already exist. */
 const autoApprove=(submitterId,approverIds,existingApprovals,auditTrail)=>{
   if(!approverIds.includes(submitterId))return{approvals:existingApprovals||{},auditTrail:auditTrail||[]};
-  if((existingApprovals||{})[submitterId]==="approved")return{approvals:existingApprovals,auditTrail}; // already set
+  if((existingApprovals||{})[submitterId]==="approved")return{approvals:existingApprovals,auditTrail};
   const approvals={...existingApprovals,[submitterId]:"approved"};
-  const trail=[...auditTrail,{action:"approved",by:submitterId,at:new Date().toISOString(),note:"auto-approved (submitter)"}];
+  const trail=[...auditTrail,{action:"auto_approved",by:submitterId,at:new Date().toISOString(),meta:{reason:"submitter_is_approver"}}];
   return{approvals,auditTrail:trail};
 };
 /* BF.date is intentionally omitted — resetForm() injects today's date dynamically */
@@ -1327,7 +1539,7 @@ const DEFAULT_DEPT_ID="dept_estrategia";
 const SEED_DEPARTMENTS=[
   {id:"dept_estrategia",name:"Estrategia",budget:0,createdAt:0},
   {id:"dept_operaciones",name:"Operaciones",budget:0,createdAt:0},
-  {id:"dept_branding",name:"Branding",budget:0,createdAt:0},
+  {id:"dept_branding",name:"Branding",budget:10000,createdAt:0},
 ];
 function readLocalDepartments(){
   try{
@@ -1340,8 +1552,7 @@ function readLocalDepartments(){
     return SEED_DEPARTMENTS.map(d=>({...d,createdAt:Date.now()}));
   }
 }
-const BF={amount:"",description:"",category:"Otro",date:"",notes:"",ivaRate:String(readIvaDefault()),currency:"EUR",amountEur:"",departmentId:DEFAULT_DEPT_ID};
-const API_CURRENCIES=["EUR","USD","GBP","CHF","SEK","DKK","NOK","PLN"];
+const BF={amount:"",description:"",category:"Otro",date:"",notes:"",ivaRate:String(readIvaDefault()),departmentId:DEFAULT_DEPT_ID};
 const DRAFT_KEY="sol-exp-draft";
 const BB={name:"",amount:"",frequency:"monthly",category:"Otro",dayOfMonth:"1",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",departmentId:DEFAULT_DEPT_ID};
 
@@ -1415,7 +1626,7 @@ function SolanaLogo({theme="light", size="md", variant:_v}){
 }
 
 /* ── REAPPROVAL_FIELDS ─────────────────────────────────────────────────────── */
-const REAPPROVAL_FIELDS = ["amount","description","category","date","paidBy","receipt","receiptType","ivaRate","ivaAmount","departmentId"];
+const REAPPROVAL_FIELDS = ["amount","description","category","date","paidBy","splitMode","receipt","receiptType","ivaRate","ivaAmount","departmentId"];
 
 /* ── ATTACHMENT VIEWER ─────────────────────────────────────────────────────────
    Shared component for displaying attachments on both expenses and bills.
@@ -2290,7 +2501,32 @@ function NewPanel(){
   const activeCats=cats.filter(c=>!c.archived);
   const expAmt=parseFloat(form.amount)||0;
   const [draftPrompt,setDraftPrompt]=useState(null);
+  const [showAdvanced,setShowAdvanced]=useState(false);
   const draftTimer=useRef(null);
+  const ivaScanB64Ref=useRef(null);
+  useEffect(()=>{
+    const b64=receipt?.b64;
+    if(!b64){ivaScanB64Ref.current=null;return;}
+    if(ivaScanB64Ref.current===b64)return;
+    ivaScanB64Ref.current=b64;
+    let cancelled=false;
+    void (async()=>{
+      try{
+        const hint=await detectReceiptIvaFromImage(b64,receipt.type||"image/jpeg");
+        if(cancelled||!hint||hint.ivaRate==null)return;
+        const vr=Number(hint.ivaRate);
+        if(Number.isNaN(vr))return;
+        if(vr>0)setShowAdvanced(true);
+        const match=ivaRates.reduce((best,r)=>{
+          const d=Math.abs(Number(r.value)-vr);
+          if(!best||d<best.d)return{r,d};
+          return best;
+        },null);
+        if(match)setForm(p=>({...p,ivaRate:String(match.r.value)}));
+      }catch(e){}
+    })();
+    return()=>{cancelled=true};
+  },[receipt?.b64,receipt?.type,ivaRates,setForm]);
   useEffect(()=>{
     try{
       const raw=localStorage.getItem(DRAFT_KEY);
@@ -2304,24 +2540,34 @@ function NewPanel(){
     clearTimeout(draftTimer.current);
     draftTimer.current=setTimeout(()=>{
       try{
-        const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate||String(readIvaDefault()),currency:form.currency||"EUR",amountEur:form.amountEur||"",departmentId:form.departmentId||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
+        const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate||String(readIvaDefault()),departmentId:form.departmentId||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
         localStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
       }catch(e){}
     },500);
     return()=>clearTimeout(draftTimer.current);
   },[form,splitOn,spMode,splits]);
-  const totPct=splits.filter(s=>s.checked).reduce((a,s)=>a+(s.percent||0),0);
-  const totVal=splits.filter(s=>s.checked).reduce((a,s)=>a+(s.value||0),0);
+  const totPct=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.percent)||0),0);
+  const totVal=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
+  const checkedSplitCount=splits.filter(s=>s.checked).length;
+  const pctSumBad=splitOn&&spMode==="percentage"&&Math.abs(totPct-100)>0.5;
+  const amtSumBad=splitOn&&spMode==="amount"&&expAmt>0&&Math.abs(totVal-expAmt)>0.01;
+  const splitSubmitBlocked=!AUTH_URL&&splitOn&&(users.length<2||checkedSplitCount<2||pctSumBad||amtSumBad);
   const toggleSplitOn=()=>{
-    if(!splitOn){
-      const on=users.length;
-      const pct=parseFloat((100/on).toFixed(4)),remPct=parseFloat((100-pct*(on-1)).toFixed(4));
-      setSplits(users.map((u,i)=>({userId:u.id,checked:true,percent:i===on-1?remPct:pct,value:0})));
-    }
-    setSplitOn(v=>!v);
+    if(users.length<2)return;
+    if(splitOn){setSplitOn(false);setSpMode("equal");return;}
+    const n=users.length;
+    const pct=parseFloat((100/n).toFixed(4)),remPct=parseFloat((100-pct*(n-1)).toFixed(4));
+    const next=users.map((u,i)=>({userId:u.id,checked:true,percent:i===n-1?remPct:pct,value:0}));
+    setSpMode("equal");
+    setSplits(calcEqual(next,expAmt));
+    setSplitOn(true);
+    setShowAdvanced(true);
   };
   const togUsr=uid=>{
+    if(uid===user.id)return;
     const next=splits.map(s=>s.userId===uid?{...s,checked:!s.checked}:s);
+    const nOn=next.filter(s=>s.checked).length;
+    if(nOn<2){setSplitOn(false);setSplits([]);setSpMode("equal");return;}
     if(spMode==="equal")setSplits(calcEqual(next,expAmt));else setSplits(next);
   };
   return(
@@ -2336,63 +2582,65 @@ function NewPanel(){
           <div style={{display:"flex",gap:8}}>
             <button type="button" className="btn-sm" style={{flex:1,fontSize:11}} onClick={()=>{
               const f=draftPrompt.form||{};
-              setForm(p=>({...p,...f,date:f.date||p.date,ivaRate:f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):String(readIvaDefault()),currency:f.currency||p.currency||"EUR",amountEur:f.amountEur!=null?String(f.amountEur):p.amountEur||"",departmentId:f.departmentId!=null&&f.departmentId!==""?f.departmentId:p.departmentId}));
-              if(draftPrompt.splitOn&&draftPrompt.splits?.length){setSplitOn(true);setSpMode(draftPrompt.spMode||"equal");setSplits(draftPrompt.splits);}
+              setForm(p=>({...p,...f,date:f.date||p.date,ivaRate:f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):String(readIvaDefault()),departmentId:f.departmentId!=null&&f.departmentId!==""?f.departmentId:p.departmentId}));
+              if(draftPrompt.splitOn&&draftPrompt.splits?.length){
+                let m=draftPrompt.spMode||"equal";
+                if(m==="percent")m="percentage";
+                if(m==="value")m="amount";
+                if(!["equal","percentage","amount"].includes(m))m="equal";
+                setSplitOn(true);setSpMode(m);setSplits(draftPrompt.splits);
+              }
+              setShowAdvanced(!!(f.notes&&String(f.notes).trim())||!!draftPrompt.splitOn||(f.ivaRate!=null&&String(f.ivaRate)!==String(readIvaDefault())));
               setDraftPrompt(null);
             }}>{t("draft.restore")}</button>
             <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>{try{localStorage.removeItem(DRAFT_KEY);}catch(e){}setDraftPrompt(null);}}>{t("draft.discard")}</button>
           </div>
         </div>
       )}
-      {/* Receipt */}
-      <div style={{marginBottom:11}}>
-        <label className="lbl">{t("form.receiptOptional")}</label>
-        {recPrev&&recPrev!=="PDF"&&<div style={{marginBottom:6,position:"relative"}}><img src={recPrev} alt="" style={{width:"100%",maxHeight:130,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setReceipt(null);setRecPrev(null);}}>×</button></div>}
-        {recPrev==="PDF"&&<div style={{background:"#F5F0EA",borderRadius:7,padding:"6px 9px",marginBottom:6,display:"flex",justifyContent:"space-between",fontSize:11,color:"#4B5E52"}}><span>{t("msg.pdfUploaded")}</span><button style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={()=>{setReceipt(null);setRecPrev(null);}}>{t("action.remove")}</button></div>}
-        <div style={{display:"flex",gap:6}}>
-          <button type="button" className="btn-sm" style={{flex:1,fontSize:11,padding:"5px 7px"}} onClick={startCam}>{t("action.scanCamera")}</button>
-          <button type="button" style={{flex:1,padding:"5px 7px",borderRadius:6,border:`1.5px solid ${G}`,background:"transparent",color:G,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>fileRef.current?.click()}>{t("action.uploadFile")}</button>
-        </div>
+      {/* Zona principal: importe, descripción, categoría, fecha, departamento, recibo */}
+      <div style={{marginBottom:8}}><label className="lbl">{t("label.amount")} *</label>
+        <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount}
+          onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amount:v}));}}/>
       </div>
-      {/* Fields */}
       <div style={{marginBottom:8}}><label className="lbl">{t("label.description")} *</label>
         <input className="inp" placeholder={t("label.description")} value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-        <div><label className="lbl">{t("label.amount")} *</label>
-          <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount}
-            onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amount:v}));}}/>
-        </div>
-        <div><label className="lbl">{t("label.date")}</label>
-          <input className="inp" type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
-        </div>
-      </div>
-      {AUTH_URL&&(
-        <div style={{marginBottom:8}}>
-          <label className="lbl">Moneda</label>
-          <select className="inp" value={form.currency||"EUR"} onChange={e=>setForm(p=>({...p,currency:e.target.value,amountEur:e.target.value==="EUR"?"":p.amountEur}))}>
-            {API_CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-      )}
-      {AUTH_URL&&(form.currency||"EUR")!=="EUR"&&(
-        <div style={{marginBottom:8}}>
-          <label className="lbl">Importe en EUR (opcional)</label>
-          <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amountEur||""}
-            onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amountEur:v}));}}/>
-          <div style={{fontSize:9,color:"#9CAA9F",marginTop:3}}>Para totales e informes. Si se deja vacío, el servidor puede no registrar amountEUR.</div>
-        </div>
-      )}
       <div style={{marginBottom:8}}><label className="lbl">{t("label.category")}</label>
         <select className="inp" value={form.category} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
           {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
         </select>
+      </div>
+      <div style={{marginBottom:8}}><label className="lbl">{t("label.date")}</label>
+        <input className="inp" type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
       </div>
       <div style={{marginBottom:8}}><label className="lbl">{t("label.department")} *</label>
         <select className="inp" value={form.departmentId||""} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))} required>
           {departments.length===0?<option value="">{t("msg.deptRequired")}</option>:departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
       </div>
+      <div style={{marginBottom:10}}>
+        <label className="lbl">{t("form.receiptOptional")}</label>
+        {recPrev&&recPrev!=="PDF"&&<div style={{marginBottom:6,position:"relative"}}><img src={recPrev} alt="" style={{width:"100%",maxHeight:130,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button type="button" style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setReceipt(null);setRecPrev(null);ivaScanB64Ref.current=null;}}>×</button></div>}
+        {recPrev==="PDF"&&<div style={{background:"#F5F0EA",borderRadius:7,padding:"6px 9px",marginBottom:6,display:"flex",justifyContent:"space-between",fontSize:11,color:"#4B5E52"}}><span>{t("msg.pdfUploaded")}</span><button type="button" style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={()=>{setReceipt(null);setRecPrev(null);ivaScanB64Ref.current=null;}}>{t("action.remove")}</button></div>}
+        <div style={{display:"flex",gap:6}}>
+          <button type="button" className="btn-sm" style={{flex:1,fontSize:11,padding:"5px 7px"}} onClick={startCam}>{t("action.scanCamera")}</button>
+          <button type="button" style={{flex:1,padding:"5px 7px",borderRadius:6,border:`1.5px solid ${G}`,background:"transparent",color:G,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>fileRef.current?.click()}>{t("action.uploadFile")}</button>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={()=>setShowAdvanced(v=>!v)}
+        style={{
+          background:"none",border:"none",color:T,
+          fontSize:11,fontWeight:600,cursor:"pointer",
+          fontFamily:"inherit",padding:"8px 0",
+          display:"flex",alignItems:"center",gap:4,
+        }}
+      >
+        {showAdvanced?"▲":"▼"} {t("form.moreOptions")}
+      </button>
+      {showAdvanced&&(
+      <div style={{marginBottom:12}}>
       {!AUTH_URL&&<div style={{marginBottom:12,background:GL,borderRadius:8,padding:10}}>
         <label className="lbl">{t("form.ivaRate")}</label>
         <select className="inp" value={form.ivaRate||String(readIvaDefault())} onChange={e=>setForm(p=>({...p,ivaRate:e.target.value}))}>
@@ -2409,46 +2657,83 @@ function NewPanel(){
         <textarea className="inp" rows={2} placeholder={t("label.optional")} value={form.notes}
           onChange={e=>setForm(p=>({...p,notes:e.target.value}))} style={{resize:"vertical"}}/>
       </div>
-      {/* Split — local mode only */}
-      {!AUTH_URL&&<div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:12}}>
+      {!AUTH_URL&&<div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:0,opacity:users.length<2?0.92:1}} title={users.length<2?t("split.minTwoTeam"):""}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:splitOn?9:0}}>
-          <div><div style={{fontWeight:600,fontSize:12}}>{t("label.splitExpense")}</div>{!splitOn&&<div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{t("label.divideTeam")}</div>}</div>
-          <div onClick={toggleSplitOn} style={{width:36,height:20,borderRadius:10,background:splitOn?G:"#C9C0B4",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+          <div>
+            <div style={{fontWeight:600,fontSize:12}}>{t("label.splitExpense")}</div>
+            {!splitOn&&<div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{users.length<2?t("split.minTwoTeam"):t("label.divideTeam")}</div>}
+            {splitOn&&<div style={{fontSize:9,color:"#6B7B72",marginTop:3}}>{t("split.submitterLocked")}</div>}
+          </div>
+          <div onClick={toggleSplitOn} style={{width:36,height:20,borderRadius:10,background:splitOn?G:(users.length<2?"#E5E0D8":"#C9C0B4"),cursor:users.length<2?"not-allowed":"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,opacity:users.length<2?0.65:1}}>
             <div style={{position:"absolute",top:2,left:splitOn?18:2,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
           </div>
         </div>
         {splitOn&&(
           <div>
-            <div style={{display:"flex",gap:4,marginBottom:9}}>
-              {[["equal",t("form.splitEq")],["percent",t("form.splitPct")],["value",t("form.splitEur")]].map(([m,lbl])=>(
-                <button key={m} style={{flex:1,padding:"3px 2px",borderRadius:12,fontSize:10,fontWeight:600,border:"1.5px solid",borderColor:spMode===m?G:"#DDD6CC",background:spMode===m?G:"#fff",color:spMode===m?"#fff":"#4B5E52",cursor:"pointer"}}
-                  onClick={()=>{setSpMode(m);if(m==="equal")setSplits(prev=>calcEqual(prev,expAmt));}}>
+            <div style={{display:"flex",gap:4,marginBottom:10}}>
+              {[["equal",t("form.splitEq")],["percentage",t("form.splitPct")],["amount",t("form.splitEur")]].map(([m,lbl])=>(
+                <button key={m} type="button" style={{flex:1,padding:"4px 2px",borderRadius:12,fontSize:10,fontWeight:600,border:"1.5px solid",borderColor:spMode===m?G:"#DDD6CC",background:spMode===m?G:"#fff",color:spMode===m?"#fff":"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}
+                  onClick={()=>{setSpMode(m);setSplits(prev=>calcEqual(prev,expAmt));}}>
                   {lbl}
                 </button>
               ))}
             </div>
-            {splits.map(s=>{
-              const u=users.find(x=>x.id===s.userId)||{name:s.userId,color:"#999"};
-              return(
-                <div key={s.userId} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,opacity:s.checked?1:0.4}}>
-                  <UserAvatar user={u} size={22} fontSize={7}/>
-                  <div style={{flex:1,fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
-                  {spMode==="equal"&&s.checked&&<div style={{fontSize:9,textAlign:"right",color:"#4B5E52",minWidth:58}}><div style={{fontWeight:700}}>{s.percent.toFixed(2)}%</div>{expAmt>0&&<div style={{color:"#9CAA9F"}}>{fmt(expAmt*s.percent/100)}</div>}</div>}
-                  {spMode==="percent"&&s.checked&&<div style={{display:"flex",alignItems:"center",gap:2}}><input type="text" inputMode="decimal" value={s.percent} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,percent:Math.max(0,Math.min(100,parseMoney(e.target.value)))}:x))} style={{width:44,textAlign:"right",padding:"2px 3px",border:"1.5px solid #DDD6CC",borderRadius:4,fontSize:10,fontFamily:"inherit",outline:"none"}}/><span style={{fontSize:9,color:"#6B7B72"}}>%</span></div>}
-                  {spMode==="value"&&s.checked&&<div style={{display:"flex",alignItems:"center",gap:2}}><span style={{fontSize:9,color:"#6B7B72"}}>€</span><input type="text" inputMode="decimal" value={s.value} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,value:Math.max(0,parseMoney(e.target.value))}:x))} style={{width:52,textAlign:"right",padding:"2px 3px",border:"1.5px solid #DDD6CC",borderRadius:4,fontSize:10,fontFamily:"inherit",outline:"none"}}/></div>}
-                  <div onClick={()=>togUsr(s.userId)} style={{width:16,height:16,borderRadius:3,border:"1.5px solid",borderColor:s.checked?G:"#DDD6CC",background:s.checked?G:"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    {s.checked&&<svg width="7" height="5" viewBox="0 0 7 5"><polyline points="1,2.5 3,4.5 6,1" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            <div style={{display:"flex",flexWrap:"wrap",gap:10,justifyContent:"flex-start"}}>
+              {splits.map(s=>{
+                const u=users.find(x=>x.id===s.userId)||{name:s.userId,color:"#999"};
+                const locked=s.userId===user.id;
+                const shareAmt=expAmt>0&&s.checked?parseFloat((expAmt*(Number(s.percent)||0)/100).toFixed(2)):0;
+                return(
+                  <div key={s.userId} style={{width:92,textAlign:"center",opacity:s.checked?1:0.38}}>
+                    <button type="button" onClick={()=>togUsr(s.userId)} disabled={locked}
+                      style={{
+                        width:"100%",border:"none",background:"transparent",cursor:locked?"default":"pointer",fontFamily:"inherit",padding:"4px 2px",borderRadius:10,
+                        boxShadow:s.checked?`0 0 0 2px ${u.color||G}`:"0 0 0 1px #DDD6CC",
+                        backgroundColor:s.checked?"rgba(255,255,255,0.85)":"transparent",
+                      }}>
+                      <UserAvatar user={u} size={32} fontSize={10}/>
+                      <div style={{fontSize:10,fontWeight:600,marginTop:4,color:G,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
+                    </button>
+                    {s.checked&&spMode==="equal"&&expAmt>0&&(
+                      <div style={{fontSize:9,color:"#4B5E52",marginTop:6,fontVariantNumeric:"tabular-nums",lineHeight:1.35}}>
+                        <div style={{fontWeight:700}}>{fmt(shareAmt)}</div>
+                        <div style={{color:"#9CAA9F"}}>({Number(s.percent).toFixed(2)}%)</div>
+                      </div>
+                    )}
+                    {s.checked&&spMode==="percentage"&&(
+                      <div style={{marginTop:6,display:"flex",alignItems:"center",justifyContent:"center",gap:2}}>
+                        <input type="text" inputMode="decimal" aria-label="%" value={s.percent} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,percent:Math.max(0,parseMoney(e.target.value))}:x))} style={{width:46,textAlign:"right",padding:"3px 4px",border:"1.5px solid #DDD6CC",borderRadius:4,fontSize:10,fontFamily:"inherit",outline:"none"}}/>
+                        <span style={{fontSize:9,color:"#6B7B72"}}>%</span>
+                      </div>
+                    )}
+                    {s.checked&&spMode==="amount"&&(
+                      <div style={{marginTop:6,display:"flex",alignItems:"center",justifyContent:"center",gap:2}}>
+                        <span style={{fontSize:9,color:"#6B7B72"}}>€</span>
+                        <input type="text" inputMode="decimal" value={s.value} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,value:Math.max(0,parseMoney(e.target.value))}:x))} style={{width:54,textAlign:"right",padding:"3px 4px",border:"1.5px solid #DDD6CC",borderRadius:4,fontSize:10,fontFamily:"inherit",outline:"none"}}/>
+                      </div>
+                    )}
                   </div>
-                </div>
-              );
-            })}
-            {spMode==="percent"&&<div style={{textAlign:"right",fontSize:9,fontWeight:600,marginTop:2,color:Math.abs(totPct-100)<0.1?"#065F46":"#DC2626"}}>{totPct.toFixed(2)}%{Math.abs(totPct-100)>0.1?" — "+t("msg.splitEqual100Hint"):""}</div>}
-            {spMode==="value"&&expAmt>0&&<div style={{textAlign:"right",fontSize:9,fontWeight:600,marginTop:2,color:Math.abs(totVal-expAmt)<0.01?"#065F46":"#DC2626"}}>{fmt(totVal)} / {fmt(expAmt)}</div>}
+                );
+              })}
+            </div>
+            {splitOn&&checkedSplitCount<2&&<div style={{marginTop:8,fontSize:10,fontWeight:600,color:"#DC2626"}}>{t("split.minParticipants")}</div>}
+            {spMode==="percentage"&&(
+              <div style={{marginTop:8,fontSize:10,fontWeight:600,color:pctSumBad?"#DC2626":"#065F46"}}>
+                {pctSumBad?t("split.warnPctSum",{sum:totPct.toFixed(2)}):`${totPct.toFixed(2)}% ✓`}
+              </div>
+            )}
+            {spMode==="amount"&&expAmt>0&&(
+              <div style={{marginTop:8,fontSize:10,fontWeight:600,color:amtSumBad?"#DC2626":"#065F46"}}>
+                {amtSumBad?t("split.warnAmtSum",{sum:fmt(totVal),total:fmt(expAmt)}):`${fmt(totVal)} / ${fmt(expAmt)} ✓`}
+              </div>
+            )}
           </div>
         )}
       </div>}
+      </div>
+      )}
       {formError&&<div style={{marginBottom:7,padding:"5px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:500}}>{formError}</div>}
-      <button className="btn-primary" style={{width:"100%",padding:11,opacity:(!form.amount||!form.description||!form.departmentId)?0.5:1}} onClick={()=>{setFormError("");submitExp();}} disabled={!form.amount||!form.description||!form.departmentId}>{t("action.submit")}</button>
+      <button className="btn-primary" style={{width:"100%",padding:11,opacity:(!form.amount||!form.description||!form.departmentId||splitSubmitBlocked)?0.5:1}} onClick={()=>{setFormError("");submitExp();}} disabled={!form.amount||!form.description||!form.departmentId||splitSubmitBlocked}>{t("action.submit")}</button>
     </div>
   );
 }
@@ -2469,7 +2754,7 @@ function DetailPanel(){
   if(!e)return null;
   const getU=id=>users.find(u=>u.id===id)||{name:id,color:"#999"};
   const cat=cats.find(c=>c.name===e.category);
-  const approverIds=cat?.approverIds?.length>0?cat.approverIds:getAdminIds(users);
+  const approverIds=effectiveExpenseApproverIds(e,cats,users);
   const st=getItemStatus(e,cats,users);
   const canEdit=user.id===e.submittedBy||isAdmin;
   const ivaMatch=e.ivaRate!=null&&e.ivaRate!==undefined?ivaRates.find(r=>r.value===e.ivaRate):null;
@@ -2504,6 +2789,7 @@ function DetailPanel(){
       notes:ef.notes,receipt:ef.receipt||null,
       receiptType:ef.receiptType||null,
       paidBy:ef.paidBy,
+      splitMode:(ef.paidBy||[]).length>1?e.splitMode:undefined,
       ivaRate,ivaAmount,
       departmentId:ef.departmentId||defaultDeptId,
     },e);
@@ -2581,25 +2867,21 @@ function DetailPanel(){
       {!editMode&&<div>
       <div style={{display:"inline-block",padding:"2px 8px",borderRadius:11,fontSize:9,fontWeight:700,background:ST[st].bg,color:ST[st].color,marginBottom:7}}>{t("status."+st).toUpperCase()}</div>
       <div style={{fontSize:15,fontWeight:700,marginBottom:2}}>{e.description}</div>
-      <div style={{fontSize:24,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",marginBottom:(e.currency&&e.currency!=="EUR")?4:11}}>{fmtExpenseAmt(e)}</div>
-      {(e.currency&&e.currency!=="EUR")&&<div style={{fontSize:12,color:"#6B7B72",marginBottom:11}}>≈ {fmt(eurForExpense(e))} (EUR)</div>}
+      <div style={{fontSize:24,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",marginBottom:11}}>{fmtExpenseAmt(e)}</div>
       {e.itemCode&&(
         <ItemCodeBadge code={e.itemCode}/>
       )}
-      {[{l:t("label.date"),v:fmtDate(e.date)},{l:t("label.category"),v:e.category},{l:t("label.department"),v:(departments.find(d=>d.id===e.departmentId)||{}).name||"—"},{l:t("label.by"),v:getU(e.submittedBy).name}].map(({l,v})=>(
+      {[{l:t("label.date"),v:fmtDate(e.date)},{l:t("label.category"),v:e.category},{l:t("label.department"),v:(e.departmentId&&(departments.find(d=>d.id===e.departmentId)||{}).name)||t("detail.noDepartment")},{l:t("filter.submitter"),v:getU(e.submittedBy).name}].map(({l,v})=>(
         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}><span style={{color:"#9CAA9F"}}>{l}</span><span style={{fontWeight:500}}>{v}</span></div>
       ))}
       <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}>
         <span style={{color:"#9CAA9F"}}>{t("expense.ivaRow")} ({ivaRowLabel})</span>
         <span style={{fontWeight:500}}>{e.ivaRate!==null&&e.ivaRate!==undefined?(e.ivaRate===0?t("form.ivaAmountDash"):fmt(e.ivaAmount||0)):t("expense.ivaNotTracked")}</span>
       </div>
-      <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}}>
-        <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>{t("label.paidBy")}</div>
-        {e.paidBy.map(p=><div key={p.userId} style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span>{getU(p.userId).name}</span><span style={{fontWeight:600}}>{fmt(p.amount)} ({Math.round(p.amount/(Number(e.amount)||1)*100)}%)</span></div>)}
-      </div>
+      <ExpenseSplitBreakdown e={e} t={t} users={users}/>
       <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}}>
         <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>{t("label.approval")}</div>
-        {approverIds.map(aid=>{const a=e.approvals[aid];return(
+        {approverIds.map(aid=>{const a=(e.approvals||{})[aid];return(
           <div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}>
             <div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",flexShrink:0}}/>
             <span>{getU(aid).name}</span>
@@ -2607,7 +2889,7 @@ function DetailPanel(){
           </div>
         );})}
       </div>
-      {((AUTH_URL&&isAdmin&&e._apiType==="expense"&&e.status==="submitted")||(!AUTH_URL&&isAdmin&&approverIds.includes(user.id)&&st==="pending"&&!e.approvals[user.id]))&&(
+      {((AUTH_URL&&isAdmin&&e._apiType==="expense"&&e.status==="submitted"&&approverIds.includes(user.id)&&!(e.approvals||{})[user.id])||(!AUTH_URL&&isAdmin&&approverIds.includes(user.id)&&st==="pending"&&!e.approvals[user.id]))&&(
         <div style={{marginTop:9}}>
           <label className="lbl" style={{marginBottom:3}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
@@ -2655,6 +2937,7 @@ function DetailPanel(){
                 {" · "}<span style={{color:"#9CAA9F"}}>{fmtDate(a.at.slice(0,10))}</span>
                 {a.meta?.format&&<span style={{color:"#9CAA9F"}}>{" · "}{a.meta.format.toUpperCase()}</span>}
                 {a.note&&<div style={{color:"#4B5E52",fontStyle:"italic",marginTop:1}}>&ldquo;{a.note}&rdquo;</div>}
+                {a.meta?.reason==="submitter_is_approver"&&<div style={{color:"#9CAA9F",fontSize:9,marginTop:1}}>{t("audit.autoApprovedDetail")}</div>}
               </div>
             </div>
           );
@@ -2692,18 +2975,15 @@ function DetailPanel(){
 function PersonDrilldown({userId, onClose}){
   const{t,expenses,bills,cats,users}=useApp();
   const u=users.find(x=>x.id===userId)||{name:userId,color:"#999"};
-  // Expenses: attributed via paidBy (reparto) or submittedBy
   const userExpenses=expenses.filter(e=>
-    (e.paidBy||[]).some(p=>p.userId===userId)||e.submittedBy===userId
+    (e.paidBy||[]).some(p=>p&&p.userId===userId)
+    ||(!(e.paidBy||[]).length&&(e.submittedBy===userId||e.userId===userId))
   );
   const userBills=bills.filter(b=>b.submittedBy===userId);
   const total=userExpenses.reduce((s,e)=>{
-    const mine=(e.paidBy||[]).find(p=>p.userId===userId);
-    const eur=eurForExpense(e);
-    const denom=Number(e.amount)||1;
-    if(mine)return s+(mine.amount/denom)*eur;
-    if(e.submittedBy===userId)return s+eur;
-    return s;
+    const st=getItemStatus(e,cats,users);
+    if(st==="deleted"||st==="rejected")return s;
+    return s+shareEurInExpense(e,userId);
   },0);
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(60,10,55,0.55)",zIndex:8000,
@@ -2727,14 +3007,14 @@ function PersonDrilldown({userId, onClose}){
           {userExpenses.length===0
             ?<div style={{fontSize:11,color:"#9CAA9F",marginBottom:11}}>{t("person.noExpenses")}</div>
             :<div style={{marginBottom:14}}>
-              {userExpenses.map(e=>{const st=getItemStatus(e,cats);const mine=(e.paidBy||[]).find(p=>p.userId===userId);return(
+              {userExpenses.map(e=>{const st=getItemStatus(e,cats,users);const sub=(users.find(x=>x.id===e.submittedBy)||{name:e.submittedBy||"—"}).name;return(
                 <div key={e.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F5F0EA",alignItems:"flex-start"}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.description}</div>
-                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.date)} · {e.category}</div>
+                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.date)} · {t("filter.submitter")}: {sub} · {e.category}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
-                    <div style={{fontSize:12,fontWeight:700,color:G}}>{fmt(mine?(mine.amount/(Number(e.amount)||1))*eurForExpense(e):eurForExpense(e))}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:G}}>{fmt(shareEurInExpense(e,userId))}</div>
                     <div style={{display:"inline-block",padding:"1px 5px",borderRadius:5,fontSize:8,fontWeight:600,background:ST[st].bg,color:ST[st].color,marginTop:1}}>{t("status."+st)}</div>
                   </div>
                 </div>
@@ -2746,7 +3026,7 @@ function PersonDrilldown({userId, onClose}){
           {userBills.length===0
             ?<div style={{fontSize:11,color:"#9CAA9F"}}>{t("person.noBills")} <span style={{fontSize:9}}>(criterio: enviado por)</span></div>
             :<div>
-              {userBills.map(b=>{const bst=getItemStatus(b,cats);return(
+              {userBills.map(b=>{const bst=getItemStatus(b,cats,users);return(
                 <div key={b.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F5F0EA",alignItems:"flex-start"}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
@@ -2904,9 +3184,15 @@ function DashboardView(){
           const pool=isAdmin?expenses.slice():expenses.filter(e=>e.submittedBy===user.id);
           const sorted=[...pool].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
           if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{isAdmin?"—":t("dash.recentEmpty")}</div>;
-          return sorted.map((e,i)=>{const st=getItemStatus(e,cats);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;return(
+          return sorted.map((e,i)=>{const st=getItemStatus(e,cats);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;const sub=(users.find(x=>x.id===e.submittedBy)||{name:e.submittedBy||"—"}).name;return(
             <div key={e.id} className="row-hover" style={{display:"flex",alignItems:"flex-start",padding:"7px 3px",borderBottom:i<sorted.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}} onClick={()=>{go("expenses");setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);}}>
-              <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{short}</div><div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.date)} · {e.category}</div></div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <div style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{short}</div>
+                  {(e.paidBy||[]).length>1&&<span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:9,fontWeight:700,color:"#4B5E52",background:"#EDE8E0",padding:"1px 5px",borderRadius:6,flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {(e.paidBy||[]).length}</span>}
+                </div>
+                <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.date)} · {t("filter.submitter")}: {sub} · {e.category}</div>
+              </div>
               <div style={{marginLeft:9,textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
                 <div style={{fontSize:12,fontWeight:700,color:G}}>{fmt(eurForExpense(e))}</div>
                 <span style={{padding:"1px 6px",borderRadius:11,fontSize:8,fontWeight:700,background:ac.bg,color:ac.color}}>{t("status."+st)}</span>
@@ -2973,7 +3259,17 @@ function ExpensesView(){
           value={dateTo} onChange={e=>setDateTo(e.target.value)} title={t("filter.dateTo")}/>
         {activeFilterCount>0&&(
           <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
-            onClick={()=>{setCatFlt("");setSubmFlt("");setDateFrom("");setDateTo("");setExpSrc("");}}>
+            onClick={()=>{
+              try{
+                ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to"].forEach(k=>sessionStorage.removeItem(k));
+              }catch(e){}
+              setExpFlt("all");
+              setCatFlt("");
+              setSubmFlt("");
+              setDateFrom("");
+              setDateTo("");
+              setExpSrc("");
+            }}>
             {t("filter.clearFilters")} ({activeFilterCount + (expSrc?1:0)})
           </button>
         )}
@@ -2982,18 +3278,18 @@ function ExpensesView(){
         {filtered.length===0&&<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{t("empty.expenses")}</div>}
         {filtered.map((e,idx)=>{
           const st=getItemStatus(e,cats),sel=detailId===e.id&&panel==="detail";
-          const cat=cats.find(c=>c.name===e.category);
-          const approverIds=cat?.approverIds?.length>0?cat.approverIds:getAdminIds(users);
+          const approverIds=effectiveExpenseApproverIds(e,cats,users);
+          const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:e.submittedBy||"—"}).name;
           return(
             <div key={e.id} className="row-hover" style={{padding:"9px 13px",borderBottom:idx<filtered.length-1?"1px solid #F5F0EA":"none",cursor:"pointer",background:sel?"#F5F0EA":"transparent",display:"flex",alignItems:"flex-start",gap:8}}
               onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}><span style={{fontSize:12,fontWeight:600}}>{e.description}</span><span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:ST[st].bg,color:ST[st].color,flexShrink:0}}>{t("status."+st)}</span>{e.paidBy.length>1&&<span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:"#EDE8E0",color:"#4B5E52",flexShrink:0}}>{t("label.splitBadge")}</span>}</div>
+                <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}><span style={{fontSize:12,fontWeight:600}}>{e.description}</span><span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:ST[st].bg,color:ST[st].color,flexShrink:0}}>{t("status."+st)}</span>{(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span aria-hidden="true">👥</span><span>{(e.paidBy||[]).length}</span></span>}</div>
                 <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>
                   {e.itemCode&&<span style={{fontFamily:"monospace",fontSize:9,marginRight:5,opacity:0.7}}>{e.itemCode}</span>}
-                  {fmtDate(e.date)} · {e.category} · {(users.find(u=>u.id===e.submittedBy)||{name:e.submittedBy}).name}
+                  {fmtDate(e.date)} · {t("filter.submitter")}: {submitterName} · {e.category}
                 </div>
-                {st==="pending"&&<div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>{approverIds.map(aid=>{const a=e.approvals[aid];return<span key={aid} style={{fontSize:9,display:"flex",alignItems:"center",gap:2}}><span style={{width:4,height:4,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",display:"inline-block"}}/><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{(users.find(u=>u.id===aid)||{name:aid}).name}</span></span>})}</div>}
+                {st==="pending"&&<div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>{approverIds.map(aid=>{const a=(e.approvals||{})[aid];return<span key={aid} style={{fontSize:9,display:"flex",alignItems:"center",gap:2}}><span style={{width:4,height:4,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",display:"inline-block"}}/><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{(users.find(u=>u.id===aid)||{name:aid}).name}</span></span>})}</div>}
               </div>
               <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -3059,23 +3355,28 @@ function ApprovalsView(){
       {tab==="expenses"&&(
         myPending.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
         myPending.map(e=>{
-          const cat=cats.find(c=>c.name===e.category);
-          const approverIds=cat?.approverIds?.length>0?cat.approverIds:getAdminIds(users);
+          const rowApproverIds=effectiveExpenseApproverIds(e,cats,users);
           return(
             <div key={e.id} className="card" style={{marginBottom:9}}>
               <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7}}>
                 {AUTH_URL&&e.receiptPath&&<ReceiptThumb expenseId={e.id}/>}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                    <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:13}}>{e.description}</div><div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{fmtDate(e.date)} · {e.category} · {getU(e.submittedBy).name}</div></div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        <div style={{fontWeight:600,fontSize:13}}>{e.description}</div>
+                        {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {(e.paidBy||[]).length}</span>}
+                      </div>
+                      <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{fmtDate(e.date)} · {t("filter.submitter")}: {getU(e.submittedBy).name} · {e.category}</div>
+                    </div>
                     <div style={{fontSize:17,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmtExpenseAmt(e)}</div>
                   </div>
                   {AUTH_URL&&e.status&&<div style={{marginTop:6}}><span style={{padding:"2px 8px",borderRadius:11,fontSize:9,fontWeight:700,background:ST.pending.bg,color:ST.pending.color}}>{String(e.status).toUpperCase()}</span></div>}
                 </div>
               </div>
-              {e.paidBy.length>1&&<div style={{background:"#F5F0EA",borderRadius:6,padding:"6px 9px",marginBottom:7}}><div style={{fontSize:8,fontWeight:700,color:"#4B5E52",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:3}}>{t("label.splitBadge")}</div>{e.paidBy.map(p=><div key={p.userId} style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:1}}><span>{getU(p.userId).name}</span><span style={{fontWeight:600}}>{fmt(p.amount)}</span></div>)}</div>}
-              {!AUTH_URL&&<div style={{marginBottom:7}}>{approverIds.map(aid=>{const a=e.approvals[aid];return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>}
-              {AUTH_URL?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder={t("label.optional")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(!e.approvals[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder={t("label.optional")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+e.approvals[user.id])}</div>))}
+              {(e.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={e} t={t} users={users}/></div>}
+              <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=(e.approvals||{})[aid];return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
+              {AUTH_URL?(rowApproverIds.includes(user.id)&&!(e.approvals||{})[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder={t("label.optional")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):((e.approvals||{})[user.id]?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+(e.approvals||{})[user.id])}</div>:null)):(!(e.approvals||{})[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder={t("label.optional")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+(e.approvals||{})[user.id])}</div>))}
             </div>
           );
         })
@@ -3103,7 +3404,7 @@ function ApprovalsView(){
 }
 
 /* ── BILLS VIEW ────────────────────────────────────────────────────────────── */
-function BillsView(){
+function BillsView({focusBillId,onFocusBillConsumed}={}){
   const{t,user,users,bills,cats,saveBills,isAdmin,totFixed,addBill,setAddBill,newBill,setNewBill,markBillPaid,departments,defaultDeptId}=useApp();
   const [selBillId,setSelBillId]=useState(null);
   const [editBillId,setEditBillId]=useState(null);
@@ -3118,6 +3419,14 @@ function BillsView(){
   const billFileRef=useRef(null);
   const billNewFileRef=useRef(null);
   const [newBillRecPrev,setNewBillRecPrev]=useState(null);
+  useEffect(()=>{
+    if(focusBillId===null||focusBillId===undefined)return;
+    const b=bills.find(x=>String(x.id)===String(focusBillId));
+    if(b){
+      setSelBillId(b.id);
+      onFocusBillConsumed?.();
+    }
+  },[focusBillId,bills,onFocusBillConsumed]);
   const activeCats=cats.filter(c=>!c.archived);
   const today=new Date();
   const upcoming=[];
@@ -3230,7 +3539,6 @@ function BillsView(){
           const d=await API.post("/bills",{
             vendor:newBill.name,
             amount:parseMoney(newBill.amount),
-            currency:"EUR",
             category:newBill.category,
             dueDate:due,
             notes:newBill.description||undefined,
@@ -3251,8 +3559,6 @@ function BillsView(){
               name:newBill.name,
               vendor:newBill.name,
               amount:amt,
-              currency:"EUR",
-              amountEUR:amt,
               category:newBill.category,
               dueDate:billDueISOFromForm(newBill),
               dayOfMonth:newBill.dayOfMonth||"1",
@@ -3521,7 +3827,7 @@ function BillsView(){
                 {editBillId!==b.id&&<div>
                 {[
                   {l:t("label.category"),v:b.category},
-                  {l:t("label.department"),v:(departments.find(d=>d.id===b.departmentId)||{}).name||"—"},
+                  {l:t("label.department"),v:(b.departmentId&&(departments.find(d=>d.id===b.departmentId)||{}).name)||t("detail.noDepartment")},
                   {l:t("label.frequency"),v:t("label."+b.frequency)},
                   {l:t("bills.day"),v:b.dayOfMonth||"—"},
                   {l:t("bills.submittedBy"),v:(users.find(u=>u.id===b.submittedBy)||{name:"?"}).name},
@@ -3635,11 +3941,39 @@ function PaymentCalendar(){
 
 /* ── REPORTS VIEW ──────────────────────────────────────────────────────────── */
 function ReportsView(){
-  const{t,expenses,bills,cats,users,perPerson,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt}=useApp();
+  const{t,expenses,bills,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,departmentsWithStats,setDetailId,setPanel}=useApp();
   const [expFilter,setExpFilter]=useState("all");
-  const [drillRPerson,setDrillRPerson]=useState(null);
+  const [openPersonLog,setOpenPersonLog]=useState({});
+  const personInvestmentRows=useMemo(()=>users.map(u=>{
+    const approvedTotal=expenses.filter(e=>getItemStatus(e,cats,users)==="approved").reduce((s,e)=>s+shareEurInExpense(e,u.id),0);
+    const submittedCount=expenses.filter(e=>e.submittedBy===u.id&&getItemStatus(e,cats,users)!=="deleted").length;
+    const logExpenses=expenses.filter(e=>{
+      const st=getItemStatus(e,cats,users);
+      if(st==="deleted"||st==="rejected")return false;
+      if(st!=="approved"&&st!=="pending")return false;
+      return(e.paidBy||[]).some(p=>p&&p.userId===u.id);
+    }).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+    return{...u,approvedTotal,submittedCount,logExpenses};
+  }).sort((a,b)=>b.approvedTotal-a.approvedTotal),[users,expenses,cats]);
   const catTotals=cats.filter(c=>!c.archived).map(c=>({cat:c.name,total:expenses.filter(e=>e.category===c.name&&getItemStatus(e,cats)==="approved").reduce((s,e)=>s+eurForExpense(e),0)})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const maxC=catTotals[0]?.total||1;
+  const monthlyTrend=(()=>{
+    const now=new Date();
+    const months=[];
+    for(let i=5;i>=0;i--){
+      const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+      const label=d.toLocaleString("es-ES",{month:"short"});
+      const total=expenses
+        .filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date?.slice(0,7)===ym)
+        .reduce((s,e)=>s+eurForExpense(e),0);
+      months.push({ym,label,total});
+    }
+    return months;
+  })();
+  const maxMonth=Math.max(...monthlyTrend.map(m=>m.total),1);
+  const hasTrendData=monthlyTrend.some(m=>m.total>0);
+  const trendBarTrackPx=76;
   const exportCSV=(all)=>{
     const data=all?"all":expFilter;
     const src=data==="all"?expenses:(expenses.filter(e=>getItemStatus(e,cats)===data));
@@ -3666,7 +4000,6 @@ function ReportsView(){
   };
   return(
     <div>
-      {drillRPerson&&<PersonDrilldown userId={drillRPerson} onClose={()=>setDrillRPerson(null)}/>}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:6}}>
         <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G}}>{t("reports.title")}</h1>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -3678,6 +4011,35 @@ function ReportsView(){
           <button className="btn-secondary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportCSV(expFilter==="all")}>{t("action.exportCSV")} ({expFilter==="all"?t("reports.allData"):expFilter==="approved"?t("reports.approvedOnly"):t("reports.pendingOnly")})</button>
         </div>
       </div>
+      {hasTrendData&&(
+      <div className="card" style={{marginBottom:11}}>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>{t("reports.monthlyTrend")}</div>
+        <div style={{display:"flex",alignItems:"flex-end",gap:6,minHeight:120}}>
+          {monthlyTrend.map(m=>{
+            const barH=Math.max(4,Math.round((m.total/maxMonth)*trendBarTrackPx));
+            return(
+            <div key={m.ym} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:0}}>
+              <div style={{fontSize:9,fontWeight:600,color:G,fontVariantNumeric:"tabular-nums",textAlign:"center",lineHeight:1.2,minHeight:22}}>
+                {m.total>0?fmt(m.total):"—"}
+              </div>
+              <div style={{
+                width:"100%",maxWidth:40,height:trendBarTrackPx,display:"flex",flexDirection:"column",justifyContent:"flex-end",alignItems:"center",
+              }}>
+                <div style={{
+                  width:"100%",
+                  height:barH,
+                  background:T,borderRadius:"4px 4px 0 0",
+                  transition:"height 0.4s",
+                }}/>
+              </div>
+              <div style={{fontSize:9,color:"#9CAA9F",textTransform:"capitalize"}}>{m.label}</div>
+            </div>
+            );
+          })}
+        </div>
+      </div>
+      )}
+      <DepartmentBudgetBars t={t} rows={departmentsWithStats} title={t("dash.deptBudgetsTitle")}/>
       {/* By category */}
       <div className="card" style={{marginBottom:11}}>
         <div style={{fontWeight:600,fontSize:13,marginBottom:11}}>{t("reports.byCategory")}</div>
@@ -3697,44 +4059,75 @@ function ReportsView(){
         });
         const totalB=budgeted.reduce((s,c)=>s+c.budget,0);
         const totalS=rowsB.reduce((s,r)=>s+r.spent,0);
-        const pctT=totalB>0?totalS/totalB*100:0;
-        const barT=pctT<75?"#16A34A":pctT<=100?"#D97706":"#DC2626";
+        const aggPct=totalB>0?totalS/totalB*100:(totalS>0?100:0);
+        const barT=aggPct<75?"#16A34A":aggPct<=100?"#D97706":"#DC2626";
         return(
           <div className="card" style={{marginBottom:11}}>
             <div style={{fontWeight:600,fontSize:13,marginBottom:11}}>{t("reports.budgetVsActual")}</div>
             {rowsB.map(r=>(
-              <div key={r.id||r.name} style={{marginBottom:10}}>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:4}}>
-                  <span style={{fontWeight:500}}>{r.name}</span>
-                  <span style={{fontWeight:600,color:G}}>{fmt(r.spent)} / {fmt(r.budget)}</span>
-                </div>
-                <div style={{height:6,background:"#EDE8E0",borderRadius:3,overflow:"hidden"}}>
-                  <div style={{height:"100%",width:`${Math.min(100,r.pct)}%`,background:r.barColor,transition:"width 0.4s"}}/>
-                </div>
-              </div>
+              <BudgetVsActualRow key={r.id||r.name} t={t} name={r.name} spent={r.spent} budget={r.budget} remaining={r.budget-r.spent} barColor={r.barColor}/>
             ))}
-            <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #EDE8E0"}}>
-              <div style={{fontSize:10,color:"#9CAA9F",marginBottom:4}}>{t("reports.budgetTotal")}</div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
-                <span>{fmt(totalS)}</span><span style={{fontWeight:700}}>{fmt(totalB)}</span>
-              </div>
-              <div style={{height:8,background:"#EDE8E0",borderRadius:4,overflow:"hidden"}}>
-                <div style={{height:"100%",width:`${Math.min(100,pctT)}%`,background:barT,transition:"width 0.4s"}}/>
-              </div>
+            <div style={{marginTop:4,paddingTop:12,borderTop:"1px solid #EDE8E0"}}>
+              <div style={{fontSize:10,color:"#9CAA9F",marginBottom:6}}>{t("reports.budgetTotal")}</div>
+              <BudgetVsActualRow t={t} name={t("reports.total")} spent={totalS} budget={totalB} remaining={totalB-totalS} barColor={barT} noBottomMargin/>
             </div>
           </div>
         );
       })()}
-      {/* Per person */}
+      {/* Per person — approved share + submitted count + expandable log */}
       <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:9}}>{t("reports.perPerson")}</div>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-          <thead><tr style={{borderBottom:"1.5px solid #EDE8E0"}}>{[t("label.name"),t("label.role"),t("reports.total")||"Invested"].map(h=><th key={h} style={{padding:"4px 6px",textAlign:"left",fontSize:8,color:"#9CAA9F",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>{h}</th>)}</tr></thead>
-          <tbody>
-            {perPerson.map(u=>(<tr key={u.id} className="row-hover" style={{borderBottom:"1px solid #F5F0EA",cursor:"pointer"}} onClick={()=>setDrillRPerson(u.id)}><td style={{padding:"6px 6px",fontWeight:500}}>{u.name}</td><td style={{padding:"6px 6px",color:"#9CAA9F"}}>{u.role}</td><td style={{padding:"6px 6px",fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(u.total)}</td></tr>))}
-            <tr style={{borderTop:"2px solid #EDE8E0"}}><td colSpan={2} style={{padding:"6px 6px",fontWeight:700}}>{t("reports.total")}</td><td style={{padding:"6px 6px",fontWeight:800,color:T,fontSize:13,fontVariantNumeric:"tabular-nums"}}>{fmt(totApproved)}</td></tr>
-          </tbody>
-        </table>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>{t("reports.perPerson")}</div>
+        <p style={{fontSize:10,color:"#9CAA9F",marginBottom:12,lineHeight:1.45}}>{t("reports.personLogHint")}</p>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {personInvestmentRows.map(u=>{
+            const open=!!openPersonLog[u.id];
+            return(
+              <div key={u.id} style={{border:"1px solid #EDE8E0",borderRadius:10,overflow:"hidden",background:"#FAF7F2"}}>
+                <button type="button" onClick={()=>setOpenPersonLog(p=>({...p,[u.id]:!p[u.id]}))} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 12px",border:"none",background:open?"#F5F0EA":"transparent",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                  <UserAvatar user={u} size={36} fontSize={12}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:13,color:G}}>{u.name}</div>
+                    <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{u.role}{u.title?` · ${u.title}`:""}</div>
+                    <div style={{fontSize:10,color:"#6B7B72",marginTop:4}}>{t("reports.submittedCount",{count:String(u.submittedCount)})}</div>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{fontWeight:800,fontSize:14,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(u.approvedTotal)}</div>
+                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("filter.approved")}</div>
+                  </div>
+                  <span style={{fontSize:14,color:"#9CAA9F",flexShrink:0,width:18}}>{open?"▼":"▶"}</span>
+                </button>
+                {open&&(
+                  <div style={{padding:"0 12px 12px",borderTop:"1px solid #EDE8E0"}}>
+                    {u.logExpenses.length===0
+                      ?<div style={{fontSize:11,color:"#9CAA9F",padding:"10px 0"}}>{t("reports.personNoSplitExpenses")}</div>
+                      :u.logExpenses.map(e=>{
+                        const st=getItemStatus(e,cats,users);
+                        const share=shareEurInExpense(e,u.id);
+                        const pend=st==="pending";
+                        const subN=(users.find(x=>x.id===e.submittedBy)||{name:e.submittedBy||"—"}).name;
+                        return(
+                          <div key={e.id} className="row-hover" role="button" tabIndex={0} onKeyDown={ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();setView("expenses");setDetailId(e.id);setPanel("detail");}}} onClick={()=>{setView("expenses");setDetailId(e.id);setPanel("detail");}} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 0",borderBottom:"1px solid #F0EBE3",cursor:"pointer"}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontWeight:600,fontSize:12,lineHeight:1.35}}>{e.description||"—"}</div>
+                              <div style={{fontSize:10,color:"#9CAA9F",marginTop:3}}>{fmtDate(e.date)} · {t("filter.submitter")}: {subN} · {e.category}</div>
+                            </div>
+                            <div style={{textAlign:"right",flexShrink:0}}>
+                              <div style={{fontWeight:700,fontSize:12,fontVariantNumeric:"tabular-nums",color:G}}>{fmt(share)}</div>
+                              <span style={{display:"inline-block",marginTop:4,fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:4,background:pend?"#FEF3C7":"#DCFCE7",color:pend?"#92400E":"#166534"}}>{pend?t("status.pending"):t("status.approved")}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14,paddingTop:12,borderTop:"2px solid #EDE8E0"}}>
+          <span style={{fontWeight:700,fontSize:12}}>{t("reports.total")}</span>
+          <span style={{fontWeight:800,color:T,fontSize:14,fontVariantNumeric:"tabular-nums"}}>{fmt(totApproved)}</span>
+        </div>
       </div>
       {/* Forecast — based on approved active bills only */}
       <div className="card" style={{marginBottom:11}}>
@@ -4097,34 +4490,9 @@ function DepartmentBudgetBars({t,rows,title}){
   return(
     <div className="card" style={{marginBottom:14}}>
       {title&&<div style={{fontWeight:600,fontSize:13,marginBottom:10}}>{title}</div>}
-      {rows.map(d=>{
-        const pct=Math.min(100,Number(d.pctUsed)||0);
-        const barColor=pct<75?"#16A34A":pct<=100?"#D97706":"#DC2626";
-        return(
-          <div key={d.id} style={{marginBottom:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3,flexWrap:"wrap",gap:6}}>
-              <span style={{fontWeight:600}}>{d.name}</span>
-              <span style={{fontWeight:600,color:"#4B5E52",fontVariantNumeric:"tabular-nums"}}>{fmt(d.spent)} / {fmt(d.budget)} · {t("dept.remaining")}: {fmt(d.remaining)}</span>
-            </div>
-            <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>{t("dept.usedPct")}: {pct}%</div>
-            <div style={{height:6,background:"#EDE8E0",borderRadius:3}}>
-              <div style={{height:"100%",width:`${pct}%`,background:barColor,transition:"width 0.4s",borderRadius:3}}/>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function BudgetsView(){
-  const{t,departmentsWithStats}=useApp();
-  return(
-    <div style={{maxWidth:560}}>
-      <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:12}}>{t("nav.budgets")}</h1>
-      {(!departmentsWithStats||departmentsWithStats.length===0)
-        ?<div className="card" style={{fontSize:12,color:"#9CAA9F",padding:16}}>{t("budgets.empty")}</div>
-        :<DepartmentBudgetBars t={t} rows={departmentsWithStats} title={null}/>}
+      {rows.map((d,i)=>(
+        <BudgetVsActualRow key={d.id} t={t} name={d.name} spent={d.spent} budget={d.budget} remaining={d.remaining} noBottomMargin={i===rows.length-1}/>
+      ))}
     </div>
   );
 }
@@ -4493,6 +4861,7 @@ function SettingsView(){
             <button className="btn-sm" style={{fontSize:10}} onClick={()=>{setAddCat(v=>!v);setCatEdit(null);}}>{t("action.addCategory")}</button>
           </div>
           <p style={{fontSize:10,color:"#9CAA9F",marginBottom:10,lineHeight:1.4}}>{t("settings.defaultApprovers")}</p>
+          <p style={{fontSize:10,color:"#7A8B82",marginBottom:10,lineHeight:1.4}}>{t("settings.approverAutoNote")}</p>
           {addCat&&(
             <div style={{background:"#F5F0EA",borderRadius:9,padding:12,marginBottom:10}}>
               <div style={{fontWeight:600,fontSize:12,marginBottom:8}}>{t("settings.newCategory")}</div>
@@ -4624,13 +4993,38 @@ function SolanaExpenses(){
   const [view,    setView]    =useState("dashboard");
   const [detailId,setDetailId]=useState(null);
   const [panel,   setPanel]   =useState(null);
-  const [expFlt,  setExpFlt]  =useState("all");
+  const [expFlt,  setExpFlt]  =useSessionState("sol-flt-status","all");
   const [expSrc,  setExpSrc]  =useState("");
-  const [catFlt,  setCatFlt]  =useState("");   // category name or ""
-  const [submFlt, setSubmFlt] =useState("");   // userId or ""
-  const [dateFrom,setDateFrom]=useState("");   // YYYY-MM-DD or ""
-  const [dateTo,  setDateTo]  =useState("");   // YYYY-MM-DD or ""
+  const [catFlt,  setCatFlt]  =useSessionState("sol-flt-cat","");   // category name or ""
+  const [submFlt, setSubmFlt] =useSessionState("sol-flt-subm","");   // userId or ""
+  const [dateFrom,setDateFrom]=useSessionState("sol-flt-from","");   // YYYY-MM-DD or ""
+  const [dateTo,  setDateTo]  =useSessionState("sol-flt-to","");   // YYYY-MM-DD or ""
   const myExpFilterClearedRef=useRef(false);
+  const resetExpenseFiltersToDefault=useCallback(()=>{
+    try{
+      ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to"].forEach(k=>sessionStorage.removeItem(k));
+    }catch(e){}
+    setExpFlt("all");
+    setCatFlt("");
+    setSubmFlt("");
+    setDateFrom("");
+    setDateTo("");
+    setExpSrc("");
+  },[setExpFlt,setCatFlt,setSubmFlt,setDateFrom,setDateTo,setExpSrc]);
+
+  const [globalSearch,setGlobalSearch]=useState("");
+  const [searchOpen,setSearchOpen]=useState(false);
+  const [billSearchFocusId,setBillSearchFocusId]=useState(null);
+  const consumeBillFocus=useCallback(()=>setBillSearchFocusId(null),[]);
+  const [narrowSearchUi,setNarrowSearchUi]=useState(false);
+  useEffect(()=>{
+    if(typeof window==="undefined"||!window.matchMedia)return;
+    const mq=window.matchMedia("(max-width:639px)");
+    const fn=()=>setNarrowSearchUi(mq.matches);
+    fn();
+    mq.addEventListener("change",fn);
+    return()=>mq.removeEventListener("change",fn);
+  },[]);
 
   const [form,    setForm]    =useState(()=>({...BF,ivaRate:String(readIvaDefault())}));
   const [splitOn, setSplitOn] =useState(false);
@@ -4684,10 +5078,11 @@ function SolanaExpenses(){
   const clearMyExpenseFilter=useCallback(()=>{
     myExpFilterClearedRef.current=true;
     setSubmFlt("");
-  },[]);
+  },[setSubmFlt]);
   const onSignOut=useCallback(()=>{
     myExpFilterClearedRef.current=false;
     migrAttemptRef.current=false;
+    resetExpenseFiltersToDefault();
     void API.logout();
     try{sessionStorage.removeItem("sol-session-token");}catch(e){}
     API.token=null;
@@ -4697,7 +5092,7 @@ function SolanaExpenses(){
     setPanel(null);
     if(AUTH_URL){setExpenses([]);setBills([]);}
     setDepartments([]);
-  },[]);
+  },[resetExpenseFiltersToDefault]);
 
   /* ── SAVES ──────────────────────────────────────────────────────────────── */
   const saveUsers   =d=>{const n=d.map(u=>normalizeItem(u,"user"));setUsers(n);lsSet("sol-users",n);};
@@ -4859,22 +5254,26 @@ function SolanaExpenses(){
     let cancelled=false;
     (async()=>{
       try{
+        let catsMigr=cats;
+        try{
+          const raw=localStorage.getItem("sol-cats");
+          const p=raw?JSON.parse(raw):null;
+          if(Array.isArray(p)&&p.length)catsMigr=p;
+        }catch(e){}
         for(const ex of localExp){
           if(cancelled)return;
-          const cur=(ex.currency||"EUR").toUpperCase();
           const amt=Number(ex.amount)||0;
-          let amountEUR=cur==="EUR"?amt:null;
-          if(cur!=="EUR"&&ex.amountEUR!=null&&!isNaN(Number(ex.amountEUR)))amountEUR=Number(ex.amountEUR);
+          const expCatM=catsMigr.find(c=>c.name===ex.category);
+          const approvalRequired=expCatM?.approverIds?.length>0?expCatM.approverIds:getAdminIds(users);
           await API.post("/expenses",{
             amount:amt,
             description:ex.description||".",
             category:ex.category||"Otro",
             date:(ex.date||new Date().toISOString().slice(0,10)).toString().slice(0,10),
             notes:ex.notes||undefined,
-            currency:cur,
-            amountEUR:amountEUR===null?undefined:amountEUR,
             status:ex.status==="draft"?"draft":"submitted",
             departmentId:ex.departmentId||DEFAULT_DEPT_ID,
+            approvalRequired,
           },{skipOfflineQueue:true});
         }
         for(const bi of localBills){
@@ -4885,7 +5284,6 @@ function SolanaExpenses(){
           await API.post("/bills",{
             vendor:bi.name||"Factura",
             amount:Number(bi.amount)||0,
-            currency:"EUR",
             category:bi.category||"Otro",
             dueDate:due,
             notes:[bi.notes,bi.description].filter(Boolean).join("\n")||undefined,
@@ -4910,7 +5308,7 @@ function SolanaExpenses(){
       }
     })();
     return()=>{cancelled=true;};
-  },[user?.id,ledgerLoading,expenses.length,bills.length]);
+  },[user?.id,ledgerLoading,expenses.length,bills.length,cats,users]);
 
   const handleReceiptFile=e=>{
     const f=e.target.files?.[0];if(!f)return;
@@ -4983,12 +5381,13 @@ function SolanaExpenses(){
     idleTimer.current=setTimeout(()=>{
       appLog("warn","session_idle_expired",{userId:user?.id});
       myExpFilterClearedRef.current=false;
+      resetExpenseFiltersToDefault();
       API.token=null;
       try{sessionStorage.removeItem("sol-session-token");}catch(e){}
       setUser(null);setView("dashboard");setDetailId(null);setPanel(null);
       setSessionExpired(true);setIdleWarning(false);
     }, IDLE_TIMEOUT_MS);
-  },[user]);
+  },[user,resetExpenseFiltersToDefault]);
 
   useEffect(()=>{
     if(!user){clearTimeout(idleTimer.current);clearTimeout(warnTimer.current);return;}
@@ -5014,23 +5413,23 @@ function SolanaExpenses(){
   const submitExp=()=>{
     const amount=parseMoney(form.amount);if(!form.description||!amount||amount<=0)return;
     if(!form.departmentId){setFormError(t("msg.deptRequired"));return;}
-    if(AUTH_URL){
+      if(AUTH_URL){
       if(splitOn){setFormError("La división entre personas no está disponible con el servidor.");return;}
-      const cur=(form.currency||"EUR").toUpperCase();
-      let amountEUR=null;
-      if(cur==="EUR")amountEUR=amount;
-      else{const ae=parseMoney(form.amountEur||"");amountEUR=ae>0?ae:null;}
+      const expCatAuth=cats.find(c=>c.name===form.category);
+      const expApproverIdsAuth=expCatAuth?.approverIds?.length>0?expCatAuth.approverIds:adminIds;
       void (async()=>{
         const clientRef="tmp_exp_"+genUuid();
         const meta={clientRef};
         if(receipt?.b64)meta.pendingReceipt={b64:receipt.b64,mediaType:receipt.type||"image/jpeg"};
         try{
+          /* Autor del gasto: el servidor guarda userId desde la sesión; expenseFromApi lo expone como submittedBy. */
           const d=await API.post("/expenses",{
-            amount,currency:cur,amountEUR:amountEUR===null?undefined:amountEUR,
+            amount,
             description:form.description,category:form.category,
             date:form.date||new Date().toISOString().slice(0,10),
             notes:form.notes||undefined,status:"submitted",
             departmentId:form.departmentId,
+            approvalRequired:expApproverIdsAuth,
           },meta);
           let exp=expenseFromApi(d.expense);
           if(receipt?.b64){
@@ -5059,14 +5458,15 @@ function SolanaExpenses(){
           appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
         }catch(err){
           if(isOfflineQueuedError(err)){
+            const baseTrailOff=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
+            const{approvals:optAppr,auditTrail:optTrail}=autoApprove(user.id,expApproverIdsAuth,{},baseTrailOff);
+            const allInit=expApproverIdsAuth.length>0&&expApproverIdsAuth.every(id=>optAppr[id]==="approved");
             const optimistic=normalizeItem({
               id:clientRef,
               _apiType:"expense",
               _pendingSync:true,
-              status:"submitted",
+              status:allInit?"approved":"submitted",
               amount,
-              currency:cur,
-              amountEUR:amountEUR===null?undefined:amountEUR,
               description:form.description,
               category:form.category,
               date:form.date||new Date().toISOString().slice(0,10),
@@ -5077,8 +5477,9 @@ function SolanaExpenses(){
               receiptType:receipt?.type||null,
               rejectionNote:null,
               itemCode:mkCode("EXP"),
-              approvals:{},
-              auditTrail:[],
+              approvals:optAppr,
+              approvalRequired:expApproverIdsAuth,
+              auditTrail:optTrail,
               ivaRate:null,
               ivaAmount:null,
               comments:[],
@@ -5097,13 +5498,21 @@ function SolanaExpenses(){
       })();
       return;
     }
-    let paidBy=[{userId:user.id,amount}];
-    const totPct=splits.filter(s=>s.checked).reduce((a,s)=>a+(s.percent||0),0);
-    const totVal=splits.filter(s=>s.checked).reduce((a,s)=>a+(s.value||0),0);
-    if(splitOn&&splits.length>0){
-      if(spMode==="percent"){if(Math.abs(totPct-100)>0.1){setFormError(t("msg.splitMustTotal100"));return;}paidBy=splits.filter(s=>s.checked&&s.percent>0).map(s=>({userId:s.userId,amount:parseFloat((amount*s.percent/100).toFixed(2))}));}
-      else if(spMode==="value"){if(Math.abs(totVal-amount)>0.01){setFormError(t("msg.valueMustMatch")+fmt(amount));return;}paidBy=splits.filter(s=>s.checked&&s.value>0).map(s=>({userId:s.userId,amount:parseFloat(s.value.toFixed(2))}));}
-      else{paidBy=splits.filter(s=>s.checked).map(s=>({userId:s.userId,amount:parseFloat((amount*s.percent/100).toFixed(2))}));}
+    let paidBy=[{userId:user.id,amount,pct:100}];
+    let splitModeOut=undefined;
+    if(splitOn&&splits.filter(s=>s.checked).length>1){
+      const sel=splits.filter(s=>s.checked);
+      if(sel.length<2){setFormError(t("split.minParticipants"));return;}
+      if(spMode==="percentage"){
+        const sumPct=sel.reduce((s,x)=>s+(Number(x.percent)||0),0);
+        if(Math.abs(sumPct-100)>0.5){setFormError(t("msg.splitMustTotal100"));return;}
+      }
+      if(spMode==="amount"){
+        const sumAmt=sel.reduce((s,x)=>s+(Number(x.value)||0),0);
+        if(Math.abs(sumAmt-amount)>0.01){setFormError(t("msg.valueMustMatch")+fmt(amount));return;}
+      }
+      paidBy=buildPaidByFromSplitState(splits,amount,spMode);
+      if(paidBy.length>1)splitModeOut=spMode;
     }
     const expCat=cats.find(c=>c.name===form.category);
     const expApproverIds=expCat?.approverIds?.length>0?expCat.approverIds:adminIds;
@@ -5113,7 +5522,7 @@ function SolanaExpenses(){
     const rp=parseFloat(form.ivaRate);
     const ivaRate=isNaN(rp)?readIvaDefault():rp;
     const ivaAmount=calcIvaParts(amount,ivaRate).iva;
-    const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,paidBy,approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID};
+    const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID};
     appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
     saveExp([exp,...expenses]);resetForm();setPanel("detail");setDetailId(exp.id);
@@ -5126,8 +5535,8 @@ function SolanaExpenses(){
     appLog("info","attachment_removed",{itemCode:e.itemCode,userId:user.id});
   };
   const resetForm=useCallback(()=>{
-    setForm({...BF,date:new Date().toISOString().slice(0,10),ivaRate:String(readIvaDefault()),currency:"EUR",amountEur:"",departmentId:defaultDeptId});
-    setSplitOn(false);setSplits([]);setReceipt(null);setRecPrev(null);setFormError("");
+    setForm({...BF,date:new Date().toISOString().slice(0,10),ivaRate:String(readIvaDefault()),departmentId:defaultDeptId});
+    setSplitOn(false);setSplits([]);setSpMode("equal");setReceipt(null);setRecPrev(null);setFormError("");
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
   },[defaultDeptId]);
   const openNew  =()=>{resetForm();setDetailId(null);setPanel("new");setView("expenses");};
@@ -5178,7 +5587,11 @@ function SolanaExpenses(){
             notes:updates.notes,
             departmentId:updates.departmentId,
           };
-          if(oldExp.status==="rejected")body.status="submitted";
+          if(oldExp.status==="rejected"){
+            body.status="submitted";
+            const rc=cats.find(c=>c.name===updates.category);
+            body.approvalRequired=rc?.approverIds?.length>0?rc.approverIds:adminIds;
+          }
           await API.put("/expenses/"+encodeURIComponent(expId),body);
           if(updates.receipt){
             await API.post("/expenses/"+encodeURIComponent(expId)+"/receipt",{
@@ -5200,6 +5613,7 @@ function SolanaExpenses(){
     }
     const relevantChanged=REAPPROVAL_FIELDS.some(k=>{
       if(k==="paidBy") return JSON.stringify(updates.paidBy)!==JSON.stringify(oldExp.paidBy);
+      if(k==="splitMode") return String(updates.splitMode??"")!==String(oldExp.splitMode??"");
       if(k==="receipt") return (updates.receipt||null)!==(oldExp.receipt||null);
       if(k==="ivaRate") return Number(updates.ivaRate??NaN)!==Number(oldExp.ivaRate??NaN);
       if(k==="ivaAmount") return Number(updates.ivaAmount??NaN)!==Number(oldExp.ivaAmount??NaN);
@@ -5212,6 +5626,7 @@ function SolanaExpenses(){
     let newTrail=[...(oldExp.auditTrail||[]),{action:"edited",by:user.id,at:now,
       meta:{fields:REAPPROVAL_FIELDS.filter(k=>{
         if(k==="paidBy") return JSON.stringify(updates.paidBy)!==JSON.stringify(oldExp.paidBy);
+        if(k==="splitMode") return String(updates.splitMode??"")!==String(oldExp.splitMode??"");
         if(k==="receipt") return (updates.receipt||null)!==(oldExp.receipt||null);
         if(k==="ivaRate") return Number(updates.ivaRate??NaN)!==Number(oldExp.ivaRate??NaN);
         if(k==="ivaAmount") return Number(updates.ivaAmount??NaN)!==Number(oldExp.ivaAmount??NaN);
@@ -5222,7 +5637,14 @@ function SolanaExpenses(){
     let nextSeen=oldExp.seenBy||[];
     if(wasApproved&&relevantChanged){
       newApprovals={};
-      newTrail=[...newTrail,{action:"reapproval_required",by:user.id,at:now}];
+      const catRc=cats.find(c=>c.name===(updates.category||oldExp.category));
+      const approverIdsRc=catRc?.approverIds?.length>0?catRc.approverIds:adminIds;
+      let trailExtra=[...newTrail];
+      if(approverIdsRc.includes(user.id)){
+        newApprovals={[user.id]:"approved"};
+        trailExtra=[...trailExtra,{action:"auto_approved",by:user.id,at:now,meta:{reason:"submitter_is_approver"}}];
+      }
+      newTrail=[...trailExtra,{action:"reapproval_required",by:user.id,at:now}];
       nextSeen=seenByAfterActor(user.id);
       appLog("info","expense_reapproval",{itemCode:oldExp.itemCode,userId:user.id});
     } else if(wasRejected&&relevantChanged){
@@ -5242,12 +5664,19 @@ function SolanaExpenses(){
     if(AUTH_URL){
       void (async()=>{
         try{
-          await API.put("/expenses/"+encodeURIComponent(expId),{status:"submitted"});
+          const expCatRs=cats.find(c=>c.name===exp.category);
+          const expApproverIdsRs=expCatRs?.approverIds?.length>0?expCatRs.approverIds:adminIds;
+          await API.put("/expenses/"+encodeURIComponent(expId),{status:"submitted",approvalRequired:expApproverIdsRs});
           const full=await API.get("/expenses");
           saveExp((full.expenses||[]).map(expenseFromApi));
         }catch(e){
           if(isOfflineQueuedError(e)){
-            saveExp(expenses.map(x=>x.id!==expId?x:{...x,status:"submitted"}));
+            const expCatRs=cats.find(c=>c.name===exp.category);
+            const expApproverIdsRs=expCatRs?.approverIds?.length>0?expCatRs.approverIds:adminIds;
+            const baseTr=[{action:"submitted",by:exp.submittedBy,at:new Date().toISOString()}];
+            const{approvals:ra,auditTrail:tr}=autoApprove(exp.submittedBy,expApproverIdsRs,{},baseTr);
+            const allR=expApproverIdsRs.length>0&&expApproverIdsRs.every(id=>ra[id]==="approved");
+            saveExp(expenses.map(x=>x.id!==expId?x:{...x,status:allR?"approved":"submitted",approvals:ra,approvalRequired:expApproverIdsRs,auditTrail:[...(x.auditTrail||[]),...tr]}));
             return;
           }
           alert(e.message||"No se pudo reenviar.");
@@ -5319,7 +5748,18 @@ function SolanaExpenses(){
           saveExp((full.expenses||[]).map(expenseFromApi));
         }catch(e){
           if(isOfflineQueuedError(e)){
-            saveExp(expenses.map(x=>x.id!==itemId?x:{...x,status:action==="approved"?"approved":"rejected",rejectionNote:action==="rejected"?(note||x.rejectionNote):x.rejectionNote}));
+            saveExp(expenses.map(x=>{
+              if(x.id!==itemId)return x;
+              if(x._apiType==="expense"&&Array.isArray(x.approvalRequired)&&x.approvalRequired.length>0){
+                if(action==="rejected"){
+                  return{...x,status:"rejected",rejectionNote:note||x.rejectionNote,approvals:{}};
+                }
+                const newApprovals={...(x.approvals||{}),[user.id]:"approved"};
+                const all=x.approvalRequired.every(id=>newApprovals[id]==="approved");
+                return{...x,approvals:newApprovals,...(all?{status:"approved"}:{})};
+              }
+              return{...x,status:action==="approved"?"approved":"rejected",rejectionNote:action==="rejected"?(note||x.rejectionNote):x.rejectionNote};
+            }));
             setANote(p=>({...p,[itemId]:""}));
             return;
           }
@@ -5349,6 +5789,62 @@ function SolanaExpenses(){
     }
     setANote(p=>({...p,[itemId]:""}));
   };
+
+  const searchResults=useMemo(()=>{
+    if(globalSearch.length<2)return{expenses:[],bills:[]};
+    const q=globalSearch.toLowerCase().trim();
+    if(!q)return{expenses:[],bills:[]};
+    const matchExp=expenses.filter(e=>{
+      if(getItemStatus(e,cats,users)==="deleted")return false;
+      const subName=(users.find(u=>u.id===e.submittedBy)?.name||"").toLowerCase();
+      const code=String(e.itemCode||e.id||"").toLowerCase();
+      return (
+        (e.description||"").toLowerCase().includes(q)||
+        code.includes(q)||
+        (e.category||"").toLowerCase().includes(q)||
+        subName.includes(q)
+      );
+    }).slice(0,5);
+    const matchBill=bills.filter(b=>{
+      const subName=(users.find(u=>u.id===b.submittedBy)?.name||"").toLowerCase();
+      const code=String(b.itemCode||b.id||"").toLowerCase();
+      return (
+        (b.name||"").toLowerCase().includes(q)||
+        code.includes(q)||
+        (b.category||"").toLowerCase().includes(q)||
+        subName.includes(q)||
+        (b.description||"").toLowerCase().includes(q)
+      );
+    }).slice(0,3);
+    return{expenses:matchExp,bills:matchBill};
+  },[globalSearch,expenses,bills,users,cats]);
+
+  useEffect(()=>{
+    const onKey=e=>{
+      if((e.key!=="k"&&e.key!=="K")||!(e.metaKey||e.ctrlKey))return;
+      const el=e.target;
+      if(!el)return;
+      const tag=el.tagName||"";
+      if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return;
+      if(el.isContentEditable)return;
+      e.preventDefault();
+      setSearchOpen(true);
+    };
+    document.addEventListener("keydown",onKey);
+    return()=>document.removeEventListener("keydown",onKey);
+  },[]);
+
+  useEffect(()=>{
+    if(!searchOpen)return;
+    const onEsc=e=>{
+      if(e.key==="Escape"){
+        setSearchOpen(false);
+        setGlobalSearch("");
+      }
+    };
+    document.addEventListener("keydown",onEsc);
+    return()=>document.removeEventListener("keydown",onEsc);
+  },[searchOpen]);
 
   /* ── EARLY RETURN — after all hooks, before derived values that need user ── */
   if(!appReady)return<div style={{minHeight:"100vh",background:"#3C0A37",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{opacity:0.6}}><SolanaLogo theme="light" size="lg"/></div></div>;
@@ -5386,7 +5882,12 @@ function SolanaExpenses(){
   });
   const activeFilterCount=[catFlt,submFlt,dateFrom,dateTo].filter(Boolean).length;
   const myPending=isAdmin?(AUTH_URL
-    ?expenses.filter(e=>e._apiType==="expense"&&e.status==="submitted")
+    ?expenses.filter(e=>{
+      if(e._apiType!=="expense"||e._pendingSync)return false;
+      if(getItemStatus(e,cats,users)!=="pending")return false;
+      const ids=effectiveExpenseApproverIds(e,cats,users);
+      return ids.includes(user.id)&&!(e.approvals||{})[user.id];
+    })
     :expenses.filter(e=>{
       const cat=cats.find(c=>c.name===e.category);
       const ids=cat?.approverIds?.length>0?cat.approverIds:adminIds;
@@ -5397,7 +5898,13 @@ function SolanaExpenses(){
     const ids=cat?.approverIds?.length>0?cat.approverIds:adminIds;
     return ids.includes(user.id)&&getItemStatus(b,cats,users)==="pending"&&!(b.approvals||{})[user.id];
   }):[];
-  const totApproved=expenses.filter(e=>getItemStatus(e,cats,users)==="approved").reduce((s,e)=>s+eurForExpense(e),0);
+  /* Approved expenses: totApproved = sum of EUR once per expense (splits do not duplicate). Per-person = sum of paidBy-weighted EUR shares. */
+  const approvedExpenses=expenses.filter(e=>getItemStatus(e,cats,users)==="approved");
+  const totApproved=approvedExpenses.reduce((s,e)=>s+eurForExpense(e),0);
+  const perPerson=users.map(u=>({
+    ...u,
+    total:approvedExpenses.reduce((sum,e)=>sum+shareEurInExpense(e,u.id),0),
+  })).filter(u=>u.total>0).sort((a,b)=>b.total-a.total);
   const totFixed=bills.reduce((s,b)=>{
     if(AUTH_URL&&b._apiType==="bill"){
       if(!b.recurring)return s;
@@ -5416,13 +5923,74 @@ function SolanaExpenses(){
     }
     return s;
   },0);
-  const perPerson=users.map(u=>({...u,total:expenses.filter(e=>getItemStatus(e,cats,users)==="approved").flatMap(e=>e.paidBy||[]).filter(p=>p&&p.userId===u.id).reduce((sum,p)=>{
-    const base=Number(e.amount)||0;
-    const share=base>0?(p.amount/base)*eurForExpense(e):0;
-    return sum+share;
-  },0)})).sort((a,b)=>b.total-a.total);
 
   const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
+  const renderGlobalSearch=()=>(
+    <div style={{position:"relative",flexShrink:0}}>
+      {searchOpen?(
+        <div style={{display:"flex",alignItems:"center",gap:4}}>
+          <input
+            autoFocus
+            className="inp"
+            style={{width:narrowSearchUi?"calc(100vw - 120px)":200,fontSize:12,padding:"5px 10px",maxWidth:"100%"}}
+            placeholder={t("search.placeholder")}
+            value={globalSearch}
+            onChange={e=>setGlobalSearch(e.target.value)}
+            onBlur={()=>setTimeout(()=>{setSearchOpen(false);setGlobalSearch("");},200)}
+          />
+        </div>
+      ):(
+        <button type="button" onClick={()=>setSearchOpen(true)}
+          style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#FAF7F2",padding:4,lineHeight:1}}
+          title="Ctrl+K / ⌘K"
+          aria-label={t("search.placeholder")}
+        >🔍</button>
+      )}
+      {searchOpen&&globalSearch.length>=2&&(
+        <div style={{
+          position:"absolute",top:"100%",right:0,marginTop:4,
+          background:"#fff",borderRadius:9,boxShadow:"0 4px 20px rgba(0,0,0,0.15)",
+          width:280,maxWidth:narrowSearchUi?"calc(100vw - 40px)":280,maxHeight:300,overflow:"auto",zIndex:9999,
+          color:"#1A0E18",textAlign:"left",
+        }}>
+          {searchResults.expenses.length===0&&searchResults.bills.length===0&&(
+            <div style={{padding:14,fontSize:12,color:"#9CAA9F"}}>{t("search.noResults")}</div>
+          )}
+          {searchResults.expenses.length>0&&(
+            <>
+              <div style={{padding:"8px 12px 4px",fontSize:8,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.06em"}}>{t("search.groupExpenses")}</div>
+              {searchResults.expenses.map(e=>(
+                <div key={"gs-exp-"+e.id} className="row-hover"
+                  style={{padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid #F5F0EA"}}
+                  onMouseDown={()=>{
+                    resetForm();
+                    go("expenses");
+                    setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);
+                  }}>
+                  <div style={{fontSize:11,fontWeight:600}}>{e.description||"—"}</div>
+                  <div style={{fontSize:9,color:"#9CAA9F"}}>{e.itemCode||e.id} · {e.category||""} · {fmt(eurForExpense(e))}</div>
+                </div>
+              ))}
+            </>
+          )}
+          {searchResults.bills.length>0&&(
+            <>
+              {searchResults.expenses.length>0&&<div style={{height:1,background:"#EDE8E0",margin:"4px 0"}}/>}
+              <div style={{padding:"8px 12px 4px",fontSize:8,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.06em"}}>{t("search.groupBills")}</div>
+              {searchResults.bills.map(b=>(
+                <div key={"gs-bill-"+b.id} className="row-hover"
+                  style={{padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid #F5F0EA"}}
+                  onMouseDown={()=>{go("bills");setBillSearchFocusId(b.id);}}>
+                  <div style={{fontSize:11,fontWeight:600}}>{b.name||"—"}</div>
+                  <div style={{fontSize:9,color:"#9CAA9F"}}>{t("search.billTag")} · {fmt(eurForExpense(b))}</div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
   const rpOpen=view==="expenses"&&(panel==="new"||(panel==="detail"&&detailId));
   const totalBadge=(myPending.length+myPendingBills.length);
   const expenseNavBadge=expenses.filter(e=>e.submittedBy===user.id&&!(e.seenBy||[]).includes(user.id)).length;
@@ -5441,7 +6009,6 @@ function SolanaExpenses(){
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     ...(isAdmin?[{id:"approvals",label:t("nav.approvals"),badge:totalBadge}]:[]),
     {id:"bills",    label:t("nav.bills")},
-    {id:"budgets",  label:t("nav.budgets")},
     {id:"reports",  label:t("nav.reports")},
     // Settings removed from nav — accessed via profile avatar
   ];
@@ -5450,7 +6017,6 @@ function SolanaExpenses(){
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     ...(isAdmin?[{id:"approvals",label:t("nav.approvals"),badge:totalBadge}]:[]),
     {id:"bills",    label:t("nav.bills"),badge:0},
-    {id:"budgets",  label:t("nav.budgets"),badge:0},
     {id:"reports",  label:t("nav.reports"),badge:0},
     // Settings accessed via mobile header avatar
   ];
@@ -5599,18 +6165,21 @@ function SolanaExpenses(){
             </div>
           ))}
           <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
-            <div onClick={()=>go("settings")} title={t("login.profile")} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,cursor:"pointer",borderRadius:7,padding:"4px 6px",transition:"background 0.15s",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(250,247,242,0.12)"}
-              onMouseLeave={e=>e.currentTarget.style.background=view==="settings"?"rgba(250,247,242,0.12)":"transparent"}>
-              {user.avatar
-                ?<img src={user.avatar} alt="" style={{width:28,height:28,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1.5px solid rgba(250,247,242,0.25)"}}/>
-                :<div style={{width:28,height:28,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0}}>{inits(user.name)}</div>
-              }
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:10,fontWeight:600,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</div>
-                <div style={{fontSize:8,color:"rgba(250,247,242,0.75)"}}>{user.role==="superadmin"?t("role.superadmin"):isAdmin?t("role.admin"):t("role.user")}</div>
+            <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
+              {renderGlobalSearch()}
+              <div onClick={()=>go("settings")} title={t("login.profile")} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,cursor:"pointer",borderRadius:7,padding:"4px 6px",transition:"background 0.15s",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent"}}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(250,247,242,0.12)"}
+                onMouseLeave={e=>e.currentTarget.style.background=view==="settings"?"rgba(250,247,242,0.12)":"transparent"}>
+                {user.avatar
+                  ?<img src={user.avatar} alt="" style={{width:28,height:28,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1.5px solid rgba(250,247,242,0.25)"}}/>
+                  :<div style={{width:28,height:28,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0}}>{inits(user.name)}</div>
+                }
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:10,fontWeight:600,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</div>
+                  <div style={{fontSize:8,color:"rgba(250,247,242,0.75)"}}>{user.role==="superadmin"?t("role.superadmin"):isAdmin?t("role.admin"):t("role.user")}</div>
+                </div>
+                <div style={{fontSize:10,color:"#FAF7F2",opacity:0.75,fontWeight:600}}>···</div>
               </div>
-              <div style={{fontSize:10,color:"#FAF7F2",opacity:0.75,fontWeight:600}}>···</div>
             </div>
             <button style={{width:"100%",padding:4,borderRadius:4,border:"1px solid rgba(250,247,242,0.18)",background:"transparent",color:"rgba(250,247,242,0.75)",fontSize:9,cursor:"pointer",fontFamily:"inherit"}} onClick={onSignOut}>{t("nav.signOut")}</button>
           </div>
@@ -5621,11 +6190,14 @@ function SolanaExpenses(){
           {/* Mobile header */}
           <div className="mob-only" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="light" size="sm"/></div>
-            <div onClick={()=>go("settings")} title={t("login.profile")} style={{cursor:"pointer",flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%"}}>
-              {user.avatar
-                ?<img src={user.avatar} alt="" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(250,247,242,0.5)"}}/>
-                :<div style={{width:34,height:34,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>{inits(user.name)}</div>
-              }
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              {renderGlobalSearch()}
+              <div onClick={()=>go("settings")} title={t("login.profile")} style={{cursor:"pointer",flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%"}}>
+                {user.avatar
+                  ?<img src={user.avatar} alt="" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(250,247,242,0.5)"}}/>
+                  :<div style={{width:34,height:34,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>{inits(user.name)}</div>
+                }
+              </div>
             </div>
           </div>
 
@@ -5634,8 +6206,7 @@ function SolanaExpenses(){
               {view==="dashboard"&&<DashboardView/>}
               {view==="expenses" &&<ExpensesView/>}
               {view==="approvals"&&<ApprovalsView/>}
-              {view==="bills"    &&<BillsView/>}
-              {view==="budgets"  &&<BudgetsView/>}
+              {view==="bills"    &&<BillsView focusBillId={billSearchFocusId} onFocusBillConsumed={consumeBillFocus}/>}
               {view==="reports"  &&<ReportsView/>}
               {view==="settings" &&<SettingsView/>}
             </div>
