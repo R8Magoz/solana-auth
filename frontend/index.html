@@ -83,17 +83,6 @@ const GH = "#52114B"; // primary hover
 const GL = "rgba(60,10,55,0.07)"; // primary light tint (hover backgrounds)
 const T  = "#C4622D"; // terracotta accent — earthy complement, in palette grid
 const BL = "#7A4F9A"; // muted violet for notification badges
-const ADMIN_IDS=["marc","sergio"]; // default fallback approvers (superadmin IDs; must match seed)
-/** Prefer superadmins, then admins, then ADMIN_IDS — at least unique IDs for category defaults. */
-function defaultCategoryApproverIds(users){
-  const u=users||[];
-  const out=[];
-  const push=id=>{if(id&&typeof id==="string"&&!out.includes(id))out.push(id);};
-  u.filter(x=>x.role==="superadmin").forEach(x=>push(x.id));
-  if(out.length<2)u.filter(x=>x.role==="admin").forEach(x=>push(x.id));
-  ADMIN_IDS.forEach(push);
-  return out.slice(0,2);
-}
 /** Shown when a user id is not in the local users list (e.g. server sync lag). */
 const UNKNOWN_USER_NAME="Usuario";
 
@@ -308,6 +297,7 @@ const TR = {
     "dept.remaining": "Restante",
     "dept.usedPct": "% usado",
     "dept.spentLine": "{{spent}} de {{budget}} gastado",
+    "dept.spentNoBudget": "{{spent}} gastado (sin presupuesto asignado)",
     "dept.overBudgetMsg": "{{amount}} por encima del presupuesto",
     "dept.remainingLine": "{{amount}} restante",
     "msg.deptRequired": "Selecciona un departamento.",
@@ -344,6 +334,11 @@ const TR = {
     "login.forgotSuccess": "Si el correo es reconocido, la asistencia de contraseña ha sido iniciada.",
     "login.forgotError": "No se pudo procesar la solicitud en este momento.",
     "login.profile": "Perfil y Ajustes",
+    "team.resetPassword": "Contraseña temporal",
+    "team.resetPasswordSave": "Aplicar",
+    "team.resetPasswordCancel": "Cancelar",
+    "team.resetPasswordHint": "El usuario iniciará sesión con esta clave y deberá cambiarla.",
+    "team.resetPasswordOk": "Contraseña restablecida. El usuario debe iniciar sesión con la nueva clave.",
     "signup.subtitle": "Solicita acceso a Solana",
     "signup.helperNote": "Tu solicitud será revisada por un administrador, que aprobará o denegará tu acceso.",
     "signup.loginLink": "¿Ya tienes cuenta? Iniciar sesión",
@@ -425,6 +420,19 @@ const TR = {
     "bills.saveChanges": "Guardar cambios",
     "bills.confirmEdit": "¿Guardar cambios en esta factura?",
     "bills.reapproval": "Esta factura estaba aprobada. Editar puede requerir reaprobación.",
+    "bills.paymentQuestion": "¿Ya está pagada?",
+    "bills.paymentPaid": "Ya pagada",
+    "bills.paymentPending": "Pendiente de pago",
+    "bills.paymentDate": "Fecha de pago",
+    "bills.badgeOnce": "Pago único",
+    "bills.badgePaid": "Pagada",
+    "bills.freqQuarterly": "Trimestral",
+    "bills.dayMeta": "día",
+    "bills.confirmMarkPaid": "¿Confirmar que esta factura ha sido pagada?",
+    "bills.markPaid": "Marcar como pagada",
+    "bills.confirmMarkPaidRecurring": "¿Confirmas registrar el pago de esta factura recurrente ahora?",
+    "bills.markPaidConfirm": "Confirmar pago",
+    "bills.paidOn": "Pagada el",
     "dash.welcome": "Bienvenido",
     "dash.totalInvested": "Total invertido",
     "dash.thisMonth": "Este mes",
@@ -511,8 +519,28 @@ const TR = {
     "expense.ivaRow": "IVA",
     "expense.ivaNotTracked": "—",
     "expense.comments": "Comentarios",
-    "expense.commentPlaceholder": "Escribe un comentario…",
+    "expense.commentPlaceholder": "Añadir una nota…",
+    "expense.addNote": "Añadir nota",
     "expense.send": "Enviar",
+    "timeline.sectionTitle": "Seguimiento",
+    "timeline.now": "ahora",
+    "timeline.minsAgo": "hace {{n}}min",
+    "timeline.hoursAgo": "hace {{n}}h",
+    "timeline.noteAdded": "añadió una nota",
+    "timeline.approved": "aprobó",
+    "timeline.rejected": "rechazó",
+    "timeline.edited": "editó el gasto",
+    "timeline.receiptUploaded": "subió un recibo",
+    "timeline.receiptRemoved": "eliminó el recibo",
+    "timeline.askedReapproval": "marcó reaprobación requerida",
+    "timeline.autoApproved": "aprobación automática",
+    "timeline.submitted": "envió el gasto",
+    "timeline.resubmitted": "reenvió el gasto",
+    "timeline.editedFields": "Campos modificados: {{fields}}",
+    "timeline.attachmentDetailPdf": "Archivo PDF",
+    "timeline.attachmentDetailImage": "Imagen",
+    "expense.commentRetryHint": "El servidor no respondió. El comentario quedó solo en este dispositivo; reintenta en unos minutos.",
+    "expense.commentFailed": "No se pudo enviar el comentario.",
     "expense.fixResubmit": "Corregir y reenviar",
     "expense.editThenResubmit": "Editar primero y luego reenviar",
     "dash.activityTitle": "Actividad",
@@ -550,7 +578,12 @@ const mkT=()=>(key,vars={})=>{
   return s;
 };
 
-/* ── DEFAULT DATA ──────────────────────────────────────────────────────────── */
+/* === SEED DATA (local dev / demo only) =======================================
+   Used when localStorage keys are empty and AUTH_URL is unset (offline app).
+   When AUTH_URL is set: expenses & bills initial state is [] and are loaded from
+   GET /expenses + GET /bills; the user roster is replaced from GET /auth/team after
+   login (see useEffect in SolanaExpenses). Seed user ids below are not used in logic.
+   ============================================================================= */
 const DEF_USERS=[
   {id:"sergio", name:"Sergio Gómez", title:"Fundador",    email:"sgheesp@gmail.com",     phone:"+34 617 99 95 51",role:"admin",      color:"#3C0A37"},
   {id:"marc",   name:"Marc Gené",          title:"Fundador", email:"r8magoz@gmail.com",        phone:"",                 role:"superadmin", color:"#52114B"},
@@ -558,15 +591,15 @@ const DEF_USERS=[
   {id:"anna",   name:"Anna Font",        title:"Equipo",      email:"anna@solana.com",        phone:"",                 role:"user",       color:"#6B7280"},
 ];
 const DEF_CATS=[
-  {id:"c1",name:"Equipment",       archived:false,approverIds:["marc","sergio"]},
-  {id:"c2",name:"Supplies",        archived:false,approverIds:["marc","sergio"]},
-  {id:"c3",name:"Marketing",       archived:false,approverIds:["marc","sergio"]},
-  {id:"c4",name:"Legal",           archived:false,approverIds:["marc","sergio"]},
-  {id:"c5",name:"Rent",            archived:false,approverIds:["marc","sergio"]},
-  {id:"c6",name:"Software",        archived:false,approverIds:["marc","sergio"]},
-  {id:"c7",name:"Food & Beverage", archived:false,approverIds:["marc","sergio"]},
-  {id:"c8",name:"Travel",          archived:false,approverIds:["marc","sergio"]},
-  {id:"c9",name:"Otro",           archived:false,approverIds:["marc","sergio"]},
+  {id:"c1",name:"Equipment",       archived:false,approverIds:[]},
+  {id:"c2",name:"Supplies",        archived:false,approverIds:[]},
+  {id:"c3",name:"Marketing",       archived:false,approverIds:[]},
+  {id:"c4",name:"Legal",           archived:false,approverIds:[]},
+  {id:"c5",name:"Rent",            archived:false,approverIds:[]},
+  {id:"c6",name:"Software",        archived:false,approverIds:[]},
+  {id:"c7",name:"Food & Beverage", archived:false,approverIds:[]},
+  {id:"c8",name:"Travel",          archived:false,approverIds:[]},
+  {id:"c9",name:"Otro",           archived:false,approverIds:[]},
 ];
 const SEED_EXP=[
   {id:"e1",amount:45.80, description:"Verduras de mercado – prueba proveedor",category:"Food & Beverage",date:"2026-03-10",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:45.80}], approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"Mercat de la Boqueria",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-10T10:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-10T14:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-10T15:30:00Z",note:""}],departmentId:"dept_operaciones"},
@@ -580,6 +613,7 @@ const SEED_BILLS=[
   {id:"b2",name:"Unidad de almacenamiento",    amount:150,frequency:"monthly",category:"Rent",    dayOfMonth:"5", submittedBy:"sergio", approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"sergio",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}],departmentId:"dept_operaciones"},
   {id:"b3",name:"Dominio y hosting",amount:20, frequency:"monthly",category:"Software",dayOfMonth:"15",submittedBy:"sergio", approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"sergio",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}],departmentId:"dept_branding"},
 ];
+/* === END SEED DATA ========================================================== */
 
 /* ── VERSION & SCHEMA ──────────────────────────────────────────────────────── */
 const DATA_VERSION=6; // increment when schema changes; triggers normalize()
@@ -635,6 +669,14 @@ function makeOfflineQueuedError() {
 
 function isOfflineQueuedError(e) {
   return e && (e.code === "OFFLINE_QUEUED" || e.message === "OFFLINE_QUEUED");
+}
+
+/** Comment POST failed due to gateway, timeout, missing route, or network — safe to merge locally */
+function isCommentPostUnavailable(e) {
+  if (isNetworkError(e)) return true;
+  const m = String(e && e.message ? e.message : "");
+  if (/HTTP 502|HTTP 503|HTTP 504|HTTP 404|Bad Gateway|Gateway Timeout/i.test(m)) return true;
+  return false;
 }
 
 function enqueueOfflineOp(method, path, body, meta) {
@@ -871,9 +913,10 @@ function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,no
   const spentN=Number(spent)||0;
   const budgetN=Number(budget)||0;
   const rem=remaining!=null&&Number.isFinite(Number(remaining))?Number(remaining):(budgetN-spentN);
+  const noBudget=spentN>0&&budgetN<=0;
   const pctRaw=budgetN>0?(spentN/budgetN)*100:(spentN>0?100:0);
   const pctBar=Math.min(100,Math.max(0,pctRaw));
-  const fill=barColorIn||(pctRaw<75?"#16A34A":pctRaw<=100?"#D97706":"#DC2626");
+  const fill=noBudget?"#D97706":(barColorIn||(pctRaw<75?"#16A34A":pctRaw<=100?"#D97706":"#DC2626"));
   const fs=formatBudgetCurrencyEUR;
   const nameStr=name!=null&&name!==""?String(name):"";
   return(
@@ -894,9 +937,9 @@ function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,no
         </div>
       </div>
       <div style={{fontSize:10,color:"#6B7B72",fontVariantNumeric:"tabular-nums",lineHeight:1.45}}>
-        {t("dept.spentLine",{spent:fs(spentN),budget:fs(budgetN)})}
+        {noBudget?t("dept.spentNoBudget",{spent:fs(spentN)}):t("dept.spentLine",{spent:fs(spentN),budget:fs(budgetN)})}
       </div>
-      {rem<0?(
+      {!noBudget&&(rem<0?(
         <div style={{fontSize:10,color:"#DC2626",fontWeight:600,fontVariantNumeric:"tabular-nums",marginTop:3}}>
           {t("dept.overBudgetMsg",{amount:fs(Math.abs(rem))})}
         </div>
@@ -904,11 +947,62 @@ function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,no
         <div style={{fontSize:10,color:rem===0?"#9CAA9F":"#15803d",fontWeight:500,fontVariantNumeric:"tabular-nums",marginTop:3}}>
           {t("dept.remainingLine",{amount:fs(rem)})}
         </div>
-      )}
+      ))}
     </div>
   );
 }
 const fmtDate=d=>{try{return new Date(d).toLocaleDateString("es-ES",{day:"2-digit",month:"short",year:"numeric"});}catch{return d;}};
+/** Audit actions shown in expense detail timeline (excludes comment_added — use comments[]). */
+const EXPENSE_TIMELINE_AUDIT_ACTIONS=new Set(["submitted","approved","rejected","edited","reapproval_required","auto_approved","attachment_uploaded","attachment_removed","resubmitted"]);
+function normalizeExpenseTimelineAt(at){
+  if(at==null||at==="")return new Date(0).toISOString();
+  if(typeof at==="string"){
+    if(at.length>=19)return at;
+    if(/^\d{4}-\d{2}-\d{2}$/.test(at))return`${at}T12:00:00.000Z`;
+  }
+  try{
+    const d=new Date(at);
+    return Number.isNaN(d.getTime())?new Date(0).toISOString():d.toISOString();
+  }catch(e){
+    return new Date(0).toISOString();
+  }
+}
+function buildExpenseTimelineEntries(e){
+  const audits=(e.auditTrail||[]).filter(a=>a&&EXPENSE_TIMELINE_AUDIT_ACTIONS.has(String(a.action||"")));
+  const auditEntries=audits.map(a=>({...a,_source:"audit",at:normalizeExpenseTimelineAt(a.at)}));
+  const commentEntries=(e.comments||[]).filter(c=>c&&(c.text||"").trim()).map(c=>({
+    _source:"comment",
+    action:"comment_added",
+    by:c.by,
+    at:normalizeExpenseTimelineAt(c.at),
+    text:String(c.text||"").trim(),
+    id:c.id,
+  }));
+  return [...auditEntries,...commentEntries].sort((x,y)=>new Date(x.at).getTime()-new Date(y.at).getTime());
+}
+function expenseTimelineTimeAgo(iso,t){
+  try{
+    const d=new Date(iso);
+    if(Number.isNaN(d.getTime()))return fmtDate(String(iso||"").slice(0,10));
+    const s=Math.floor((Date.now()-d.getTime())/1000);
+    if(s<60)return t("timeline.now");
+    if(s<3600)return t("timeline.minsAgo",{n:String(Math.floor(s/60))});
+    if(s<86400)return t("timeline.hoursAgo",{n:String(Math.floor(s/3600))});
+    return fmtDate(d.toISOString().slice(0,10));
+  }catch(err){
+    return fmtDate(String(iso||"").slice(0,10));
+  }
+}
+function expenseTimelineEditedFieldLabels(meta,t){
+  const f=meta&&Array.isArray(meta.fields)?meta.fields:[];
+  if(!f.length)return"";
+  const keyMap={
+    amount:"label.amount",description:"label.description",category:"label.category",date:"label.date",
+    paidBy:"label.paidBy",splitMode:"label.splitBadge",receipt:"label.receipt",receiptType:"label.receipt",
+    ivaRate:"form.ivaRate",ivaAmount:"form.ivaAmountLabel",departmentId:"label.department",notes:"label.notes",
+  };
+  return f.map(k=>{const trKey=keyMap[k];return trKey?t(trKey):k;}).join(", ");
+}
 // parseMoney: accepts "12,50" or "12.50" → 12.5 (shared utility used by all amount inputs)
 const parseMoney=s=>{if(s===null||s===undefined||s==="")return 0;const n=String(s).trim().replace(/\./g,"").replace(",",".");const v=parseFloat(n);return isNaN(v)?0:v;};
 const inits=n=>n.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase();
@@ -1010,23 +1104,73 @@ const normalizeItem=(item,type)=>{
     return merged;
   }
   if(type==="bill")    return{active:false,notes:"",description:"",receipt:null,receiptType:null,...item,approvals:item.approvals||{},auditTrail:item.auditTrail||[],submittedBy:item.submittedBy||"unknown",seenBy:Array.isArray(item.seenBy)?item.seenBy:[],departmentId:item.departmentId??null};
-  if(type==="user")    return{color:"#6B7280",title:"",email:"",phone:"",role:"user",...item};
+  if(type==="user")    return{color:"#6B7280",title:"",email:"",phone:"",role:"user",avatar:null,...item};
   if(type==="cat"){
-    const merged={archived:false,budget:null,...item,approverIds:Array.isArray(item.approverIds)?item.approverIds:[...ADMIN_IDS]};
+    const merged={archived:false,budget:null,...item,approverIds:Array.isArray(item.approverIds)&&item.approverIds.length>0?item.approverIds:[]};
     if(merged.budget===undefined||merged.budget===""||merged.budget===null)merged.budget=null;
     else if(typeof merged.budget==="string"){const v=parseFloat(merged.budget.replace(",","."));merged.budget=isNaN(v)?null:v;}
     return merged;
   }
   return item;
 };
+/** Map legacy demo approver tokens to roster ids when API users use different ids (DEF_USERS email match for local migration only). */
+const normalizeApproverIdToken=(token,users)=>{
+  if(token==null||token==="")return"";
+  const t=String(token);
+  if(!users||!Array.isArray(users)||users.length===0)return t;
+  if(users.some(u=>u.id===t))return t;
+  const demo=DEF_USERS.find(d=>d.id===t);
+  if(demo&&demo.email){
+    const em=String(demo.email).toLowerCase();
+    const hit=users.find(u=>String(u.email||"").toLowerCase()===em);
+    if(hit)return String(hit.id);
+  }
+  return t;
+};
+const canonicalApproverIdList=(ids,users)=>{
+  if(!Array.isArray(ids))return[];
+  if(!users||!users.length)return ids.slice();
+  const seen=new Set();
+  const out=[];
+  for(const id of ids){
+    const c=normalizeApproverIdToken(id,users);
+    if(!seen.has(c)){seen.add(c);out.push(c);}
+  }
+  return out;
+};
+const approvalVoteFor=(approvals,canonicalUserId,users)=>{
+  const a=approvals&&typeof approvals==="object"?approvals:{};
+  const uid=String(canonicalUserId||"");
+  if(a[uid]==="approved"||a[uid]==="rejected")return a[uid];
+  if(!users||!users.length)return a[uid];
+  for(const k of Object.keys(a)){
+    if(normalizeApproverIdToken(k,users)===uid)return a[k];
+  }
+  return undefined;
+};
 /** Derive admin IDs from live user list — no hardcoded constant needed */
-const getAdminIds=users=>users.filter(u=>u.role==="admin"||u.role==="superadmin").map(u=>u.id);
-/** Approver list for an expense: server snapshot (API) or category / admins (local). */
+const getAdminIds=users=>{const u=Array.isArray(users)?users:[];return u.filter(x=>x.role==="admin"||x.role==="superadmin").map(x=>x.id);};
+/** Drop approver IDs not on the roster; if fewer than 2 remain, use all admin/superadmin ids. */
+const finalizeApproverIdList=(canonicalIds,users)=>{
+  const u=Array.isArray(users)?users:[];
+  const list=Array.isArray(canonicalIds)?[...canonicalIds]:[];
+  if(!u.length)return list;
+  const valid=list.filter(id=>typeof id==="string"&&id&&u.some(x=>x.id===id));
+  const admins=getAdminIds(u);
+  return valid.length>=2?valid:admins;
+};
+/** Approver list for an expense/bill-shaped item: API approvalRequired or category approverIds / admins. Canonicalized + orphan-cleaned when roster exists. */
 const effectiveExpenseApproverIds=(e,cats,users)=>{
-  if(e&&e._apiType==="expense"&&Array.isArray(e.approvalRequired)&&e.approvalRequired.length>0)return e.approvalRequired;
-  const cat=cats?.find(c=>c.name===e?.category&&!c.archived);
-  const adminIds=users?getAdminIds(users):[...ADMIN_IDS];
-  return cat?.approverIds?.length>0?cat.approverIds:adminIds;
+  let raw;
+  if(e&&e._apiType==="expense"&&Array.isArray(e.approvalRequired)&&e.approvalRequired.length>0)raw=e.approvalRequired;
+  else{
+    const cat=cats?.find(c=>c.name===e?.category&&!c.archived);
+    const adminIds=getAdminIds(users);
+    raw=cat?.approverIds?.length>0?cat.approverIds:adminIds;
+  }
+  const u=Array.isArray(users)?users:[];
+  const canon=u.length?canonicalApproverIdList(raw,u):(Array.isArray(raw)?raw.slice():[]);
+  return finalizeApproverIdList(canon,u);
 };
 const getItemStatus=(item,cats,users)=>{
   if(item&&item._apiType==="expense"&&item.status){
@@ -1035,11 +1179,19 @@ const getItemStatus=(item,cats,users)=>{
     if(s==="rejected")return"rejected";
     if(s==="approved")return"approved";
     if(s==="submitted"||s==="draft"){
-      const reqIds=Array.isArray(item.approvalRequired)&&item.approvalRequired.length>0?item.approvalRequired:null;
+      const reqIdsRaw=Array.isArray(item.approvalRequired)&&item.approvalRequired.length>0?item.approvalRequired:null;
+      let reqIds;
+      if(reqIdsRaw&&(users&&users.length)){
+        const canon=canonicalApproverIdList(reqIdsRaw,users);
+        reqIds=finalizeApproverIdList(canon,users);
+      }else{
+        reqIds=reqIdsRaw;
+      }
       if(reqIds){
         const a=item.approvals||{};
-        if(reqIds.some(id=>a[id]==="rejected"))return"rejected";
-        if(reqIds.every(id=>a[id]==="approved"))return"approved";
+        const v=id=>approvalVoteFor(a,id,users);
+        if(reqIds.some(id=>v(id)==="rejected"))return"rejected";
+        if(reqIds.every(id=>v(id)==="approved"))return"approved";
         return"pending";
       }
       return"pending";
@@ -1051,13 +1203,11 @@ const getItemStatus=(item,cats,users)=>{
     if(s==="paid")return"approved";
     if(s==="pending"||s==="overdue")return"pending";
   }
-  const cat=cats?.find(c=>c.name===item.category&&!c.archived);
-  // fall back to actual admin users, not a hardcoded constant
-  const adminIds=users?getAdminIds(users):[...ADMIN_IDS];
-  const approverIds=cat?.approverIds?.length>0?cat.approverIds:adminIds;
+  const approverIds=effectiveExpenseApproverIds(item,cats,users);
   const a=item.approvals||{};
-  if(approverIds.some(id=>a[id]==="rejected"))return"rejected";
-  if(approverIds.every(id=>a[id]==="approved"))return"approved";
+  const v=id=>approvalVoteFor(a,id,users);
+  if(approverIds.some(id=>v(id)==="rejected"))return"rejected";
+  if(approverIds.every(id=>v(id)==="approved"))return"approved";
   return"pending";
 };
 function billCountsTowardDeptSpend(b,cats,users){
@@ -1146,10 +1296,36 @@ function expenseFromApi(row){
     if(vj&&typeof vj==="object"&&!Array.isArray(vj))approvals=vj;
   }catch(e){}
   const submitter=row.userId;
+  let paidBy=[];
+  try{
+    const pb=JSON.parse(row.paidByJson||"null");
+    if(Array.isArray(pb)&&pb.length>0)paidBy=pb;
+  }catch(e){}
+  if(!paidBy.length)paidBy=[{userId:row.userId,amount:eur}];
+  let splitModeOut=(row.splitMode==="equal"||row.splitMode==="percentage"||row.splitMode==="amount")?row.splitMode:null;
+  if(paidBy.length<2)splitModeOut=undefined;
   const auditTrail=[];
   if((row.status==="submitted"||row.status==="approved")&&submitter&&approvals[submitter]==="approved"&&approvalRequired.includes(submitter)){
     auditTrail.push({action:"auto_approved",by:submitter,at:new Date(Number(row.createdAt)||Date.now()).toISOString(),meta:{reason:"submitter_is_approver"}});
   }
+  let comments=[];
+  try{
+    const cj=JSON.parse(row.commentsJson||"null");
+    if(Array.isArray(cj)){
+      comments=cj.map(c=>{
+        const ts=c.createdAt!=null?Number(c.createdAt):Date.now();
+        return{
+          id:c.id||("c_"+String(ts)),
+          by:c.userId||c.by||"",
+          at:new Date(ts).toISOString(),
+          text:String(c.text||""),
+        };
+      });
+    }
+  }catch(e){}
+  let ivaRate=null,ivaAmount=null;
+  if(row.ivaRate!=null&&row.ivaRate!==""&&!isNaN(Number(row.ivaRate)))ivaRate=Number(row.ivaRate);
+  if(row.ivaAmount!=null&&row.ivaAmount!==""&&!isNaN(Number(row.ivaAmount)))ivaAmount=Number(row.ivaAmount);
   return normalizeItem({
     id:row.id,
     _apiType:"expense",
@@ -1160,7 +1336,8 @@ function expenseFromApi(row){
     date:row.date,
     notes:row.notes||"",
     submittedBy:row.userId,
-    paidBy:[{userId:row.userId,amount:eur}],
+    paidBy,
+    ...(splitModeOut?{splitMode:splitModeOut}:{}),
     receipt:null,
     receiptType:row.receiptPath?guessMimeFromReceiptPath(row.receiptPath):null,
     receiptPath:row.receiptPath||null,
@@ -1169,9 +1346,9 @@ function expenseFromApi(row){
     approvals,
     approvalRequired,
     auditTrail,
-    ivaRate:null,
-    ivaAmount:null,
-    comments:[],
+    ivaRate,
+    ivaAmount,
+    comments,
     seenBy:[],
     departmentId:row.departmentId||null,
   },"expense");
@@ -1204,6 +1381,35 @@ const billFreqLabel=(f,t)=>!f||f==="once"?t("label.once"):t("label."+f);
 function billListAmountSuffix(b,t){
   if(!isBillRecurringFrequency(b.frequency))return null;
   return b.frequency==="monthly"?"/"+t("bills.perMonth"):"/"+t("bills.perYear");
+}
+function billRecurringFreqWord(b,t){
+  const rule=b.recurrenceRule||"monthly";
+  if(rule==="quarterly")return t("bills.freqQuarterly");
+  if(rule==="yearly"||b.frequency==="annual")return t("label.annual");
+  return t("label.monthly");
+}
+function billListMetadataLine(b,t,users){
+  const sub=(users.find(u=>u.id===b.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
+  const cat=tCat(b.category,t);
+  const refD=getBillFilterDateRef(b);
+  if(!isBillRecurringFrequency(b.frequency))
+    return `${fmtDate(refD)} · ${cat} · ${sub}`;
+  const day=b.dayOfMonth||"—";
+  return `${billRecurringFreqWord(b,t)} · ${t("bills.dayMeta")} ${day} · ${cat} · ${sub}`;
+}
+function billStatusBadgeLabel(b,bst,t){
+  if(AUTH_URL&&b._apiType==="bill"&&b.apiBillStatus==="paid")return t("bills.badgePaid");
+  return t("status."+bst);
+}
+function formatBillPaidAtDisplay(b){
+  if(b.paidAt==null||b.paidAt==="")return"";
+  const n=Number(b.paidAt);
+  if(Number.isFinite(n)&&n>0){
+    try{
+      return fmtDate(new Date(n).toISOString().slice(0,10));
+    }catch(e){}
+  }
+  return"";
 }
 function billFromApi(row){
   if(!row)return null;
@@ -1239,7 +1445,8 @@ function billFromApi(row){
     notes:row.notes||"",
     description:"",
     receipt:null,
-    receiptType:null,
+    receiptType:row.receiptPath?guessMimeFromReceiptPath(row.receiptPath):null,
+    receiptPath:row.receiptPath||null,
     approvals:{},
     auditTrail:[],
     seenBy:[],
@@ -1565,9 +1772,9 @@ const autoApprove=(submitterId,approverIds,existingApprovals,auditTrail)=>{
 const DEPTS_LS_KEY="sol-departments";
 const DEFAULT_DEPT_ID="dept_estrategia";
 const SEED_DEPARTMENTS=[
-  {id:"dept_estrategia",name:"Estrategia",budget:0,createdAt:0},
-  {id:"dept_operaciones",name:"Operaciones",budget:0,createdAt:0},
   {id:"dept_branding",name:"Branding",budget:10000,createdAt:0},
+  {id:"dept_estrategia",name:"Estrategia",budget:5000,createdAt:0},
+  {id:"dept_operaciones",name:"Operaciones",budget:3000,createdAt:0},
 ];
 function readLocalDepartments(){
   try{
@@ -1582,7 +1789,7 @@ function readLocalDepartments(){
 }
 const BF={amount:"",description:"",category:"",date:"",notes:"",ivaRate:"21",departmentId:""};
 const DRAFT_KEY="sol-exp-draft";
-const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",dueDate:"",departmentId:""};
+const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",dueDate:"",departmentId:"",paymentChoice:"pending",paymentDate:""};
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
 const Ctx=createContext(null);
@@ -2584,7 +2791,7 @@ function NewPanel(){
   const checkedSplitCount=splits.filter(s=>s.checked).length;
   const pctSumBad=splitOn&&spMode==="percentage"&&Math.abs(totPct-100)>0.5;
   const amtSumBad=splitOn&&spMode==="amount"&&expAmt>0&&Math.abs(totVal-expAmt)>0.01;
-  const splitSubmitBlocked=!AUTH_URL&&splitOn&&(users.length<2||checkedSplitCount<2||pctSumBad||amtSumBad);
+  const splitSubmitBlocked=splitOn&&(users.length<2||checkedSplitCount<2||pctSumBad||amtSumBad);
   const toggleSplitOn=()=>{
     if(users.length<2)return;
     if(splitOn){setSplitOn(false);setSpMode("equal");return;}
@@ -2677,7 +2884,7 @@ function NewPanel(){
         <textarea className="inp" rows={2} value={form.notes}
           onChange={e=>setForm(p=>({...p,notes:e.target.value}))} style={{resize:"vertical"}}/>
       </div>
-      {!AUTH_URL&&<div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:0,opacity:users.length<2?0.92:1}} title={users.length<2?t("split.minTwoTeam"):""}>
+      <div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:0,opacity:users.length<2?0.92:1}} title={users.length<2?t("split.minTwoTeam"):""}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:splitOn?9:0}}>
           <div>
             <div style={{fontWeight:600,fontSize:12}}>{t("label.splitExpense")}</div>
@@ -2749,7 +2956,7 @@ function NewPanel(){
             )}
           </div>
         )}
-      </div>}
+      </div>
       </div>
       {formError&&<div style={{marginBottom:7,padding:"5px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:500}}>{formError}</div>}
       <div style={{position:"relative",width:"100%"}}>
@@ -2907,7 +3114,7 @@ function DetailPanel(){
       <ExpenseSplitBreakdown e={e} t={t} users={users}/>
       <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}}>
         <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>{t("label.approval")}</div>
-        {approverIds.map(aid=>{const a=(e.approvals||{})[aid];return(
+        {approverIds.map(aid=>{const a=approvalVoteFor(e.approvals,aid,users);return(
           <div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}>
             <div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",flexShrink:0}}/>
             <span>{getU(aid).name}</span>
@@ -2915,7 +3122,7 @@ function DetailPanel(){
           </div>
         );})}
       </div>
-      {((AUTH_URL&&isAdmin&&e._apiType==="expense"&&e.status==="submitted"&&approverIds.includes(user.id)&&!(e.approvals||{})[user.id])||(!AUTH_URL&&isAdmin&&approverIds.includes(user.id)&&st==="pending"&&!e.approvals[user.id]))&&(
+      {((AUTH_URL&&e._apiType==="expense"&&e.status==="submitted"&&approverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved")||(!AUTH_URL&&approverIds.includes(user.id)&&st==="pending"&&approvalVoteFor(e.approvals,user.id,users)!=="approved"))&&(
         <div style={{marginTop:9}}>
           <label className="lbl" style={{marginBottom:3}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
@@ -2932,7 +3139,7 @@ function DetailPanel(){
           apiExpenseId={e._apiType==="expense"&&e.receiptPath&&!e.receipt?e.id:null}
           label={t("label.receipt")}
           t={t}
-          onRemove={(user.id===e.submittedBy||isAdmin)&&st!=="approved"&&!AUTH_URL
+          onRemove={(user.id===e.submittedBy||approverIds.includes(user.id))&&st!=="approved"&&!AUTH_URL
             ? ()=>{if(confirm(t("msg.attachmentRemoved")+"?")){removeAttachment(e.id);}}
             : null}
         />
@@ -2944,52 +3151,73 @@ function DetailPanel(){
           <button type="button" style={{width:"100%",marginTop:8,background:"transparent",color:G,border:`1.5px solid ${G}`,borderRadius:8,padding:"8px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={startEdit}>{t("expense.editThenResubmit")}</button>
         </div>
       )}
-      <div style={{marginTop:9}}>
-        <label className="lbl" style={{marginBottom:4}}>{t("label.activity")}</label>
-        {e.auditTrail.map((a,i)=>{
-          const actor=users.find(u=>u.id===a.by)||{name:UNKNOWN_USER_NAME,color:"#999"};
-          const actionLabel=t("audit."+a.action)||a.action;
-          const isSystem=["exported","attachment_uploaded","attachment_removed","edited","reapproval_required"].includes(a.action);
-          return(
-            <div key={i} style={{display:"flex",gap:5,marginBottom:5}}>
-              <div style={{width:16,height:16,borderRadius:"50%",background:isSystem?"#F5E8F4":actor.color,
-                display:"flex",alignItems:"center",justifyContent:"center",fontSize:5,fontWeight:700,
-                color:isSystem?"#5C1057":"#fff",flexShrink:0,border:isSystem?"1px solid #D4AED0":"none"}}>
-                {isSystem?"↑":inits(actor.name)}
-              </div>
-              <div style={{fontSize:10}}>
-                <span style={{fontWeight:600}}>{actor.name}</span>
-                {" "}<span style={{color:isSystem?"#8A3D87":"#4B5E52"}}>{actionLabel}</span>
-                {" · "}<span style={{color:"#9CAA9F"}}>{fmtDate(a.at.slice(0,10))}</span>
-                {a.meta?.format&&<span style={{color:"#9CAA9F"}}>{" · "}{a.meta.format.toUpperCase()}</span>}
-                {a.note&&<div style={{color:"#4B5E52",fontStyle:"italic",marginTop:1}}>&ldquo;{a.note}&rdquo;</div>}
-                {a.meta?.reason==="submitter_is_approver"&&<div style={{color:"#9CAA9F",fontSize:9,marginTop:1}}>{t("audit.autoApprovedDetail")}</div>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
       <div style={{marginTop:12}}>
-        <label className="lbl">{t("expense.comments")}</label>
-        {(e.comments||[]).map(c=>{
-          const u=getU(c.by);
-          const mine=c.by===user.id;
-          return(
-            <div key={c.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",marginBottom:6}}>
-              <div style={{maxWidth:"92%",borderRadius:10,padding:"8px 10px",fontSize:11,background:mine?G:"#EDE8E0",color:mine?"#FAF7F2":G}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                  <UserAvatar user={u} size={18} fontSize={6}/>
-                  <span style={{fontWeight:600}}>{u.name}</span>
-                  <span style={{fontSize:9,opacity:0.85}}>{fmtDate(c.at.slice(0,10))}</span>
+        <label className="lbl" style={{marginBottom:6}}>{t("timeline.sectionTitle")}</label>
+        <div>
+          {buildExpenseTimelineEntries(e).map((entry,i)=>{
+            const u=getU(entry.by);
+            const time=expenseTimelineTimeAgo(entry.at,t);
+            let actionVerb="";
+            let detail=null;
+            if(entry.action==="comment_added"){
+              actionVerb=t("timeline.noteAdded");
+              detail=entry.text;
+            }else if(entry.action==="approved"){
+              actionVerb=t("timeline.approved");
+              if(entry.note&&String(entry.note).trim())detail=String(entry.note).trim();
+            }else if(entry.action==="rejected"){
+              actionVerb=t("timeline.rejected");
+              if(entry.note&&String(entry.note).trim())detail=String(entry.note).trim();
+            }else if(entry.action==="edited"){
+              actionVerb=t("timeline.edited");
+              const fl=expenseTimelineEditedFieldLabels(entry.meta,t);
+              if(fl)detail=t("timeline.editedFields",{fields:fl});
+            }else if(entry.action==="attachment_uploaded"){
+              actionVerb=t("timeline.receiptUploaded");
+              const mt=(entry.meta&&entry.meta.type)||"";
+              if(mt)detail=mt.includes("pdf")?t("timeline.attachmentDetailPdf"):t("timeline.attachmentDetailImage");
+            }else if(entry.action==="attachment_removed"){
+              actionVerb=t("timeline.receiptRemoved");
+            }else if(entry.action==="reapproval_required"){
+              actionVerb=t("timeline.askedReapproval");
+            }else if(entry.action==="auto_approved"){
+              actionVerb=t("timeline.autoApproved");
+              if(entry.meta&&entry.meta.reason==="submitter_is_approver")detail=t("audit.autoApprovedDetail");
+            }else if(entry.action==="submitted"){
+              actionVerb=t("timeline.submitted");
+            }else if(entry.action==="resubmitted"){
+              actionVerb=t("timeline.resubmitted");
+            }else{
+              actionVerb=t("audit."+entry.action)||entry.action;
+            }
+            const key=entry.id||`tl-${i}-${entry.at}-${entry.action}`;
+            return(
+              <div key={key} style={{display:"flex",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA"}}>
+                <UserAvatar user={u} size={20} fontSize={6}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,color:"#6B7B72"}}>
+                    <span style={{fontWeight:600,color:"#1A0E18"}}>{u.name}</span>
+                    {" "}{actionVerb}{" · "}{time}
+                  </div>
+                  {detail&&(
+                    <div style={{fontSize:12,color:"#4B5E52",marginTop:4,lineHeight:1.4}}>{detail}</div>
+                  )}
                 </div>
-                <div style={{lineHeight:1.45}}>{c.text}</div>
               </div>
-            </div>
-          );
-        })}
-        <div style={{display:"flex",gap:6,marginTop:10}}>
-          <input className="inp" style={{flex:1,fontSize:12}} value={commentText} onChange={ev=>setCommentText(ev.target.value)} placeholder={t("expense.commentPlaceholder")}/>
-          <button type="button" className="btn-primary" style={{padding:"8px 12px",fontSize:12}} onClick={()=>{addExpenseComment(e.id,commentText);setCommentText("");}}>{t("expense.send")}</button>
+            );
+          })}
+        </div>
+        <div style={{display:"flex",gap:6,marginTop:8}}>
+          <input className="inp" style={{flex:1,fontSize:12}}
+            placeholder={t("expense.commentPlaceholder")}
+            value={commentText}
+            onChange={ev=>setCommentText(ev.target.value)}
+            onKeyDown={ev=>{if(ev.key==="Enter"&&commentText.trim()){addExpenseComment(e.id,commentText);setCommentText("");}}}
+          />
+          <button type="button" className="btn-secondary" style={{fontSize:11,padding:"6px 12px",flexShrink:0}}
+            onClick={()=>{if(commentText.trim()){addExpenseComment(e.id,commentText);setCommentText("");}}}>
+            {t("expense.addNote")}
+          </button>
         </div>
       </div>
       </div>}
@@ -3080,23 +3308,29 @@ function DashboardView(){
   const today=new Date();
   const m0=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
   const ym=today.toISOString().slice(0,7);
-  const mTotal=expenses.filter(e=>getItemStatus(e,cats)==="approved"&&e.date>=m0).reduce((s,e)=>s+eurForExpense(e),0);
-  const pend=expenses.filter(e=>getItemStatus(e,cats)==="pending").length;
+  const mTotalAll=expenses.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0).reduce((s,e)=>s+eurForExpense(e),0);
+  const pendAll=expenses.filter(e=>getItemStatus(e,cats,users)==="pending").length;
   const mine=expenses.filter(e=>e.submittedBy===user.id);
-  const apprMine=mine.filter(e=>getItemStatus(e,cats)==="approved"&&e.date?.slice(0,7)===ym);
+  const mTotalMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0).reduce((s,e)=>s+eurForExpense(e),0);
+  const pendMine=mine.filter(e=>getItemStatus(e,cats,users)==="pending").length;
+  const totApprovedMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved").reduce((s,e)=>s+eurForExpense(e),0);
+  const mTotal=isAdmin?mTotalAll:mTotalMine;
+  const pend=isAdmin?pendAll:pendMine;
+  const dashTotApproved=isAdmin?totApproved:totApprovedMine;
+  const apprMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date?.slice(0,7)===ym);
   const apprSum=apprMine.reduce((s,e)=>s+eurForExpense(e),0);
   const apprCnt=apprMine.length;
-  const pendList=mine.filter(e=>getItemStatus(e,cats)==="pending"&&e.date?.slice(0,7)===ym);
+  const pendList=mine.filter(e=>getItemStatus(e,cats,users)==="pending"&&e.date?.slice(0,7)===ym);
   const pendSum=pendList.reduce((s,e)=>s+eurForExpense(e),0);
   const pendCnt=pendList.length;
-  const rejList=mine.filter(e=>getItemStatus(e,cats)==="rejected"&&e.date?.slice(0,7)===ym);
+  const rejList=mine.filter(e=>getItemStatus(e,cats,users)==="rejected"&&e.date?.slice(0,7)===ym);
   const rejSum=rejList.reduce((s,e)=>s+eurForExpense(e),0);
   const rejCnt=rejList.length;
-  const watchCats=cats.filter(c=>!c.archived&&c.budget!=null&&c.budget>0&&(c.approverIds?.[0]===user.id));
+  const watchCats=cats.filter(c=>!c.archived&&c.budget!=null&&c.budget>0&&effectiveExpenseApproverIds({category:c.name},cats,users)[0]===user.id);
   const [drillPerson,setDrillPerson]=useState(null);
   // Upcoming bills in 15 days
   const upcoming15=[];
-  bills.filter(b=>getItemStatus(b,cats)==="approved"&&b.active&&b.frequency==="monthly"&&b.dayOfMonth).forEach(b=>{
+  bills.filter(b=>getItemStatus(b,cats,users)==="approved"&&b.active&&b.frequency==="monthly"&&b.dayOfMonth).forEach(b=>{
     for(let m=0;m<2;m++){
       const d=new Date(today.getFullYear(),today.getMonth()+m,parseInt(b.dayOfMonth));
       const diff=Math.ceil((d-today)/86400000);
@@ -3109,13 +3343,13 @@ function DashboardView(){
       {drillPerson&&<PersonDrilldown userId={drillPerson} onClose={()=>setDrillPerson(null)}/>}
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.dashboard")}</h1>
       <p style={{fontSize:13,color:"#6B7B72",marginBottom:16}}>{t("dash.welcome")}, {user.name.split(" ")[0]}</p>
-      {isAdmin&&myPending.length>0&&(
+      {myPending.length>0&&(
         <div style={{background:"#F5E8F4",border:"1px solid #D4AED0",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
           <div><div style={{fontSize:12,fontWeight:600,color:"#5C1057"}}>{myPending.length} {t("dash.awaitingApproval")}</div><div style={{fontSize:10,color:"#8A3D87",marginTop:1}}>{t("dash.bothMustApprove")}</div></div>
           <button className="btn-sm" style={{fontSize:11}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
         </div>
       )}
-      {isAdmin&&myPendingBills.length>0&&(
+      {myPendingBills.length>0&&(
         <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
           <div><div style={{fontSize:12,fontWeight:600,color:"#92400E"}}>{myPendingBills.length} {t("dash.billsAwaitingApproval")}</div></div>
           <button className="btn-sm" style={{fontSize:11,background:T}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
@@ -3133,7 +3367,7 @@ function DashboardView(){
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         {[
-          {label:t("dash.totalInvested"),val:fmt(totApproved),sub:t("dash.totalInvestedSub")||"Gastos aprobados"},
+          {label:t("dash.totalInvested"),val:fmt(dashTotApproved),sub:t("dash.totalInvestedSub")||"Gastos aprobados"},
           {label:t("dash.thisMonth"),val:fmt(mTotal),sub:today.toLocaleString("es-ES",{month:"long"})},
           {label:t("dash.pending"),val:pend,sub:t("dash.pendingSub")||"Pendientes"},
           {label:t("dash.monthlyFixed"),val:fmt(totFixed),sub:t("dash.monthlyFixedSub")||"Coste mensual fijo"}
@@ -3159,7 +3393,7 @@ function DashboardView(){
         <div className="card" style={{marginBottom:11}}>
           <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>{t("dash.budgetStatus")}</div>
           {watchCats.map(c=>{
-            const spent=expenses.filter(e=>e.category===c.name&&getItemStatus(e,cats)==="approved"&&e.date?.slice(0,7)===ym).reduce((s,e)=>s+eurForExpense(e),0);
+            const spent=expenses.filter(e=>e.category===c.name&&getItemStatus(e,cats,users)==="approved"&&e.date?.slice(0,7)===ym).reduce((s,e)=>s+eurForExpense(e),0);
             const pct=c.budget>0?spent/c.budget*100:0;
             const barColor=pct<75?"#16A34A":pct<=100?"#D97706":"#DC2626";
             return(
@@ -3210,7 +3444,7 @@ function DashboardView(){
           const pool=isAdmin?expenses.slice():expenses.filter(e=>e.submittedBy===user.id);
           const sorted=[...pool].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
           if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{isAdmin?"—":t("dash.recentEmpty")}</div>;
-          return sorted.map((e,i)=>{const st=getItemStatus(e,cats);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;const sub=(users.find(x=>x.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;return(
+          return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;const sub=(users.find(x=>x.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;return(
             <div key={e.id} className="row-hover" style={{display:"flex",alignItems:"flex-start",padding:"7px 3px",borderBottom:i<sorted.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}} onClick={()=>{go("expenses");setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3303,7 +3537,7 @@ function ExpensesView(){
       <div className="card" style={{padding:0,overflow:"hidden"}}>
         {filtered.length===0&&<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{t("empty.expenses")}</div>}
         {filtered.map((e,idx)=>{
-          const st=getItemStatus(e,cats),sel=detailId===e.id&&panel==="detail";
+          const st=getItemStatus(e,cats,users),sel=detailId===e.id&&panel==="detail";
           const approverIds=effectiveExpenseApproverIds(e,cats,users);
           const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
           return(
@@ -3315,7 +3549,7 @@ function ExpensesView(){
                   {e.itemCode&&<span style={{fontFamily:"monospace",fontSize:9,marginRight:5,opacity:0.7}}>{e.itemCode}</span>}
                   {fmtDate(e.date)} · {t("filter.submitter")}: {submitterName} · {e.category}
                 </div>
-                {st==="pending"&&<div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>{approverIds.map(aid=>{const a=(e.approvals||{})[aid];return<span key={aid} style={{fontSize:9,display:"flex",alignItems:"center",gap:2}}><span style={{width:4,height:4,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",display:"inline-block"}}/><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{(users.find(u=>u.id===aid)||{name:UNKNOWN_USER_NAME}).name}</span></span>})}</div>}
+                {st==="pending"&&<div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>{approverIds.map(aid=>{const a=approvalVoteFor(e.approvals,aid,users);return<span key={aid} style={{fontSize:9,display:"flex",alignItems:"center",gap:2}}><span style={{width:4,height:4,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",display:"inline-block"}}/><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{(users.find(u=>u.id===aid)||{name:UNKNOWN_USER_NAME}).name}</span></span>})}</div>}
               </div>
               <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -3357,10 +3591,10 @@ function ReceiptThumb({expenseId}){
 
 /* ── APPROVALS ─────────────────────────────────────────────────────────────── */
 function ApprovalsView(){
-  const{t,expenses,bills,cats,users,isAdmin,user,aNote,setANote,approve,myPending,myPendingBills}=useApp();
+  const{t,expenses,bills,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,myPending,myPendingBills}=useApp();
   const [tab,setTab]=useState("expenses");
   useEffect(()=>{if(AUTH_URL&&tab==="bills")setTab("expenses");},[tab]);
-  if(!isAdmin)return null;
+  if(!isApprover&&!isAdmin)return null;
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const approvalTabs=AUTH_URL
     ?[["expenses",t("nav.expenses"),myPending.length]]
@@ -3401,8 +3635,8 @@ function ApprovalsView(){
                 </div>
               </div>
               {(e.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={e} t={t} users={users}/></div>}
-              <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=(e.approvals||{})[aid];return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {AUTH_URL?(rowApproverIds.includes(user.id)&&!(e.approvals||{})[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):((e.approvals||{})[user.id]?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+(e.approvals||{})[user.id])}</div>:null)):(!(e.approvals||{})[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+(e.approvals||{})[user.id])}</div>))}
+              <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(e.approvals,aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
+              {AUTH_URL?(rowApproverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(approvalVoteFor(e.approvals,user.id,users)?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(e.approvals,user.id,users))}</div>:null)):(approvalVoteFor(e.approvals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(e.approvals,user.id,users))}</div>))}
             </div>
           );
         })
@@ -3411,8 +3645,7 @@ function ApprovalsView(){
         myPendingBills.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
         myPendingBills.map(b=>{
           const bApprovals=b.approvals||{};
-          const cat=cats.find(c=>c.name===b.category);
-          const approverIds=cat?.approverIds?.length>0?cat.approverIds:ADMIN_IDS;
+          const approverIds=effectiveExpenseApproverIds(b,cats,users);
           return(
             <div key={b.id} className="card" style={{marginBottom:9}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:7}}>
@@ -3420,7 +3653,7 @@ function ApprovalsView(){
                 <div style={{fontSize:17,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(b)}</div>
               </div>
               <div style={{marginBottom:7}}>{approverIds.map(aid=>{const a=bApprovals[aid];return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {!(b.approvals||{})[user.id]?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[b.id]||""} onChange={ev=>setANote(p=>({...p,[b.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"approved","bill")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"rejected","bill")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+(bApprovals[user.id]||"pending"))}</div>)}
+              {approvalVoteFor(bApprovals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[b.id]||""} onChange={ev=>setANote(p=>({...p,[b.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"approved","bill")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"rejected","bill")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(bApprovals,user.id,users))}</div>)}
             </div>
           );
         })
@@ -3442,7 +3675,10 @@ function BillsView(){
   const [billStatusFlt,setBillStatusFlt]=useState("all");
   const [editBillForm,setEditBillForm]=useState({});
   const [editBillDirty,setEditBillDirty]=useState(false);
+  const [billPayConfirmId,setBillPayConfirmId]=useState(null);
+  const [billPayDateInput,setBillPayDateInput]=useState("");
   const billFileRef=useRef(null);
+  useEffect(()=>{setBillPayConfirmId(null);},[selBillId]);
   const billNewFileRef=useRef(null);
   const activeCats=cats.filter(c=>!c.archived);
   const freqNb=newBill.frequency||"once";
@@ -3500,6 +3736,13 @@ function BillsView(){
             recurrenceRule:rule,
             departmentId:editBillForm.departmentId||defaultDeptId,
           });
+          if(editBillForm.receipt&&typeof editBillForm.receipt==="string"){
+            try{
+              await API.post("/bills/"+encodeURIComponent(b.id)+"/receipt",{b64:editBillForm.receipt,mediaType:editBillForm.receiptType||"image/jpeg"});
+            }catch(e2){
+              console.warn("bill receipt upload failed",e2);
+            }
+          }
           const d=await API.get("/bills");
           saveBills((d.bills||[]).map(billFromApi));
           setEditBillId(null);setEditBillDirty(false);
@@ -3565,7 +3808,11 @@ function BillsView(){
         const due=billDueISOFromForm(newBill);
         const rule=freq==="annual"?"yearly":freq==="custom"&&String(newBill.intervalMonths)==="3"?"quarterly":"monthly";
         try{
-          const d=await API.post("/bills",{
+          const wantPaid=newBill.paymentChoice==="paid";
+          const payDateStr=(newBill.paymentDate&&String(newBill.paymentDate).slice(0,10))
+            ||(newBill.dueDate&&String(newBill.dueDate).slice(0,10))
+            ||new Date().toISOString().slice(0,10);
+          const postBody={
             vendor:newBill.name,
             amount:parseMoney(newBill.amount),
             category:newBill.category,
@@ -3574,9 +3821,24 @@ function BillsView(){
             recurring:rec,
             recurrenceRule:rule,
             departmentId:newBill.departmentId,
-          },{clientRef});
-          saveBills([...bills,billFromApi(d.bill)]);
-          appLog("info","bill_submitted",{name:newBill.name,userId:user.id});
+            ...(!rec&&wantPaid?{alreadyPaid:true,paidAt:payDateStr}:{}),
+          };
+          const d=await API.post("/bills",postBody,{clientRef});
+          const newId=d.bill.id;
+          if(newBill.receipt){
+            try{
+              await API.post("/bills/"+encodeURIComponent(newId)+"/receipt",{b64:newBill.receipt,mediaType:newBill.receiptType||"image/jpeg"});
+            }catch(e2){
+              console.warn("bill receipt upload failed",e2);
+            }
+          }
+          if(rec&&wantPaid){
+            if(!window.confirm(t("bills.confirmMarkPaidRecurring")))return;
+            await API.post("/bills/"+encodeURIComponent(newId)+"/mark-paid",{paidAt:payDateStr});
+          }
+          const full=await API.get("/bills");
+          saveBills((full.bills||[]).map(billFromApi));
+          appLog("info","bill_submitted",{name:newBill.name,userId:user.id,paid:!!wantPaid});
           setNewBill({...BB});setNewBillRecPrev(null);setAddBill(false);
         }catch(e){
           if(isOfflineQueuedError(e)){
@@ -3619,20 +3881,24 @@ function BillsView(){
       })();
       return;
     }
-    const cat=cats.find(c=>c.name===newBill.category);
-    const billAdminIds=getAdminIds(users);
-    const approverIds=cat?.approverIds?.length>0?cat.approverIds:billAdminIds;
+    const approverIds=effectiveExpenseApproverIds({category:newBill.category},cats,users);
     const baseTrail=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
+    const wantPaidLocal=newBill.paymentChoice==="paid";
     const{approvals,auditTrail}=autoApprove(user.id,approverIds,{},baseTrail);
-    const allApproved=approverIds.every(id=>approvals[id]==="approved");
+    let allApproved=approverIds.every(id=>approvals[id]==="approved");
+    if(wantPaidLocal)allApproved=true;
+    const payTs=wantPaidLocal?Date.now():null;
     const attachTrail=newBill.receipt?[...auditTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:newBill.receiptType}}]:auditTrail;
     const b={id:"b"+Date.now(),itemCode:mkCode("FAC"),...newBill,amount:parseMoney(newBill.amount),
-      submittedBy:user.id,approvals,auditTrail:attachTrail,active:allApproved,
+      submittedBy:user.id,approvals:wantPaidLocal?Object.fromEntries(approverIds.map(id=>[id,"approved"])):approvals,
+      auditTrail:wantPaidLocal?[...attachTrail,{action:"marked_paid",by:user.id,at:new Date().toISOString()}]:attachTrail,
+      active:wantPaidLocal?(rec?false:allApproved):allApproved,
+      paidAt:wantPaidLocal?payTs:undefined,
       receipt:newBill.receipt||null,receiptType:newBill.receiptType||null,departmentId:newBill.departmentId||DEFAULT_DEPT_ID};
-    appLog("info","bill_submitted",{itemCode:b.itemCode,name:b.name,amount:b.amount,userId:user.id,autoApproved:allApproved,hasAttachment:!!newBill.receipt});
+    appLog("info","bill_submitted",{itemCode:b.itemCode,name:b.name,amount:b.amount,userId:user.id,autoApproved:allApproved,hasAttachment:!!newBill.receipt,paid:!!wantPaidLocal});
     saveBills([...bills,b]);
     setNewBill({...BB});setNewBillRecPrev(null);setAddBill(false);
-    if(!allApproved)alert(t("msg.billApprovalNeeded"));
+    if(!wantPaidLocal&&!allApproved)alert(t("msg.billApprovalNeeded"));
   };
   const byBillStatus=React.useMemo(()=>{
     const pend=bills.filter(b=>getItemStatus(b,cats)==="pending");
@@ -3743,6 +4009,25 @@ function BillsView(){
             )}
             <input ref={billNewFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} capture="environment" style={{display:"none"}} onChange={handleNewBillFile}/>
           </div>
+          <div style={{marginTop:12,marginBottom:9}}>
+            <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>{t("bills.paymentQuestion")}</div>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+                <input type="radio" name="nb-pay" checked={newBill.paymentChoice!=="paid"} onChange={()=>setNewBill(p=>({...p,paymentChoice:"pending"}))}/>
+                {t("bills.paymentPending")}
+              </label>
+              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+                <input type="radio" name="nb-pay" checked={newBill.paymentChoice==="paid"} onChange={()=>setNewBill(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}))}/>
+                {t("bills.paymentPaid")}
+              </label>
+            </div>
+            {newBill.paymentChoice==="paid"&&(
+              <div style={{marginTop:8}}>
+                <label className="lbl">{t("bills.paymentDate")}</label>
+                <input className="inp" type="date" value={newBill.paymentDate||(newBill.dueDate||"").slice(0,10)||new Date().toISOString().slice(0,10)} onChange={e=>setNewBill(p=>({...p,paymentDate:e.target.value}))}/>
+              </div>
+            )}
+          </div>
           <div style={{marginTop:9,padding:"8px 10px",background:"#FEF3C7",borderRadius:7,fontSize:11,color:"#92400E",marginBottom:9}}>{t("bills.approvalNote")}</div>
           <div style={{position:"relative",width:"100%"}}>
             <button type="button" className="btn-primary" style={{width:"100%",fontSize:13,opacity:billValid?1:0.5,cursor:billValid?"pointer":"not-allowed"}} onClick={submitBill}>{t("action.submitBill")}</button>
@@ -3753,26 +4038,21 @@ function BillsView(){
         </div>
       )}
       <div className="card" style={{padding:0,overflow:"hidden"}}>
-        {(()=>{const pool=(byBillStatus[billStatusFlt]||bills);const visible=pool.filter(b=>{if(billCatFlt&&b.category!==billCatFlt)return false;if(billSubmFlt&&b.submittedBy!==billSubmFlt)return false;const refD=getBillFilterDateRef(b);if(billDateFrom&&refD<billDateFrom)return false;if(billDateTo&&refD>billDateTo)return false;if(billSearch&&!b.name.toLowerCase().includes(billSearch.toLowerCase())&&!(b.description||"").toLowerCase().includes(billSearch.toLowerCase()))return false;return true;});if(visible.length===0)return<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{bills.length===0?t("empty.bills"):t("empty.billsFiltered")}</div>;return visible.map((b,i)=>{const bst=getItemStatus(b,cats);const isSelBill=selBillId===b.id;const refD=getBillFilterDateRef(b);const calDay=(b.dayOfMonth&&String(b.dayOfMonth).trim())||(refD.length>=10?String(parseInt(refD.slice(8,10),10)||""):"");const badgeSub=b.frequency==="monthly"?t("bills.perMonth"):isBillRecurringFrequency(b.frequency)?t("bills.perYear"):t("label.once");const amtSuf=billListAmountSuffix(b,t);return(
+        {(()=>{const pool=(byBillStatus[billStatusFlt]||bills);const visible=pool.filter(b=>{if(billCatFlt&&b.category!==billCatFlt)return false;if(billSubmFlt&&b.submittedBy!==billSubmFlt)return false;const refD=getBillFilterDateRef(b);if(billDateFrom&&refD<billDateFrom)return false;if(billDateTo&&refD>billDateTo)return false;if(billSearch&&!b.name.toLowerCase().includes(billSearch.toLowerCase())&&!(b.description||"").toLowerCase().includes(billSearch.toLowerCase()))return false;return true;});if(visible.length===0)return<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{bills.length===0?t("empty.bills"):t("empty.billsFiltered")}</div>;return visible.map((b,i)=>{const bst=getItemStatus(b,cats);const isSelBill=selBillId===b.id;const amtSuf=billListAmountSuffix(b,t);const showPaused=bst==="approved"&&!b.active&&!(AUTH_URL&&b._apiType==="bill"&&(b.apiBillStatus==="paid"||!b.recurring));return(
             <div key={b.id}>
-            <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"center",gap:8,padding:"10px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:(AUTH_URL&&b._apiType==="bill"&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue"))||(b.active&&bst==="approved")?1:0.65,cursor:"pointer",background:isSelBill?"#F5F0EA":"transparent"}}>
-              {/* Date badge */}
-              <div style={{width:40,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              {calDay&&<div style={{width:36,height:36,borderRadius:7,background:bst==="approved"?G:"#EDE8E0",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",transition:"background 0.2s"}}>
-                <div style={{fontSize:14,fontWeight:800,color:bst==="approved"?"#FAF7F2":"#9CAA9F",lineHeight:1}}>{calDay}</div>
-                <div style={{fontSize:7,color:bst==="approved"?"rgba(250,247,242,0.6)":"#B5C0B8",textTransform:"uppercase",marginTop:1}}>{badgeSub}</div>
-              </div>}
-            </div>
+            <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:(AUTH_URL&&b._apiType==="bill"&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue"))||(b.active&&bst==="approved")?1:0.65,cursor:"pointer",background:isSelBill?"#F5F0EA":"transparent"}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                   <span style={{fontWeight:600,fontSize:12}}>{b.name}</span>
-                  <span style={{padding:"1px 5px",borderRadius:7,fontSize:8,fontWeight:600,background:ST[bst].bg,color:ST[bst].color}}>{t("status."+bst)}</span>
-                  {bst==="approved"&&!b.active&&<span style={{padding:"1px 5px",borderRadius:7,fontSize:8,fontWeight:600,background:"#F5F0EA",color:"#9CAA9F"}}>{t("status.paused")}</span>}
+                  <span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:ST[bst].bg,color:ST[bst].color}}>{billStatusBadgeLabel(b,bst,t)}</span>
+                  {!isBillRecurringFrequency(b.frequency)&&<span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:"#EDE8E0",color:"#4B5E52"}}>{t("bills.badgeOnce")}</span>}
+                  {showPaused&&<span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:"#F5F0EA",color:"#9CAA9F"}}>{t("status.paused")}</span>}
                 </div>
-                {b.description&&<div style={{fontSize:10,color:"#6B7B72",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.description}</div>}
-                <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{b.category} · {billFreqLabel(b.frequency,t)} · {(users.find(u=>u.id===b.submittedBy)||{name:UNKNOWN_USER_NAME}).name}</div>
+                <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{billListMetadataLine(b,t,users)}</div>
               </div>
-              <div style={{fontWeight:700,color:G,fontVariantNumeric:"tabular-nums",fontSize:12,marginRight:5,flexShrink:0}}>{fmtExpenseAmt(b)}{amtSuf&&<span style={{fontSize:8,fontWeight:400,color:"#9CAA9F"}}>{amtSuf}</span>}</div>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
+                <div style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(b)}{amtSuf&&<span style={{fontSize:8,fontWeight:400,color:"#9CAA9F"}}>{amtSuf}</span>}</div>
+              </div>
               {isAdmin&&<div style={{display:"flex",gap:3}} onClick={e=>e.stopPropagation()}>
                 <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer"}} onClick={()=>{setSelBillId(b.id);startEditBill(b);}}>{t("action.editItem")}</button>
                 {bst==="approved"&&<button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"#F5F0EA",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{
@@ -3879,16 +4159,34 @@ function BillsView(){
                   ...(isBillRecurringFrequency(b.frequency)?[{l:t("bills.day"),v:b.dayOfMonth||"—"}]:[]),
                   ...(!isBillRecurringFrequency(b.frequency)?[{l:t("label.date"),v:fmtDate((b.dueDate&&String(b.dueDate).slice(0,10))||getBillFilterDateRef(b))}]:[]),
                   {l:t("bills.submittedBy"),v:(users.find(u=>u.id===b.submittedBy)||{name:UNKNOWN_USER_NAME}).name},
-                  {l:t("label.status"),v:t("status."+bst)},
+                  {l:t("label.status"),v:billStatusBadgeLabel(b,bst,t)},
                 ].map(({l,v})=>(
                   <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #F5F0EA",fontSize:11}}><span style={{color:"#9CAA9F"}}>{l}</span><span style={{fontWeight:500}}>{v}</span></div>
                 ))}
+                {AUTH_URL&&b._apiType==="bill"&&b.apiBillStatus==="paid"&&formatBillPaidAtDisplay(b)&&(
+                  <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <span style={{padding:"2px 8px",borderRadius:11,fontSize:9,fontWeight:700,background:ST.approved.bg,color:ST.approved.color}}>{t("bills.badgePaid")}</span>
+                    <span style={{fontSize:11,color:"#4B5E52"}}>{t("bills.paidOn")}: {formatBillPaidAtDisplay(b)}</span>
+                  </div>
+                )}
                 {!(AUTH_URL&&b._apiType==="bill")&&<div style={{marginTop:8}}>
                   <div style={{fontSize:9,color:"#9CAA9F",marginBottom:5}}>{t("label.approval")}</div>
-                  {(()=>{const cat=cats.find(c=>c.name===b.category);const approverIds=cat?.approverIds?.length>0?cat.approverIds:getAdminIds(users);return approverIds.map(aid=>{const a=(b.approvals||{})[aid];return(<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",flexShrink:0}}/><span>{(users.find(u=>u.id===aid)||{name:UNKNOWN_USER_NAME}).name}</span><span style={{marginLeft:"auto",fontWeight:500,color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>);})})()}
+                  {(()=>{const approverIds=effectiveExpenseApproverIds(b,cats,users);return approverIds.map(aid=>{const a=(b.approvals||{})[aid];return(<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",flexShrink:0}}/><span>{(users.find(u=>u.id===aid)||{name:UNKNOWN_USER_NAME}).name}</span><span style={{marginLeft:"auto",fontWeight:500,color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>);})})()}
                 </div>}
                 {AUTH_URL&&b._apiType==="bill"&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue")&&(
-                  <button type="button" className="btn-primary" style={{width:"100%",marginTop:10,fontSize:12,padding:"8px"}} onClick={()=>markBillPaid(b.id)}>Marcar como pagada</button>
+                  billPayConfirmId===b.id?(
+                    <div style={{marginTop:10,padding:"10px 11px",background:"#F5F0EA",borderRadius:8}}>
+                      <div style={{fontSize:11,color:"#4B5E52",marginBottom:8}}>{t("bills.confirmMarkPaid")}</div>
+                      <label className="lbl">{t("bills.paymentDate")}</label>
+                      <input className="inp" type="date" value={billPayDateInput} onChange={e=>setBillPayDateInput(e.target.value)} style={{marginBottom:8}}/>
+                      <div style={{display:"flex",gap:6}}>
+                        <button type="button" className="btn-primary" style={{flex:1,fontSize:12,padding:"7px"}} onClick={()=>{markBillPaid(b.id,billPayDateInput);setBillPayConfirmId(null);}}>{t("bills.markPaidConfirm")}</button>
+                        <button type="button" className="btn-secondary" style={{flex:1,fontSize:12,padding:"7px"}} onClick={()=>setBillPayConfirmId(null)}>{t("action.cancel")}</button>
+                      </div>
+                    </div>
+                  ):(
+                    <button type="button" className="btn-primary" style={{width:"100%",marginTop:10,fontSize:12,padding:"8px"}} onClick={()=>{setBillPayConfirmId(b.id);setBillPayDateInput((b.dueDate&&String(b.dueDate).slice(0,10))||new Date().toISOString().slice(0,10));}}>{t("bills.markPaid")}</button>
+                  )
                 )}
                 {b.description&&<div style={{marginTop:7,padding:"5px 8px",background:"#F5E8F4",borderRadius:6,fontSize:11,color:"#5C1057"}}><span style={{fontWeight:600}}>{t("bills.description")}: </span>{b.description}</div>}
                 {b.notes&&<div style={{marginTop:4,padding:"5px 8px",background:"#F5F0EA",borderRadius:6,fontSize:11,color:"#4B5E52"}}>{b.notes}</div>}
@@ -4002,8 +4300,7 @@ function ReportsView(){
       return(e.paidBy||[]).some(p=>p&&p.userId===u.id);
     }).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
     return{...u,approvedTotal,submittedCount,logExpenses};
-  }).filter(u=>u.approvedTotal>0||u.submittedCount>0)
-    .sort((a,b)=>b.approvedTotal-a.approvedTotal),[users,expenses,cats]);
+  }).sort((a,b)=>b.approvedTotal-a.approvedTotal),[users,expenses,cats]);
   const catTotals=cats.filter(c=>!c.archived).map(c=>({cat:c.name,total:expenses.filter(e=>e.category===c.name&&getItemStatus(e,cats)==="approved").reduce((s,e)=>s+eurForExpense(e),0)})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const maxC=catTotals[0]?.total||1;
   const monthlyTrend=(()=>{
@@ -4035,8 +4332,7 @@ function ReportsView(){
     appLog("info","csv_exported",{filter:data,count:src.length,userId:exportedUser.id,codes:src.map(e=>e.itemCode||e.id)});
     const rows=[[t("item.code"),t("label.date"),t("label.description"),t("label.amount"),t("csv.baseAmount"),t("csv.ivaRatePct"),t("csv.ivaEur"),t("label.category"),t("label.status"),t("filter.submitter"),t("label.paidBy"),t("label.notes"),t("label.approvers")],
       ...src.map(e=>{
-        const cat=cats.find(c=>c.name===e.category);
-        const approverIds=cat?.approverIds?.length>0?cat.approverIds:adminIds;
+        const approverIds=effectiveExpenseApproverIds(e,cats,users);
         const amtEur=eurForExpense(e);
         const base=e.ivaRate!==null&&e.ivaRate!==undefined?Math.round((amtEur-(e.ivaAmount||0))*100)/100:amtEur;
         const ivr=e.ivaRate!==null&&e.ivaRate!==undefined?e.ivaRate:"";
@@ -4385,83 +4681,6 @@ function AppLogPanelBody(){
   );
 }
 
-/* ── PENDING USERS PANEL ──────────────────────────────────────────────────── */
-function PendingUsersPanel({inline=false}){
-  const{t}=useApp();
-  const [pending,setPending]=useState([]);
-  const [loading,setLoading]=useState(false);
-  const [adminKey,setAdminKey]=useState(()=>localStorage.getItem("sol-admin-key")||"");
-  const [msg,setMsg]=useState("");
-  const [actionLoading,setActionLoading]=useState(null);
-
-  const saveAdminKey=v=>{setAdminKey(v);localStorage.setItem("sol-admin-key",v);};
-
-  const loadPending=async()=>{
-    if(!AUTH_URL||!adminKey){return;}
-    setLoading(true);setMsg("");
-    try{
-      const r=await fetch(AUTH_URL+"/admin/users/pending",{headers:{"x-admin-key":adminKey}});
-      if(r.status===403){setMsg("Clave de administración incorrecta.");setLoading(false);return;}
-      const d=await r.json();
-      setPending(d.users||[]);
-    }catch{setMsg("No se pudo conectar al servidor.");}
-    setLoading(false);
-  };
-
-  const act=async(userId,action)=>{
-    setActionLoading(userId);setMsg("");
-    try{
-      const r=await fetch(`${AUTH_URL}/admin/users/${userId}/${action}`,{
-        method:"POST",headers:{"Content-Type":"application/json","x-admin-key":adminKey},
-        body:JSON.stringify({adminId:"superadmin"})});
-      const d=await r.json();
-      if(!r.ok){setMsg(d.error||t("msg.genericShort"));setActionLoading(null);return;}
-      setPending(p=>p.filter(u=>u.id!==userId));
-      setMsg(action==="approve"?"Usuario aprobado.":"Usuario denegado.");
-    }catch{setMsg("Error de conexión.");}
-    setActionLoading(null);
-  };
-
-  return(
-    <div>
-      <p style={{fontSize:11,color:"#6B7B72",marginBottom:9}}>{t("settings.pendingUsersDesc")}</p>
-      <div style={{marginBottom:9}}>
-        <label className="lbl">{t("settings.adminKey")}</label>
-        <div style={{display:"flex",gap:6}}>
-          <input className="inp" type="password" placeholder="x-admin-key" value={adminKey}
-            onChange={e=>saveAdminKey(e.target.value)} style={{fontSize:12}}/>
-          <button className="btn-sm" onClick={loadPending} disabled={loading} style={{flexShrink:0}}>
-            {loading?"…":"Cargar"}
-          </button>
-        </div>
-      </div>
-      {msg&&<div style={{marginBottom:8,padding:"5px 9px",borderRadius:6,background:msg.includes("aprobado")||msg.includes("denegado")?"#D1FAE5":"#FEE2E2",color:msg.includes("aprobado")||msg.includes("denegado")?"#065F46":"#991B1B",fontSize:11}}>{msg}</div>}
-      {pending.length===0&&adminKey&&!loading&&<div style={{fontSize:11,color:"#9CAA9F",padding:"8px 0"}}>{t("settings.noPendingUsers")}</div>}
-      {pending.map(u=>(
-        <div key={u.id} style={{padding:"10px 0",borderBottom:"1px solid #F5F0EA",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name||"—"}</div>
-            <div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{u.email}</div>
-            <div style={{fontSize:9,color:"#B5C0B8",marginTop:1}}>
-              Solicitado: {u.createdAt?new Date(u.createdAt).toLocaleDateString("es-ES"):"—"} · ID: {u.id.slice(0,12)}
-            </div>
-          </div>
-          <div style={{display:"flex",gap:5,flexShrink:0}}>
-            <button className="btn-sm" style={{fontSize:10,padding:"3px 9px",background:"#16A34A"}}
-              onClick={()=>act(u.id,"approve")} disabled={actionLoading===u.id}>
-              {actionLoading===u.id?"…":t("settings.approveUser")}
-            </button>
-            <button className="btn-danger" style={{fontSize:10,padding:"3px 9px"}}
-              onClick={()=>act(u.id,"deny")} disabled={actionLoading===u.id}>
-              {t("settings.denyUser")}
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /* ── ACCORDION SECTION ─────────────────────────────────────────────────────────
    Reusable collapsible card for Settings. Keeps scroll short.
    Props: title, children, defaultOpen=false, badge (optional count), accent (optional color)
@@ -4492,6 +4711,91 @@ function AccordionSection({title, children, defaultOpen=false, badge=0, accent=n
         </div>
       )}
     </div>
+  );
+}
+
+/* ── PENDING USERS (superadmin, server) — Bearer session, no admin key ─────── */
+function PendingUsersPanel(){
+  const{t,user}=useApp();
+  const [pending,setPending]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [msg,setMsg]=useState("");
+  const [actionLoading,setActionLoading]=useState(null);
+
+  const authHeaders=()=>{
+    API.ensureSessionToken();
+    const tok=API.token||(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return"";}})();
+    return tok?{Authorization:"Bearer "+tok,"Content-Type":"application/json"}:null;
+  };
+
+  const loadPending=async()=>{
+    if(!AUTH_URL){setLoading(false);setPending([]);return;}
+    const h=authHeaders();
+    if(!h){setLoading(false);setPending([]);return;}
+    setLoading(true);setMsg("");
+    try{
+      const r=await fetch(AUTH_URL+"/admin/users/pending",{headers:{Authorization:h.Authorization}});
+      if(r.status===403||r.status===401){setMsg("No autorizado.");setPending([]);setLoading(false);return;}
+      const d=await r.json().catch(()=>({}));
+      setPending(Array.isArray(d.users)?d.users:[]);
+    }catch(e){setMsg("No se pudo conectar al servidor.");setPending([]);}
+    setLoading(false);
+  };
+
+  useEffect(()=>{void loadPending();},[user?.id]);
+
+  const act=async(userId,action)=>{
+    const h=authHeaders();
+    if(!h)return;
+    setActionLoading(userId);setMsg("");
+    try{
+      const r=await fetch(`${AUTH_URL}/admin/users/${encodeURIComponent(userId)}/${action}`,{
+        method:"POST",
+        headers:h,
+        body:JSON.stringify({adminId:user?.id||"admin"}),
+      });
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){setMsg(d.error||t("msg.genericShort"));setActionLoading(null);return;}
+      setPending(p=>p.filter(u=>u.id!==userId));
+      setMsg(action==="approve"?"Usuario aprobado.":"Usuario denegado.");
+    }catch(e){setMsg("Error de conexión.");}
+    setActionLoading(null);
+  };
+
+  if(!AUTH_URL)return null;
+  if(loading)return null;
+  if(pending.length===0)return null;
+
+  return(
+    <AccordionSection title={t("settings.accordion.pending")} badge={pending.length} defaultOpen accent="#7C3AED">
+      <div>
+        <p style={{fontSize:11,color:"#6B7B72",marginBottom:9}}>{t("settings.pendingUsersDesc")}</p>
+        {msg&&<div style={{marginBottom:8,padding:"5px 9px",borderRadius:6,background:msg.includes("aprobado")||msg.includes("denegado")?"#D1FAE5":"#FEE2E2",color:msg.includes("aprobado")||msg.includes("denegado")?"#065F46":"#991B1B",fontSize:11}}>{msg}</div>}
+        {pending.map(u=>(
+          <div key={u.id} style={{padding:"10px 0",borderBottom:"1px solid #F5F0EA",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name||"—"}</div>
+              <div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{u.email}</div>
+              <div style={{fontSize:9,color:"#B5C0B8",marginTop:1}}>
+                Solicitado: {u.createdAt?new Date(u.createdAt).toLocaleDateString("es-ES"):"—"} · ID: {String(u.id).slice(0,12)}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:5,flexShrink:0}}>
+              <button className="btn-sm" style={{fontSize:10,padding:"3px 9px",background:"#16A34A"}}
+                type="button"
+                onClick={()=>act(u.id,"approve")} disabled={actionLoading===u.id}>
+                {actionLoading===u.id?"…":t("settings.approveUser")}
+              </button>
+              <button className="btn-danger" style={{fontSize:10,padding:"3px 9px"}}
+                type="button"
+                onClick={()=>act(u.id,"deny")} disabled={actionLoading===u.id}>
+                {t("settings.denyUser")}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </AccordionSection>
   );
 }
 
@@ -4528,11 +4832,17 @@ function IvaRatesEditorBlock({t,ivaRates,onSave}){
 /* ── DEPARTMENT BUDGET BARS (dashboard + presupuestos view) ───────────────── */
 function DepartmentBudgetBars({t,rows,title}){
   if(!rows||rows.length===0)return null;
+  const visible=rows.filter(d=>{
+    const b=Number(d.budget)||0;
+    const s=Number(d.spent)||0;
+    return b>0||s>0;
+  });
+  if(visible.length===0)return null;
   return(
     <div className="card" style={{marginBottom:14}}>
       {title&&<div style={{fontWeight:600,fontSize:13,marginBottom:10}}>{title}</div>}
-      {rows.map((d,i)=>(
-        <BudgetVsActualRow key={d.id} t={t} name={d.name} spent={d.spent} budget={d.budget} remaining={d.remaining} noBottomMargin={i===rows.length-1}/>
+      {visible.map((d,i)=>(
+        <BudgetVsActualRow key={d.id} t={t} name={d.name} spent={d.spent} budget={d.budget} remaining={d.remaining} noBottomMargin={i===visible.length-1}/>
       ))}
     </div>
   );
@@ -4663,8 +4973,9 @@ function DepartmentsSettingsBlock({t}){
 /* ── SETTINGS VIEW ─────────────────────────────────────────────────────────── */
 function SettingsView(){
   const{t,user,users,expenses,bills,cats,saveCats,saveUsers,saveExp,saveBills,
-        onSignOut,passwords,savePasswords,ivaRates,saveIvaRates}=useApp();
+        onSignOut,passwords,savePasswords,ivaRates,saveIvaRates,setUser}=useApp();
   const isSA=user?.role==="superadmin";
+  const isAdmin=user?.role==="admin"||user?.role==="superadmin";
   const [editId,setEditId]=useState(null);
   const [ef,setEf]=useState({});
   const [addU,setAddU]=useState(false);
@@ -4676,13 +4987,17 @@ function SettingsView(){
   const [catEdit,setCatEdit]=useState(null);
   const [catForm,setCatForm]=useState({});
   const [addCat,setAddCat]=useState(false);
-  const [newCat,setNewCat]=useState({name:"",approverIds:defaultCategoryApproverIds([]),budget:""});
+  const [newCat,setNewCat]=useState({name:"",approverIds:[],budget:""});
   const [archC,setArchC]=useState(null);
   // password
   const [pwForm,setPwForm]=useState({cur:"",nw:"",cn:""});
   const [pwMsg,setPwMsg]=useState("");
   const [pwOk, setPwOk] =useState(false);
   const [pwSaving,setPwSaving]=useState(false);
+  const [profileSaving,setProfileSaving]=useState(false);
+  const [resetFor,setResetFor]=useState(null);
+  const [resetPwInput,setResetPwInput]=useState("");
+  const [resetBusy,setResetBusy]=useState(false);
   const [ivaDefault,setIvaDefault]=useState(()=>readIvaDefault());
   useEffect(()=>{setIvaDefault(readIvaDefault());},[ivaRates]);
   const saveIvaDefault=v=>{
@@ -4691,6 +5006,40 @@ function SettingsView(){
     try{localStorage.setItem(IVA_DEFAULT_KEY,JSON.stringify(n));}catch(e){}
     setIvaDefault(n);
   };
+  const saveProfile=async()=>{
+    if(profileSaving)return;
+    const payload={name:(sf.name||"").trim(),email:(sf.email||"").trim(),phone:(sf.phone||"").trim(),avatar:sf.avatar||null};
+    if(!payload.name){alert(t("msg.genericShort"));return;}
+    if(AUTH_URL){
+      setProfileSaving(true);
+      try{
+        const token=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+        if(!token){alert(t("msg.sessionExpired"));return;}
+        const r=await fetch(AUTH_URL+"/auth/update-profile",{
+          method:"PUT",
+          headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
+          body:JSON.stringify(payload),
+        });
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok){alert(d.error||t("msg.genericShort"));return;}
+        const merged=normalizeItem({...user,...d.user},"user");
+        setUser(merged);
+        saveUsers(users.map(u=>u.id===user.id?merged:u));
+        setSf({name:merged.name||"",email:merged.email||"",phone:merged.phone||"",avatar:merged.avatar??null});
+        alert(t("msg.profileUpdated"));
+      }catch(e){
+        alert(t("signup.serverDown"));
+      }finally{
+        setProfileSaving(false);
+      }
+      return;
+    }
+    const merged=normalizeItem({...user,...sf},"user");
+    saveUsers(users.map(u=>u.id===user.id?merged:u));
+    setUser(merged);
+    alert(t("msg.profileUpdated"));
+  };
+
   const savePw=async()=>{
     setPwMsg("");setPwOk(false);
     const existing=passwords?.[user.id];
@@ -4701,28 +5050,13 @@ function SettingsView(){
     if(AUTH_URL){
       setPwSaving(true);
       try{
-        let token=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+        const token=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
         if(!token){setPwMsg(t("msg.sessionExpired"));return;}
-        if(existing){
-          if(!String(pwForm.cur||"").trim()){setPwMsg(t("msg.currentPasswordRequired"));return;}
-          const lr=await fetch(AUTH_URL+"/auth/login",{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({email:String(user.email||"").trim().toLowerCase(),password:pwForm.cur}),
-          });
-          if(!lr.ok){setPwMsg(t("msg.passwordWrong"));return;}
-          const ld=await lr.json().catch(()=>({}));
-          const t2=ld.sessionToken!=null&&String(ld.sessionToken).trim()!==""?String(ld.sessionToken).trim():null;
-          if(t2){
-            token=t2;
-            try{sessionStorage.setItem("sol-session-token",token);}catch(e){}
-            API.token=token;
-          }
-        }
+        if(!String(pwForm.cur||"").trim()){setPwMsg(t("msg.currentPasswordRequired"));return;}
         const r=await fetch(AUTH_URL+"/auth/change-password",{
           method:"POST",
           headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
-          body:JSON.stringify({userId:user.id,newPassword:pwForm.nw}),
+          body:JSON.stringify({userId:user.id,newPassword:pwForm.nw,currentPassword:pwForm.cur}),
         });
         const d=await r.json().catch(()=>({}));
         if(!r.ok){setPwMsg(d.error||t("msg.genericShort"));return;}
@@ -4821,12 +5155,54 @@ function SettingsView(){
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA"}}>
                 <UserAvatar user={u} size={28} fontSize={8}/>
                 <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"–"} · {u.role==="superadmin"?t("role.superadmin"):u.role==="admin"?t("role.admin"):t("role.user")}</div></div>
-                <div style={{display:"flex",gap:3,flexShrink:0}}>
+                <div style={{display:"flex",gap:3,flexShrink:0,flexWrap:"wrap"}}>
                   <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(u.id);setEf({name:u.name,title:u.title||"",email:u.email||"",phone:u.phone||"",role:u.role,color:u.color});}}>{t("action.edit")}</button>
+                  {AUTH_URL&&u.id!==user.id&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #C4B5FD",background:"transparent",color:"#5B21B6",cursor:"pointer"}} onClick={()=>{setResetFor(resetFor===u.id?null:u.id);setResetPwInput("");}}>{t("team.resetPassword")}</button>}
                   {u.id!==user.id&&<button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelC(u.id)}>{t("action.delete")}</button>}
                 </div>
               </div>
-              {delC===u.id&&<div style={{background:"#FEE2E2",borderRadius:7,padding:"8px 10px",margin:"4px 0"}}><div style={{fontSize:11,color:"#7F1D1D",marginBottom:6}}>{t("msg.deleteUser")} {u.name}?</div><div style={{display:"flex",gap:6}}><button className="btn-danger" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>{saveUsers(users.filter(x=>x.id!==u.id));setDelC(null);}}>{t("action.confirm")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setDelC(null)}>{t("action.cancel")}</button></div></div>}
+              {delC===u.id&&<div style={{background:"#FEE2E2",borderRadius:7,padding:"8px 10px",margin:"4px 0"}}><div style={{fontSize:11,color:"#7F1D1D",marginBottom:6}}>{t("msg.deleteUser")} {u.name}?</div><div style={{display:"flex",gap:6}}><button className="btn-danger" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>void (async()=>{
+                if(AUTH_URL){
+                  const tok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+                  if(!tok){alert(t("msg.sessionExpired"));return;}
+                  try{
+                    const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(u.id),{method:"DELETE",headers:{Authorization:"Bearer "+tok}});
+                    const d=await r.json().catch(()=>({}));
+                    if(!r.ok){alert(d.error||t("msg.genericShort"));return;}
+                  }catch(e){alert(t("signup.serverDown"));return;}
+                }
+                saveUsers(users.filter(x=>x.id!==u.id));setDelC(null);
+              })()}>{t("action.confirm")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setDelC(null)}>{t("action.cancel")}</button></div></div>}
+              {resetFor===u.id&&AUTH_URL&&(
+                <div style={{background:"#F5F3FF",borderRadius:7,padding:"10px 12px",margin:"4px 0",border:"1px solid #DDD6EE"}}>
+                  <div style={{fontSize:10,color:"#6B7B72",marginBottom:8,lineHeight:1.4}}>{t("team.resetPasswordHint")}</div>
+                  <label className="lbl">{t("label.tempPassword")}</label>
+                  <input className="inp" style={{fontSize:13,marginBottom:8}} type="password" value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
+                  <div style={{display:"flex",gap:6}}>
+                    <button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} disabled={resetBusy} onClick={async()=>{
+                      if(!resetPwInput||resetPwInput.length<8){alert(t("msg.tempPwRequired"));return;}
+                      setResetBusy(true);
+                      try{
+                        const tok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+                        if(!tok){alert(t("msg.sessionExpired"));return;}
+                        const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(u.id)+"/reset-password",{
+                          method:"POST",
+                          headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},
+                          body:JSON.stringify({tempPassword:resetPwInput}),
+                        });
+                        const d=await r.json().catch(()=>({}));
+                        if(!r.ok){alert(d.error||t("msg.genericShort"));return;}
+                        const merged=d.user?normalizeItem({...u,...d.user},"user"):normalizeItem({...u,mustChangePassword:true},"user");
+                        saveUsers(users.map(x=>x.id===u.id?merged:x));
+                        setResetFor(null);setResetPwInput("");
+                        alert(t("team.resetPasswordOk"));
+                      }catch(e){alert(t("signup.serverDown"));}
+                      finally{setResetBusy(false);}
+                    }}>{resetBusy?"…":t("team.resetPasswordSave")}</button>
+                    <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>{setResetFor(null);setResetPwInput("");}}>{t("team.resetPasswordCancel")}</button>
+                  </div>
+                </div>
+              )}
               {editId===u.id&&(
                 <div style={{background:"#F5F0EA",borderRadius:9,padding:10,margin:"4px 0"}}>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
@@ -4836,7 +5212,26 @@ function SettingsView(){
                     <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.email")}</label><input className="inp" style={{fontSize:13}} type="email" value={ef.email} onChange={e=>setEf(p=>({...p,email:e.target.value}))}/></div>
                     <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.phone")}</label><input className="inp" style={{fontSize:13}} value={ef.phone} onChange={e=>setEf(p=>({...p,phone:e.target.value}))}/></div>
                   </div>
-                  <div style={{display:"flex",gap:7,marginTop:7}}><button className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>{saveUsers(users.map(u=>u.id===editId?{...u,...ef}:u));setEditId(null);}}>{t("action.save")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setEditId(null)}>{t("action.cancel")}</button></div>
+                  <div style={{display:"flex",gap:7,marginTop:7}}><button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>void (async()=>{
+                    if(AUTH_URL){
+                      const tok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+                      if(!tok){alert(t("msg.sessionExpired"));return;}
+                      try{
+                        const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(editId),{method:"PUT",headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},body:JSON.stringify({name:ef.name,email:ef.email,phone:ef.phone,title:ef.title,role:ef.role,color:ef.color})});
+                        const d=await r.json().catch(()=>({}));
+                        if(!r.ok){alert(d.error||t("msg.genericShort"));return;}
+                        const prev=users.find(x=>x.id===editId);
+                        const merged=d.user?normalizeItem({...(prev||{}),...d.user},"user"):normalizeItem({...(prev||{}),...ef},"user");
+                        saveUsers(users.map(x=>x.id===editId?merged:x));
+                        if(user.id===editId)setUser(merged);
+                      }catch(e){alert(t("signup.serverDown"));return;}
+                      setEditId(null);
+                      return;
+                    }
+                    saveUsers(users.map(x=>x.id===editId?{...x,...ef}:x));
+                    if(user.id===editId)setUser(normalizeItem({...user,...ef},"user"));
+                    setEditId(null);
+                  })()}>{t("action.save")}</button><button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setEditId(null)}>{t("action.cancel")}</button></div>
                 </div>
               )}
             </div>
@@ -4864,7 +5259,7 @@ function SettingsView(){
           <div><label className="lbl">{t("label.email")}</label><input className="inp" type="email" value={sf.email} onChange={e=>setSf(p=>({...p,email:e.target.value}))}/></div>
           <div><label className="lbl">{t("label.phone")}</label><input className="inp" value={sf.phone} onChange={e=>setSf(p=>({...p,phone:e.target.value}))}/></div>
         </div>
-        <button className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} onClick={()=>{saveUsers(users.map(u=>u.id===user.id?{...u,...sf}:u));alert(t("msg.profileUpdated"));}}>{t("action.saveChanges")}</button>
+        <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={profileSaving} onClick={()=>void saveProfile()}>{profileSaving?"…":t("action.saveChanges")}</button>
         <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #EDE8E0"}}>
           <div style={{fontWeight:600,fontSize:12,color:"#991B1B",marginBottom:4}}>{t("settings.deleteAccount")}</div>
           {!dSelf?<button className="btn-danger" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setDSelf(true)}>{t("settings.requestDeletion")}</button>:(
@@ -4876,9 +5271,9 @@ function SettingsView(){
       {/* ── Password ── */}
       <AccordionSection title={t("settings.accordion.password")}>
         <p style={{fontSize:11,color:"#6B7B72",marginBottom:9}}>{t("settings.passwordDesc")}</p>
-        {!passwords?.[user.id]&&<div style={{background:"#FEF3C7",borderRadius:6,padding:"6px 9px",fontSize:10,color:"#92400E",marginBottom:8}}>{t("msg.passwordNoExisting")}</div>}
+        {!AUTH_URL&&!passwords?.[user.id]&&<div style={{background:"#FEF3C7",borderRadius:6,padding:"6px 9px",fontSize:10,color:"#92400E",marginBottom:8}}>{t("msg.passwordNoExisting")}</div>}
         <div style={{display:"grid",gap:7}}>
-          {passwords?.[user.id]&&<div><label className="lbl">{t("label.currentPassword")}</label><input className="inp" type="password" value={pwForm.cur} onChange={e=>setPwForm(p=>({...p,cur:e.target.value}))}/></div>}
+          {(AUTH_URL||passwords?.[user.id])&&<div><label className="lbl">{t("label.currentPassword")}</label><input className="inp" type="password" value={pwForm.cur} onChange={e=>setPwForm(p=>({...p,cur:e.target.value}))} autoComplete="current-password"/></div>}
           <div><label className="lbl">{t("label.newPassword")}</label><input className="inp" type="password" value={pwForm.nw} onChange={e=>setPwForm(p=>({...p,nw:e.target.value}))}/></div>
           <div><label className="lbl">{t("label.confirmPassword")}</label><input className="inp" type="password" value={pwForm.cn} onChange={e=>setPwForm(p=>({...p,cn:e.target.value}))}/></div>
         </div>
@@ -4888,8 +5283,10 @@ function SettingsView(){
 
       <DepartmentsSettingsBlock t={t}/>
 
-      {/* ── Categories ── */}
-      {isSA&&<AccordionSection title={t("settings.accordion.categories")}>
+      {/* ── Categories + IVA: admins see categories; IVA editor superadmin only ── */}
+      {(isAdmin||isSA)&&<AccordionSection title={t("settings.accordion.categories")}>
+        {isSA&&(
+        <>
         <div style={{marginBottom:12}}>
           <label className="lbl">{t("settings.ivaDefault")}</label>
           <select className="inp" style={{fontSize:13}} value={String(ivaDefault)} onChange={e=>saveIvaDefault(Number(e.target.value))} aria-label={t("settings.ivaDefault")}>
@@ -4898,9 +5295,11 @@ function SettingsView(){
         </div>
         <IvaRatesEditorBlock t={t} ivaRates={ivaRates} onSave={saveIvaRates}/>
         <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"16px 0"}}/>
+        </>
+        )}
         <div style={{fontSize:9,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>{t("settings.sectionCategories")}</div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <button className="btn-sm" style={{fontSize:10}} onClick={()=>{setCatEdit(null);setAddCat(v=>{const n=!v;if(n)setNewCat({name:"",approverIds:defaultCategoryApproverIds(users),budget:""});return n;});}}>{t("action.addCategory")}</button>
+            <button className="btn-sm" style={{fontSize:10}} onClick={()=>{setCatEdit(null);setAddCat(v=>{const n=!v;if(n)setNewCat({name:"",approverIds:[],budget:""});return n;});}}>{t("action.addCategory")}</button>
           </div>
           <p style={{fontSize:10,color:"#9CAA9F",marginBottom:10,lineHeight:1.4}}>{t("settings.defaultApprovers")}</p>
           <p style={{fontSize:10,color:"#7A8B82",marginBottom:10,lineHeight:1.4}}>{t("settings.approverAutoNote")}</p>
@@ -4919,7 +5318,7 @@ function SettingsView(){
               <label className="lbl">{t("settings.monthlyBudget")}</label>
               <input className="inp" style={{marginBottom:8,fontSize:13}} type="text" inputMode="decimal" placeholder="—" value={newCat.budget||""} onChange={e=>setNewCat(p=>({...p,budget:e.target.value}))}/>
               <div style={{display:"flex",gap:7,marginTop:8}}>
-                <button className="btn-primary" style={{flex:1,fontSize:12,padding:"6px 10px"}} onClick={()=>{if(!newCat.name)return;const approverIds=newCat.approverIds||[];if(approverIds.length<2){alert("Se requieren al menos 2 aprobadores por categoría.");return;}const b=newCat.budget===""||newCat.budget==null?null:parseFloat(String(newCat.budget).replace(",","."));saveCats([...cats,{id:"c"+Date.now(),name:newCat.name,approverIds,archived:false,budget:isNaN(b)?null:b}]);setNewCat({name:"",approverIds:defaultCategoryApproverIds(users),budget:""});setAddCat(false);}}>{t("action.add")}</button>
+                <button className="btn-primary" style={{flex:1,fontSize:12,padding:"6px 10px"}} onClick={()=>{if(!newCat.name)return;const picked=(newCat.approverIds||[]).filter(id=>users.some(u=>u.id===id));const approverIds=picked.length>0?picked:getAdminIds(users);if(approverIds.length<2){alert("Se requieren al menos 2 aprobadores por categoría.");return;}const b=newCat.budget===""||newCat.budget==null?null:parseFloat(String(newCat.budget).replace(",","."));saveCats([...cats,{id:"c"+Date.now(),name:newCat.name,approverIds,archived:false,budget:isNaN(b)?null:b}]);setNewCat({name:"",approverIds:[],budget:""});setAddCat(false);}}>{t("action.add")}</button>
                 <button className="btn-secondary" style={{flex:1,fontSize:12,padding:"6px 10px"}} onClick={()=>setAddCat(false)}>{t("action.cancel")}</button>
               </div>
             </div>
@@ -4929,10 +5328,10 @@ function SettingsView(){
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA",opacity:c.archived?0.5:1}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:600}}>{c.name}{c.archived&&<span style={{fontSize:9,color:"#9CAA9F",marginLeft:5}}>[archived]</span>}</div>
-                  <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{t("settings.approversLabel")} {c.approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(", ")||t("settings.noApprovers")}</div>
+                  <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{t("settings.approversLabel")} {effectiveExpenseApproverIds({category:c.name},cats,users).map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(", ")||t("settings.noApprovers")}</div>
                 </div>
                 <div style={{display:"flex",gap:3,flexShrink:0}}>
-                  {!c.archived&&<button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setCatEdit(c.id);setCatForm({name:c.name,approverIds:[...c.approverIds],budget:c.budget!=null&&c.budget!==""?String(c.budget):""});setAddCat(false);}}>{t("action.edit")}</button>}
+                  {!c.archived&&<button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setCatEdit(c.id);const kept=(c.approverIds||[]).filter(id=>users.some(u=>u.id===id));setCatForm({name:c.name,approverIds:kept,budget:c.budget!=null&&c.budget!==""?String(c.budget):""});setAddCat(false);}}>{t("action.edit")}</button>}
                   <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setArchC(c.id)}>{c.archived?t("action.restore"):t("action.archive")}</button>
                 </div>
               </div>
@@ -4951,23 +5350,21 @@ function SettingsView(){
                   ))}
                   <label className="lbl">{t("settings.monthlyBudget")}</label>
                   <input className="inp" style={{marginBottom:8,fontSize:13}} type="text" inputMode="decimal" placeholder="—" value={catForm.budget||""} onChange={e=>setCatForm(p=>({...p,budget:e.target.value}))}/>
-                  <div style={{display:"flex",gap:7,marginTop:8}}><button className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>{const approverIds=catForm.approverIds||[];if(approverIds.length<2){alert("Se requieren al menos 2 aprobadores por categoría.");return;}const b=catForm.budget===""||catForm.budget==null?null:parseFloat(String(catForm.budget).replace(",","."));saveCats(cats.map(x=>x.id===c.id?{...x,name:catForm.name,approverIds,budget:isNaN(b)?null:b}:x));setCatEdit(null);}}>{t("action.save")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setCatEdit(null)}>{t("action.cancel")}</button></div>
+                  <div style={{display:"flex",gap:7,marginTop:8}}><button className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>{const picked=(catForm.approverIds||[]).filter(id=>users.some(u=>u.id===id));const approverIds=picked.length>=2?picked:getAdminIds(users);if(approverIds.length<2){alert("Se requieren al menos 2 aprobadores por categoría.");return;}const b=catForm.budget===""||catForm.budget==null?null:parseFloat(String(catForm.budget).replace(",","."));saveCats(cats.map(x=>x.id===c.id?{...x,name:catForm.name,approverIds,budget:isNaN(b)?null:b}:x));setCatEdit(null);}}>{t("action.save")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setCatEdit(null)}>{t("action.cancel")}</button></div>
                 </div>
               )}
             </div>
           ))}
       </AccordionSection>}
 
-      {isSA&&AUTH_URL&&<AccordionSection title={t("settings.accordion.pending")}>
-        <PendingUsersPanel/>
-      </AccordionSection>}
+      {isSA&&AUTH_URL&&<PendingUsersPanel/>}
 
       {isSA&&<AccordionSection title={t("settings.accordion.appLog")}>
         <AppLogPanelBody/>
       </AccordionSection>}
 
-      {/* ── Danger zone ── */}
-      <AccordionSection title={t("settings.accordion.danger")} accent={"#991B1B"}>
+      {/* ── Danger zone (superadmin only) ── */}
+      {isSA&&<AccordionSection title={t("settings.accordion.danger")} accent={"#991B1B"}>
         <p style={{fontSize:11,color:"#6B7B72",marginBottom:8}}>{t("settings.resetDesc")}</p>
         <button className="btn-danger" style={{fontSize:11,padding:"5px 11px"}} onClick={()=>{if(window.confirm(t("msg.resetConfirm"))){if(AUTH_URL){alert("No disponible cuando la app usa el servidor.");return;}saveExp(SEED_EXP);saveBills(SEED_BILLS);}}}>{t("action.resetDemo")}</button>
         <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #EDE8E0"}}>
@@ -4976,7 +5373,7 @@ function SettingsView(){
             <div style={{background:"#FEE2E2",borderRadius:7,padding:"8px 10px"}}><div style={{fontSize:11,color:"#7F1D1D",marginBottom:6}}>{t("msg.removeAccount")}</div><div style={{display:"flex",gap:6}}><button className="btn-danger" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>{saveUsers(users.filter(u=>u.id!==user.id));onSignOut();}}>{t("action.confirm")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setDSelf(false)}>{t("action.cancel")}</button></div></div>
           )}
         </div>
-      </AccordionSection>
+      </AccordionSection>}
 
       <div style={{marginTop:12,padding:"8px 12px",background:"#F5F0EA",borderRadius:8,fontSize:10,color:"#9CAA9F",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <span>Data schema v{DATA_VERSION} · {new Date().getFullYear()}</span>
@@ -4990,6 +5387,7 @@ function SettingsView(){
 ══════════════════════════════════════════════════════════════════════════════ */
 function SolanaExpenses(){
   /* ── STATE ──────────────────────────────────────────────────────────────── */
+  /* With AUTH_URL, roster is replaced from GET /auth/team after login; seed DEF_USERS is only the initial placeholder until that fetch runs. */
   const [users,   setUsers]   =useState(()=>{
     migrateItemCodes();
     migrateDataModel();
@@ -5129,14 +5527,28 @@ function SolanaExpenses(){
   },[resetExpenseFiltersToDefault]);
 
   /* ── SAVES ──────────────────────────────────────────────────────────────── */
-  const saveUsers   =d=>{const n=d.map(u=>normalizeItem(u,"user"));setUsers(n);lsSet("sol-users",n);};
+  const saveUsers   =d=>{
+    const n=d.map(u=>normalizeItem(u,"user"));
+    setUsers(prev=>{
+      const removedIds=prev.filter(u=>!n.some(x=>x.id===u.id)).map(u=>u.id);
+      if(removedIds.length){
+        setCats(prevCats=>{
+          const nextCats=prevCats.map(c=>({...c,approverIds:(c.approverIds||[]).filter(aid=>!removedIds.includes(aid))}));
+          lsSet("sol-cats",nextCats);
+          return nextCats;
+        });
+      }
+      lsSet("sol-users",n);
+      return n;
+    });
+  };
   const saveExp     =d=>{const n=d.map(e=>normalizeItem(e,"expense"));setExpenses(n);if(!AUTH_URL)lsSet("sol-exp",n);};
   const saveBills   =d=>{const n=d.map(b=>normalizeItem(b,"bill"));setBills(n);if(!AUTH_URL)lsSet("sol-bills",n);};
   const saveCats    =d=>{const n=d.map(c=>normalizeItem(c,"cat"));setCats(n);lsSet("sol-cats",n);};
   const savePasswords=d=>{setPasswords(d);if(!AUTH_URL)lsSet("sol-pwd",d);};
 
   /* ── HELPERS ────────────────────────────────────────────────────────────── */
-  const getUser   =id=>users.find(u=>u.id===id)||{id,name:UNKNOWN_USER_NAME,color:"#999",role:"user",title:""};
+  const getUser   =id=>users.find(u=>u.id===id)||{id,name:UNKNOWN_USER_NAME,color:"#999",role:"user",title:"",avatar:null};
   const adminIds  =React.useMemo(()=>getAdminIds(users),[users]); // dynamic, never hardcoded
   const isAdmin   =user?.role==="admin"||user?.role==="superadmin";
   const isSA      =user?.role==="superadmin";
@@ -5245,6 +5657,31 @@ function SolanaExpenses(){
     }
   },[view,user?.id,isAdmin,user]);
 
+  /* Server mode: replace local demo user ids with SQLite-backed roster so submittedBy matches users[].id */
+  useEffect(()=>{
+    if(!AUTH_URL||!user)return;
+    API.ensureSessionToken();
+    if(!API.token)return;
+    let cancelled=false;
+    (async()=>{
+      try{
+        const d=await API.get("/auth/team");
+        if(cancelled||!d.users||!Array.isArray(d.users))return;
+        setUsers(prev=>{
+          const next=d.users.map(srv=>{
+            const loc=prev.find(l=>l.id===srv.id)||prev.find(l=>(String(l.email||"").toLowerCase())===String(srv.email||"").toLowerCase());
+            return normalizeItem({...(loc||{}),...srv,id:String(srv.id)},"user");
+          });
+          try{lsSet("sol-users",next);}catch(e){}
+          return next;
+        });
+      }catch(e){
+        appLog("warn","auth_team_roster_failed",{message:e?.message||String(e)});
+      }
+    })();
+    return()=>{cancelled=true;};
+  },[user?.id]);
+
   useEffect(()=>{
     if(!user)return;
     if(!AUTH_URL){setLedgerLoading(false);return;}
@@ -5297,8 +5734,7 @@ function SolanaExpenses(){
         for(const ex of localExp){
           if(cancelled)return;
           const amt=Number(ex.amount)||0;
-          const expCatM=catsMigr.find(c=>c.name===ex.category);
-          const approvalRequired=expCatM?.approverIds?.length>0?expCatM.approverIds:getAdminIds(users);
+          const approvalRequired=effectiveExpenseApproverIds({category:ex.category||"Otro"},catsMigr,users);
           await API.post("/expenses",{
             amount:amt,
             description:ex.description||".",
@@ -5308,6 +5744,8 @@ function SolanaExpenses(){
             status:ex.status==="draft"?"draft":"submitted",
             departmentId:ex.departmentId||DEFAULT_DEPT_ID,
             approvalRequired,
+            ...(Array.isArray(ex.paidBy)&&ex.paidBy.length>0?{paidBy:ex.paidBy}:{}),
+            ...(ex.splitMode?{splitMode:ex.splitMode}:{}),
           },{skipOfflineQueue:true});
         }
         for(const bi of localBills){
@@ -5469,14 +5907,31 @@ function SolanaExpenses(){
     if(!String(form.category||"").trim()){setFormError(t("msg.categoryRequired"));return;}
     if(!String(form.date||"").trim()){setFormError(t("msg.expenseDateRequired"));return;}
     if(!form.departmentId){setFormError(t("msg.deptRequired"));return;}
-      if(AUTH_URL){
-      if(splitOn){setFormError("La división entre personas no está disponible con el servidor.");return;}
-      const expCatAuth=cats.find(c=>c.name===form.category);
-      const expApproverIdsAuth=expCatAuth?.approverIds?.length>0?expCatAuth.approverIds:adminIds;
+    let paidBy=[{userId:user.id,amount,pct:100}];
+    let splitModeOut=undefined;
+    if(splitOn&&splits.filter(s=>s.checked).length>1){
+      const sel=splits.filter(s=>s.checked);
+      if(sel.length<2){setFormError(t("split.minParticipants"));return;}
+      if(spMode==="percentage"){
+        const sumPct=sel.reduce((s,x)=>s+(Number(x.percent)||0),0);
+        if(Math.abs(sumPct-100)>0.5){setFormError(t("msg.splitMustTotal100"));return;}
+      }
+      if(spMode==="amount"){
+        const sumAmt=sel.reduce((s,x)=>s+(Number(x.value)||0),0);
+        if(Math.abs(sumAmt-amount)>0.01){setFormError(t("msg.valueMustMatch")+fmt(amount));return;}
+      }
+      paidBy=buildPaidByFromSplitState(splits,amount,spMode);
+      if(paidBy.length>1)splitModeOut=spMode;
+    }
+    if(AUTH_URL){
+      const expApproverIdsAuth=effectiveExpenseApproverIds({category:form.category},cats,users);
       void (async()=>{
         const clientRef="tmp_exp_"+genUuid();
         const meta={clientRef};
         if(receipt?.b64)meta.pendingReceipt={b64:receipt.b64,mediaType:receipt.type||"image/jpeg"};
+        const rpAuth=parseFloat(form.ivaRate);
+        const ivaRateAuth=isNaN(rpAuth)?readIvaDefault():rpAuth;
+        const ivaAmountAuth=calcIvaParts(amount,ivaRateAuth).iva;
         try{
           /* Server: resolveApproverIds + computeSubmittedVotes(req.userId) — si el autor está en approvalRequired, queda approved en approvalVotesJson (mismo efecto que autoApprove local). */
           const d=await API.post("/expenses",{
@@ -5486,6 +5941,10 @@ function SolanaExpenses(){
             notes:form.notes||undefined,status:"submitted",
             departmentId:form.departmentId,
             approvalRequired:expApproverIdsAuth,
+            paidBy,
+            ivaRate:ivaRateAuth,
+            ivaAmount:ivaAmountAuth,
+            ...(splitModeOut?{splitMode:splitModeOut}:{}),
           },meta);
           let exp=expenseFromApi(d.expense);
           if(receipt?.b64){
@@ -5528,7 +5987,8 @@ function SolanaExpenses(){
               date:form.date,
               notes:form.notes||"",
               submittedBy:user.id,
-              paidBy:[{userId:user.id,amount}],
+              paidBy,
+              ...(splitModeOut?{splitMode:splitModeOut}:{}),
               receipt:receipt?.b64||null,
               receiptType:receipt?.type||null,
               rejectionNote:null,
@@ -5536,8 +5996,8 @@ function SolanaExpenses(){
               approvals:optAppr,
               approvalRequired:expApproverIdsAuth,
               auditTrail:optTrail,
-              ivaRate:null,
-              ivaAmount:null,
+              ivaRate:ivaRateAuth,
+              ivaAmount:ivaAmountAuth,
               comments:[],
               seenBy:[],
               receiptPath:null,
@@ -5554,24 +6014,7 @@ function SolanaExpenses(){
       })();
       return;
     }
-    let paidBy=[{userId:user.id,amount,pct:100}];
-    let splitModeOut=undefined;
-    if(splitOn&&splits.filter(s=>s.checked).length>1){
-      const sel=splits.filter(s=>s.checked);
-      if(sel.length<2){setFormError(t("split.minParticipants"));return;}
-      if(spMode==="percentage"){
-        const sumPct=sel.reduce((s,x)=>s+(Number(x.percent)||0),0);
-        if(Math.abs(sumPct-100)>0.5){setFormError(t("msg.splitMustTotal100"));return;}
-      }
-      if(spMode==="amount"){
-        const sumAmt=sel.reduce((s,x)=>s+(Number(x.value)||0),0);
-        if(Math.abs(sumAmt-amount)>0.01){setFormError(t("msg.valueMustMatch")+fmt(amount));return;}
-      }
-      paidBy=buildPaidByFromSplitState(splits,amount,spMode);
-      if(paidBy.length>1)splitModeOut=spMode;
-    }
-    const expCat=cats.find(c=>c.name===form.category);
-    const expApproverIds=expCat?.approverIds?.length>0?expCat.approverIds:adminIds;
+    const expApproverIds=effectiveExpenseApproverIds({category:form.category},cats,users);
     const baseTrail=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
     const{approvals:expApprovals,auditTrail:expTrail}=autoApprove(user.id,expApproverIds,{},baseTrail);
     const expReceiptTrail=receipt?[...expTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:receipt.type}}]:expTrail;
@@ -5642,11 +6085,12 @@ function SolanaExpenses(){
             date:updates.date,
             notes:updates.notes,
             departmentId:updates.departmentId,
+            ivaRate:updates.ivaRate,
+            ivaAmount:updates.ivaAmount,
           };
           if(oldExp.status==="rejected"){
             body.status="submitted";
-            const rc=cats.find(c=>c.name===updates.category);
-            body.approvalRequired=rc?.approverIds?.length>0?rc.approverIds:adminIds;
+            body.approvalRequired=effectiveExpenseApproverIds({category:updates.category||oldExp.category},cats,users);
           }
           await API.put("/expenses/"+encodeURIComponent(expId),body);
           if(updates.receipt){
@@ -5693,8 +6137,7 @@ function SolanaExpenses(){
     let nextSeen=oldExp.seenBy||[];
     if(wasApproved&&relevantChanged){
       newApprovals={};
-      const catRc=cats.find(c=>c.name===(updates.category||oldExp.category));
-      const approverIdsRc=catRc?.approverIds?.length>0?catRc.approverIds:adminIds;
+      const approverIdsRc=effectiveExpenseApproverIds({category:updates.category||oldExp.category},cats,users);
       let trailExtra=[...newTrail];
       if(approverIdsRc.includes(user.id)){
         newApprovals={[user.id]:"approved"};
@@ -5720,15 +6163,13 @@ function SolanaExpenses(){
     if(AUTH_URL){
       void (async()=>{
         try{
-          const expCatRs=cats.find(c=>c.name===exp.category);
-          const expApproverIdsRs=expCatRs?.approverIds?.length>0?expCatRs.approverIds:adminIds;
+          const expApproverIdsRs=effectiveExpenseApproverIds(exp,cats,users);
           await API.put("/expenses/"+encodeURIComponent(expId),{status:"submitted",approvalRequired:expApproverIdsRs});
           const full=await API.get("/expenses");
           saveExp((full.expenses||[]).map(expenseFromApi));
         }catch(e){
           if(isOfflineQueuedError(e)){
-            const expCatRs=cats.find(c=>c.name===exp.category);
-            const expApproverIdsRs=expCatRs?.approverIds?.length>0?expCatRs.approverIds:adminIds;
+            const expApproverIdsRs=effectiveExpenseApproverIds(exp,cats,users);
             const baseTr=[{action:"submitted",by:exp.submittedBy,at:new Date().toISOString()}];
             const{approvals:ra,auditTrail:tr}=autoApprove(exp.submittedBy,expApproverIdsRs,{},baseTr);
             const allR=expApproverIdsRs.length>0&&expApproverIdsRs.every(id=>ra[id]==="approved");
@@ -5763,12 +6204,17 @@ function SolanaExpenses(){
           const full=await API.get("/expenses");
           saveExp((full.expenses||[]).map(expenseFromApi));
         }catch(e){
-          saveExp(expenses.map(x=>x.id!==expId?x:{
-            ...x,
-            comments:[...(x.comments||[]),c],
-            seenBy:seenByAfterActor(user.id),
-            auditTrail:[...(x.auditTrail||[]),{action:"comment_added",by:user.id,at:at,note:tx}],
-          }));
+          if(isCommentPostUnavailable(e)){
+            dispatchSolanaToast(t("expense.commentRetryHint"),"error");
+            saveExp(expenses.map(x=>x.id!==expId?x:{
+              ...x,
+              comments:[...(x.comments||[]),c],
+              seenBy:seenByAfterActor(user.id),
+              auditTrail:[...(x.auditTrail||[]),{action:"comment_added",by:user.id,at:at,note:tx}],
+            }));
+            return;
+          }
+          dispatchSolanaToast(t("expense.commentFailed"),"error");
         }
       })();
       return;
@@ -5786,18 +6232,20 @@ function SolanaExpenses(){
     saveExp(expenses.map(e=>e.id!==expId?e:{...e,seenBy:[...new Set([...(e.seenBy||[]),user.id])]}));
   };
 
-  const markBillPaid=billId=>{
+  const markBillPaid=(billId,paidAtIso)=>{
     if(!AUTH_URL)return;
     const b=bills.find(x=>x.id===billId);
     if(b&&b._pendingSync){alert("Espera a sincronizar esta factura.");return;}
+    const pay=(paidAtIso&&String(paidAtIso).slice(0,10))||new Date().toISOString().slice(0,10);
     void (async()=>{
       try{
-        await API.post("/bills/"+encodeURIComponent(billId)+"/mark-paid",{});
+        await API.post("/bills/"+encodeURIComponent(billId)+"/mark-paid",{paidAt:pay});
         const d=await API.get("/bills");
         saveBills((d.bills||[]).map(billFromApi));
       }catch(e){
         if(isOfflineQueuedError(e)){
-          saveBills(bills.map(b=>b.id!==billId?b:{...b,apiBillStatus:"paid",paidAt:new Date().toISOString()}));
+          const ts=Date.parse(pay+"T12:00:00");
+          saveBills(bills.map(x=>x.id!==billId?x:{...x,apiBillStatus:"paid",paidAt:Number.isFinite(ts)?ts:Date.now()}));
           return;
         }
         alert(e.message||"No se pudo marcar como pagada.");
@@ -5827,7 +6275,8 @@ function SolanaExpenses(){
                   return{...x,status:"rejected",rejectionNote:note||x.rejectionNote,approvals:{}};
                 }
                 const newApprovals={...(x.approvals||{}),[user.id]:"approved"};
-                const all=x.approvalRequired.every(id=>newApprovals[id]==="approved");
+                const reqCanon=canonicalApproverIdList(x.approvalRequired,users);
+                const all=reqCanon.length>0&&reqCanon.every(id=>newApprovals[id]==="approved");
                 return{...x,approvals:newApprovals,...(all?{status:"approved"}:{})};
               }
               return{...x,status:action==="approved"?"approved":"rejected",rejectionNote:action==="rejected"?(note||x.rejectionNote):x.rejectionNote};
@@ -5852,8 +6301,7 @@ function SolanaExpenses(){
       const updated=bills.map(b=>{
         if(b.id!==itemId)return b;
         const newApprovals={...b.approvals,[user.id]:action};
-        const cat=cats.find(c=>c.name===b.category);
-        const approverIds=cat?.approverIds?.length>0?cat.approverIds:adminIds;
+        const approverIds=effectiveExpenseApproverIds(b,cats,users);
         const allApproved=approverIds.every(id=>newApprovals[id]==="approved");
         return{...b,approvals:newApprovals,active:allApproved,auditTrail:[...(b.auditTrail||[]),{action,by:user.id,at:new Date().toISOString(),note}],seenBy:seenByAfterActor(user.id)};
       });
@@ -5897,22 +6345,24 @@ function SolanaExpenses(){
     return true;
   });
   const activeFilterCount=[catFlt,submFlt,dateFrom,dateTo].filter(Boolean).length;
-  const myPending=isAdmin?(AUTH_URL
+  const isApprover=cats.some(c=>{
+    if(c.archived)return false;
+    return effectiveExpenseApproverIds({category:c.name},cats,users).includes(user.id);
+  });
+  const myPending=AUTH_URL
     ?expenses.filter(e=>{
       if(e._apiType!=="expense"||e._pendingSync)return false;
       if(getItemStatus(e,cats,users)!=="pending")return false;
       const ids=effectiveExpenseApproverIds(e,cats,users);
-      return ids.includes(user.id)&&!(e.approvals||{})[user.id];
+      return ids.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved";
     })
     :expenses.filter(e=>{
-      const cat=cats.find(c=>c.name===e.category);
-      const ids=cat?.approverIds?.length>0?cat.approverIds:adminIds;
-      return ids.includes(user.id)&&getItemStatus(e,cats,users)==="pending"&&!(e.approvals||{})[user.id];
-    })):[];
-  const myPendingBills=isAdmin&&!AUTH_URL?bills.filter(b=>{
-    const cat=cats.find(c=>c.name===b.category);
-    const ids=cat?.approverIds?.length>0?cat.approverIds:adminIds;
-    return ids.includes(user.id)&&getItemStatus(b,cats,users)==="pending"&&!(b.approvals||{})[user.id];
+      const ids=effectiveExpenseApproverIds(e,cats,users);
+      return ids.includes(user.id)&&getItemStatus(e,cats,users)==="pending"&&approvalVoteFor(e.approvals,user.id,users)!=="approved";
+    });
+  const myPendingBills=!AUTH_URL?bills.filter(b=>{
+    const ids=effectiveExpenseApproverIds(b,cats,users);
+    return ids.includes(user.id)&&getItemStatus(b,cats,users)==="pending"&&approvalVoteFor(b.approvals,user.id,users)!=="approved";
   }):[];
   /* Approved expenses: totApproved = sum of EUR once per expense (splits do not duplicate). Per-person = sum of paidBy-weighted EUR shares. */
   const approvedExpenses=expenses.filter(e=>getItemStatus(e,cats,users)==="approved");
@@ -5920,7 +6370,7 @@ function SolanaExpenses(){
   const perPerson=users.map(u=>({
     ...u,
     total:approvedExpenses.reduce((sum,e)=>sum+shareEurInExpense(e,u.id),0),
-  })).filter(u=>u.total>0).sort((a,b)=>b.total-a.total);
+  })).sort((a,b)=>b.total-a.total);
   const totFixed=bills.reduce((s,b)=>{
     if(AUTH_URL&&b._apiType==="bill"){
       if(!b.recurring)return s;
@@ -5958,7 +6408,7 @@ function SolanaExpenses(){
   const navItems=[
     {id:"dashboard",label:t("nav.dashboard")},
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
-    ...(isAdmin?[{id:"approvals",label:t("nav.approvals"),badge:totalBadge}]:[]),
+    ...((isApprover||isAdmin)?[{id:"approvals",label:t("nav.approvals"),badge:totalBadge}]:[]),
     {id:"bills",    label:t("nav.bills")},
     {id:"reports",  label:t("nav.reports")},
     // Settings removed from nav — accessed via profile avatar
@@ -5966,7 +6416,7 @@ function SolanaExpenses(){
   const mobNav=[
     {id:"dashboard",label:t("nav.dashboard"),badge:0},
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
-    ...(isAdmin?[{id:"approvals",label:t("nav.approvals"),badge:totalBadge}]:[]),
+    ...((isApprover||isAdmin)?[{id:"approvals",label:t("nav.approvals"),badge:totalBadge}]:[]),
     {id:"bills",    label:t("nav.bills"),badge:0},
     {id:"reports",  label:t("nav.reports"),badge:0},
     // Settings accessed via mobile header avatar
@@ -5977,7 +6427,7 @@ function SolanaExpenses(){
     t,user,users,expenses,bills,cats,passwords,ivaRates,saveIvaRates,
     saveUsers,saveExp,saveBills,saveCats,savePasswords,
     departments,departmentsWithStats,refreshDepartments,defaultDeptId,
-    isAdmin,isSA,getUser,ledgerLoading,markBillPaid,
+    isAdmin,isApprover,isSA,getUser,ledgerLoading,markBillPaid,
     view,setView,go,panel,setPanel,openNew,
     detailId,setDetailId,
     form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
@@ -5997,6 +6447,7 @@ function SolanaExpenses(){
     fixResubmitExpense,addExpenseComment,markExpenseRead,
     goToMyRejected,
     onSignOut,
+    setUser,
   };
 
   /* ── RENDER ─────────────────────────────────────────────────────────────── */

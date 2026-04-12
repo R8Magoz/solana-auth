@@ -410,9 +410,14 @@ const { createReportsRouter } = require('./reportsRoutes');
 const { runBillMaintenance } = require('./billJobs');
 
 app.use('/expenses', expensesApiLimiter, createExpensesRouter({
-  audit, requireAuth, requireAdminSession, DATA_DIR, receiptUploadLimiter: expenseReceiptUploadLimiter,
+  audit, requireAuth, requireAdminSession, DATA_DIR, receiptUploadLimiter: expenseReceiptUploadLimiter, userStore,
 }));
-app.use('/bills', billsApiLimiter, createBillsRouter({ audit, requireAuth }));
+app.use('/bills', billsApiLimiter, createBillsRouter({
+  audit,
+  requireAuth,
+  DATA_DIR,
+  receiptUploadLimiter: expenseReceiptUploadLimiter,
+}));
 app.use(
   '/departments',
   departmentsApiLimiter,
@@ -450,6 +455,7 @@ app.post('/auth/signup', signupLimiter, async (req, res) => {
   // New user — skip email verification, go straight to pending_admin_approval
   // (small trusted team, admin approves manually via Settings panel)
   const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  /** Primary key in `users`, JWT/session `userId`, expense `userId`, bills `userId`, GET /auth/team `id` — same value everywhere. */
   const userId = 'u_' + crypto.randomBytes(8).toString('hex');
   const now = Date.now();
   const newUser = {
@@ -571,6 +577,24 @@ app.post('/auth/logout', (req, res) => {
 });
 
 /**
+ * GET /auth/team
+ * Any logged-in user: full team list with display fields only (no password hash).
+ * Lets the SPA resolve expense/bill userId → name when IDs come from SQLite (e.g. u_…).
+ */
+app.get('/auth/team', requireAuth, (req, res) => {
+  try {
+    const users = userStore.getAllUsers().map((u) => {
+      const { passwordHash: _ph, tempPasswordExp: _tp, ...safe } = u;
+      return safe;
+    });
+    res.json({ users });
+  } catch (e) {
+    console.error('[auth/team]', e);
+    res.status(500).json({ error: 'No se pudo cargar el equipo.' });
+  }
+});
+
+/**
  * POST /auth/change-password
  * Body: { userId, newPassword }
  * Auth: Bearer session token — user can only change their own password.
@@ -579,7 +603,7 @@ app.post('/auth/logout', (req, res) => {
  * in the backend means next login won't re-hydrate mustChangePassword: true.
  */
 app.post('/auth/change-password', async (req, res) => {
-  const { userId, newPassword } = req.body || {};
+  const { userId, newPassword, currentPassword } = req.body || {};
   const uid = userId != null ? String(userId).trim().slice(0, 128) : '';
   if (!uid || !newPassword) return res.status(400).json({ error: 'userId y newPassword son obligatorios.' });
 
@@ -602,10 +626,70 @@ app.post('/auth/change-password', async (req, res) => {
   const user = userStore.findUserById(uid);
   if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
 
+  if (!user.mustChangePassword) {
+    const cur = currentPassword != null ? String(currentPassword) : '';
+    if (!cur) {
+      return res.status(400).json({ error: 'Contraseña actual requerida.' });
+    }
+    const okCur = await bcrypt.compare(cur, user.passwordHash);
+    if (!okCur) {
+      audit('password_change_wrong_current', { userId: uid, ip: req.ip });
+      return res.status(400).json({ error: 'La contraseña actual no es correcta.' });
+    }
+  }
+
   const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   userStore.updatePasswordAfterChange(uid, newHash);
   audit('password_changed', { userId: uid, ip: req.ip });
   res.json({ ok: true, message: 'Contraseña actualizada.' });
+});
+
+/**
+ * PUT /auth/update-profile
+ * Body: { name?, email?, phone?, avatar? } — authenticated user updates their own record only.
+ */
+app.put('/auth/update-profile', async (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!token) return res.status(403).json({ error: 'No autorizado.' });
+  const session = verifySessionToken(token);
+  if (!session) return res.status(401).json({ error: 'No autorizado.' });
+
+  const body = req.body || {};
+  const name = body.name != null ? String(body.name).trim().slice(0, 128) : '';
+  const emailRaw = body.email != null ? String(body.email).trim().toLowerCase().slice(0, 254) : '';
+  const phone = body.phone != null ? String(body.phone).trim().slice(0, 64) : '';
+  let avatar = body.avatar;
+  if (avatar != null && typeof avatar === 'string') {
+    avatar = avatar.slice(0, 500000);
+  } else {
+    avatar = null;
+  }
+
+  if (!name) return res.status(400).json({ error: 'El nombre es obligatorio.' });
+  if (!emailRaw || !emailRaw.includes('@')) {
+    return res.status(400).json({ error: 'Email inválido.' });
+  }
+
+  const me = userStore.findUserById(session.userId);
+  if (!me) return res.status(404).json({ error: 'Usuario no encontrado.' });
+
+  const other = userStore.findUserByEmail(emailRaw);
+  if (other && other.id !== session.userId) {
+    return res.status(409).json({ error: 'Ya existe otro usuario con ese correo.' });
+  }
+
+  userStore.updateOwnProfile(session.userId, {
+    name,
+    email: emailRaw,
+    phone,
+    avatar: avatar === '' ? null : avatar,
+  });
+
+  const fresh = userStore.findUserById(session.userId);
+  const { passwordHash: _ph, tempPasswordExp: _tp, ...safeUser } = fresh;
+  audit('profile_updated', { userId: session.userId, ip: req.ip });
+  res.json({ ok: true, user: safeUser });
 });
 
 // ── ADMIN ENDPOINTS ───────────────────────────────────────────────────────────
@@ -651,7 +735,7 @@ app.post('/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
       const newAdmin = {
         id:               newAdminId,
         email:            adminEmail,
-        name:             'Marc',
+        name:             'Administrator',
         passwordHash:     tempHash,
         tempPasswordExp:  tempExpiry,
         role:             'superadmin',
@@ -730,7 +814,7 @@ app.post('/admin/users/create', requireAdminSession, async (req, res) => {
     return res.status(409).json({ error: `Ya existe un usuario con el email ${normalEmail}.` });
   }
 
-  const userId = (name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now());
+  const userId = 'u_' + crypto.randomBytes(8).toString('hex');
   const passwordHash = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS);
   const now = Date.now();
 
@@ -762,8 +846,101 @@ app.post('/admin/users/create', requireAdminSession, async (req, res) => {
   res.json({ ok: true, user: safeUser });
 });
 
+/**
+ * POST /admin/users/:id/reset-password
+ * Superadmin only. Sets a new temporary password and mustChangePassword: true.
+ */
+app.post('/admin/users/:id/reset-password', requireAdminSession, async (req, res) => {
+  if (req.userRole !== 'superadmin') {
+    return res.status(403).json({ error: 'Solo superadministrador.' });
+  }
+  const { id } = req.params;
+  const { tempPassword } = req.body || {};
+  if (!tempPassword || typeof tempPassword !== 'string') {
+    return res.status(400).json({ error: 'tempPassword es obligatorio.' });
+  }
+  const pwError = checkPassword(tempPassword);
+  if (pwError) return res.status(400).json({ error: pwError });
 
-app.get('/admin/users/pending', requireAdmin, (req, res) => {
+  const target = userStore.findUserById(id);
+  if (!target) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  if (target.id === req.userId) {
+    return res.status(400).json({ error: 'Usa «Contraseña» en Ajustes para cambiar tu propia clave.' });
+  }
+
+  const hash = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS);
+  userStore.setPasswordForceChange(id, hash);
+  audit('admin_reset_user_password', { targetId: id, by: req.userId, ip: req.ip });
+  const fresh = userStore.findUserById(id);
+  const { passwordHash: _, ...safeUser } = fresh;
+  res.json({ ok: true, user: safeUser });
+});
+
+/**
+ * PUT /admin/users/:id
+ * Superadmin only. Updates name, email, phone, title, role, color (not password).
+ */
+app.put('/admin/users/:id', requireAdminSession, async (req, res) => {
+  if (req.userRole !== 'superadmin') {
+    return res.status(403).json({ error: 'Solo superadministrador.' });
+  }
+  const { id } = req.params;
+  const body = req.body || {};
+  const target = userStore.findUserById(id);
+  if (!target) return res.status(404).json({ error: 'Usuario no encontrado.' });
+
+  const emailNext = body.email != null ? String(body.email).trim().toLowerCase().slice(0, 254) : target.email;
+  if (body.email != null && (!emailNext || !emailNext.includes('@'))) {
+    return res.status(400).json({ error: 'Email inválido.' });
+  }
+  const other = userStore.findUserByEmail(emailNext);
+  if (other && other.id !== id) {
+    return res.status(409).json({ error: 'Ya existe otro usuario con ese correo.' });
+  }
+
+  const result = userStore.adminPatchUser(id, body);
+  if (!result.ok) {
+    const map = {
+      not_found: [404, 'Usuario no encontrado.'],
+      name_required: [400, 'El nombre es obligatorio.'],
+      role_invalid: [400, 'Rol no válido.'],
+    };
+    const [code, msg] = map[result.error] || [400, 'No se pudo actualizar.'];
+    return res.status(code).json({ error: msg });
+  }
+  const { passwordHash: _ph, tempPasswordExp: _tp, ...safeUser } = result.user;
+  audit('admin_user_updated', { targetId: id, by: req.userId, ip: req.ip });
+  res.json({ ok: true, user: safeUser });
+});
+
+/**
+ * DELETE /admin/users/:id
+ * Superadmin only. Fails if expenses or bills still reference the user (SQLite FK).
+ */
+app.delete('/admin/users/:id', requireAdminSession, (req, res) => {
+  if (req.userRole !== 'superadmin') {
+    return res.status(403).json({ error: 'Solo superadministrador.' });
+  }
+  const { id } = req.params;
+  if (id === req.userId) {
+    return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta desde aquí.' });
+  }
+  const target = userStore.findUserById(id);
+  if (!target) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  const del = userStore.deleteUserByIdHard(id);
+  if (!del.ok) {
+    if (del.reason === 'references') {
+      return res.status(409).json({
+        error: 'No se puede eliminar: el usuario tiene gastos o facturas asociados.',
+      });
+    }
+    return res.status(500).json({ error: 'No se pudo eliminar.' });
+  }
+  audit('admin_user_deleted', { targetId: id, by: req.userId, ip: req.ip });
+  res.json({ ok: true });
+});
+
+app.get('/admin/users/pending', requireAdminSession, (req, res) => {
   const users = userStore
     .listUsersByAccountStatus('pending_admin_approval')
     .map(({ passwordHash: _, ...u }) => u);
@@ -784,7 +961,7 @@ app.get('/admin/users/all', requireAdmin, (req, res) => {
  * Body: { adminId? }
  * Approves a user. Sets accountStatus = active. Sends access-granted email.
  */
-app.post('/admin/users/:id/approve', requireAdmin, async (req, res) => {
+app.post('/admin/users/:id/approve', requireAdminSession, async (req, res) => {
   const { id } = req.params;
   const { adminId } = req.body || {};
 
@@ -817,7 +994,7 @@ app.post('/admin/users/:id/approve', requireAdmin, async (req, res) => {
  * Body: { adminId?, reason? }
  * Denies a user.
  */
-app.post('/admin/users/:id/deny', requireAdmin, async (req, res) => {
+app.post('/admin/users/:id/deny', requireAdminSession, async (req, res) => {
   const { id } = req.params;
   const { adminId, reason } = req.body || {};
   const adminActor = adminId != null ? String(adminId).trim().slice(0, 128) : 'admin';

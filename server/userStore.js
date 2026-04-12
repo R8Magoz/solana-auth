@@ -2,13 +2,20 @@
 
 const db = require('./db');
 
+const AVATAR_MAX_LEN = 500000;
+
 function userToParams(u) {
+  const av =
+    u.avatar != null && String(u.avatar).trim() !== ''
+      ? String(u.avatar).slice(0, AVATAR_MAX_LEN)
+      : null;
   return {
     id: u.id,
     email: (u.email || '').trim().toLowerCase(),
     name: u.name != null ? u.name : null,
     title: u.title != null ? u.title : '',
     phone: u.phone != null ? u.phone : '',
+    avatar: av,
     passwordHash: u.passwordHash,
     role: u.role != null ? u.role : 'user',
     color: u.color != null ? u.color : '#6B7280',
@@ -50,17 +57,18 @@ function rowToUser(row) {
     seedTag: row.seedTag,
     mustChangePassword: !!row.mustChangePassword,
   };
+  if (row.avatar != null && row.avatar !== '') u.avatar = row.avatar;
   if (row.tempPasswordExp != null) u.tempPasswordExp = row.tempPasswordExp;
   return u;
 }
 
 const INSERT_SQL = `
   INSERT INTO users (
-    id, email, name, title, phone, passwordHash, role, color,
+    id, email, name, title, phone, avatar, passwordHash, role, color,
     accountStatus, approvalStatus, emailVerifiedAt, approvedBy, approvedAt,
     deniedAt, deniedBy, deniedReason, createdAt, seedTag, mustChangePassword, tempPasswordExp
   ) VALUES (
-    @id, @email, @name, @title, @phone, @passwordHash, @role, @color,
+    @id, @email, @name, @title, @phone, @avatar, @passwordHash, @role, @color,
     @accountStatus, @approvalStatus, @emailVerifiedAt, @approvedBy, @approvedAt,
     @deniedAt, @deniedBy, @deniedReason, @createdAt, @seedTag, @mustChangePassword, @tempPasswordExp
   )
@@ -74,6 +82,7 @@ const updateFullStmt = db.prepare(`
     name = @name,
     title = @title,
     phone = @phone,
+    avatar = @avatar,
     passwordHash = @passwordHash,
     role = @role,
     color = @color,
@@ -136,6 +145,26 @@ function updatePasswordAfterChange(userId, passwordHash) {
   `).run(passwordHash, userId);
 }
 
+/**
+ * Self-service profile (name, email, phone, avatar). Caller must enforce email uniqueness.
+ */
+function updateOwnProfile(userId, { name, email, phone, avatar }) {
+  const av =
+    avatar != null && String(avatar).trim() !== ''
+      ? String(avatar).slice(0, AVATAR_MAX_LEN)
+      : null;
+  db.prepare(
+    `UPDATE users SET name = ?, email = ?, phone = ?, avatar = ? WHERE id = ?`,
+  ).run(name, email, phone, av, userId);
+}
+
+/** Superadmin: set a new temp password and force change on next login. */
+function setPasswordForceChange(userId, passwordHash) {
+  db.prepare(
+    `UPDATE users SET passwordHash = ?, mustChangePassword = 1, tempPasswordExp = NULL WHERE id = ?`,
+  ).run(passwordHash, userId);
+}
+
 function updateAdminTempPassword(userId, passwordHash, tempExpiry) {
   db.prepare(`
     UPDATE users SET passwordHash = ?, tempPasswordExp = ? WHERE id = ?
@@ -170,6 +199,51 @@ function updateUserDenied(userId, deniedBy, reason) {
 function replaceUserById(u) {
   const p = userToParams(u);
   updateFullStmt.run(p);
+}
+
+const ALLOWED_ROLES = new Set(['user', 'admin', 'superadmin']);
+
+/**
+ * Superadmin patch of another user (preserves passwordHash and other auth fields).
+ * @returns {{ ok: true, user: object } | { ok: false, error: string }}
+ */
+function adminPatchUser(targetId, body) {
+  const u = findUserById(targetId);
+  if (!u) return { ok: false, error: 'not_found' };
+  const next = { ...u };
+  if (body.name != null) {
+    const n = String(body.name).trim().slice(0, 128);
+    if (!n) return { ok: false, error: 'name_required' };
+    next.name = n;
+  }
+  if (body.email != null) {
+    next.email = String(body.email).trim().toLowerCase().slice(0, 254);
+  }
+  if (body.phone != null) next.phone = String(body.phone).trim().slice(0, 64);
+  if (body.title != null) next.title = String(body.title).trim().slice(0, 128);
+  if (body.color != null) next.color = String(body.color).trim().slice(0, 32);
+  if (body.role != null) {
+    const r = String(body.role).trim();
+    if (!ALLOWED_ROLES.has(r)) return { ok: false, error: 'role_invalid' };
+    next.role = r;
+  }
+  replaceUserById(next);
+  return { ok: true, user: findUserById(targetId) };
+}
+
+/**
+ * Hard delete user row. Fails with FK if expenses/bills reference this user.
+ */
+function deleteUserByIdHard(id) {
+  try {
+    const r = db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    return { ok: r.changes > 0 };
+  } catch (e) {
+    if (e && (e.code === 'SQLITE_CONSTRAINT_FOREIGNKEY' || String(e.message || '').includes('FOREIGN KEY'))) {
+      return { ok: false, reason: 'references' };
+    }
+    throw e;
+  }
 }
 
 function upsertSeedUser(record, SEED_TAG) {
@@ -210,10 +284,14 @@ module.exports = {
   findUserByEmailOrId,
   listUsersByAccountStatus,
   updatePasswordAfterChange,
+  updateOwnProfile,
+  setPasswordForceChange,
   updateAdminTempPassword,
   updateUserApproved,
   updateUserDenied,
   replaceUserById,
+  adminPatchUser,
+  deleteUserByIdHard,
   upsertSeedUser,
   deleteUsersWithSeedTag,
   countUsers,
