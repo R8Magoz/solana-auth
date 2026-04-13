@@ -55,6 +55,7 @@ db.exec(`
     rejectionNote TEXT,
     receiptPath   TEXT,
     notes         TEXT,
+    ownerId       TEXT REFERENCES users(id),
     createdAt     INTEGER NOT NULL,
     updatedAt     INTEGER NOT NULL
   );
@@ -74,6 +75,9 @@ db.exec(`
     paidAt        INTEGER,
     paidBy        TEXT REFERENCES users(id),
     notes         TEXT,
+    ownerId       TEXT REFERENCES users(id),
+    paidByJson    TEXT,
+    splitMode     TEXT,
     createdAt     INTEGER NOT NULL,
     updatedAt     INTEGER NOT NULL
   );
@@ -92,6 +96,7 @@ db.exec(`
     id        TEXT PRIMARY KEY,
     name      TEXT NOT NULL,
     budget    REAL NOT NULL DEFAULT 0,
+    archived  INTEGER NOT NULL DEFAULT 0,
     createdAt INTEGER NOT NULL
   );
 `);
@@ -110,9 +115,14 @@ addColumnIfMissing('expenses', 'splitMode', 'TEXT');
 addColumnIfMissing('expenses', 'ivaRate', 'REAL');
 addColumnIfMissing('expenses', 'ivaAmount', 'REAL');
 addColumnIfMissing('expenses', 'commentsJson', 'TEXT');
+addColumnIfMissing('expenses', 'ownerId', 'TEXT');
 addColumnIfMissing('bills', 'departmentId', 'TEXT');
 addColumnIfMissing('bills', 'receiptPath', 'TEXT');
+addColumnIfMissing('bills', 'ownerId', 'TEXT');
+addColumnIfMissing('bills', 'paidByJson', 'TEXT');
+addColumnIfMissing('bills', 'splitMode', 'TEXT');
 addColumnIfMissing('users', 'avatar', 'TEXT');
+addColumnIfMissing('departments', 'archived', 'INTEGER NOT NULL DEFAULT 0');
 
 const _deptCount = db.prepare('SELECT COUNT(*) AS c FROM departments').get();
 if (_deptCount.c === 0) {
