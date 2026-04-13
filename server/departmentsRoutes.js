@@ -38,6 +38,7 @@ function rowWithStats(row) {
     id: row.id,
     name: row.name,
     budget,
+    archived: !!row.archived,
     createdAt: row.createdAt,
     spent,
     remaining,
@@ -52,7 +53,7 @@ function createDepartmentsRouter({ audit, requireAuth, requireSuperAdmin }) {
   router.get('/', (req, res) => {
     try {
       const rows = db
-        .prepare('SELECT id, name, budget, createdAt FROM departments ORDER BY name COLLATE NOCASE')
+        .prepare('SELECT id, name, budget, archived, createdAt FROM departments ORDER BY archived ASC, name COLLATE NOCASE')
         .all();
       res.json({ departments: rows.map(rowWithStats) });
     } catch (e) {
@@ -69,13 +70,13 @@ function createDepartmentsRouter({ audit, requireAuth, requireSuperAdmin }) {
     const b = Number.isFinite(bn) ? Math.max(0, bn) : 0;
     const id = 'dept_' + crypto.randomBytes(6).toString('hex');
     const now = Date.now();
-    db.prepare('INSERT INTO departments (id, name, budget, createdAt) VALUES (?, ?, ?, ?)').run(
+    db.prepare('INSERT INTO departments (id, name, budget, archived, createdAt) VALUES (?, ?, ?, 0, ?)').run(
       id,
       n,
       b,
       now,
     );
-    const row = db.prepare('SELECT id, name, budget, createdAt FROM departments WHERE id = ?').get(id);
+    const row = db.prepare('SELECT id, name, budget, archived, createdAt FROM departments WHERE id = ?').get(id);
     audit('department_created', { userId: req.userId, targetId: id, name: n });
     res.json({ ok: true, department: rowWithStats(row) });
   });
@@ -83,7 +84,7 @@ function createDepartmentsRouter({ audit, requireAuth, requireSuperAdmin }) {
   router.put('/:id', requireSuperAdmin, (req, res) => {
     const row = db.prepare('SELECT * FROM departments WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Departamento no encontrado.' });
-    const { name, budget } = req.body || {};
+    const { name, budget, archived } = req.body || {};
     const nextName =
       name !== undefined ? String(name).trim().slice(0, 128) : row.name;
     if (!nextName) return res.status(400).json({ error: 'Nombre inválido.' });
@@ -95,12 +96,15 @@ function createDepartmentsRouter({ audit, requireAuth, requireSuperAdmin }) {
       }
       nextBud = Math.max(0, bn);
     }
-    db.prepare('UPDATE departments SET name = ?, budget = ? WHERE id = ?').run(
+    let nextArchived = !!row.archived;
+    if (archived !== undefined) nextArchived = !!archived;
+    db.prepare('UPDATE departments SET name = ?, budget = ?, archived = ? WHERE id = ?').run(
       nextName,
       nextBud,
+      nextArchived ? 1 : 0,
       row.id,
     );
-    const updated = db.prepare('SELECT id, name, budget, createdAt FROM departments WHERE id = ?').get(row.id);
+    const updated = db.prepare('SELECT id, name, budget, archived, createdAt FROM departments WHERE id = ?').get(row.id);
     audit('department_updated', { userId: req.userId, targetId: row.id });
     res.json({ ok: true, department: rowWithStats(updated) });
   });
@@ -108,18 +112,13 @@ function createDepartmentsRouter({ audit, requireAuth, requireSuperAdmin }) {
   router.delete('/:id', requireSuperAdmin, (req, res) => {
     const row = db.prepare('SELECT * FROM departments WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Departamento no encontrado.' });
-    const inUse = db
-      .prepare(
-        `SELECT
-          (SELECT COUNT(*) FROM expenses WHERE departmentId = ?) +
-          (SELECT COUNT(*) FROM bills WHERE departmentId = ?) AS c`,
-      )
-      .get(row.id, row.id);
-    if (inUse.c > 0) {
+    if (!row.archived) {
       return res.status(400).json({
-        error: 'No se puede eliminar: hay gastos o facturas asociados a este departamento.',
+        error: 'Solo se pueden eliminar departamentos archivados.',
       });
     }
+    db.prepare('UPDATE expenses SET departmentId = NULL WHERE departmentId = ?').run(row.id);
+    db.prepare('UPDATE bills SET departmentId = NULL WHERE departmentId = ?').run(row.id);
     db.prepare('DELETE FROM departments WHERE id = ?').run(row.id);
     audit('department_deleted', { userId: req.userId, targetId: row.id });
     res.json({ ok: true });

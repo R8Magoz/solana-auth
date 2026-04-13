@@ -912,42 +912,40 @@ const BUDGET_VS_BAR_MAX_PX=360;
 function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,noBottomMargin}){
   const spentN=Number(spent)||0;
   const budgetN=Number(budget)||0;
-  const rem=remaining!=null&&Number.isFinite(Number(remaining))?Number(remaining):(budgetN-spentN);
-  const noBudget=spentN>0&&budgetN<=0;
   const pctRaw=budgetN>0?(spentN/budgetN)*100:(spentN>0?100:0);
   const pctBar=Math.min(100,Math.max(0,pctRaw));
-  const fill=noBudget?"#D97706":(barColorIn||(pctRaw<75?"#16A34A":pctRaw<=100?"#D97706":"#DC2626"));
-  const fs=formatBudgetCurrencyEUR;
-  const nameStr=name!=null&&name!==""?String(name):"";
+  const isOver=pctRaw>100;
+  const isWarning=pctRaw>=75&&pctRaw<=100;
+  const isEmpty=spentN===0;
+  const barColor=barColorIn||(isOver?"#E24B4A":isWarning?"#EF9F27":"#97C459");
+  const amtColor=isEmpty?"#9CAA9F":isOver?"#A32D2D":isWarning?"#854F0B":"#27500A";
+  const remColor=isOver?"#A32D2D":isEmpty?"#9CAA9F":"#27500A";
+  const rem=remaining!=null&&Number.isFinite(Number(remaining))?Number(remaining):(budgetN-spentN);
+  const fs=n=>{
+    if(n===0)return"0 €";
+    if(Math.abs(n-Math.round(n))<0.01)return new Intl.NumberFormat("es-ES",{maximumFractionDigits:0}).format(Math.round(n))+" €";
+    return new Intl.NumberFormat("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)+" €";
+  };
   return(
-    <div style={{marginBottom:noBottomMargin?0:12}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6,minWidth:0}}>
-        {nameStr?(
-          <span style={{fontWeight:600,fontSize:12,flex:"0 1 38%",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={nameStr.length>20?nameStr:undefined}>{nameStr}</span>
-        ):null}
-        <div style={{
-          flex:nameStr?"1 1 0":"1 1 auto",
-          minWidth:0,
-          maxWidth:nameStr?BUDGET_VS_BAR_MAX_PX:"none",
-          width:nameStr?undefined:"100%",
-        }}>
-          <div style={{height:6,background:"#EDE8E0",borderRadius:3,overflow:"hidden"}}>
-            <div style={{height:"100%",width:`${pctBar}%`,background:fill,transition:"width 0.4s",borderRadius:3}}/>
-          </div>
+    <div style={{marginBottom:noBottomMargin?0:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontWeight:600,fontSize:13}}>{name}</span>
+          {isWarning&&!isOver&&<span style={{fontSize:10,fontWeight:500,padding:"2px 8px",borderRadius:6,background:"#FAEEDA",color:"#633806"}}>Casi al límite</span>}
+          {isOver&&<span style={{fontSize:10,fontWeight:500,padding:"2px 8px",borderRadius:6,background:"#FCEBEB",color:"#791F1F"}}>Excedido</span>}
         </div>
+        <span style={{fontSize:13,fontVariantNumeric:"tabular-nums"}}>
+          <span style={{fontWeight:600,color:amtColor}}>{fs(spentN)}</span>
+          {budgetN>0&&<span style={{fontWeight:400,color:"#9CAA9F"}}>{" de "}{fs(budgetN)}</span>}
+        </span>
       </div>
-      <div style={{fontSize:10,color:"#6B7B72",fontVariantNumeric:"tabular-nums",lineHeight:1.45}}>
-        {noBudget?t("dept.spentNoBudget",{spent:fs(spentN)}):t("dept.spentLine",{spent:fs(spentN),budget:fs(budgetN)})}
+      <div style={{height:8,background:"#EDE8E0",borderRadius:4,overflow:"hidden",marginBottom:6}}>
+        {spentN>0&&<div style={{height:"100%",width:pctBar+"%",background:barColor,borderRadius:4,transition:"width 0.4s"}}/>}
       </div>
-      {!noBudget&&(rem<0?(
-        <div style={{fontSize:10,color:"#DC2626",fontWeight:600,fontVariantNumeric:"tabular-nums",marginTop:3}}>
-          {t("dept.overBudgetMsg",{amount:fs(Math.abs(rem))})}
-        </div>
-      ):(
-        <div style={{fontSize:10,color:rem===0?"#9CAA9F":"#15803d",fontWeight:500,fontVariantNumeric:"tabular-nums",marginTop:3}}>
-          {t("dept.remainingLine",{amount:fs(rem)})}
-        </div>
-      ))}
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+        <span style={{color:"#9CAA9F"}}>{isEmpty?"Sin gastos":Math.round(pctRaw)+"% utilizado"}</span>
+        {budgetN>0&&<span style={{fontWeight:500,fontVariantNumeric:"tabular-nums",color:remColor}}>{isOver?fs(Math.abs(rem))+" por encima":fs(rem)+" disponible"}</span>}
+      </div>
     </div>
   );
 }
@@ -1101,6 +1099,7 @@ const normalizeItem=(item,type)=>{
     if(merged.ivaAmount!==null&&merged.ivaAmount!==undefined&&typeof merged.ivaAmount!=="number")merged.ivaAmount=null;
     if(!merged.submittedBy&&item.userId)merged.submittedBy=item.userId;
     if(!merged.submittedBy&&merged.paidBy?.[0]?.userId)merged.submittedBy=merged.paidBy[0].userId;
+    if(!merged.ownerId)merged.ownerId=merged.submittedBy||item.userId||"";
     return merged;
   }
   if(type==="bill")    return{active:false,notes:"",description:"",receipt:null,receiptType:null,...item,approvals:item.approvals||{},auditTrail:item.auditTrail||[],submittedBy:item.submittedBy||"unknown",seenBy:Array.isArray(item.seenBy)?item.seenBy:[],departmentId:item.departmentId??null};
@@ -1264,7 +1263,7 @@ const shareEurInExpense=(e,userId)=>{
   const rows=e.paidBy||[];
   const tot=eurForExpense(e);
   if(rows.length===0){
-    const owner=e.submittedBy||e.userId;
+    const owner=e.ownerId||e.submittedBy||e.userId;
     return owner===userId?tot:0;
   }
   const p=rows.find(x=>x&&x.userId===userId);
@@ -1301,7 +1300,7 @@ function expenseFromApi(row){
     const pb=JSON.parse(row.paidByJson||"null");
     if(Array.isArray(pb)&&pb.length>0)paidBy=pb;
   }catch(e){}
-  if(!paidBy.length)paidBy=[{userId:row.userId,amount:eur}];
+  if(!paidBy.length)paidBy=[{userId:row.ownerId||row.userId,amount:eur}];
   let splitModeOut=(row.splitMode==="equal"||row.splitMode==="percentage"||row.splitMode==="amount")?row.splitMode:null;
   if(paidBy.length<2)splitModeOut=undefined;
   const auditTrail=[];
@@ -1336,6 +1335,7 @@ function expenseFromApi(row){
     date:row.date,
     notes:row.notes||"",
     submittedBy:row.userId,
+    ownerId:row.ownerId||row.userId,
     paidBy,
     ...(splitModeOut?{splitMode:splitModeOut}:{}),
     receipt:null,
@@ -1425,6 +1425,12 @@ function billFromApi(row){
   if(!recurring)dayOfMonth="";
   const amt=Number(row.amount)||0;
   const eur=row.amountEUR!=null&&!isNaN(Number(row.amountEUR))?Number(row.amountEUR):amt;
+  let paidBy=[];
+  try{
+    const pb=JSON.parse(row.paidByJson||"null");
+    if(Array.isArray(pb)&&pb.length)paidBy=pb;
+  }catch(e){}
+  if(!paidBy.length)paidBy=[{userId:row.ownerId||row.userId,amount:eur,pct:100}];
   return normalizeItem({
     id:row.id,
     _apiType:"bill",
@@ -1438,6 +1444,7 @@ function billFromApi(row){
     intervalMonths:rule==="quarterly"?"3":"",
     endDate:"",
     submittedBy:row.userId,
+    ownerId:row.ownerId||row.userId,
     apiBillStatus:row.status,
     recurring,
     recurrenceRule:row.recurrenceRule,
@@ -1451,6 +1458,8 @@ function billFromApi(row){
     auditTrail:[],
     seenBy:[],
     paidAt:row.paidAt,
+    paidBy,
+    splitMode:(row.splitMode==="equal"||row.splitMode==="percentage"||row.splitMode==="amount")?row.splitMode:undefined,
     paidByBill:row.paidBy,
     itemCode:row.id,
     departmentId:row.departmentId||null,
@@ -1772,9 +1781,9 @@ const autoApprove=(submitterId,approverIds,existingApprovals,auditTrail)=>{
 const DEPTS_LS_KEY="sol-departments";
 const DEFAULT_DEPT_ID="dept_estrategia";
 const SEED_DEPARTMENTS=[
-  {id:"dept_branding",name:"Branding",budget:10000,createdAt:0},
-  {id:"dept_estrategia",name:"Estrategia",budget:5000,createdAt:0},
-  {id:"dept_operaciones",name:"Operaciones",budget:3000,createdAt:0},
+  {id:"dept_branding",name:"Branding",budget:10000,archived:false,createdAt:0},
+  {id:"dept_estrategia",name:"Estrategia",budget:5000,archived:false,createdAt:0},
+  {id:"dept_operaciones",name:"Operaciones",budget:3000,archived:false,createdAt:0},
 ];
 function readLocalDepartments(){
   try{
@@ -1782,14 +1791,14 @@ function readLocalDepartments(){
     if(!raw)return SEED_DEPARTMENTS.map(d=>({...d,createdAt:Date.now()}));
     const arr=JSON.parse(raw);
     if(!Array.isArray(arr)||arr.length===0)return SEED_DEPARTMENTS.map(d=>({...d,createdAt:Date.now()}));
-    return arr.map(d=>({id:String(d.id),name:String(d.name),budget:Number(d.budget)||0,createdAt:d.createdAt||Date.now()}));
+    return arr.map(d=>({id:String(d.id),name:String(d.name),budget:Number(d.budget)||0,archived:!!d.archived,createdAt:d.createdAt||Date.now()}));
   }catch(e){
     return SEED_DEPARTMENTS.map(d=>({...d,createdAt:Date.now()}));
   }
 }
-const BF={amount:"",description:"",category:"",date:"",notes:"",ivaRate:"21",departmentId:""};
+const BF={amount:"",description:"",category:"",date:"",notes:"",ivaRate:"21",departmentId:"",ownerId:""};
 const DRAFT_KEY="sol-exp-draft";
-const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",dueDate:"",departmentId:"",paymentChoice:"pending",paymentDate:""};
+const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",dueDate:"",departmentId:"",ownerId:"",paymentChoice:"pending",paymentDate:""};
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
 const Ctx=createContext(null);
@@ -2727,6 +2736,95 @@ function LoginScreen({ users, onLogin, passwords }) {
 }
   
   
+function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode}){
+  const expAmt=Number(totalAmount)||0;
+  const ownerId=user?.id||"";
+  const calcEq=(arr,amt)=>{
+    const on=arr.filter(s=>s.checked);const n=on.length||1;
+    const eqPct=parseFloat((100/n).toFixed(2));
+    const eqAmt=parseFloat(((amt||0)/n).toFixed(2));
+    return arr.map(s=>s.checked?{...s,percent:eqPct,value:eqAmt}:{...s,percent:0,value:0});
+  };
+  const checkedCount=splits.filter(s=>s.checked).length;
+  const totPct=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.percent)||0),0);
+  const totAmt=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
+  const toggleSplit=()=>{
+    if(users.length<2)return;
+    if(splitOn){setSplitOn(false);setSpMode("equal");return;}
+    const n=users.length;
+    const pct=parseFloat((100/n).toFixed(2));
+    const next=users.map(u=>({userId:u.id,checked:true,percent:pct,value:0}));
+    setSpMode("equal");
+    setSplits(calcEq(next,expAmt));
+    setSplitOn(true);
+  };
+  const toggleUser=uid=>{
+    if(uid===ownerId)return;
+    const next=splits.map(s=>s.userId===uid?{...s,checked:!s.checked}:s);
+    const nOn=next.filter(s=>s.checked).length;
+    if(nOn<2){setSplitOn(false);setSplits([]);setSpMode("equal");return;}
+    setSplits(calcEq(next,expAmt));
+  };
+  return(
+    <div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:0,opacity:users.length<2?0.92:1}} title={users.length<2?t("split.minTwoTeam"):""}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:splitOn?9:0}}>
+        <div>
+          <div style={{fontWeight:600,fontSize:12}}>{t("label.splitExpense")}</div>
+          {!splitOn&&<div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{users.length<2?t("split.minTwoTeam"):t("label.divideTeam")}</div>}
+          {splitOn&&<div style={{fontSize:9,color:"#6B7B72",marginTop:3}}>{t("split.submitterLocked")}</div>}
+        </div>
+        <div onClick={toggleSplit} style={{width:36,height:20,borderRadius:10,background:splitOn?G:(users.length<2?"#E5E0D8":"#C9C0B4"),cursor:users.length<2?"not-allowed":"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,opacity:users.length<2?0.65:1}}>
+          <div style={{position:"absolute",top:2,left:splitOn?18:2,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+        </div>
+      </div>
+      {splitOn&&(
+        <div>
+          <div style={{display:"flex",gap:4,marginBottom:10}}>
+            {[["equal",t("form.splitEq")],["percentage",t("form.splitPct")],["amount",t("form.splitEur")]].map(([m,lbl])=>(
+              <button key={m} type="button" style={{flex:1,padding:"4px 2px",borderRadius:12,fontSize:10,fontWeight:600,border:"1.5px solid",borderColor:spMode===m?G:"#DDD6CC",background:spMode===m?G:"#fff",color:spMode===m?"#fff":"#4B5E52",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>{setSpMode(m);setSplits(prev=>calcEq(prev,expAmt));}}>{lbl}</button>
+            ))}
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {splits.map(s=>{
+              const u=users.find(x=>x.id===s.userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
+              const locked=s.userId===ownerId;
+              return(
+                <div key={s.userId} onClick={()=>!locked&&toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+G):"1.5px solid #DDD6CC",background:s.checked?"rgba(60,10,55,0.06)":"#fff",cursor:locked?"default":"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s"}}>
+                  <UserAvatar user={u} size={20} fontSize={7}/>
+                  <span style={{fontSize:12,fontWeight:s.checked?600:400}}>{u.name.split(" ")[0]}</span>
+                  {locked&&<span style={{fontSize:9,color:"#9CAA9F"}}>*</span>}
+                </div>
+              );
+            })}
+          </div>
+          {splits.filter(s=>s.checked).length>1&&(
+            <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:4}}>
+              {splits.filter(s=>s.checked).map(s=>{
+                const u=users.find(x=>x.id===s.userId)||{name:s.userId};
+                const pct=Math.round((Number(s.percent)||0)*100)/100;
+                const amt=Math.round((Number(s.value)||0)*100)/100;
+                return(
+                  <div key={s.userId} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,padding:"4px 0"}}>
+                    <span style={{color:"#4B5E52"}}>{u.name}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      {spMode==="percentage"&&<input className="inp" type="number" step="0.01" min="0" max="100" style={{width:64,fontSize:12,padding:"3px 6px",textAlign:"right"}} value={pct} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,percent:Math.max(0,Number(e.target.value)||0)}:x))}/>}
+                      {spMode==="amount"&&<input className="inp" type="number" step="0.01" min="0" style={{width:80,fontSize:12,padding:"3px 6px",textAlign:"right"}} value={amt} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,value:Math.max(0,Number(e.target.value)||0)}:x))}/>}
+                      {spMode==="equal"&&<span style={{fontWeight:600,fontVariantNumeric:"tabular-nums",color:G}}>{fmt(amt)}</span>}
+                      <span style={{fontSize:10,color:"#9CAA9F",minWidth:36,textAlign:"right"}}>{pct}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {spMode==="percentage"&&Math.abs(totPct-100)>0.5&&<div style={{fontSize:11,color:"#A32D2D",marginTop:6}}>Los porcentajes suman {totPct.toFixed(1)}% — deben sumar 100%</div>}
+          {spMode==="amount"&&Math.abs(totAmt-expAmt)>0.01&&<div style={{fontSize:11,color:"#A32D2D",marginTop:6}}>Los importes suman {fmt(totAmt)} — el total es {fmt(expAmt)}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── NEW EXPENSE PANEL ─────────────────────────────────────────────────────── */
 function NewPanel(){
   const{t,user,cats,form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
@@ -2734,11 +2832,14 @@ function NewPanel(){
         startCam,capturePhoto,stopCam,
         submitExp,resetForm,removeAttachment,editExp,deleteExp,setPanel,users,calcEqual,ivaRates,departments}=useApp();
   const activeCats=cats.filter(c=>!c.archived);
+  const ownerId=(form.ownerId&&String(form.ownerId).trim())?String(form.ownerId):user.id;
+  const ownerUser=users.find(u=>u.id===ownerId)||user;
   const expAmt=parseFloat(form.amount)||0;
   const amountNum=parseMoney(form.amount);
   const amountOk=amountNum>0;
-  const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim();
+  const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId;
   const [submitAttempt,setSubmitAttempt]=useState(false);
+  useEffect(()=>{if(user?.id&&!form.ownerId)setForm(p=>({...p,ownerId:user.id}));},[user?.id,form.ownerId,setForm]);
   useEffect(()=>{if(expenseValid)setSubmitAttempt(false);},[expenseValid]);
   const hi=submitAttempt&&!expenseValid;
   const rs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
@@ -2780,7 +2881,7 @@ function NewPanel(){
     clearTimeout(draftTimer.current);
     draftTimer.current=setTimeout(()=>{
       try{
-        const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate||String(readIvaDefault()),departmentId:form.departmentId||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
+        const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate||String(readIvaDefault()),departmentId:form.departmentId||"",ownerId:form.ownerId||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
         localStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
       }catch(e){}
     },500);
@@ -2796,18 +2897,22 @@ function NewPanel(){
     if(users.length<2)return;
     if(splitOn){setSplitOn(false);setSpMode("equal");return;}
     const n=users.length;
-    const pct=parseFloat((100/n).toFixed(4)),remPct=parseFloat((100-pct*(n-1)).toFixed(4));
-    const next=users.map((u,i)=>({userId:u.id,checked:true,percent:i===n-1?remPct:pct,value:0}));
+    const pct=parseFloat((100/n).toFixed(2)),remPct=parseFloat((100-pct*(n-1)).toFixed(2));
+    const next=users.map((u,i)=>({userId:u.id,checked:u.id===ownerId,percent:i===n-1?remPct:pct,value:0}));
+    if(!next.some(s=>s.checked))next[0].checked=true;
     setSpMode("equal");
     setSplits(calcEqual(next,expAmt));
     setSplitOn(true);
   };
   const togUsr=uid=>{
-    if(uid===user.id)return;
+    if(uid===ownerId)return;
     const next=splits.map(s=>s.userId===uid?{...s,checked:!s.checked}:s);
     const nOn=next.filter(s=>s.checked).length;
     if(nOn<2){setSplitOn(false);setSplits([]);setSpMode("equal");return;}
-    if(spMode==="equal")setSplits(calcEqual(next,expAmt));else setSplits(next);
+    const n=next.filter(s=>s.checked).length||1;
+    const eqPct=parseFloat((100/n).toFixed(2));
+    const eqAmt=parseFloat(((expAmt||0)/n).toFixed(2));
+    setSplits(next.map(s=>s.checked?{...s,percent:eqPct,value:eqAmt}:{...s,percent:0,value:0}));
   };
   return(
     <div>
@@ -2836,26 +2941,31 @@ function NewPanel(){
         </div>
       )}
       {/* Zona principal: importe, descripción, categoría, fecha, departamento, recibo */}
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.amount")}</label>
+      <div style={{marginBottom:8}}><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label>
         <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount} style={rs(hi&&!amountOk)}
           onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amount:v}));}}/>
       </div>
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.description")}</label>
+      <div style={{marginBottom:8}}><label className="lbl">{t("label.description")} <span style={{color:"#A32D2D"}}>*</span></label>
         <input className="inp" placeholder={t("label.description")} value={form.description} style={rs(hi&&!String(form.description||"").trim())} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
       </div>
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.category")}</label>
+      <div style={{marginBottom:8}}><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label>
         <select className="inp" value={form.category} style={rs(hi&&!String(form.category||"").trim())} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
           <option value="">{t("label.category")}</option>
           {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
         </select>
       </div>
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.date")}</label>
+      <div style={{marginBottom:8}}><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
         <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
       </div>
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.department")}</label>
+      <div style={{marginBottom:8}}><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label>
         <select className="inp" value={form.departmentId||""} style={rs(hi&&!String(form.departmentId||"").trim())} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))}>
           <option value="">{departments.length===0?t("msg.deptRequired"):t("label.department")}</option>
-          {departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+          {departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+      </div>
+      <div style={{marginBottom:8}}><label className="lbl">Titular del gasto <span style={{color:"#A32D2D"}}>*</span></label>
+        <select className="inp" value={ownerId} style={rs(hi&&!ownerId)} onChange={e=>setForm(p=>({...p,ownerId:e.target.value}))}>
+          {users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}
         </select>
       </div>
       <div style={{marginBottom:10}}>
@@ -2884,85 +2994,13 @@ function NewPanel(){
         <textarea className="inp" rows={2} value={form.notes}
           onChange={e=>setForm(p=>({...p,notes:e.target.value}))} style={{resize:"vertical"}}/>
       </div>
-      <div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:0,opacity:users.length<2?0.92:1}} title={users.length<2?t("split.minTwoTeam"):""}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:splitOn?9:0}}>
-          <div>
-            <div style={{fontWeight:600,fontSize:12}}>{t("label.splitExpense")}</div>
-            {!splitOn&&<div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{users.length<2?t("split.minTwoTeam"):t("label.divideTeam")}</div>}
-            {splitOn&&<div style={{fontSize:9,color:"#6B7B72",marginTop:3}}>{t("split.submitterLocked")}</div>}
-          </div>
-          <div onClick={toggleSplitOn} style={{width:36,height:20,borderRadius:10,background:splitOn?G:(users.length<2?"#E5E0D8":"#C9C0B4"),cursor:users.length<2?"not-allowed":"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,opacity:users.length<2?0.65:1}}>
-            <div style={{position:"absolute",top:2,left:splitOn?18:2,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
-          </div>
-        </div>
-        {splitOn&&(
-          <div>
-            <div style={{display:"flex",gap:4,marginBottom:10}}>
-              {[["equal",t("form.splitEq")],["percentage",t("form.splitPct")],["amount",t("form.splitEur")]].map(([m,lbl])=>(
-                <button key={m} type="button" style={{flex:1,padding:"4px 2px",borderRadius:12,fontSize:10,fontWeight:600,border:"1.5px solid",borderColor:spMode===m?G:"#DDD6CC",background:spMode===m?G:"#fff",color:spMode===m?"#fff":"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}
-                  onClick={()=>{setSpMode(m);setSplits(prev=>calcEqual(prev,expAmt));}}>
-                  {lbl}
-                </button>
-              ))}
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:10,justifyContent:"flex-start"}}>
-              {splits.map(s=>{
-                const u=users.find(x=>x.id===s.userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
-                const locked=s.userId===user.id;
-                const shareAmt=expAmt>0&&s.checked?parseFloat((expAmt*(Number(s.percent)||0)/100).toFixed(2)):0;
-                return(
-                  <div key={s.userId} style={{width:92,textAlign:"center",opacity:s.checked?1:0.38}}>
-                    <button type="button" onClick={()=>togUsr(s.userId)} disabled={locked}
-                      style={{
-                        width:"100%",border:"none",background:"transparent",cursor:locked?"default":"pointer",fontFamily:"inherit",padding:"4px 2px",borderRadius:10,
-                        boxShadow:s.checked?`0 0 0 2px ${u.color||G}`:"0 0 0 1px #DDD6CC",
-                        backgroundColor:s.checked?"rgba(255,255,255,0.85)":"transparent",
-                      }}>
-                      <UserAvatar user={u} size={32} fontSize={10}/>
-                      <div style={{fontSize:10,fontWeight:600,marginTop:4,color:G,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
-                    </button>
-                    {s.checked&&spMode==="equal"&&expAmt>0&&checkedSplitCount>1&&(
-                      <div style={{fontSize:9,color:"#4B5E52",marginTop:6,fontVariantNumeric:"tabular-nums",lineHeight:1.35}}>
-                        <div style={{fontWeight:700}}>{fmt(shareAmt)}</div>
-                        <div style={{color:"#9CAA9F"}}>· {Number(s.percent).toFixed(2)}%</div>
-                      </div>
-                    )}
-                    {s.checked&&spMode==="percentage"&&(
-                      <div style={{marginTop:6,display:"flex",alignItems:"center",justifyContent:"center",gap:2}}>
-                        <input type="text" inputMode="decimal" aria-label="%" value={s.percent} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,percent:Math.max(0,parseMoney(e.target.value))}:x))} style={{width:46,textAlign:"right",padding:"3px 4px",border:"1.5px solid #DDD6CC",borderRadius:4,fontSize:10,fontFamily:"inherit",outline:"none"}}/>
-                        <span style={{fontSize:9,color:"#6B7B72"}}>%</span>
-                      </div>
-                    )}
-                    {s.checked&&spMode==="amount"&&(
-                      <div style={{marginTop:6,display:"flex",alignItems:"center",justifyContent:"center",gap:2}}>
-                        <span style={{fontSize:9,color:"#6B7B72"}}>€</span>
-                        <input type="text" inputMode="decimal" value={s.value} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,value:Math.max(0,parseMoney(e.target.value))}:x))} style={{width:54,textAlign:"right",padding:"3px 4px",border:"1.5px solid #DDD6CC",borderRadius:4,fontSize:10,fontFamily:"inherit",outline:"none"}}/>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {splitOn&&checkedSplitCount<2&&<div style={{marginTop:8,fontSize:10,fontWeight:600,color:"#DC2626"}}>{t("split.minParticipants")}</div>}
-            {spMode==="percentage"&&(
-              <div style={{marginTop:8,fontSize:10,fontWeight:600,color:pctSumBad?"#DC2626":"#065F46"}}>
-                {pctSumBad?t("split.warnPctSum",{sum:totPct.toFixed(2)}):`${totPct.toFixed(2)}% ✓`}
-              </div>
-            )}
-            {spMode==="amount"&&expAmt>0&&(
-              <div style={{marginTop:8,fontSize:10,fontWeight:600,color:amtSumBad?"#DC2626":"#065F46"}}>
-                {amtSumBad?t("split.warnAmtSum",{sum:fmt(totVal),total:fmt(expAmt)}):`${fmt(totVal)} / ${fmt(expAmt)} ✓`}
-              </div>
-            )}
-          </div>
-        )}
+      <SplitAllocationEditor t={t} user={ownerUser} users={users} totalAmount={expAmt} splitOn={splitOn} setSplitOn={setSplitOn} splits={splits} setSplits={setSplits} spMode={spMode} setSpMode={setSpMode}/>
       </div>
-      </div>
-      {formError&&<div style={{marginBottom:7,padding:"5px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:500}}>{formError}</div>}
+      {formError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{formError}</div>}
       <div style={{position:"relative",width:"100%"}}>
         <button type="button" className="btn-primary" style={{width:"100%",padding:11,opacity:(!expenseValid||splitSubmitBlocked)?0.5:1,cursor:(!expenseValid||splitSubmitBlocked)?"not-allowed":"pointer"}}
           disabled={splitSubmitBlocked}
-          onClick={()=>{setFormError("");if(!expenseValid)return;submitExp();}}>{t("action.submit")}</button>
+          onClick={()=>{setFormError("");if(!expenseValid){setSubmitAttempt(true);setFormError("Completa los campos obligatorios marcados con *");return;}submitExp();}}>{t("action.submit")}</button>
         {!expenseValid&&!splitSubmitBlocked&&(
           <button type="button" aria-label="Completar campos obligatorios" style={{position:"absolute",inset:0,opacity:0.001,width:"100%",height:"100%",cursor:"pointer"}}
             onClick={()=>setSubmitAttempt(true)}/>)}
@@ -3061,7 +3099,7 @@ function DetailPanel(){
             <div><label className="lbl">{t("label.date")}</label><input className="inp" type="date" value={ef.date||""} onChange={ev=>{setEf(p=>({...p,date:ev.target.value}));setEfDirty(true);}}/></div>
           </div>
           <div style={{marginBottom:8}}><label className="lbl">{t("label.category")}</label><select className="inp" value={ef.category||"Otro"} onChange={ev=>{setEf(p=>({...p,category:ev.target.value}));setEfDirty(true);}}>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
-          <div style={{marginBottom:8}}><label className="lbl">{t("label.department")} *</label><select className="inp" value={ef.departmentId||""} onChange={ev=>{setEf(p=>({...p,departmentId:ev.target.value}));setEfDirty(true);}}>{departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+          <div style={{marginBottom:8}}><label className="lbl">{t("label.department")} *</label><select className="inp" value={ef.departmentId||""} onChange={ev=>{setEf(p=>({...p,departmentId:ev.target.value}));setEfDirty(true);}}>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
           <div style={{marginBottom:10,background:GL,borderRadius:8,padding:10}}>
             <label className="lbl">{t("form.ivaRate")}</label>
             <select className="inp" value={ef.ivaRate||String(readIvaDefault())} onChange={ev=>{setEf(p=>({...p,ivaRate:ev.target.value}));setEfDirty(true);}}>
@@ -3104,7 +3142,7 @@ function DetailPanel(){
       {e.itemCode&&(
         <ItemCodeBadge code={e.itemCode}/>
       )}
-      {[{l:t("label.date"),v:fmtDate(e.date)},{l:t("label.category"),v:e.category},{l:t("label.department"),v:(e.departmentId&&(departments.find(d=>d.id===e.departmentId)||{}).name)||t("detail.noDepartment")},{l:t("filter.submitter"),v:getU(e.submittedBy).name}].map(({l,v})=>(
+      {[{l:t("label.date"),v:fmtDate(e.date)},{l:t("label.category"),v:e.category},{l:t("label.department"),v:(e.departmentId&&(departments.find(d=>d.id===e.departmentId)||{}).name)||t("detail.noDepartment")},{l:"Titular",v:getU(e.ownerId||e.submittedBy).name},{l:"Enviado por",v:getU(e.submittedBy).name}].map(({l,v})=>(
         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}><span style={{color:"#9CAA9F"}}>{l}</span><span style={{fontWeight:500}}>{v}</span></div>
       ))}
       <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}>
@@ -3261,7 +3299,7 @@ function PersonDrilldown({userId, onClose}){
           {userExpenses.length===0
             ?<div style={{fontSize:11,color:"#9CAA9F",marginBottom:11}}>{t("person.noExpenses")}</div>
             :<div style={{marginBottom:14}}>
-              {userExpenses.map(e=>{const st=getItemStatus(e,cats,users);const sub=(users.find(x=>x.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;return(
+              {userExpenses.map(e=>{const st=getItemStatus(e,cats,users);const sub=(users.find(x=>x.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;return(
                 <div key={e.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F5F0EA",alignItems:"flex-start"}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.description}</div>
@@ -3310,7 +3348,7 @@ function DashboardView(){
   const ym=today.toISOString().slice(0,7);
   const mTotalAll=expenses.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0).reduce((s,e)=>s+eurForExpense(e),0);
   const pendAll=expenses.filter(e=>getItemStatus(e,cats,users)==="pending").length;
-  const mine=expenses.filter(e=>e.submittedBy===user.id);
+  const mine=expenses.filter(e=>(e.ownerId||e.submittedBy)===user.id);
   const mTotalMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0).reduce((s,e)=>s+eurForExpense(e),0);
   const pendMine=mine.filter(e=>getItemStatus(e,cats,users)==="pending").length;
   const totApprovedMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved").reduce((s,e)=>s+eurForExpense(e),0);
@@ -3441,10 +3479,10 @@ function DashboardView(){
       <div className="card">
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}><div style={{fontWeight:600,fontSize:13}}>{isAdmin?t("dash.recentAll"):t("dash.recentMine")}</div><button style={{background:"none",border:"none",color:T,fontSize:11,fontWeight:500,cursor:"pointer"}} onClick={()=>go("expenses")}>{t("action.viewAll")}</button></div>
         {(()=>{
-          const pool=isAdmin?expenses.slice():expenses.filter(e=>e.submittedBy===user.id);
+          const pool=isAdmin?expenses.slice():expenses.filter(e=>(e.ownerId||e.submittedBy)===user.id);
           const sorted=[...pool].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
           if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{isAdmin?"—":t("dash.recentEmpty")}</div>;
-          return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;const sub=(users.find(x=>x.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;return(
+          return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;const sub=(users.find(x=>x.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;return(
             <div key={e.id} className="row-hover" style={{display:"flex",alignItems:"flex-start",padding:"7px 3px",borderBottom:i<sorted.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}} onClick={()=>{go("expenses");setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3540,6 +3578,7 @@ function ExpensesView(){
           const st=getItemStatus(e,cats,users),sel=detailId===e.id&&panel==="detail";
           const approverIds=effectiveExpenseApproverIds(e,cats,users);
           const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
+          const ownerName=(users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
           return(
             <div key={e.id} className="row-hover" style={{padding:"9px 13px",borderBottom:idx<filtered.length-1?"1px solid #F5F0EA":"none",cursor:"pointer",background:sel?"#F5F0EA":"transparent",display:"flex",alignItems:"flex-start",gap:8}}
               onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
@@ -3627,7 +3666,7 @@ function ApprovalsView(){
                         <div style={{fontWeight:600,fontSize:13}}>{e.description}</div>
                         {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {(e.paidBy||[]).length}</span>}
                       </div>
-                      <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{fmtDate(e.date)} · {t("filter.submitter")}: {getU(e.submittedBy).name} · {e.category}</div>
+                      <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{fmtDate(e.date)} · Titular: {ownerName} · Enviado por: {submitterName} · {e.category}</div>
                     </div>
                     <div style={{fontSize:17,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmtExpenseAmt(e)}</div>
                   </div>
@@ -3677,6 +3716,20 @@ function BillsView(){
   const [editBillDirty,setEditBillDirty]=useState(false);
   const [billPayConfirmId,setBillPayConfirmId]=useState(null);
   const [billPayDateInput,setBillPayDateInput]=useState("");
+  useEffect(()=>{if(user?.id&&!newBill.ownerId)setNewBill(p=>({...p,ownerId:user.id}));},[user?.id,newBill.ownerId,setNewBill]);
+  useEffect(()=>{
+    const owner=newBill.ownerId||user?.id;
+    if(!owner||!users.length)return;
+    const n=users.length||1;
+    const pct=parseFloat((100/n).toFixed(2));
+    const amt=parseMoney(newBill.amount)||0;
+    const val=parseFloat((amt/n).toFixed(2));
+    setBillSplits(users.map(u=>({userId:u.id,checked:true,percent:pct,value:val})));
+  },[users,newBill.ownerId,newBill.amount,user?.id]);
+  const [billSplitOn,setBillSplitOn]=useState(false);
+  const [billSplits,setBillSplits]=useState([]);
+  const [billSpMode,setBillSpMode]=useState("equal");
+  const [billFormError,setBillFormError]=useState("");
   const billFileRef=useRef(null);
   useEffect(()=>{setBillPayConfirmId(null);},[selBillId]);
   const billNewFileRef=useRef(null);
@@ -3684,8 +3737,12 @@ function BillsView(){
   const freqNb=newBill.frequency||"once";
   const recNb=isBillRecurringFrequency(freqNb);
   const billAmtOk=parseMoney(newBill.amount)>0;
-  const billValid=!!String(newBill.name||"").trim()&&billAmtOk&&!!String(newBill.category||"").trim()&&!!String(newBill.departmentId||"").trim()&&(!recNb||!!String(newBill.dayOfMonth||"").trim());
+  const billValid=!!String(newBill.name||"").trim()&&billAmtOk&&!!String(newBill.category||"").trim()&&!!String(newBill.departmentId||"").trim()&&!!String(newBill.ownerId||user.id).trim()&&(!recNb||!!String(newBill.dayOfMonth||"").trim());
   const [billSubmitAttempt,setBillSubmitAttempt]=useState(false);
+  const billOwner=users.find(u=>u.id===(newBill.ownerId||user.id))||user;
+  const billTotal=parseMoney(newBill.amount)||0;
+  const billPctBad=billSplitOn&&billSpMode==="percentage"&&Math.abs(billSplits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.percent)||0),0)-100)>0.5;
+  const billAmtBad=billSplitOn&&billSpMode==="amount"&&Math.abs(billSplits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0)-billTotal)>0.01;
   useEffect(()=>{if(billValid)setBillSubmitAttempt(false);},[billValid]);
   const bh=billSubmitAttempt&&!billValid;
   const brs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
@@ -3799,7 +3856,15 @@ function BillsView(){
   };
 
   const submitBill=()=>{
-    if(!billValid){setBillSubmitAttempt(true);return;}
+    if(!billValid){setBillSubmitAttempt(true);setBillFormError("Completa los campos obligatorios marcados con *");return;}
+    const billPaidByDefaultOwner=newBill.ownerId||user.id;
+    let billPaidBy=[{userId:billPaidByDefaultOwner,amount:billTotal,pct:100}];
+    let billSplitMode;
+    if(billSplitOn&&billSplits.filter(s=>s.checked).length>1){
+      billPaidBy=buildPaidByFromSplitState(billSplits,billTotal,billSpMode);
+      billSplitMode=billPaidBy.length>1?billSpMode:undefined;
+    }
+    if(billSplitOn&&(billPctBad||billAmtBad)){setBillFormError("Revisa el reparto antes de enviar.");return;}
     const freq=newBill.frequency||"once";
     const rec=isBillRecurringFrequency(freq);
     if(AUTH_URL){
@@ -3821,8 +3886,12 @@ function BillsView(){
             recurring:rec,
             recurrenceRule:rule,
             departmentId:newBill.departmentId,
+            ownerId:newBill.ownerId||user.id,
+            paidBy:billPaidBy,
+            ...(billSplitMode?{splitMode:billSplitMode}:{}),
             ...(!rec&&wantPaid?{alreadyPaid:true,paidAt:payDateStr}:{}),
           };
+          console.log("BILL DEBUG BODY",postBody);
           const d=await API.post("/bills",postBody,{clientRef});
           const newId=d.bill.id;
           if(newBill.receipt){
@@ -3839,7 +3908,7 @@ function BillsView(){
           const full=await API.get("/bills");
           saveBills((full.bills||[]).map(billFromApi));
           appLog("info","bill_submitted",{name:newBill.name,userId:user.id,paid:!!wantPaid});
-          setNewBill({...BB});setNewBillRecPrev(null);setAddBill(false);
+          setNewBill({...BB});setNewBillRecPrev(null);setBillSplitOn(false);setBillSplits([]);setBillSpMode("equal");setBillFormError("");setAddBill(false);
         }catch(e){
           if(isOfflineQueuedError(e)){
             const amt=parseMoney(newBill.amount);
@@ -3857,6 +3926,7 @@ function BillsView(){
               intervalMonths:newBill.intervalMonths||"",
               endDate:newBill.endDate||"",
               submittedBy:user.id,
+              ownerId:newBill.ownerId||user.id,
               apiBillStatus:"pending",
               recurring:rec,
               recurrenceRule:rule,
@@ -3870,13 +3940,15 @@ function BillsView(){
               seenBy:[],
               itemCode:mkCode("FAC"),
               departmentId:newBill.departmentId||null,
+              paidBy:billPaidBy,
+              ...(billSplitMode?{splitMode:billSplitMode}:{}),
             },"bill");
             saveBills([...bills,ob]);
             appLog("info","bill_submitted",{name:newBill.name,userId:user.id,pendingSync:true});
-            setNewBill({...BB});setNewBillRecPrev(null);setAddBill(false);
+            setNewBill({...BB});setNewBillRecPrev(null);setBillSplitOn(false);setBillSplits([]);setBillSpMode("equal");setBillFormError("");setAddBill(false);
             return;
           }
-          alert(e.message||"Error al crear factura.");
+          setBillFormError(e?.message||"No se pudo crear la factura. Revisa los datos e inténtalo de nuevo.");
         }
       })();
       return;
@@ -3890,14 +3962,14 @@ function BillsView(){
     const payTs=wantPaidLocal?Date.now():null;
     const attachTrail=newBill.receipt?[...auditTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:newBill.receiptType}}]:auditTrail;
     const b={id:"b"+Date.now(),itemCode:mkCode("FAC"),...newBill,amount:parseMoney(newBill.amount),
-      submittedBy:user.id,approvals:wantPaidLocal?Object.fromEntries(approverIds.map(id=>[id,"approved"])):approvals,
+      submittedBy:user.id,ownerId:newBill.ownerId||user.id,approvals:wantPaidLocal?Object.fromEntries(approverIds.map(id=>[id,"approved"])):approvals,
       auditTrail:wantPaidLocal?[...attachTrail,{action:"marked_paid",by:user.id,at:new Date().toISOString()}]:attachTrail,
       active:wantPaidLocal?(rec?false:allApproved):allApproved,
       paidAt:wantPaidLocal?payTs:undefined,
-      receipt:newBill.receipt||null,receiptType:newBill.receiptType||null,departmentId:newBill.departmentId||DEFAULT_DEPT_ID};
+      receipt:newBill.receipt||null,receiptType:newBill.receiptType||null,departmentId:newBill.departmentId||DEFAULT_DEPT_ID,paidBy:billPaidBy,...(billSplitMode?{splitMode:billSplitMode}:{})};
     appLog("info","bill_submitted",{itemCode:b.itemCode,name:b.name,amount:b.amount,userId:user.id,autoApproved:allApproved,hasAttachment:!!newBill.receipt,paid:!!wantPaidLocal});
     saveBills([...bills,b]);
-    setNewBill({...BB});setNewBillRecPrev(null);setAddBill(false);
+    setNewBill({...BB});setNewBillRecPrev(null);setBillSplitOn(false);setBillSplits([]);setBillSpMode("equal");setBillFormError("");setAddBill(false);
     if(!wantPaidLocal&&!allApproved)alert(t("msg.billApprovalNeeded"));
   };
   const byBillStatus=React.useMemo(()=>{
@@ -3958,10 +4030,11 @@ function BillsView(){
 {/* BLOQUE A — Datos básicos */}
           <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Datos básicos</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.billName")}</label><input className="inp" placeholder={t("label.billName")} value={newBill.name} style={brs(bh&&!String(newBill.name||"").trim())} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
-            <div><label className="lbl">{t("label.amount")}</label><input className="inp" type="text" inputMode="decimal" placeholder="0,00" value={newBill.amount} style={brs(bh&&!billAmtOk)} onChange={e=>setNewBill(p=>({...p,amount:e.target.value}))}/></div>
-            <div><label className="lbl">{t("label.category")}</label><select className="inp" value={newBill.category} style={brs(bh&&!String(newBill.category||"").trim())} onChange={e=>setNewBill(p=>({...p,category:e.target.value}))}><option value="">{t("label.category")}</option>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
-            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")}</label><select className="inp" value={newBill.departmentId||""} style={brs(bh&&!String(newBill.departmentId||"").trim())} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}><option value="">{t("label.department")}</option>{departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.billName")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" placeholder={t("label.billName")} value={newBill.name} style={brs(bh&&!String(newBill.name||"").trim())} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
+            <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" type="text" inputMode="decimal" placeholder="0,00" value={newBill.amount} style={brs(bh&&!billAmtOk)} onChange={e=>setNewBill(p=>({...p,amount:e.target.value}))}/></div>
+            <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.category} style={brs(bh&&!String(newBill.category||"").trim())} onChange={e=>setNewBill(p=>({...p,category:e.target.value}))}><option value="">{t("label.category")}</option>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
+            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.departmentId||""} style={brs(bh&&!String(newBill.departmentId||"").trim())} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}><option value="">{t("label.department")}</option>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+            <div style={{gridColumn:"1/-1"}}><label className="lbl">Titular <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.ownerId||user.id} style={brs(bh&&!String(newBill.ownerId||user.id).trim())} onChange={e=>setNewBill(p=>({...p,ownerId:e.target.value}))}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
           </div>
           {/* BLOQUE B — Periodicidad */}
           <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Periodicidad</div>
@@ -3985,6 +4058,9 @@ function BillsView(){
           <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Soporte y contexto</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
             <div><label className="lbl">{t("bills.description")}</label><textarea className="inp" rows={2} placeholder={t("bills.descPlaceholder")} style={{resize:"vertical"}} value={newBill.description} onChange={e=>setNewBill(p=>({...p,description:e.target.value}))}/></div>
+          </div>
+          <div style={{marginTop:10}}>
+            <SplitAllocationEditor t={t} user={billOwner} users={users} totalAmount={billTotal} splitOn={billSplitOn} setSplitOn={setBillSplitOn} splits={billSplits} setSplits={setBillSplits} spMode={billSpMode} setSpMode={setBillSpMode}/>
           </div>
           {/* New bill attachment */}
           <div style={{marginTop:10}}>
@@ -4029,6 +4105,7 @@ function BillsView(){
             )}
           </div>
           <div style={{marginTop:9,padding:"8px 10px",background:"#FEF3C7",borderRadius:7,fontSize:11,color:"#92400E",marginBottom:9}}>{t("bills.approvalNote")}</div>
+          {billFormError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{billFormError}</div>}
           <div style={{position:"relative",width:"100%"}}>
             <button type="button" className="btn-primary" style={{width:"100%",fontSize:13,opacity:billValid?1:0.5,cursor:billValid?"pointer":"not-allowed"}} onClick={submitBill}>{t("action.submitBill")}</button>
             {!billValid&&(
@@ -4128,7 +4205,7 @@ function BillsView(){
                       {editBillForm.frequency==="custom"&&<div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" style={{fontSize:12}} type="number" min="1" max="24" value={editBillForm.intervalMonths||""} onChange={e=>{setEditBillForm(p=>({...p,intervalMonths:e.target.value}));setEditBillDirty(true);}}/></div>}
                       {isBillRecurringFrequency(editBillForm.frequency)&&<div style={{gridColumn:editBillForm.frequency==="monthly"?"1/-1":undefined}}><label className="lbl">{t("label.endDate")}</label><input className="inp" style={{fontSize:12}} type="date" value={editBillForm.endDate||""} onChange={e=>{setEditBillForm(p=>({...p,endDate:e.target.value}));setEditBillDirty(true);}}/><div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>}
                       <div><label className="lbl">{t("label.category")}</label><select className="inp" style={{fontSize:12}} value={editBillForm.category||"Otro"} onChange={e=>{setEditBillForm(p=>({...p,category:e.target.value}));setEditBillDirty(true);}}>{activeCats.map(c=><option key={c.id}>{c.name}</option>)}</select></div>
-                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")}</label><select className="inp" style={{fontSize:12}} value={editBillForm.departmentId||""} onChange={e=>{setEditBillForm(p=>({...p,departmentId:e.target.value}));setEditBillDirty(true);}}>{departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")}</label><select className="inp" style={{fontSize:12}} value={editBillForm.departmentId||""} onChange={e=>{setEditBillForm(p=>({...p,departmentId:e.target.value}));setEditBillDirty(true);}}>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("bills.description")}</label><textarea className="inp" rows={2} style={{resize:"vertical",fontSize:12}} value={editBillForm.description||""} onChange={e=>{setEditBillForm(p=>({...p,description:e.target.value}));setEditBillDirty(true);}}/></div>
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.notes")}</label><textarea className="inp" rows={1} style={{resize:"vertical",fontSize:12}} value={editBillForm.notes||""} onChange={e=>{setEditBillForm(p=>({...p,notes:e.target.value}));setEditBillDirty(true);}}/></div>
                     </div>
@@ -4158,6 +4235,7 @@ function BillsView(){
                   {l:t("label.frequency"),v:billFreqLabel(b.frequency,t)},
                   ...(isBillRecurringFrequency(b.frequency)?[{l:t("bills.day"),v:b.dayOfMonth||"—"}]:[]),
                   ...(!isBillRecurringFrequency(b.frequency)?[{l:t("label.date"),v:fmtDate((b.dueDate&&String(b.dueDate).slice(0,10))||getBillFilterDateRef(b))}]:[]),
+                  {l:"Titular",v:(users.find(u=>u.id===(b.ownerId||b.submittedBy))||{name:UNKNOWN_USER_NAME}).name},
                   {l:t("bills.submittedBy"),v:(users.find(u=>u.id===b.submittedBy)||{name:UNKNOWN_USER_NAME}).name},
                   {l:t("label.status"),v:billStatusBadgeLabel(b,bst,t)},
                 ].map(({l,v})=>(
@@ -4337,7 +4415,7 @@ function ReportsView(){
         const base=e.ivaRate!==null&&e.ivaRate!==undefined?Math.round((amtEur-(e.ivaAmount||0))*100)/100:amtEur;
         const ivr=e.ivaRate!==null&&e.ivaRate!==undefined?e.ivaRate:"";
         const ivam=e.ivaAmount!==null&&e.ivaAmount!==undefined?e.ivaAmount:"";
-        return[e.itemCode||e.id,e.date,e.description,amtEur,base,ivr,ivam,e.category,getItemStatus(e,cats,users),(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name,e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),e.notes||"",approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";")];
+        return[e.itemCode||e.id,e.date,e.description,amtEur,base,ivr,ivam,e.category,getItemStatus(e,cats,users),(users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name,e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),e.notes||"",approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";")];
       })];
     const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
     const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`solana-${data}-${new Date().toISOString().slice(0,10)}.csv`});
@@ -4832,11 +4910,7 @@ function IvaRatesEditorBlock({t,ivaRates,onSave}){
 /* ── DEPARTMENT BUDGET BARS (dashboard + presupuestos view) ───────────────── */
 function DepartmentBudgetBars({t,rows,title}){
   if(!rows||rows.length===0)return null;
-  const visible=rows.filter(d=>{
-    const b=Number(d.budget)||0;
-    const s=Number(d.spent)||0;
-    return b>0||s>0;
-  });
+  const visible=rows.filter(d=>!d.archived&&(Number(d.budget)||0)>0);
   if(visible.length===0)return null;
   return(
     <div className="card" style={{marginBottom:14}}>
@@ -4858,10 +4932,11 @@ function DepartmentsSettingsBlock({t}){
   const [msg,setMsg]=useState("");
   const [err,setErr]=useState("");
   const [delId,setDelId]=useState(null);
+  const [showArchived,setShowArchived]=useState(false);
   if(!isSA)return null;
   const sessionTok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
   const saveLocal=(next)=>{
-    lsSet(DEPTS_LS_KEY,next.map(x=>({id:x.id,name:x.name,budget:Number(x.budget)||0,createdAt:x.createdAt||Date.now()})));
+    lsSet(DEPTS_LS_KEY,next.map(x=>({id:x.id,name:x.name,budget:Number(x.budget)||0,archived:!!x.archived,createdAt:x.createdAt||Date.now()})));
     void refreshDepartments();
   };
   const addDept=async()=>{
@@ -4879,7 +4954,7 @@ function DepartmentsSettingsBlock({t}){
       }catch(e){setErr(e.message||t("msg.genericShort"));}
     }else{
       const id="dept_"+Date.now();
-      saveLocal([...departments,{id,name:n,budget:b,createdAt:Date.now()}]);
+      saveLocal([...departments,{id,name:n,budget:b,archived:false,createdAt:Date.now()}]);
       setName("");setBud("");setMsg(t("settings.deptSaved"));
     }
   };
@@ -4903,6 +4978,7 @@ function DepartmentsSettingsBlock({t}){
   };
   const doDelete=async row=>{
     setErr("");setMsg("");
+    if(!window.confirm("¿Eliminar permanentemente? Los gastos vinculados quedarán como \"Sin departamento\"."))return;
     if(AUTH_URL){
       if(!sessionTok){setErr(t("msg.sessionExpired"));return;}
       try{
@@ -4912,10 +4988,28 @@ function DepartmentsSettingsBlock({t}){
         setDelId(null);setMsg(t("settings.deptSaved"));void refreshDepartments();
       }catch(e){setErr(e.message||t("msg.genericShort"));}
     }else{
+      if(!row.archived){setErr("Solo se pueden eliminar departamentos archivados.");return;}
       saveLocal(departments.filter(x=>x.id!==row.id));
       setDelId(null);setMsg(t("settings.deptSaved"));
     }
   };
+  const setArchived=async(row,val)=>{
+    setErr("");setMsg("");
+    if(AUTH_URL){
+      if(!sessionTok){setErr(t("msg.sessionExpired"));return;}
+      try{
+        const r=await fetch(AUTH_URL+"/departments/"+encodeURIComponent(row.id),{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionTok},body:JSON.stringify({archived:!!val})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok){setErr(d.error||t("msg.genericShort"));return;}
+        setMsg(t("settings.deptSaved"));void refreshDepartments();
+      }catch(e){setErr(e.message||t("msg.genericShort"));}
+    }else{
+      saveLocal(departments.map(x=>x.id===row.id?{...x,archived:!!val}:x));
+      setMsg(t("settings.deptSaved"));
+    }
+  };
+  const active=departments.filter(d=>!d.archived);
+  const archived=departments.filter(d=>!!d.archived);
   return(
     <AccordionSection title={t("settings.accordion.budgets")}>
       <p style={{fontSize:11,color:"#6B7B72",marginBottom:10,lineHeight:1.45}}>{t("settings.deptIntro")}</p>
@@ -4929,8 +5023,8 @@ function DepartmentsSettingsBlock({t}){
         <input className="inp" style={{fontSize:13,marginBottom:8}} type="text" inputMode="decimal" value={bud} onChange={e=>setBud(e.target.value)}/>
         <button type="button" className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} onClick={()=>void addDept()}>{t("action.add")}</button>
       </div>
-      <div style={{fontSize:9,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>{t("settings.deptBudget")}</div>
-      {departments.map(d=>(
+      <div style={{fontSize:9,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Departamentos activos</div>
+      {active.map(d=>(
         <div key={d.id} style={{borderBottom:"1px solid #F5F0EA",padding:"8px 0"}}>
           {editId===d.id?(
             <div style={{background:"#F5F0EA",borderRadius:8,padding:10}}>
@@ -4951,21 +5045,45 @@ function DepartmentsSettingsBlock({t}){
               </div>
               <div style={{display:"flex",gap:4}}>
                 <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(d.id);setEf({name:d.name,budget:String(d.budget!=null?d.budget:"")});setDelId(null);}}>{t("action.edit")}</button>
-                <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelId(d.id)}>{t("action.delete")}</button>
-              </div>
-            </div>
-          )}
-          {delId===d.id&&(
-            <div style={{background:"#FEE2E2",borderRadius:7,padding:"8px 10px",marginTop:6}}>
-              <div style={{fontSize:11,color:"#7F1D1D",marginBottom:6}}>¿Eliminar «{d.name}»?</div>
-              <div style={{display:"flex",gap:6}}>
-                <button type="button" className="btn-danger" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>void doDelete(d)}>{t("action.confirm")}</button>
-                <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setDelId(null)}>{t("action.cancel")}</button>
+                <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>{if(window.confirm("¿Archivar este departamento? No aparecerá en el panel ni en nuevos gastos, pero los gastos existentes se mantienen."))void setArchived(d,true);}}>Archivar</button>
               </div>
             </div>
           )}
         </div>
       ))}
+      <div style={{marginTop:12,borderTop:"1px solid #EDE8E0",paddingTop:10}}>
+        <button type="button" style={{width:"100%",textAlign:"left",background:"transparent",border:"1px solid #DDD6CC",borderRadius:6,padding:"6px 8px",fontSize:11,color:"#4B5E52",cursor:"pointer"}} onClick={()=>setShowArchived(v=>!v)}>
+          Archivados {showArchived?"▲":"▼"}
+        </button>
+        {showArchived&&(
+          <div style={{marginTop:8}}>
+            {archived.length===0&&<div style={{fontSize:11,color:"#9CAA9F"}}>—</div>}
+            {archived.map(d=>(
+              <div key={d.id} style={{borderBottom:"1px solid #F5F0EA",padding:"8px 0"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <div style={{flex:1,minWidth:120}}>
+                    <div style={{fontSize:12,fontWeight:600}}>{d.name}</div>
+                    <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)} EUR</div>
+                  </div>
+                  <div style={{display:"flex",gap:4}}>
+                    <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>void setArchived(d,false)}>Restaurar</button>
+                    <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelId(d.id)}>{t("action.delete")}</button>
+                  </div>
+                </div>
+                {delId===d.id&&(
+                  <div style={{background:"#FEE2E2",borderRadius:7,padding:"8px 10px",marginTop:6}}>
+                    <div style={{fontSize:11,color:"#7F1D1D",marginBottom:6}}>¿Eliminar permanentemente? Los gastos vinculados quedarán como "Sin departamento".</div>
+                    <div style={{display:"flex",gap:6}}>
+                      <button type="button" className="btn-danger" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>void doDelete(d)}>{t("action.confirm")}</button>
+                      <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setDelId(null)}>{t("action.cancel")}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </AccordionSection>
   );
 }
@@ -5496,8 +5614,9 @@ function SolanaExpenses(){
     [departments,expenses,bills,cats,users],
   );
   const defaultDeptId=React.useMemo(()=>{
-    const hit=departments.find(d=>d.id===DEFAULT_DEPT_ID);
-    return hit?.id||departments[0]?.id||DEFAULT_DEPT_ID;
+    const active=departments.filter(d=>!d.archived);
+    const hit=active.find(d=>d.id===DEFAULT_DEPT_ID);
+    return hit?.id||active[0]?.id||DEFAULT_DEPT_ID;
   },[departments]);
   const [camOn,setCamOn]=useState(false);
   const [camStr,setCamStr]=useState(null);
@@ -5893,7 +6012,7 @@ function SolanaExpenses(){
   /* ── SPLITS ─────────────────────────────────────────────────────────────── */
   const calcEqual=useCallback((spl,amt)=>{
     const on=spl.filter(s=>s.checked);const n=on.length;if(!n)return spl;
-    const pct=parseFloat((100/n).toFixed(4)),remPct=parseFloat((100-pct*(n-1)).toFixed(4));
+    const pct=parseFloat((100/n).toFixed(2)),remPct=parseFloat((100-pct*(n-1)).toFixed(2));
     const each=amt?parseFloat((amt/n).toFixed(2)):0,rem=amt?parseFloat((amt-each*(n-1)).toFixed(2)):0;
     let i=0;return spl.map(s=>{if(!s.checked)return{...s,percent:0,value:0};i++;const last=i===n;return{...s,percent:last?remPct:pct,value:last?rem:each};});
   },[]);
@@ -5902,12 +6021,11 @@ function SolanaExpenses(){
   /* ── SUBMIT EXPENSE ─────────────────────────────────────────────────────── */
   const submitExp=()=>{
     const amount=parseMoney(form.amount);
-    if(!amount||amount<=0){setFormError(t("msg.amountRequired"));return;}
-    if(!String(form.description||"").trim()){setFormError(t("msg.descriptionRequired"));return;}
-    if(!String(form.category||"").trim()){setFormError(t("msg.categoryRequired"));return;}
-    if(!String(form.date||"").trim()){setFormError(t("msg.expenseDateRequired"));return;}
-    if(!form.departmentId){setFormError(t("msg.deptRequired"));return;}
-    let paidBy=[{userId:user.id,amount,pct:100}];
+    if(!amount||amount<=0||!String(form.description||"").trim()||!String(form.category||"").trim()||!String(form.date||"").trim()||!form.departmentId||!ownerId){
+      setFormError("Completa los campos obligatorios marcados con *");
+      return;
+    }
+    let paidBy=[{userId:ownerId,amount,pct:100}];
     let splitModeOut=undefined;
     if(splitOn&&splits.filter(s=>s.checked).length>1){
       const sel=splits.filter(s=>s.checked);
@@ -5920,11 +6038,20 @@ function SolanaExpenses(){
         const sumAmt=sel.reduce((s,x)=>s+(Number(x.value)||0),0);
         if(Math.abs(sumAmt-amount)>0.01){setFormError(t("msg.valueMustMatch")+fmt(amount));return;}
       }
-      paidBy=buildPaidByFromSplitState(splits,amount,spMode);
+      paidBy=buildPaidByFromSplitState(splits.filter(s=>users.some(u=>u.id===s.userId)),amount,spMode);
       if(paidBy.length>1)splitModeOut=spMode;
     }
+    if(!paidBy.length||paidBy.some(p=>!users.some(u=>u.id===p.userId))){
+      const fallback=users.some(u=>u.id===ownerId)?ownerId:user.id;
+      paidBy=[{userId:fallback,amount,pct:100}];
+      splitModeOut=undefined;
+    }
+    console.log("SPLIT DEBUG",{userId:user.id,userName:user.name,allUserIds:users.map(u=>u.id),paidBy,splitOn});
+    const canSubmitterAutoApprove=String(user.id)===String(ownerId);
     if(AUTH_URL){
       const expApproverIdsAuth=effectiveExpenseApproverIds({category:form.category},cats,users);
+      const approvalRequiredForSubmit=canSubmitterAutoApprove?expApproverIdsAuth:expApproverIdsAuth.filter(id=>id!==user.id);
+      const shouldAutoApproveSubmitterAuth=canSubmitterAutoApprove&&approvalRequiredForSubmit.includes(user.id);
       void (async()=>{
         const clientRef="tmp_exp_"+genUuid();
         const meta={clientRef};
@@ -5940,7 +6067,8 @@ function SolanaExpenses(){
             date:form.date,
             notes:form.notes||undefined,status:"submitted",
             departmentId:form.departmentId,
-            approvalRequired:expApproverIdsAuth,
+            ownerId,
+            approvalRequired:approvalRequiredForSubmit,
             paidBy,
             ivaRate:ivaRateAuth,
             ivaAmount:ivaAmountAuth,
@@ -5974,8 +6102,10 @@ function SolanaExpenses(){
         }catch(err){
           if(isOfflineQueuedError(err)){
             const baseTrailOff=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
-            const{approvals:optAppr,auditTrail:optTrail}=autoApprove(user.id,expApproverIdsAuth,{},baseTrailOff);
-            const allInit=expApproverIdsAuth.length>0&&expApproverIdsAuth.every(id=>optAppr[id]==="approved");
+            const{approvals:optAppr,auditTrail:optTrail}=shouldAutoApproveSubmitterAuth
+              ? autoApprove(user.id,approvalRequiredForSubmit,{},baseTrailOff)
+              : {approvals:{},auditTrail:baseTrailOff};
+            const allInit=approvalRequiredForSubmit.length>0&&approvalRequiredForSubmit.every(id=>optAppr[id]==="approved");
             const optimistic=normalizeItem({
               id:clientRef,
               _apiType:"expense",
@@ -5994,7 +6124,7 @@ function SolanaExpenses(){
               rejectionNote:null,
               itemCode:mkCode("EXP"),
               approvals:optAppr,
-              approvalRequired:expApproverIdsAuth,
+              approvalRequired:approvalRequiredForSubmit,
               auditTrail:optTrail,
               ivaRate:ivaRateAuth,
               ivaAmount:ivaAmountAuth,
@@ -6002,6 +6132,7 @@ function SolanaExpenses(){
               seenBy:[],
               receiptPath:null,
               departmentId:form.departmentId||null,
+              ownerId,
             },"expense");
             saveExp([optimistic,...expenses]);
             try{localStorage.removeItem("sol-exp-draft");}catch(e){}
@@ -6016,12 +6147,16 @@ function SolanaExpenses(){
     }
     const expApproverIds=effectiveExpenseApproverIds({category:form.category},cats,users);
     const baseTrail=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
-    const{approvals:expApprovals,auditTrail:expTrail}=autoApprove(user.id,expApproverIds,{},baseTrail);
+    const approvalRequiredLocal=canSubmitterAutoApprove?expApproverIds:expApproverIds.filter(id=>id!==user.id);
+    const shouldAutoApproveSubmitterLocal=canSubmitterAutoApprove&&approvalRequiredLocal.includes(user.id);
+    const{approvals:expApprovals,auditTrail:expTrail}=shouldAutoApproveSubmitterLocal
+      ? autoApprove(user.id,approvalRequiredLocal,{},baseTrail)
+      : {approvals:{},auditTrail:baseTrail};
     const expReceiptTrail=receipt?[...expTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:receipt.type}}]:expTrail;
     const rp=parseFloat(form.ivaRate);
     const ivaRate=isNaN(rp)?readIvaDefault():rp;
     const ivaAmount=calcIvaParts(amount,ivaRate).iva;
-    const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID};
+    const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID};
     appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
     saveExp([exp,...expenses]);resetForm();setPanel("detail");setDetailId(exp.id);
@@ -6034,10 +6169,10 @@ function SolanaExpenses(){
     appLog("info","attachment_removed",{itemCode:e.itemCode,userId:user.id});
   };
   const resetForm=useCallback(()=>{
-    setForm({...BF,ivaRate:String(readIvaDefault())});
+    setForm({...BF,ivaRate:String(readIvaDefault()),ownerId:user?.id||""});
     setSplitOn(false);setSplits([]);setSpMode("equal");setReceipt(null);setRecPrev(null);setFormError("");
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
-  },[]);
+  },[user?.id]);
   const openNew  =()=>{resetForm();setDetailId(null);setPanel("new");setView("expenses");};
 
   /* deleteExp — removes expense with permission check and audit trail */

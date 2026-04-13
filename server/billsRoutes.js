@@ -57,6 +57,39 @@ function departmentIdFromBody(body, required) {
   return { id };
 }
 
+function normalizeBillPaidByFromBody(body, ownerId, totalAmount) {
+  const total = Number(totalAmount);
+  if (!Number.isFinite(total) || total <= 0) return { error: 'Importe total inválido para el reparto.' };
+  const raw = body && body.paidBy;
+  const owner = String(ownerId || '').trim();
+  if (raw == null) {
+    return { paidBy: [{ userId: owner, amount: Math.round(total * 100) / 100, pct: 100 }], splitMode: null };
+  }
+  if (!Array.isArray(raw) || raw.length < 1 || raw.length > 30) return { error: 'paidBy inválido.' };
+  const seen = new Set();
+  let sum = 0;
+  const rows = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') return { error: 'paidBy inválido.' };
+    const uid = String(r.userId || '').trim().slice(0, 128);
+    if (!uid) return { error: 'paidBy: falta userId.' };
+    const hit = db.prepare('SELECT id FROM users WHERE id = ?').get(uid);
+    if (!hit) return { error: 'Usuario del reparto no encontrado.' };
+    if (seen.has(uid)) return { error: 'paidBy duplicado.' };
+    seen.add(uid);
+    const amt = Math.round((Number(r.amount) || 0) * 100) / 100;
+    if (!Number.isFinite(amt) || amt < 0) return { error: 'paidBy: importe inválido.' };
+    const out = { userId: uid, amount: amt };
+    if (typeof r.pct === 'number' && Number.isFinite(r.pct)) out.pct = Math.round(r.pct * 100) / 100;
+    rows.push(out);
+    sum += amt;
+  }
+  if (Math.abs(sum - total) > 0.02) return { error: 'Los importes del reparto deben sumar el total.' };
+  const sm = body && body.splitMode;
+  const splitMode = rows.length > 1 ? ((sm === 'equal' || sm === 'percentage' || sm === 'amount') ? sm : 'equal') : null;
+  return { paidBy: rows, splitMode };
+}
+
 function listBills(req) {
   const admin = isAdminRole(req.userRole);
   const { status, from, to, category, userId: qUser } = req.query;
@@ -95,10 +128,10 @@ function listBills(req) {
 const insertBill = db.prepare(`
   INSERT INTO bills (
     id, userId, vendor, amount, currency, amountEUR, category, dueDate, status,
-    recurring, recurrenceRule, paidAt, paidBy, notes, createdAt, updatedAt, departmentId, receiptPath
+    recurring, recurrenceRule, paidAt, paidBy, notes, ownerId, paidByJson, splitMode, createdAt, updatedAt, departmentId, receiptPath
   ) VALUES (
     @id, @userId, @vendor, @amount, @currency, @amountEUR, @category, @dueDate, @status,
-    @recurring, @recurrenceRule, @paidAt, @paidBy, @notes, @createdAt, @updatedAt, @departmentId, @receiptPath
+    @recurring, @recurrenceRule, @paidAt, @paidBy, @notes, @ownerId, @paidByJson, @splitMode, @createdAt, @updatedAt, @departmentId, @receiptPath
   )
 `);
 
@@ -119,6 +152,14 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
   });
 
   router.post('/', (req, res) => {
+    let ownerId = req.userId;
+    if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'ownerId')) {
+      const oid = String(req.body.ownerId || '').trim().slice(0, 128);
+      if (!oid) return res.status(400).json({ error: 'ownerId inválido.' });
+      const own = db.prepare('SELECT id FROM users WHERE id = ?').get(oid);
+      if (!own) return res.status(400).json({ error: 'Titular no encontrado.' });
+      ownerId = own.id;
+    }
     const {
       vendor, amount, currency, amountEUR, category, dueDate, notes,
       recurring, recurrenceRule,
@@ -157,6 +198,9 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
 
     let eur = amountEUR != null && typeof amountEUR === 'number' ? amountEUR : null;
     if (cur === 'EUR') eur = amount;
+    const totalForSplit = eur != null && Number.isFinite(eur) ? eur : amount;
+    const paidNorm = normalizeBillPaidByFromBody(req.body, ownerId, totalForSplit);
+    if (paidNorm.error) return res.status(400).json({ error: paidNorm.error });
 
     const now = Date.now();
     const id = 'bill_' + crypto.randomBytes(8).toString('hex');
@@ -186,6 +230,9 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
       paidAt: paidAtVal,
       paidBy: paidByVal,
       notes: notes != null ? String(notes).trim().slice(0, 4000) : null,
+      ownerId,
+      paidByJson: JSON.stringify(paidNorm.paidBy),
+      splitMode: paidNorm.splitMode,
       createdAt: now,
       updatedAt: now,
       departmentId: dept.id,
@@ -206,8 +253,16 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
 
     const {
       vendor, amount, category, dueDate, notes, status,
-      recurring, recurrenceRule,
+      recurring, recurrenceRule, splitMode,
     } = req.body || {};
+    let nextOwnerId = bill.ownerId || bill.userId;
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'ownerId')) {
+      const ownerRaw = String(req.body.ownerId || '').trim().slice(0, 128);
+      if (!ownerRaw) return res.status(400).json({ error: 'ownerId inválido.' });
+      const own = db.prepare('SELECT id FROM users WHERE id = ?').get(ownerRaw);
+      if (!own) return res.status(400).json({ error: 'Titular no encontrado.' });
+      nextOwnerId = own.id;
+    }
 
     let nextDeptId = bill.departmentId;
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'departmentId')) {
@@ -254,10 +309,19 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
       : bill.notes;
     const nextStatus = status !== undefined ? String(status).trim().slice(0, 32) : bill.status;
 
+    let nextPaidByJson = bill.paidByJson;
+    let nextSplitMode = bill.splitMode || null;
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'paidBy') || splitMode !== undefined || req.body?.ownerId !== undefined || amount !== undefined) {
+      const totalForSplit = bill.amountEUR != null && Number.isFinite(Number(bill.amountEUR)) ? Number(bill.amountEUR) : nextAmount;
+      const paidNorm = normalizeBillPaidByFromBody({ ...req.body, splitMode }, nextOwnerId, totalForSplit);
+      if (paidNorm.error) return res.status(400).json({ error: paidNorm.error });
+      nextPaidByJson = JSON.stringify(paidNorm.paidBy);
+      nextSplitMode = paidNorm.splitMode;
+    }
     db.prepare(`
       UPDATE bills SET
         vendor = ?, amount = ?, category = ?, dueDate = ?, notes = ?, status = ?,
-        recurring = ?, recurrenceRule = ?, departmentId = ?, updatedAt = ?
+        recurring = ?, recurrenceRule = ?, ownerId = ?, paidByJson = ?, splitMode = ?, departmentId = ?, updatedAt = ?
       WHERE id = ?
     `).run(
       nextVendor,
@@ -268,6 +332,9 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
       nextStatus,
       rec,
       rule,
+      nextOwnerId,
+      nextPaidByJson,
+      nextSplitMode,
       nextDeptId,
       now,
       bill.id,

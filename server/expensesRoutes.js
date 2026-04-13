@@ -127,7 +127,7 @@ function userIdInRawApproverList(approverTokens, userId, userStore) {
 }
 
 /**
- * Validate client paidBy[] against total EUR; resolve legacy user tokens; require submitter in list.
+ * Validate client paidBy[] against total EUR; resolve legacy user tokens.
  * @returns {{ paidBy: Array<{userId:string,amount:number,pct?:number}>, splitMode: string|null }|{ error: string }}
  */
 function normalizePaidByFromBody(body, submitterId, totalEur, userStore) {
@@ -171,10 +171,6 @@ function normalizePaidByFromBody(body, submitterId, totalEur, userStore) {
   if (Math.abs(sum - total) > 0.02) {
     return { error: 'Los importes del reparto deben sumar el total del gasto.' };
   }
-  if (!rows.some((r) => r.userId === submit)) {
-    return { error: 'Quien envía el gasto debe participar en el reparto.' };
-  }
-
   let splitMode = null;
   if (rows.length > 1) {
     const sm = body && body.splitMode;
@@ -262,12 +258,12 @@ const insertExp = db.prepare(`
     id, userId, amount, currency, amountEUR, description, category, date, status,
     approvedBy, approvedAt, rejectedBy, rejectedAt, rejectionNote, receiptPath, notes, createdAt, updatedAt, departmentId,
     approversJson, approvalVotesJson, paidByJson, splitMode,
-    ivaRate, ivaAmount, commentsJson
+    ivaRate, ivaAmount, commentsJson, ownerId
   ) VALUES (
     @id, @userId, @amount, @currency, @amountEUR, @description, @category, @date, @status,
     @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt, @departmentId,
     @approversJson, @approvalVotesJson, @paidByJson, @splitMode,
-    @ivaRate, @ivaAmount, @commentsJson
+    @ivaRate, @ivaAmount, @commentsJson, @ownerId
   )
 `);
 
@@ -289,6 +285,14 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   });
 
   router.post('/', (req, res) => {
+    let ownerId = req.userId;
+    if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'ownerId')) {
+      const ownerRaw = String(req.body.ownerId || '').trim().slice(0, 128);
+      if (!ownerRaw) return res.status(400).json({ error: 'ownerId inválido.' });
+      const own = userStore.findUserById(resolveApproverTokenToUserId(ownerRaw, userStore));
+      if (!own) return res.status(400).json({ error: 'Titular no encontrado.' });
+      ownerId = own.id;
+    }
     const { amount, currency, amountEUR, description, category, date, notes, status } = req.body || {};
     const dept = departmentIdFromBody(req.body, true);
     if (dept.error) return res.status(400).json({ error: dept.error });
@@ -370,6 +374,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       ivaRate: ivaParsed.ivaRate,
       ivaAmount: ivaParsed.ivaAmount,
       commentsJson: '[]',
+      ownerId,
     });
 
     const expense = getExpenseById(id);
