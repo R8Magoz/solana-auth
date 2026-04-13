@@ -897,6 +897,18 @@ const API = {
   delete: (path, meta) => API.request("DELETE", path, null, meta),
 };
 
+async function debugApiRequest(method, path, body) {
+  if (!API.base) throw new Error("API no configurada.");
+  let response = await API._rawFetch(String(method || "GET").toUpperCase(), path, body);
+  if (response.status === 401) {
+    const ok = await API.refresh();
+    if (ok) response = await API._rawFetch(String(method || "GET").toUpperCase(), path, body);
+  }
+  const ct = (response.headers.get("content-type") || "").toLowerCase();
+  const responseBody = ct.includes("application/json") ? await response.json().catch(() => ({})) : {};
+  return { response, responseBody };
+}
+
 /* ── HELPERS ───────────────────────────────────────────────────────────────── */
 const fmt=n=>`€${Number(n||0).toFixed(2)}`;
 /** Presupuestos / informes: 2 decimales si |importe| < 100; sin céntimos si ≥ 100 o > 999 (es-ES). */
@@ -1043,7 +1055,7 @@ function ExpenseSplitBreakdown({e,t,users}){
   const denom=Number(e.amount)||1;
   return(
     <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}} onMouseLeave={()=>setHover(false)}>
-      <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>{t("label.paidBy")}</div>
+      <div style={{fontSize:11,color:"#9CAA9F",marginBottom:4}}>{t("label.paidBy")}</div>
       <button type="button"
         aria-expanded={open}
         onMouseEnter={()=>setHover(true)}
@@ -1051,8 +1063,8 @@ function ExpenseSplitBreakdown({e,t,users}){
         style={{display:"flex",alignItems:"center",gap:8,width:"100%",border:"1px solid #EDE8E0",borderRadius:8,padding:"7px 10px",background:"#FAF7F2",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
         <SplitDivergeIcon size={16} color={G}/>
         <span style={{fontSize:11,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {n}</span>
-        {e.splitMode&&<span style={{fontSize:9,color:"#6B7B72"}}>{t("label.splitBadge")}: {e.splitMode==="equal"?t("form.splitEq"):e.splitMode==="percentage"?t("form.splitPct"):t("form.splitEur")}</span>}
-        <span style={{marginLeft:"auto",fontSize:10,color:"#9CAA9F"}}>{open?"▼":"▶"}</span>
+        {e.splitMode&&<span style={{fontSize:11,color:"#6B7B72"}}>{t("label.splitBadge")}: {e.splitMode==="equal"?t("form.splitEq"):e.splitMode==="percentage"?t("form.splitPct"):t("form.splitEur")}</span>}
+        <span style={{marginLeft:"auto",fontSize:11,color:"#9CAA9F"}}>{open?"▼":"▶"}</span>
       </button>
       {open&&(
         <div style={{marginTop:8,padding:"9px 11px",background:"#F5F0EA",borderRadius:8}} onMouseEnter={()=>setHover(true)}>
@@ -2940,33 +2952,40 @@ function NewPanel(){
           </div>
         </div>
       )}
-      {/* Zona principal: importe, descripción, categoría, fecha, departamento, recibo */}
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label>
-        <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount} style={rs(hi&&!amountOk)}
-          onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amount:v}));}}/>
-      </div>
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.description")} <span style={{color:"#A32D2D"}}>*</span></label>
-        <input className="inp" placeholder={t("label.description")} value={form.description} style={rs(hi&&!String(form.description||"").trim())} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
-      </div>
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label>
-        <select className="inp" value={form.category} style={rs(hi&&!String(form.category||"").trim())} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
-          <option value="">{t("label.category")}</option>
-          {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
-        </select>
-      </div>
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
-        <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
-      </div>
-      <div style={{marginBottom:8}}><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label>
-        <select className="inp" value={form.departmentId||""} style={rs(hi&&!String(form.departmentId||"").trim())} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))}>
-          <option value="">{departments.length===0?t("msg.deptRequired"):t("label.department")}</option>
-          {departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
-      </div>
-      <div style={{marginBottom:8}}><label className="lbl">Titular del gasto <span style={{color:"#A32D2D"}}>*</span></label>
-        <select className="inp" value={ownerId} style={rs(hi&&!ownerId)} onChange={e=>setForm(p=>({...p,ownerId:e.target.value}))}>
-          {users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}
-        </select>
+      {/* Zona principal compacta */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
+        <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label>
+          <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount} style={rs(hi&&!amountOk)}
+            onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amount:v}));}}/>
+        </div>
+        <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label>
+          <select className="inp" value={form.category} style={rs(hi&&!String(form.category||"").trim())} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
+            <option value="">{t("label.category")}</option>
+            {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
+          </select>
+        </div>
+        <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.description")} <span style={{color:"#A32D2D"}}>*</span></label>
+          <input className="inp" placeholder={t("label.description")} value={form.description} style={rs(hi&&!String(form.description||"").trim())} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
+        </div>
+        <div><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
+          <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
+        </div>
+        <div><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label>
+          <select className="inp" value={form.departmentId||""} style={rs(hi&&!String(form.departmentId||"").trim())} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))}>
+            <option value="">{departments.length===0?t("msg.deptRequired"):t("label.department")}</option>
+            {departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </div>
+        <div><label className="lbl">Titular del gasto <span style={{color:"#A32D2D"}}>*</span></label>
+          <select className="inp" value={ownerId} style={rs(hi&&!ownerId)} onChange={e=>setForm(p=>({...p,ownerId:e.target.value}))}>
+            {users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}
+          </select>
+        </div>
+        <div><label className="lbl">{t("form.ivaRate")}</label>
+          <select className="inp" value={form.ivaRate||String(readIvaDefault())} onChange={e=>setForm(p=>({...p,ivaRate:e.target.value}))}>
+            {ivaRates.map(r=><option key={String(r.value)+"-"+r.name} value={r.value}>{formatIvaOptionLabel(r)}</option>)}
+          </select>
+        </div>
       </div>
       <div style={{marginBottom:10}}>
         <label className="lbl">{t("form.receiptOptional")}</label>
@@ -2979,10 +2998,6 @@ function NewPanel(){
       </div>
       <div style={{marginBottom:12}}>
       <div style={{marginBottom:12,background:GL,borderRadius:8,padding:10}}>
-        <label className="lbl">{t("form.ivaRate")}</label>
-        <select className="inp" value={form.ivaRate||String(readIvaDefault())} onChange={e=>setForm(p=>({...p,ivaRate:e.target.value}))}>
-          {ivaRates.map(r=><option key={String(r.value)+"-"+r.name} value={r.value}>{formatIvaOptionLabel(r)}</option>)}
-        </select>
         {(()=>{const rp=parseFloat(form.ivaRate)||0;const p=calcIvaParts(expAmt,rp);return(
           <div style={{marginTop:8,fontSize:13}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:"#9CAA9F",fontSize:10}}>{t("form.ivaBase")}</span><span style={{fontWeight:700,color:G}}>{fmt(p.base)}</span></div>
@@ -3383,14 +3398,14 @@ function DashboardView(){
       <p style={{fontSize:13,color:"#6B7B72",marginBottom:16}}>{t("dash.welcome")}, {user.name.split(" ")[0]}</p>
       {myPending.length>0&&(
         <div style={{background:"#F5E8F4",border:"1px solid #D4AED0",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
-          <div><div style={{fontSize:12,fontWeight:600,color:"#5C1057"}}>{myPending.length} {t("dash.awaitingApproval")}</div><div style={{fontSize:10,color:"#8A3D87",marginTop:1}}>{t("dash.bothMustApprove")}</div></div>
-          <button className="btn-sm" style={{fontSize:11}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
+          <div><div style={{fontSize:13,fontWeight:600,color:"#5C1057"}}>{myPending.length} {t("dash.awaitingApproval")}</div><div style={{fontSize:11,color:"#8A3D87",marginTop:1}}>{t("dash.bothMustApprove")}</div></div>
+          <button className="btn-sm" style={{fontSize:12}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
         </div>
       )}
       {myPendingBills.length>0&&(
         <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
-          <div><div style={{fontSize:12,fontWeight:600,color:"#92400E"}}>{myPendingBills.length} {t("dash.billsAwaitingApproval")}</div></div>
-          <button className="btn-sm" style={{fontSize:11,background:T}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
+          <div><div style={{fontSize:13,fontWeight:600,color:"#92400E"}}>{myPendingBills.length} {t("dash.billsAwaitingApproval")}</div></div>
+          <button className="btn-sm" style={{fontSize:12,background:T}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:16}}>
@@ -3399,7 +3414,7 @@ function DashboardView(){
             onMouseEnter={e=>e.currentTarget.style.opacity="0.88"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
             <div style={{fontSize:16,color:"rgba(250,247,242,0.4)",lineHeight:1,marginBottom:3}}>+</div>
             <div style={{fontWeight:700,fontSize:13,color:"#FAF7F2"}}>{a.label}</div>
-            <div style={{fontSize:10,color:"rgba(250,247,242,0.4)",marginTop:1}}>{a.sub}</div>
+            <div style={{fontSize:11,color:"rgba(250,247,242,0.4)",marginTop:1}}>{a.sub}</div>
           </div>
         ))}
       </div>
@@ -3410,7 +3425,7 @@ function DashboardView(){
           {label:t("dash.pending"),val:pend,sub:t("dash.pendingSub")||"Pendientes"},
           {label:t("dash.monthlyFixed"),val:fmt(totFixed),sub:t("dash.monthlyFixedSub")||"Coste mensual fijo"}
         ].map((m,i)=>(
-          <div key={i} className="card"><div style={{fontSize:8,color:"#9CAA9F",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{m.label}</div><div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{m.val}</div><div style={{fontSize:9,color:"#B5C0B8",marginTop:1}}>{m.sub}</div></div>
+          <div key={i} className="card"><div style={{fontSize:10,color:"#9CAA9F",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{m.label}</div><div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{m.val}</div><div style={{fontSize:11,color:"#B5C0B8",marginTop:1}}>{m.sub}</div></div>
         ))}
       </div>
       <div className="card" style={{marginBottom:14}}>
@@ -3418,13 +3433,13 @@ function DashboardView(){
         <div style={{display:"flex",justifyContent:"space-between",gap:8,textAlign:"center"}}>
           {[{lbl:t("dash.approvedShort"),cnt:apprCnt,sum:apprSum,st:"approved"},{lbl:t("dash.pendingShort"),cnt:pendCnt,sum:pendSum,st:"pending"},{lbl:t("dash.rejectedShort"),cnt:rejCnt,sum:rejSum,st:"rejected"}].map(col=>(
             <div key={col.st} style={{flex:1}}>
-              <div style={{display:"inline-block",padding:"2px 8px",borderRadius:11,fontSize:9,fontWeight:700,marginBottom:6,background:ACTIVITY_COLORS[col.st].bg,color:ACTIVITY_COLORS[col.st].color}}>{col.lbl}</div>
+              <div style={{display:"inline-block",padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,marginBottom:6,background:ACTIVITY_COLORS[col.st].bg,color:ACTIVITY_COLORS[col.st].color}}>{col.lbl}</div>
               <div style={{fontWeight:800,fontSize:16,color:ACTIVITY_COLORS[col.st].color}}>{col.cnt}</div>
-              <div style={{fontSize:10,color:"#9CAA9F"}}>{col.cnt===0?"—":fmt(col.sum)}</div>
+              <div style={{fontSize:11,color:"#9CAA9F"}}>{col.cnt===0?"—":fmt(col.sum)}</div>
             </div>
           ))}
         </div>
-        {rejCnt>0&&<button type="button" style={{width:"100%",marginTop:10,background:"none",border:"none",color:T,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}} onClick={goToMyRejected}>{t("dash.fixRejectedLink").replace("{n}",String(rejCnt))}</button>}
+        {rejCnt>0&&<button type="button" style={{width:"100%",marginTop:10,background:"none",border:"none",color:T,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}} onClick={goToMyRejected}>{t("dash.fixRejectedLink").replace("{n}",String(rejCnt))}</button>}
       </div>
       <DepartmentBudgetBars t={t} rows={departmentsWithStats} title={t("dash.deptBudgetsTitle")}/>
       {watchCats.length>0&&(
@@ -3467,7 +3482,7 @@ function DashboardView(){
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
-                  <div style={{fontSize:9,color:b.daysUntil<=3?"#C4622D":"#9CAA9F",marginTop:1,fontWeight:b.daysUntil<=3?600:400}}>{dueTxt}</div>
+                <div style={{fontSize:11,color:b.daysUntil<=3?"#C4622D":"#9CAA9F",marginTop:1,fontWeight:b.daysUntil<=3?600:400}}>{dueTxt}</div>
                 </div>
                 <div style={{fontWeight:700,color:G,fontSize:12,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmtExpenseAmt(b)}</div>
               </div>
@@ -3487,9 +3502,9 @@ function DashboardView(){
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <div style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{short}</div>
-                  {(e.paidBy||[]).length>1&&<span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:9,fontWeight:700,color:"#4B5E52",background:"#EDE8E0",padding:"1px 5px",borderRadius:6,flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {(e.paidBy||[]).length}</span>}
+                  {(e.paidBy||[]).length>1&&<span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:10,fontWeight:700,color:"#4B5E52",background:"#EDE8E0",padding:"1px 5px",borderRadius:6,flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {(e.paidBy||[]).length}</span>}
                 </div>
-                <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.date)} · {t("filter.submitter")}: {sub} · {e.category}</div>
+                <div style={{fontSize:11,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.date)} · {t("filter.submitter")}: {sub} · {e.category}</div>
               </div>
               <div style={{marginLeft:9,textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
                 <div style={{fontSize:12,fontWeight:700,color:G}}>{fmt(eurForExpense(e))}</div>
@@ -3647,7 +3662,7 @@ function ApprovalsView(){
           <button key={id} style={{padding:"5px 14px",borderRadius:18,fontSize:12,fontWeight:500,border:"1.5px solid",borderColor:tab===id?G:"#DDD6CC",background:tab===id?G:"#fff",color:tab===id?"#fff":"#4B5E52",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}
             onClick={()=>setTab(id)}>
             {lbl}
-            {cnt>0&&<span style={{background:BL,color:"#fff",borderRadius:"50%",width:14,height:14,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700}}>{cnt}</span>}
+            {cnt>0&&<span style={{background:BL,color:"#fff",borderRadius:"50%",width:14,height:14,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700}}>{cnt}</span>}
           </button>
         ))}
       </div>
@@ -3664,13 +3679,13 @@ function ApprovalsView(){
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                         <div style={{fontWeight:600,fontSize:13}}>{e.description}</div>
-                        {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {(e.paidBy||[]).length}</span>}
+                        {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:10,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {(e.paidBy||[]).length}</span>}
                       </div>
-                      <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{fmtDate(e.date)} · Titular: {ownerName} · Enviado por: {submitterName} · {e.category}</div>
+                      <div style={{fontSize:11,color:"#9CAA9F",marginTop:2}}>{fmtDate(e.date)} · Titular: {ownerName} · Enviado por: {submitterName} · {e.category}</div>
                     </div>
                     <div style={{fontSize:17,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmtExpenseAmt(e)}</div>
                   </div>
-                  {AUTH_URL&&e.status&&<div style={{marginTop:6}}><span style={{padding:"2px 8px",borderRadius:11,fontSize:9,fontWeight:700,background:ST.pending.bg,color:ST.pending.color}}>{String(e.status).toUpperCase()}</span></div>}
+                  {AUTH_URL&&e.status&&<div style={{marginTop:6}}><span style={{padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,background:ST.pending.bg,color:ST.pending.color}}>{String(e.status).toUpperCase()}</span></div>}
                 </div>
               </div>
               {(e.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={e} t={t} users={users}/></div>}
@@ -3688,7 +3703,7 @@ function ApprovalsView(){
           return(
             <div key={b.id} className="card" style={{marginBottom:9}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:7}}>
-                <div><div style={{fontWeight:600,fontSize:13}}>{b.name}</div><div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{b.category} · {billFreqLabel(b.frequency,t)}{isBillRecurringFrequency(b.frequency)&&b.dayOfMonth?` · ${t("bills.day")} ${b.dayOfMonth}`:""}</div></div>
+                <div><div style={{fontWeight:600,fontSize:13}}>{b.name}</div><div style={{fontSize:11,color:"#9CAA9F",marginTop:2}}>{b.category} · {billFreqLabel(b.frequency,t)}{isBillRecurringFrequency(b.frequency)&&b.dayOfMonth?` · ${t("bills.day")} ${b.dayOfMonth}`:""}</div></div>
                 <div style={{fontSize:17,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(b)}</div>
               </div>
               <div style={{marginBottom:7}}>{approverIds.map(aid=>{const a=bApprovals[aid];return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
@@ -3714,6 +3729,9 @@ function BillsView(){
   const [billStatusFlt,setBillStatusFlt]=useState("all");
   const [editBillForm,setEditBillForm]=useState({});
   const [editBillDirty,setEditBillDirty]=useState(false);
+  const [editBillSplitOn,setEditBillSplitOn]=useState(false);
+  const [editBillSplits,setEditBillSplits]=useState([]);
+  const [editBillSpMode,setEditBillSpMode]=useState("equal");
   const [billPayConfirmId,setBillPayConfirmId]=useState(null);
   const [billPayDateInput,setBillPayDateInput]=useState("");
   useEffect(()=>{if(user?.id&&!newBill.ownerId)setNewBill(p=>({...p,ownerId:user.id}));},[user?.id,newBill.ownerId,setNewBill]);
@@ -3758,22 +3776,46 @@ function BillsView(){
   });
   upcoming.sort((a,b)=>a.dueDate-b.dueDate);
   const startEditBill=(b)=>{
+    const billOwnerId=b.ownerId||b.submittedBy||user.id;
+    const initialPaidBy=Array.isArray(b.paidBy)&&b.paidBy.length?b.paidBy:[{userId:billOwnerId,amount:Number(b.amount)||0,pct:100}];
     setEditBillForm({name:b.name,amount:String(b.amount),frequency:b.frequency||"once",
       category:b.category,dayOfMonth:b.dayOfMonth||"",description:b.description||"",
       notes:b.notes||"",receipt:b.receipt||null,receiptType:b.receiptType||null,
       intervalMonths:b.intervalMonths||"",endDate:b.endDate||"",
       dueDate:(b.dueDate&&String(b.dueDate).slice(0,10))||"",
-      departmentId:b.departmentId||defaultDeptId});
+      departmentId:b.departmentId||defaultDeptId,
+      ownerId:billOwnerId,
+      paidBy:initialPaidBy,
+      splitMode:b.splitMode||"equal",
+      paymentChoice:(AUTH_URL&&b._apiType==="bill"&&b.apiBillStatus==="paid")?"paid":"pending",
+      paymentDate:(b.dueDate&&String(b.dueDate).slice(0,10))||new Date().toISOString().slice(0,10),
+    });
+    const seed=users.map(u=>{
+      const row=initialPaidBy.find(p=>p&&p.userId===u.id);
+      const amt=Number(row?.amount)||0;
+      const pct=Number(row?.pct)||0;
+      return{userId:u.id,checked:!!row,percent:pct,value:amt};
+    });
+    setEditBillSplitOn(initialPaidBy.length>1);
+    setEditBillSplits(seed);
+    setEditBillSpMode((b.splitMode==="equal"||b.splitMode==="percentage"||b.splitMode==="amount")?b.splitMode:"equal");
     setEditBillId(b.id);setEditBillDirty(false);
   };
   const cancelEditBill=()=>{
     if(editBillDirty&&!confirm(t("expense.unsaved")))return;
-    setEditBillId(null);setEditBillDirty(false);
+    setEditBillId(null);setEditBillDirty(false);setEditBillSplitOn(false);setEditBillSplits([]);setEditBillSpMode("equal");
   };
   const saveBillEdit=(b)=>{
     if(!editBillForm.departmentId){alert(t("msg.deptRequired"));return;}
     const editFreq=editBillForm.frequency||"";
     if(isBillRecurringFrequency(editFreq)&&!editBillForm.dayOfMonth){alert(t("msg.dayOfMonthRequired"));return;}
+    const editTotal=parseMoney(editBillForm.amount)||0;
+    let editPaidBy=[{userId:(editBillForm.ownerId||user.id),amount:editTotal,pct:100}];
+    let editSplitMode;
+    if(editBillSplitOn&&editBillSplits.filter(s=>s.checked).length>1){
+      editPaidBy=buildPaidByFromSplitState(editBillSplits,editTotal,editBillSpMode);
+      editSplitMode=editPaidBy.length>1?editBillSpMode:undefined;
+    }
     if(!confirm(t("bills.confirmEdit")))return;
     if(AUTH_URL&&b._apiType==="bill"){
       if(b._pendingSync){alert("Espera a sincronizar esta factura antes de editarla.");return;}
@@ -3792,7 +3834,13 @@ function BillsView(){
             recurring:rec,
             recurrenceRule:rule,
             departmentId:editBillForm.departmentId||defaultDeptId,
+            ownerId:editBillForm.ownerId||user.id,
+            paidBy:editPaidBy,
+            ...(editSplitMode?{splitMode:editSplitMode}:{}),
           });
+          if(editBillForm.paymentChoice==="paid"&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue")){
+            await API.post("/bills/"+encodeURIComponent(b.id)+"/mark-paid",{paidAt:editBillForm.paymentDate||new Date().toISOString().slice(0,10)});
+          }
           if(editBillForm.receipt&&typeof editBillForm.receipt==="string"){
             try{
               await API.post("/bills/"+encodeURIComponent(b.id)+"/receipt",{b64:editBillForm.receipt,mediaType:editBillForm.receiptType||"image/jpeg"});
@@ -3805,7 +3853,7 @@ function BillsView(){
           setEditBillId(null);setEditBillDirty(false);
         }catch(e){
           if(isOfflineQueuedError(e)){
-            const updated={...b,...editBillForm,amount:parseMoney(editBillForm.amount)||b.amount,name:editBillForm.name,vendor:editBillForm.name};
+            const updated={...b,...editBillForm,amount:parseMoney(editBillForm.amount)||b.amount,name:editBillForm.name,vendor:editBillForm.name,paidBy:editPaidBy,...(editSplitMode?{splitMode:editSplitMode}:{})};
             saveBills(bills.map(x=>x.id===b.id?updated:x));
             setEditBillId(null);setEditBillDirty(false);
             return;
@@ -3815,7 +3863,7 @@ function BillsView(){
       })();
       return;
     }
-    const BILL_KEY_FIELDS=["name","amount","frequency","category","dayOfMonth","description","receipt"];
+    const BILL_KEY_FIELDS=["name","amount","frequency","category","dayOfMonth","description","receipt","ownerId","paidBy","splitMode","paymentChoice"];
     const bst=getItemStatus(b,cats);
     const wasApproved=bst==="approved";
     const changedFields=Object.keys(editBillForm).filter(k=>{
@@ -3828,7 +3876,7 @@ function BillsView(){
     let trail=[...(b.auditTrail||[]),{action:"edited",by:user.id,at:now,meta:{fields:changedFields.length?changedFields:["misc"]}}];
     let newApprovals=b.approvals||{};
     if(relevantChanged){newApprovals={};trail=[...trail,{action:"reapproval_required",by:user.id,at:now}];}
-    const updated={...b,...editBillForm,amount:parseMoney(editBillForm.amount)||b.amount,approvals:newApprovals,active:relevantChanged?false:b.active,auditTrail:trail};
+    const updated={...b,...editBillForm,amount:parseMoney(editBillForm.amount)||b.amount,paidBy:editPaidBy,...(editSplitMode?{splitMode:editSplitMode}:{}),approvals:newApprovals,active:relevantChanged?false:b.active,auditTrail:trail};
     saveBills(bills.map(x=>x.id===b.id?updated:x));
     appLog("info","bill_edited",{itemCode:b.itemCode,userId:user.id,relevantChanged});
     setEditBillId(null);setEditBillDirty(false);
@@ -3891,8 +3939,11 @@ function BillsView(){
             ...(billSplitMode?{splitMode:billSplitMode}:{}),
             ...(!rec&&wantPaid?{alreadyPaid:true,paidAt:payDateStr}:{}),
           };
-          console.log("BILL DEBUG BODY",postBody);
-          const d=await API.post("/bills",postBody,{clientRef});
+          console.log("PRE-SUBMIT", { body: postBody, authUrl: AUTH_URL, token: API.token });
+          const { response, responseBody } = await debugApiRequest("POST", "/bills", postBody);
+          console.log("POST-SUBMIT", { status: response.status, responseBody });
+          if (!response.ok) throw new Error(responseBody.error || ("HTTP " + response.status));
+          const d=responseBody;
           const newId=d.bill.id;
           if(newBill.receipt){
             try{
@@ -3906,6 +3957,7 @@ function BillsView(){
             await API.post("/bills/"+encodeURIComponent(newId)+"/mark-paid",{paidAt:payDateStr});
           }
           const full=await API.get("/bills");
+          console.log("BILLS GET DEBUG", { bills: (full.bills||[]).length, last: (full.bills||[])[0] || null });
           saveBills((full.bills||[]).map(billFromApi));
           appLog("info","bill_submitted",{name:newBill.name,userId:user.id,paid:!!wantPaid});
           setNewBill({...BB});setNewBillRecPrev(null);setBillSplitOn(false);setBillSplits([]);setBillSpMode("equal");setBillFormError("");setAddBill(false);
@@ -4030,11 +4082,11 @@ function BillsView(){
 {/* BLOQUE A — Datos básicos */}
           <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Datos básicos</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.billName")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" placeholder={t("label.billName")} value={newBill.name} style={brs(bh&&!String(newBill.name||"").trim())} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
+            <div><label className="lbl">{t("label.billName")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" placeholder={t("label.billName")} value={newBill.name} style={brs(bh&&!String(newBill.name||"").trim())} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
             <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" type="text" inputMode="decimal" placeholder="0,00" value={newBill.amount} style={brs(bh&&!billAmtOk)} onChange={e=>setNewBill(p=>({...p,amount:e.target.value}))}/></div>
             <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.category} style={brs(bh&&!String(newBill.category||"").trim())} onChange={e=>setNewBill(p=>({...p,category:e.target.value}))}><option value="">{t("label.category")}</option>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
-            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.departmentId||""} style={brs(bh&&!String(newBill.departmentId||"").trim())} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}><option value="">{t("label.department")}</option>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-            <div style={{gridColumn:"1/-1"}}><label className="lbl">Titular <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.ownerId||user.id} style={brs(bh&&!String(newBill.ownerId||user.id).trim())} onChange={e=>setNewBill(p=>({...p,ownerId:e.target.value}))}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
+            <div><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.departmentId||""} style={brs(bh&&!String(newBill.departmentId||"").trim())} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}><option value="">{t("label.department")}</option>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+            <div><label className="lbl">Titular <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.ownerId||user.id} style={brs(bh&&!String(newBill.ownerId||user.id).trim())} onChange={e=>setNewBill(p=>({...p,ownerId:e.target.value}))}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
           </div>
           {/* BLOQUE B — Periodicidad */}
           <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Periodicidad</div>
@@ -4197,17 +4249,39 @@ function BillsView(){
                   <div>
                     {getItemStatus(b,cats)==="approved"&&<div style={{padding:"6px 9px",background:"#FEF3C7",borderRadius:6,fontSize:10,color:"#92400E",marginBottom:9}}>{t("bills.reapproval")}</div>}
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:9}}>
-                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.billName")}</label><input className="inp" style={{fontSize:12}} value={editBillForm.name||""} onChange={e=>{setEditBillForm(p=>({...p,name:e.target.value}));setEditBillDirty(true);}}/></div>
+                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.billName")}</label><input className="inp" style={{fontSize:14}} value={editBillForm.name||""} onChange={e=>{setEditBillForm(p=>({...p,name:e.target.value}));setEditBillDirty(true);}}/></div>
                       <div><label className="lbl">{t("label.amount")}</label><input className="inp" type="text" inputMode="decimal" style={{fontSize:12}} value={editBillForm.amount||""} onChange={e=>{setEditBillForm(p=>({...p,amount:e.target.value}));setEditBillDirty(true);}}/></div>
-                      <div><label className="lbl">{t("label.frequency")}</label><select className="inp" style={{fontSize:12}} value={editBillForm.frequency===""||editBillForm.frequency==="once"?"once":editBillForm.frequency||"once"} onChange={e=>{const v=e.target.value;setEditBillDirty(true);setEditBillForm(p=>{const next={...p,frequency:v==="once"?"":v};if(!isBillRecurringFrequency(next.frequency))next.dayOfMonth="";else if(!next.dayOfMonth)next.dayOfMonth="1";return next;});}}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
-                      {!isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">{t("label.date")}</label><input className="inp" style={{fontSize:12}} type="date" value={editBillForm.dueDate||""} onChange={e=>{setEditBillForm(p=>({...p,dueDate:e.target.value}));setEditBillDirty(true);}}/></div>}
+                      <div><label className="lbl">{t("label.frequency")}</label><select className="inp" style={{fontSize:14}} value={editBillForm.frequency===""||editBillForm.frequency==="once"?"once":editBillForm.frequency||"once"} onChange={e=>{const v=e.target.value;setEditBillDirty(true);setEditBillForm(p=>{const next={...p,frequency:v==="once"?"":v};if(!isBillRecurringFrequency(next.frequency))next.dayOfMonth="";else if(!next.dayOfMonth)next.dayOfMonth="1";return next;});}}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
+                      {!isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">{t("label.date")}</label><input className="inp" style={{fontSize:14}} type="date" value={editBillForm.dueDate||""} onChange={e=>{setEditBillForm(p=>({...p,dueDate:e.target.value}));setEditBillDirty(true);}}/></div>}
                       {isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">{t("label.dayOfMonth")}</label><input className="inp" type="number" min="1" max="31" style={{fontSize:12}} value={editBillForm.dayOfMonth||""} onChange={e=>{setEditBillForm(p=>({...p,dayOfMonth:e.target.value}));setEditBillDirty(true);}}/></div>}
-                      {editBillForm.frequency==="custom"&&<div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" style={{fontSize:12}} type="number" min="1" max="24" value={editBillForm.intervalMonths||""} onChange={e=>{setEditBillForm(p=>({...p,intervalMonths:e.target.value}));setEditBillDirty(true);}}/></div>}
-                      {isBillRecurringFrequency(editBillForm.frequency)&&<div style={{gridColumn:editBillForm.frequency==="monthly"?"1/-1":undefined}}><label className="lbl">{t("label.endDate")}</label><input className="inp" style={{fontSize:12}} type="date" value={editBillForm.endDate||""} onChange={e=>{setEditBillForm(p=>({...p,endDate:e.target.value}));setEditBillDirty(true);}}/><div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>}
-                      <div><label className="lbl">{t("label.category")}</label><select className="inp" style={{fontSize:12}} value={editBillForm.category||"Otro"} onChange={e=>{setEditBillForm(p=>({...p,category:e.target.value}));setEditBillDirty(true);}}>{activeCats.map(c=><option key={c.id}>{c.name}</option>)}</select></div>
-                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")}</label><select className="inp" style={{fontSize:12}} value={editBillForm.departmentId||""} onChange={e=>{setEditBillForm(p=>({...p,departmentId:e.target.value}));setEditBillDirty(true);}}>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+                      {editBillForm.frequency==="custom"&&<div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" style={{fontSize:14}} type="number" min="1" max="24" value={editBillForm.intervalMonths||""} onChange={e=>{setEditBillForm(p=>({...p,intervalMonths:e.target.value}));setEditBillDirty(true);}}/></div>}
+                      {isBillRecurringFrequency(editBillForm.frequency)&&<div style={{gridColumn:editBillForm.frequency==="monthly"?"1/-1":undefined}}><label className="lbl">{t("label.endDate")}</label><input className="inp" style={{fontSize:14}} type="date" value={editBillForm.endDate||""} onChange={e=>{setEditBillForm(p=>({...p,endDate:e.target.value}));setEditBillDirty(true);}}/><div style={{fontSize:11,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>}
+                      <div><label className="lbl">{t("label.category")}</label><select className="inp" style={{fontSize:14}} value={editBillForm.category||"Otro"} onChange={e=>{setEditBillForm(p=>({...p,category:e.target.value}));setEditBillDirty(true);}}>{activeCats.map(c=><option key={c.id}>{c.name}</option>)}</select></div>
+                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")}</label><select className="inp" style={{fontSize:14}} value={editBillForm.departmentId||""} onChange={e=>{setEditBillForm(p=>({...p,departmentId:e.target.value}));setEditBillDirty(true);}}>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+                      <div style={{gridColumn:"1/-1"}}><label className="lbl">Titular</label><select className="inp" style={{fontSize:14}} value={editBillForm.ownerId||user.id} onChange={e=>{const oid=e.target.value;setEditBillForm(p=>({...p,ownerId:oid}));setEditBillSplits(prev=>prev.map(s=>s.userId===oid?{...s,checked:true}:s));setEditBillDirty(true);}}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("bills.description")}</label><textarea className="inp" rows={2} style={{resize:"vertical",fontSize:12}} value={editBillForm.description||""} onChange={e=>{setEditBillForm(p=>({...p,description:e.target.value}));setEditBillDirty(true);}}/></div>
-                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.notes")}</label><textarea className="inp" rows={1} style={{resize:"vertical",fontSize:12}} value={editBillForm.notes||""} onChange={e=>{setEditBillForm(p=>({...p,notes:e.target.value}));setEditBillDirty(true);}}/></div>
+                    </div>
+                    <div style={{marginBottom:10}}>
+                      <SplitAllocationEditor t={t} user={(users.find(u=>u.id===(editBillForm.ownerId||user.id))||user)} users={users} totalAmount={parseMoney(editBillForm.amount)||0} splitOn={editBillSplitOn} setSplitOn={v=>{setEditBillSplitOn(v);setEditBillDirty(true);}} splits={editBillSplits} setSplits={v=>{setEditBillSplits(v);setEditBillDirty(true);}} spMode={editBillSpMode} setSpMode={v=>{setEditBillSpMode(v);setEditBillDirty(true);}}/>
+                    </div>
+                    <div style={{marginTop:10,marginBottom:10}}>
+                      <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>{t("bills.paymentQuestion")}</div>
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+                        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+                          <input type="radio" name={"eb-pay-"+b.id} checked={(editBillForm.paymentChoice||"pending")!=="paid"} onChange={()=>{setEditBillForm(p=>({...p,paymentChoice:"pending"}));setEditBillDirty(true);}}/>
+                          {t("bills.paymentPending")}
+                        </label>
+                        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+                          <input type="radio" name={"eb-pay-"+b.id} checked={editBillForm.paymentChoice==="paid"} onChange={()=>{setEditBillForm(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}));setEditBillDirty(true);}}/>
+                          {t("bills.paymentPaid")}
+                        </label>
+                      </div>
+                      {editBillForm.paymentChoice==="paid"&&(
+                        <div style={{marginTop:8}}>
+                          <label className="lbl">{t("bills.paymentDate")}</label>
+                          <input className="inp" type="date" value={editBillForm.paymentDate||(editBillForm.dueDate||"").slice(0,10)||new Date().toISOString().slice(0,10)} onChange={e=>{setEditBillForm(p=>({...p,paymentDate:e.target.value}));setEditBillDirty(true);}}/>
+                        </div>
+                      )}
                     </div>
                     {/* Attachment edit */}
                     <div style={{marginBottom:9}}>
@@ -5018,9 +5092,9 @@ function DepartmentsSettingsBlock({t}){
       <div style={{background:"#F5F0EA",borderRadius:9,padding:12,marginBottom:12}}>
         <div style={{fontWeight:600,fontSize:12,marginBottom:8}}>{t("settings.deptAdd")}</div>
         <label className="lbl">{t("settings.deptName")}</label>
-        <input className="inp" style={{fontSize:13,marginBottom:8}} value={name} onChange={e=>setName(e.target.value)}/>
+        <input className="inp" style={{fontSize:14,marginBottom:8}} value={name} onChange={e=>setName(e.target.value)}/>
         <label className="lbl">{t("settings.deptBudget")}</label>
-        <input className="inp" style={{fontSize:13,marginBottom:8}} type="text" inputMode="decimal" value={bud} onChange={e=>setBud(e.target.value)}/>
+        <input className="inp" style={{fontSize:14,marginBottom:8}} type="text" inputMode="decimal" value={bud} onChange={e=>setBud(e.target.value)}/>
         <button type="button" className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} onClick={()=>void addDept()}>{t("action.add")}</button>
       </div>
       <div style={{fontSize:9,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Departamentos activos</div>
@@ -5029,9 +5103,9 @@ function DepartmentsSettingsBlock({t}){
           {editId===d.id?(
             <div style={{background:"#F5F0EA",borderRadius:8,padding:10}}>
               <label className="lbl">{t("settings.deptName")}</label>
-              <input className="inp" style={{fontSize:12,marginBottom:6}} value={ef.name} onChange={e=>setEf(p=>({...p,name:e.target.value}))}/>
+              <input className="inp" style={{fontSize:14,marginBottom:6}} value={ef.name} onChange={e=>setEf(p=>({...p,name:e.target.value}))}/>
               <label className="lbl">{t("settings.deptBudget")}</label>
-              <input className="inp" style={{fontSize:12,marginBottom:8}} value={ef.budget} onChange={e=>setEf(p=>({...p,budget:e.target.value}))}/>
+              <input className="inp" style={{fontSize:14,marginBottom:8}} value={ef.budget} onChange={e=>setEf(p=>({...p,budget:e.target.value}))}/>
               <div style={{display:"flex",gap:6}}>
                 <button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>void saveEdit(d)}>{t("action.save")}</button>
                 <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setEditId(null)}>{t("action.cancel")}</button>
@@ -5208,15 +5282,15 @@ function SettingsView(){
           {addU&&(
             <div style={{background:"#F5F0EA",borderRadius:9,padding:12,marginBottom:10}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
-                <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.name")}</label><input className="inp" style={{fontSize:13}} value={nu.name} onChange={e=>setNu(p=>({...p,name:e.target.value}))} placeholder="Name"/></div>
-                <div><label className="lbl">{t("label.title")}</label><input className="inp" style={{fontSize:13}} value={nu.title} onChange={e=>setNu(p=>({...p,title:e.target.value}))} placeholder="Role"/></div>
-                <div><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:13}} value={nu.role} onChange={e=>setNu(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option></select></div>
-                <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.email")}</label><input className="inp" style={{fontSize:13}} type="email" value={nu.email} onChange={e=>setNu(p=>({...p,email:e.target.value}))} placeholder="email@example.com"/></div>
-                <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.phone")}</label><input className="inp" style={{fontSize:13}} value={nu.phone} onChange={e=>setNu(p=>({...p,phone:e.target.value}))} placeholder="+34..."/></div>
+                <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.name")}</label><input className="inp" style={{fontSize:14}} value={nu.name} onChange={e=>setNu(p=>({...p,name:e.target.value}))} placeholder="Name"/></div>
+                <div><label className="lbl">{t("label.title")}</label><input className="inp" style={{fontSize:14}} value={nu.title} onChange={e=>setNu(p=>({...p,title:e.target.value}))} placeholder="Role"/></div>
+                <div><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:14}} value={nu.role} onChange={e=>setNu(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option></select></div>
+                <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.email")}</label><input className="inp" style={{fontSize:14}} type="email" value={nu.email} onChange={e=>setNu(p=>({...p,email:e.target.value}))} placeholder="email@example.com"/></div>
+                <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.phone")}</label><input className="inp" style={{fontSize:14}} value={nu.phone} onChange={e=>setNu(p=>({...p,phone:e.target.value}))} placeholder="+34..."/></div>
                 <div style={{gridColumn:"1/-1",marginTop:4}}>
                   <label className="lbl">{t("label.tempPassword")}</label>
                   <div style={{position:"relative"}}>
-                    <input className="inp" style={{fontSize:13,paddingRight:52}} type={nu.showTempPw?"text":"password"} value={nu.tempPw||""} onChange={e=>setNu(p=>({...p,tempPw:e.target.value}))} placeholder="mín. 8 caracteres"/>
+                    <input className="inp" style={{fontSize:14,paddingRight:52}} type={nu.showTempPw?"text":"password"} value={nu.tempPw||""} onChange={e=>setNu(p=>({...p,tempPw:e.target.value}))} placeholder="mín. 8 caracteres"/>
                     <button type="button" style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#9CAA9F",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600,padding:"2px 4px"}} onClick={()=>setNu(p=>({...p,showTempPw:!p.showTempPw}))}>
                       {nu.showTempPw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}
                     </button>
@@ -5295,7 +5369,7 @@ function SettingsView(){
                 <div style={{background:"#F5F3FF",borderRadius:7,padding:"10px 12px",margin:"4px 0",border:"1px solid #DDD6EE"}}>
                   <div style={{fontSize:10,color:"#6B7B72",marginBottom:8,lineHeight:1.4}}>{t("team.resetPasswordHint")}</div>
                   <label className="lbl">{t("label.tempPassword")}</label>
-                  <input className="inp" style={{fontSize:13,marginBottom:8}} type="password" value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
+                  <input className="inp" style={{fontSize:14,marginBottom:8}} type="password" value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
                   <div style={{display:"flex",gap:6}}>
                     <button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} disabled={resetBusy} onClick={async()=>{
                       if(!resetPwInput||resetPwInput.length<8){alert(t("msg.tempPwRequired"));return;}
@@ -5324,11 +5398,11 @@ function SettingsView(){
               {editId===u.id&&(
                 <div style={{background:"#F5F0EA",borderRadius:9,padding:10,margin:"4px 0"}}>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
-                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.name")}</label><input className="inp" style={{fontSize:13}} value={ef.name} onChange={e=>setEf(p=>({...p,name:e.target.value}))}/></div>
-                    <div><label className="lbl">{t("label.title")}</label><input className="inp" style={{fontSize:13}} value={ef.title} onChange={e=>setEf(p=>({...p,title:e.target.value}))}/></div>
-                    <div><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:13}} value={ef.role} onChange={e=>setEf(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option><option value="superadmin">{t("role.superadmin")}</option></select></div>
-                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.email")}</label><input className="inp" style={{fontSize:13}} type="email" value={ef.email} onChange={e=>setEf(p=>({...p,email:e.target.value}))}/></div>
-                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.phone")}</label><input className="inp" style={{fontSize:13}} value={ef.phone} onChange={e=>setEf(p=>({...p,phone:e.target.value}))}/></div>
+                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.name")}</label><input className="inp" style={{fontSize:14}} value={ef.name} onChange={e=>setEf(p=>({...p,name:e.target.value}))}/></div>
+                    <div><label className="lbl">{t("label.title")}</label><input className="inp" style={{fontSize:14}} value={ef.title} onChange={e=>setEf(p=>({...p,title:e.target.value}))}/></div>
+                    <div><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:14}} value={ef.role} onChange={e=>setEf(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option><option value="superadmin">{t("role.superadmin")}</option></select></div>
+                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.email")}</label><input className="inp" style={{fontSize:14}} type="email" value={ef.email} onChange={e=>setEf(p=>({...p,email:e.target.value}))}/></div>
+                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.phone")}</label><input className="inp" style={{fontSize:14}} value={ef.phone} onChange={e=>setEf(p=>({...p,phone:e.target.value}))}/></div>
                   </div>
                   <div style={{display:"flex",gap:7,marginTop:7}}><button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>void (async()=>{
                     if(AUTH_URL){
@@ -5407,7 +5481,7 @@ function SettingsView(){
         <>
         <div style={{marginBottom:12}}>
           <label className="lbl">{t("settings.ivaDefault")}</label>
-          <select className="inp" style={{fontSize:13}} value={String(ivaDefault)} onChange={e=>saveIvaDefault(Number(e.target.value))} aria-label={t("settings.ivaDefault")}>
+          <select className="inp" style={{fontSize:14}} value={String(ivaDefault)} onChange={e=>saveIvaDefault(Number(e.target.value))} aria-label={t("settings.ivaDefault")}>
             {ivaRates.map(r=><option key={String(r.value)+"-"+r.name} value={r.value}>{formatIvaOptionLabel(r)}</option>)}
           </select>
         </div>
@@ -6054,14 +6128,12 @@ function SolanaExpenses(){
       const shouldAutoApproveSubmitterAuth=canSubmitterAutoApprove&&approvalRequiredForSubmit.includes(user.id);
       void (async()=>{
         const clientRef="tmp_exp_"+genUuid();
-        const meta={clientRef};
-        if(receipt?.b64)meta.pendingReceipt={b64:receipt.b64,mediaType:receipt.type||"image/jpeg"};
         const rpAuth=parseFloat(form.ivaRate);
         const ivaRateAuth=isNaN(rpAuth)?readIvaDefault():rpAuth;
         const ivaAmountAuth=calcIvaParts(amount,ivaRateAuth).iva;
         try{
           /* Server: resolveApproverIds + computeSubmittedVotes(req.userId) — si el autor está en approvalRequired, queda approved en approvalVotesJson (mismo efecto que autoApprove local). */
-          const d=await API.post("/expenses",{
+          const body={
             amount,
             description:form.description,category:form.category,
             date:form.date,
@@ -6073,12 +6145,18 @@ function SolanaExpenses(){
             ivaRate:ivaRateAuth,
             ivaAmount:ivaAmountAuth,
             ...(splitModeOut?{splitMode:splitModeOut}:{}),
-          },meta);
+          };
+          console.log("PRE-SUBMIT", { body, authUrl: AUTH_URL, token: API.token });
+          const { response, responseBody } = await debugApiRequest("POST", "/expenses", body);
+          console.log("POST-SUBMIT", { status: response.status, responseBody });
+          if (!response.ok) throw new Error(responseBody.error || ("HTTP " + response.status));
+          const d = responseBody;
           let exp=expenseFromApi(d.expense);
           if(receipt?.b64){
             try{
               await API.post("/expenses/"+encodeURIComponent(exp.id)+"/receipt",{b64:receipt.b64,mediaType:receipt.type||"image/jpeg"});
               const full=await API.get("/expenses");
+              console.log("EXPENSES GET DEBUG", { expenses: (full.expenses||[]).length, last: (full.expenses||[])[0] || null });
               const row=(full.expenses||[]).find(x=>x.id===exp.id);
               exp=row?expenseFromApi(row):exp;
               saveExp((full.expenses||[]).map(expenseFromApi));
@@ -6095,6 +6173,10 @@ function SolanaExpenses(){
             }
           }else{
             saveExp([exp,...expenses]);
+            try{
+              const full=await API.get("/expenses");
+              console.log("EXPENSES GET DEBUG", { expenses: (full.expenses||[]).length, last: (full.expenses||[])[0] || null });
+            }catch(e){}
           }
           try{localStorage.removeItem("sol-exp-draft");}catch(e){}
           resetForm();setPanel("detail");setDetailId(exp.id);
@@ -6495,10 +6577,29 @@ function SolanaExpenses(){
       const ids=effectiveExpenseApproverIds(e,cats,users);
       return ids.includes(user.id)&&getItemStatus(e,cats,users)==="pending"&&approvalVoteFor(e.approvals,user.id,users)!=="approved";
     });
-  const myPendingBills=!AUTH_URL?bills.filter(b=>{
+  const myPendingBills=bills.filter(b=>{
+    if(AUTH_URL&&(b._apiType!=="bill"||b._pendingSync))return false;
     const ids=effectiveExpenseApproverIds(b,cats,users);
     return ids.includes(user.id)&&getItemStatus(b,cats,users)==="pending"&&approvalVoteFor(b.approvals,user.id,users)!=="approved";
-  }):[];
+  });
+  useEffect(()=>{
+    console.log("BILLS DEBUG", {
+      allBills: bills.map(b => ({ id: b.id, status: getItemStatus(b, cats, users), approvals: b.approvals })),
+      myPendingBills: myPendingBills.length,
+      userId: user.id,
+      isApprover: isApprover,
+    });
+  },[bills,myPendingBills.length,user.id,isApprover,cats,users]);
+  useEffect(()=>{
+    console.log("CORE CHECK", {
+      expenses: expenses.length,
+      bills: bills.length,
+      myPending: myPending.length,
+      myPendingBills: myPendingBills.length,
+      lastExpense: expenses[0],
+      lastBill: bills[0]
+    });
+  },[expenses,bills,myPending.length,myPendingBills.length]);
   /* Approved expenses: totApproved = sum of EUR once per expense (splits do not duplicate). Per-person = sum of paidBy-weighted EUR shares. */
   const approvedExpenses=expenses.filter(e=>getItemStatus(e,cats,users)==="approved");
   const totApproved=approvedExpenses.reduce((s,e)=>s+eurForExpense(e),0);
@@ -6618,14 +6719,16 @@ function SolanaExpenses(){
         )}
         <style>{`
           *{box-sizing:border-box;}
+          h1{font-family:'Playfair Display',serif;font-size:24px;font-weight:600;}
+          h2{font-family:'DM Sans',system-ui,sans-serif;font-size:16px;font-weight:600;}
           ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:rgba(60,10,55,0.2);border-radius:2px;}
           .card{background:#fff;border-radius:11px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,0.06);}
           .inp{width:100%;background:#FAF7F8;border:1.5px solid #DDD6CC;border-radius:7px;padding:8px 11px;font-size:14px;color:#1A0E18;font-family:inherit;transition:border-color 0.15s;outline:none;display:block;}
           .inp:focus{border-color:${G};}
-          .lbl{font-size:9px;font-weight:700;color:#9CAA9F;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;display:block;}
+          .lbl{font-size:12px;font-weight:600;color:#6B7B72;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;display:block;}
           .btn-primary{background:${G};color:#fff;border:none;padding:9px 18px;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
           .btn-primary:hover{background:${GH};}.btn-primary:disabled{opacity:0.5;cursor:default;}
-          .btn-secondary{background:transparent;color:${G};border:1.5px solid ${G};padding:8px 18px;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
+          .btn-secondary{background:transparent;color:${G};border:1.5px solid ${G};padding:8px 18px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;}
           .btn-secondary:hover{background:${GL};}
           .btn-sm{background:${G};color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;}
           .btn-danger{background:transparent;color:#991B1B;border:1.5px solid #ECA3A3;padding:8px 18px;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
