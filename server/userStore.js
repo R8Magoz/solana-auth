@@ -102,7 +102,16 @@ const updateFullStmt = db.prepare(`
 `);
 
 function insertUser(u) {
-  insertStmt.run(userToParams(u));
+  try {
+    insertStmt.run(userToParams(u));
+  } catch (e) {
+    if (e && e.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      const err = new Error('Ya existe un usuario con ese correo.');
+      err.code = 'SQLITE_CONSTRAINT_UNIQUE';
+      throw err;
+    }
+    throw e;
+  }
 }
 
 /**

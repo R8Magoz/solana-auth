@@ -475,7 +475,14 @@ app.post('/auth/signup', signupLimiter, async (req, res) => {
     createdAt: now,
   };
 
-  userStore.insertUser(newUser);
+  try {
+    userStore.insertUser(newUser);
+  } catch (e) {
+    if (e && e.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ error: 'Ya existe un usuario con ese correo.' });
+    }
+    throw e;
+  }
   audit('signup_requested', { userId, email: normalEmail });
 
   // Notify admin by email (best effort — does not block signup)
@@ -749,7 +756,14 @@ app.post('/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
         deniedBy:         null,
         createdAt:        Date.now(),
       };
-      userStore.insertUser(newAdmin);
+      try {
+        userStore.insertUser(newAdmin);
+      } catch (e) {
+        if (e && e.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          return res.status(409).json({ error: 'Ya existe un usuario con ese correo.' });
+        }
+        throw e;
+      }
       audit('admin_user_created_on_reset', { userId: newAdminId, email: adminEmail });
     }
 
@@ -838,7 +852,14 @@ app.post('/admin/users/create', requireAdminSession, async (req, res) => {
     createdAt:        now,
   };
 
-  userStore.insertUser(newUser);
+  try {
+    userStore.insertUser(newUser);
+  } catch (e) {
+    if (e && e.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ error: 'Ya existe un usuario con ese correo.' });
+    }
+    throw e;
+  }
   audit('admin_created_user', { userId, email: normalEmail, role: newUser.role });
 
   // Return safe user (no passwordHash)

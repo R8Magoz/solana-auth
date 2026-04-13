@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.json"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <title>Solana — Gestión de Gastos</title>
+  <title>Solana Gestion de Gastos</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -212,14 +212,14 @@ const TR = {
     "empty.expenses": "No se encontraron gastos",
     "empty.bills": "Sin facturas todavía",
     "empty.billsFiltered": "Sin resultados con los filtros aplicados",
-    "empty.approvals": "Todo al día – sin aprobaciones pendientes",
+    "empty.approvals": "Todo al día sin aprobaciones pendientes",
     "msg.profileUpdated": "Perfil actualizado.",
     "msg.invalidFile": "Archivo no válido.",
     "msg.importSuccess": "Importado correctamente.",
     "msg.splitMustTotal100": "Los porcentajes deben sumar 100%",
     "msg.splitEqual100Hint": "Debe sumar 100%",
-    "split.warnPctSum": "Los porcentajes suman {{sum}}% — deben sumar 100%",
-    "split.warnAmtSum": "Los importes suman {{sum}} — el total es {{total}}",
+    "split.warnPctSum": "Los porcentajes suman {{sum}}% deben sumar 100%",
+    "split.warnAmtSum": "Los importes suman {{sum}} el total es {{total}}",
     "split.minTwoTeam": "Hace falta al menos dos personas en el equipo para dividir el gasto.",
     "split.minParticipants": "Selecciona al menos dos participantes en el reparto.",
     "split.submitterLocked": "Quien envía el gasto siempre participa en el reparto.",
@@ -244,7 +244,7 @@ const TR = {
     "forceChange.tooShort": "Mínimo 8 caracteres.",
     "forceChange.common": "Contraseña demasiado común. Elige una más segura.",
     "msg.passwordNoExisting": "Sin contraseña. Introduce una para proteger tu cuenta.",
-    "msg.billApprovalNeeded": "Factura enviada – pendiente de aprobación.",
+    "msg.billApprovalNeeded": "Factura enviada pendiente de aprobación.",
     "msg.deleteUser": "Eliminar",
     "msg.archiveCategory": "¿Archivar esta categoría?",
     "msg.attachmentRemoved": "Adjunto eliminado.",
@@ -278,7 +278,7 @@ const TR = {
     "settings.approversLabel": "Aprobadores:",
     "settings.noApprovers": "ninguno",
     "settings.restoreCategory": "¿Restaurar esta categoría?",
-    "settings.pendingFirst": "Pendientes de aprobación — revisa antes que todo",
+    "settings.pendingFirst": "Pendientes de aprobación revisa antes que todo",
     "settings.accordion.pending": "Usuarios pendientes de aprobación",
     "settings.accordion.appLog": "Registro de la aplicación",
     "settings.accordion.team": "Miembros del equipo",
@@ -485,17 +485,17 @@ const TR = {
     "audit.exported": "Exportado",
     "audit.submitted": "Enviado",
     "audit.approved": "Aprobado",
-    "audit.auto_approved": "Aprobación automática — aprobador remitente",
+    "audit.auto_approved": "Aprobación automática: aprobador remitente",
     "audit.autoApprovedDetail": "El remitente figuraba como aprobador de la categoría.",
     "audit.rejected": "Rechazado",
     "audit.edited": "Editado",
     "audit.deleted": "Eliminado",
     "audit.delete_requested": "Solicitud de borrado",
-    "audit.reapproval_required": "Vuelto a pendiente — reaprobación requerida",
+    "audit.reapproval_required": "Vuelto a pendiente: reaprobación requerida",
     "expense.editTitle": "Editar gasto",
     "expense.confirmEdit": "¿Guardar cambios en este gasto?",
     "expense.reapprovalWarning": "Este gasto estaba aprobado. Los cambios en campos clave resetearán la aprobación y requerirán revisión.",
-    "expense.reapprovalDone": "Gasto vuelto a pendiente — se requiere reaprobación.",
+    "expense.reapprovalDone": "Gasto vuelto a pendiente; se requiere reaprobación.",
     "expense.noPermission": "Solo puedes editar tus propios gastos.",
     "expense.edited": "Editado",
     "expense.unsaved": "Tienes cambios sin guardar. ¿Descartarlos?",
@@ -515,9 +515,9 @@ const TR = {
     "form.ivaRate": "Tipo de IVA",
     "form.ivaBase": "Base imponible",
     "form.ivaAmountLabel": "Cuota IVA",
-    "form.ivaAmountDash": "—",
+    "form.ivaAmountDash": "N/A",
     "expense.ivaRow": "IVA",
-    "expense.ivaNotTracked": "—",
+    "expense.ivaNotTracked": "N/A",
     "expense.comments": "Comentarios",
     "expense.commentPlaceholder": "Añadir una nota…",
     "expense.addNote": "Añadir nota",
@@ -547,7 +547,7 @@ const TR = {
     "dash.approvedShort": "Aprobados",
     "dash.pendingShort": "Pendientes",
     "dash.rejectedShort": "Rechazados",
-    "dash.fixRejectedLink": "Tienes {n} gasto(s) rechazado(s) — Corregir →",
+    "dash.fixRejectedLink": "Tienes {n} gasto(s) rechazado(s) Corregir",
     "dash.budgetStatus": "Presupuesto",
     "reports.budgetVsActual": "Presupuesto vs real",
     "reports.budgetTotal": "Total presupuestos mensuales vs gasto aprobado, este mes",
@@ -560,7 +560,7 @@ const TR = {
     "settings.monthlyBudget": "Presupuesto mensual",
     "settings.ivaDefault": "Tipo de IVA por defecto para nuevos gastos",
     "settings.ivaTypesSection": "Tipos de IVA editables",
-    "settings.ivaPctShort": "Porcentaje 0–99",
+    "settings.ivaPctShort": "Porcentaje 0 a 99",
     "settings.ivaNameField": "Nombre",
     "settings.saveIvaTypes": "Guardar tipos",
     "settings.sectionCategories": "Categorías",
@@ -602,10 +602,10 @@ const DEF_CATS=[
   {id:"c9",name:"Otro",           archived:false,approverIds:[]},
 ];
 const SEED_EXP=[
-  {id:"e1",amount:45.80, description:"Verduras de mercado – prueba proveedor",category:"Food & Beverage",date:"2026-03-10",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:45.80}], approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"Mercat de la Boqueria",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-10T10:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-10T14:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-10T15:30:00Z",note:""}],departmentId:"dept_operaciones"},
+  {id:"e1",amount:45.80, description:"Verduras de mercado prueba proveedor",category:"Food & Beverage",date:"2026-03-10",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:45.80}], approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"Mercat de la Boqueria",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-10T10:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-10T14:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-10T15:30:00Z",note:""}],departmentId:"dept_operaciones"},
   {id:"e2",amount:1200.0,description:"Depósito máquina de espresso",         category:"Equipment",       date:"2026-03-08",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:600,pct:50},{userId:"marc",amount:600,pct:50}],splitMode:"equal",approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"La Marzocco Linea Mini",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-08T09:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-08T09:01:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-08T12:00:00Z",note:""}],departmentId:"dept_estrategia"},
-  {id:"e3",amount:850.0, description:"Diseño de marca – Janneke",           category:"Marketing",       date:"2026-03-12",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:850}],  approvals:{sergio:"approved"},receipt:null,receiptType:null,notes:"Logo, tipografía, tarjetas",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-12T11:00:00Z"},{action:"auto_approved",by:"sergio",at:"2026-03-12T11:01:00Z",meta:{reason:"submitter_is_approver"}}],departmentId:"dept_branding"},
-  {id:"e4",amount:320.0, description:"Consultoría legal – contrato de alquiler",        category:"Legal",           date:"2026-03-14",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:320}], approvals:{},receipt:null,receiptType:null,notes:"Condiciones del contrato",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-14T16:00:00Z"}],departmentId:"dept_estrategia"},
+  {id:"e3",amount:850.0, description:"Diseño de marca Janneke",           category:"Marketing",       date:"2026-03-12",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:850}],  approvals:{sergio:"approved"},receipt:null,receiptType:null,notes:"Logo, tipografía, tarjetas",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-12T11:00:00Z"},{action:"auto_approved",by:"sergio",at:"2026-03-12T11:01:00Z",meta:{reason:"submitter_is_approver"}}],departmentId:"dept_branding"},
+  {id:"e4",amount:320.0, description:"Consultoría legal contrato de alquiler",        category:"Legal",           date:"2026-03-14",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:320}], approvals:{},receipt:null,receiptType:null,notes:"Condiciones del contrato",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-14T16:00:00Z"}],departmentId:"dept_estrategia"},
   {id:"e5",amount:180.0, description:"Material de investigación de mercado",         category:"Marketing",       date:"2026-03-15",submittedBy:"anna",   paidBy:[{userId:"anna",amount:90,pct:50},{userId:"humbert",amount:90,pct:50}],splitMode:"equal",approvals:{marc:"approved"},receipt:null,receiptType:null,notes:"Análisis de competencia",auditTrail:[{action:"submitted",by:"anna",at:"2026-03-15T10:00:00Z"},{action:"approved",by:"marc",at:"2026-03-15T14:00:00Z",note:""}],departmentId:"dept_branding"},
 ];
 const SEED_BILLS=[
@@ -690,7 +690,7 @@ function enqueueOfflineOp(method, path, body, meta) {
     enqueuedAt: Date.now(),
   });
   writeOfflineQueue(q);
-  dispatchSolanaToast("Guardado localmente — se sincronizará al reconectar", "offline");
+  dispatchSolanaToast("Guardado localmente, se sincronizará al reconectar", "offline");
   throw makeOfflineQueuedError();
 }
 
@@ -745,7 +745,7 @@ const API = {
     const ct = (res.headers.get("content-type") || "").toLowerCase();
     const data = ct.includes("application/json") ? await res.json().catch(() => ({})) : {};
     if (res.status === 409) {
-      dispatchSolanaToast("Conflicto al sincronizar — revisa los datos", "conflict");
+      dispatchSolanaToast("Conflicto al sincronizar, revisa los datos", "conflict");
       throw Object.assign(new Error(data.error || "Conflicto"), { status: 409 });
     }
     if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
@@ -776,7 +776,7 @@ const API = {
       const ct = (res.headers.get("content-type") || "").toLowerCase();
       const data = ct.includes("application/json") ? await res.json().catch(() => ({})) : {};
       if (res.status === 409) {
-        dispatchSolanaToast("Conflicto al sincronizar — revisa los datos", "conflict");
+        dispatchSolanaToast("Conflicto al sincronizar, revisa los datos", "conflict");
         throw Object.assign(new Error(data.error || "Conflicto"), { status: 409 });
       }
       if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
@@ -904,9 +904,10 @@ async function debugApiRequest(method, path, body) {
     const ok = await API.refresh();
     if (ok) response = await API._rawFetch(String(method || "GET").toUpperCase(), path, body);
   }
-  const ct = (response.headers.get("content-type") || "").toLowerCase();
-  const responseBody = ct.includes("application/json") ? await response.json().catch(() => ({})) : {};
-  return { response, responseBody };
+  const rawText = await response.text().catch(() => "");
+  let responseBody = {};
+  try { responseBody = rawText ? JSON.parse(rawText) : {}; } catch (e) {}
+  return { response, responseBody, rawText };
 }
 
 /* ── HELPERS ───────────────────────────────────────────────────────────────── */
@@ -1406,7 +1407,7 @@ function billListMetadataLine(b,t,users){
   const refD=getBillFilterDateRef(b);
   if(!isBillRecurringFrequency(b.frequency))
     return `${fmtDate(refD)} · ${cat} · ${sub}`;
-  const day=b.dayOfMonth||"—";
+  const day=b.dayOfMonth||"N/A";
   return `${billRecurringFreqWord(b,t)} · ${t("bills.dayMeta")} ${day} · ${cat} · ${sub}`;
 }
 function billStatusBadgeLabel(b,bst,t){
@@ -1742,7 +1743,7 @@ const DEFAULT_IVA_RATES=[
 ];
 const IVA_RATES_KEY="sol-iva-rates";
 const IVA_DEFAULT_KEY="sol-iva-default";
-function formatIvaOptionLabel(r){return`${r.value}% — ${r.name}`;}
+function formatIvaOptionLabel(r){return`${r.value}% ${r.name}`;}
 function readIvaRates(){
   try{
     const raw=localStorage.getItem(IVA_RATES_KEY);
@@ -1810,7 +1811,7 @@ function readLocalDepartments(){
 }
 const BF={amount:"",description:"",category:"",date:"",notes:"",ivaRate:"21",departmentId:"",ownerId:""};
 const DRAFT_KEY="sol-exp-draft";
-const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",dueDate:"",departmentId:"",ownerId:"",paymentChoice:"pending",paymentDate:""};
+const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",dueDate:"",departmentId:"",ownerId:"",paymentChoice:"paid",paymentDate:""};
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
 const Ctx=createContext(null);
@@ -2829,8 +2830,8 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
               })}
             </div>
           )}
-          {spMode==="percentage"&&Math.abs(totPct-100)>0.5&&<div style={{fontSize:11,color:"#A32D2D",marginTop:6}}>Los porcentajes suman {totPct.toFixed(1)}% — deben sumar 100%</div>}
-          {spMode==="amount"&&Math.abs(totAmt-expAmt)>0.01&&<div style={{fontSize:11,color:"#A32D2D",marginTop:6}}>Los importes suman {fmt(totAmt)} — el total es {fmt(expAmt)}</div>}
+          {spMode==="percentage"&&Math.abs(totPct-100)>0.5&&<div style={{fontSize:11,color:"#A32D2D",marginTop:6}}>Los porcentajes suman {totPct.toFixed(1)}% deben sumar 100%</div>}
+          {spMode==="amount"&&Math.abs(totAmt-expAmt)>0.01&&<div style={{fontSize:11,color:"#A32D2D",marginTop:6}}>Los importes suman {fmt(totAmt)} el total es {fmt(expAmt)}</div>}
         </div>
       )}
     </div>
@@ -3014,8 +3015,19 @@ function NewPanel(){
       {formError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{formError}</div>}
       <div style={{position:"relative",width:"100%"}}>
         <button type="button" className="btn-primary" style={{width:"100%",padding:11,opacity:(!expenseValid||splitSubmitBlocked)?0.5:1,cursor:(!expenseValid||splitSubmitBlocked)?"not-allowed":"pointer"}}
-          disabled={splitSubmitBlocked}
-          onClick={()=>{setFormError("");if(!expenseValid){setSubmitAttempt(true);setFormError("Completa los campos obligatorios marcados con *");return;}submitExp();}}>{t("action.submit")}</button>
+          onClick={()=>{
+            setFormError("");
+            if(splitSubmitBlocked){
+              console.log("=== SUBMIT BLOCKED ===", { reason: "split_submit_blocked_button_guard", splitOn, checkedSplitCount, pctSumBad, amtSumBad });
+              setFormError("Revisa el reparto antes de enviar.");
+              return;
+            }
+            if(!expenseValid){
+              console.log("=== SUBMIT BLOCKED ===", { reason: "expense_valid_guard_failed_button" });
+              setSubmitAttempt(true);setFormError("Completa los campos obligatorios marcados con *");return;
+            }
+            submitExp();
+          }}>{t("action.submit")}</button>
         {!expenseValid&&!splitSubmitBlocked&&(
           <button type="button" aria-label="Completar campos obligatorios" style={{position:"absolute",inset:0,opacity:0.001,width:"100%",height:"100%",cursor:"pointer"}}
             onClick={()=>setSubmitAttempt(true)}/>)}
@@ -3171,7 +3183,7 @@ function DetailPanel(){
           <div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}>
             <div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",flexShrink:0}}/>
             <span>{getU(aid).name}</span>
-            <span style={{marginLeft:"auto",color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E",fontWeight:500}}>{a?t("status."+a):"–"}</span>
+            <span style={{marginLeft:"auto",color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E",fontWeight:500}}>{a?t("status."+a):"N/A"}</span>
           </div>
         );})}
       </div>
@@ -3381,6 +3393,9 @@ function DashboardView(){
   const rejCnt=rejList.length;
   const watchCats=cats.filter(c=>!c.archived&&c.budget!=null&&c.budget>0&&effectiveExpenseApproverIds({category:c.name},cats,users)[0]===user.id);
   const [drillPerson,setDrillPerson]=useState(null);
+  const budgetRemainingTotal=(departmentsWithStats||[])
+    .filter(d=>!d.archived&&Number(d.budget)>0)
+    .reduce((s,d)=>s+(Number(d.budget||0)-Number(d.spent||0)),0);
   // Upcoming bills in 15 days
   const upcoming15=[];
   bills.filter(b=>getItemStatus(b,cats,users)==="approved"&&b.active&&b.frequency==="monthly"&&b.dayOfMonth).forEach(b=>{
@@ -3422,10 +3437,10 @@ function DashboardView(){
         {[
           {label:t("dash.totalInvested"),val:fmt(dashTotApproved),sub:t("dash.totalInvestedSub")||"Gastos aprobados"},
           {label:t("dash.thisMonth"),val:fmt(mTotal),sub:today.toLocaleString("es-ES",{month:"long"})},
-          {label:t("dash.pending"),val:pend,sub:t("dash.pendingSub")||"Pendientes"},
-          {label:t("dash.monthlyFixed"),val:fmt(totFixed),sub:t("dash.monthlyFixedSub")||"Coste mensual fijo"}
+          {label:t("dash.monthlyFixed"),val:fmt(totFixed),sub:t("dash.monthlyFixedSub")||"Coste mensual fijo"},
+          {label:"Presupuesto restante",val:fmt(budgetRemainingTotal),sub:"Suma de departamentos",valueColor:budgetRemainingTotal<0?"#991B1B":G}
         ].map((m,i)=>(
-          <div key={i} className="card"><div style={{fontSize:10,color:"#9CAA9F",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{m.label}</div><div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{m.val}</div><div style={{fontSize:11,color:"#B5C0B8",marginTop:1}}>{m.sub}</div></div>
+          <div key={i} className="card"><div style={{fontSize:10,color:"#9CAA9F",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{m.label}</div><div style={{fontSize:22,fontWeight:700,color:m.valueColor||G,fontVariantNumeric:"tabular-nums"}}>{m.val}</div><div style={{fontSize:11,color:"#B5C0B8",marginTop:1}}>{m.sub}</div></div>
         ))}
       </div>
       <div className="card" style={{marginBottom:14}}>
@@ -3435,7 +3450,7 @@ function DashboardView(){
             <div key={col.st} style={{flex:1}}>
               <div style={{display:"inline-block",padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,marginBottom:6,background:ACTIVITY_COLORS[col.st].bg,color:ACTIVITY_COLORS[col.st].color}}>{col.lbl}</div>
               <div style={{fontWeight:800,fontSize:16,color:ACTIVITY_COLORS[col.st].color}}>{col.cnt}</div>
-              <div style={{fontSize:11,color:"#9CAA9F"}}>{col.cnt===0?"—":fmt(col.sum)}</div>
+              <div style={{fontSize:11,color:"#9CAA9F"}}>{col.cnt===0?"0,00 €":fmt(col.sum)}</div>
             </div>
           ))}
         </div>
@@ -3496,7 +3511,7 @@ function DashboardView(){
         {(()=>{
           const pool=isAdmin?expenses.slice():expenses.filter(e=>(e.ownerId||e.submittedBy)===user.id);
           const sorted=[...pool].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
-          if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{isAdmin?"—":t("dash.recentEmpty")}</div>;
+          if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{isAdmin?"Sin datos":t("dash.recentEmpty")}</div>;
           return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;const sub=(users.find(x=>x.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;return(
             <div key={e.id} className="row-hover" style={{display:"flex",alignItems:"flex-start",padding:"7px 3px",borderBottom:i<sorted.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}} onClick={()=>{go("expenses");setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);}}>
               <div style={{flex:1,minWidth:0}}>
@@ -3645,14 +3660,33 @@ function ReceiptThumb({expenseId}){
 
 /* ── APPROVALS ─────────────────────────────────────────────────────────────── */
 function ApprovalsView(){
-  const{t,expenses,bills,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,myPending,myPendingBills}=useApp();
+  const{t,expenses,bills,cats,users,isAdmin,isApprover,user,aNote,setANote,approve}=useApp();
   const [tab,setTab]=useState("expenses");
-  useEffect(()=>{if(AUTH_URL&&tab==="bills")setTab("expenses");},[tab]);
-  if(!isApprover&&!isAdmin)return null;
+  const canAct=isApprover||isAdmin;
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
-  const approvalTabs=AUTH_URL
-    ?[["expenses",t("nav.expenses"),myPending.length]]
-    :[["expenses",t("nav.expenses"),myPending.length],["bills",t("nav.bills"),myPendingBills.length]];
+  const priorityForItem=(item)=>{
+    const ids=effectiveExpenseApproverIds(item,cats,users);
+    const myVote=approvalVoteFor(item.approvals||{},user.id,users);
+    const st=getItemStatus(item,cats,users);
+    if(st==="approved")return 3; // fully approved history
+    if(myVote==="approved")return 2; // approved by me, waiting others
+    const others=ids.filter(id=>id!==user.id);
+    const othersApproved=others.length>0&&others.every(id=>approvalVoteFor(item.approvals||{},id,users)==="approved");
+    if(othersApproved)return 0; // only my approval missing
+    return 1; // pending general
+  };
+  const sortByPriority=(list)=>[...list].sort((a,b)=>{
+    const pa=priorityForItem(a),pb=priorityForItem(b);
+    if(pa!==pb)return pa-pb;
+    const da=String(a.date||a.dueDate||"");
+    const db=String(b.date||b.dueDate||"");
+    return db.localeCompare(da);
+  });
+  const mySubmittedExpenses=expenses.filter(e=>e.submittedBy===user.id).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+  const mySubmittedBills=bills.filter(b=>b.submittedBy===user.id).sort((a,b)=>String((b.dueDate||"")).localeCompare(String((a.dueDate||""))));
+  const expenseRows=canAct?sortByPriority(expenses.filter(e=>effectiveExpenseApproverIds(e,cats,users).includes(user.id))):mySubmittedExpenses;
+  const billRows=canAct?sortByPriority(bills.filter(b=>effectiveExpenseApproverIds(b,cats,users).includes(user.id))):mySubmittedBills;
+  const approvalTabs=[["expenses",t("nav.expenses"),expenseRows.length],["bills",t("nav.bills"),billRows.length]];
   return(
     <div>
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.approvals")}</h1>
@@ -3667,11 +3701,13 @@ function ApprovalsView(){
         ))}
       </div>
       {tab==="expenses"&&(
-        myPending.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
-        myPending.map(e=>{
+        expenseRows.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
+        expenseRows.map(e=>{
           const rowApproverIds=effectiveExpenseApproverIds(e,cats,users);
+          const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
+          const ownerName=(users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
           return(
-            <div key={e.id} className="card" style={{marginBottom:9}}>
+            <div key={e.id} className="card" style={{marginBottom:9,background:priorityForItem(e)===3?"#F7F7F7":"#fff",opacity:priorityForItem(e)===2?0.72:1,border:priorityForItem(e)===0?"1px solid #D4AED0":"none"}}>
               <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7}}>
                 {AUTH_URL&&e.receiptPath&&<ReceiptThumb expenseId={e.id}/>}
                 <div style={{flex:1,minWidth:0}}>
@@ -3690,24 +3726,24 @@ function ApprovalsView(){
               </div>
               {(e.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={e} t={t} users={users}/></div>}
               <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(e.approvals,aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {AUTH_URL?(rowApproverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(approvalVoteFor(e.approvals,user.id,users)?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(e.approvals,user.id,users))}</div>:null)):(approvalVoteFor(e.approvals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(e.approvals,user.id,users))}</div>))}
+              {canAct?(AUTH_URL?(rowApproverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(approvalVoteFor(e.approvals,user.id,users)?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(e.approvals,user.id,users))}</div>:null)):(approvalVoteFor(e.approvals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(e.approvals,user.id,users))}</div>))):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>)}
             </div>
           );
         })
       )}
       {tab==="bills"&&(
-        myPendingBills.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
-        myPendingBills.map(b=>{
+        billRows.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
+        billRows.map(b=>{
           const bApprovals=b.approvals||{};
           const approverIds=effectiveExpenseApproverIds(b,cats,users);
           return(
-            <div key={b.id} className="card" style={{marginBottom:9}}>
+            <div key={b.id} className="card" style={{marginBottom:9,background:priorityForItem(b)===3?"#F7F7F7":"#fff",opacity:priorityForItem(b)===2?0.72:1,border:priorityForItem(b)===0?"1px solid #D4AED0":"none"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:7}}>
                 <div><div style={{fontWeight:600,fontSize:13}}>{b.name}</div><div style={{fontSize:11,color:"#9CAA9F",marginTop:2}}>{b.category} · {billFreqLabel(b.frequency,t)}{isBillRecurringFrequency(b.frequency)&&b.dayOfMonth?` · ${t("bills.day")} ${b.dayOfMonth}`:""}</div></div>
                 <div style={{fontSize:17,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(b)}</div>
               </div>
               <div style={{marginBottom:7}}>{approverIds.map(aid=>{const a=bApprovals[aid];return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {approvalVoteFor(bApprovals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[b.id]||""} onChange={ev=>setANote(p=>({...p,[b.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"approved","bill")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"rejected","bill")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(bApprovals,user.id,users))}</div>)}
+              {canAct?(approvalVoteFor(bApprovals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[b.id]||""} onChange={ev=>setANote(p=>({...p,[b.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"approved","bill")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"rejected","bill")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(bApprovals,user.id,users))}</div>)):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>)}
             </div>
           );
         })
@@ -3904,7 +3940,13 @@ function BillsView(){
   };
 
   const submitBill=()=>{
-    if(!billValid){setBillSubmitAttempt(true);setBillFormError("Completa los campos obligatorios marcados con *");return;}
+    console.log("=== SUBMIT START ===", {
+      formValues: newBill,
+      userId: user.id,
+      authUrl: AUTH_URL,
+      hasToken: !!API.token
+    });
+    if(!billValid){console.log("=== SUBMIT BLOCKED ===", { reason: "required_fields_invalid_bill" });setBillSubmitAttempt(true);setBillFormError("Completa los campos obligatorios marcados con *");return;}
     const billPaidByDefaultOwner=newBill.ownerId||user.id;
     let billPaidBy=[{userId:billPaidByDefaultOwner,amount:billTotal,pct:100}];
     let billSplitMode;
@@ -3912,7 +3954,7 @@ function BillsView(){
       billPaidBy=buildPaidByFromSplitState(billSplits,billTotal,billSpMode);
       billSplitMode=billPaidBy.length>1?billSpMode:undefined;
     }
-    if(billSplitOn&&(billPctBad||billAmtBad)){setBillFormError("Revisa el reparto antes de enviar.");return;}
+    if(billSplitOn&&(billPctBad||billAmtBad)){console.log("=== SUBMIT BLOCKED ===", { reason: "bill_split_invalid", billPctBad, billAmtBad });setBillFormError("Revisa el reparto antes de enviar.");return;}
     const freq=newBill.frequency||"once";
     const rec=isBillRecurringFrequency(freq);
     if(AUTH_URL){
@@ -3939,8 +3981,10 @@ function BillsView(){
             ...(billSplitMode?{splitMode:billSplitMode}:{}),
             ...(!rec&&wantPaid?{alreadyPaid:true,paidAt:payDateStr}:{}),
           };
+          console.log("=== SUBMIT BODY ===", JSON.stringify(postBody, null, 2));
           console.log("PRE-SUBMIT", { body: postBody, authUrl: AUTH_URL, token: API.token });
-          const { response, responseBody } = await debugApiRequest("POST", "/bills", postBody);
+          const { response, responseBody, rawText } = await debugApiRequest("POST", "/bills", postBody);
+          console.log("=== SUBMIT RESPONSE ===", { status: response.status, ok: response.ok, body: rawText });
           console.log("POST-SUBMIT", { status: response.status, responseBody });
           if (!response.ok) throw new Error(responseBody.error || ("HTTP " + response.status));
           const d=responseBody;
@@ -3953,7 +3997,7 @@ function BillsView(){
             }
           }
           if(rec&&wantPaid){
-            if(!window.confirm(t("bills.confirmMarkPaidRecurring")))return;
+            if(!window.confirm(t("bills.confirmMarkPaidRecurring"))){console.log("=== SUBMIT BLOCKED ===", { reason: "bill_mark_paid_recurring_cancelled" });return;}
             await API.post("/bills/"+encodeURIComponent(newId)+"/mark-paid",{paidAt:payDateStr});
           }
           const full=await API.get("/bills");
@@ -3962,6 +4006,7 @@ function BillsView(){
           appLog("info","bill_submitted",{name:newBill.name,userId:user.id,paid:!!wantPaid});
           setNewBill({...BB});setNewBillRecPrev(null);setBillSplitOn(false);setBillSplits([]);setBillSpMode("equal");setBillFormError("");setAddBill(false);
         }catch(e){
+          console.log("=== SUBMIT BLOCKED ===", { reason: "submit_bill_catch", error: e?.message });
           if(isOfflineQueuedError(e)){
             const amt=parseMoney(newBill.amount);
             const ob=normalizeItem({
@@ -4079,8 +4124,6 @@ function BillsView(){
       {addBill&&(
         <div className="card" style={{marginBottom:11}}>
           <div style={{fontWeight:600,fontSize:13,marginBottom:9}}>{t("bills.newBill")}</div>
-{/* BLOQUE A — Datos básicos */}
-          <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Datos básicos</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
             <div><label className="lbl">{t("label.billName")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" placeholder={t("label.billName")} value={newBill.name} style={brs(bh&&!String(newBill.name||"").trim())} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
             <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" type="text" inputMode="decimal" placeholder="0,00" value={newBill.amount} style={brs(bh&&!billAmtOk)} onChange={e=>setNewBill(p=>({...p,amount:e.target.value}))}/></div>
@@ -4088,8 +4131,6 @@ function BillsView(){
             <div><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.departmentId||""} style={brs(bh&&!String(newBill.departmentId||"").trim())} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}><option value="">{t("label.department")}</option>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
             <div><label className="lbl">Titular <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.ownerId||user.id} style={brs(bh&&!String(newBill.ownerId||user.id).trim())} onChange={e=>setNewBill(p=>({...p,ownerId:e.target.value}))}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
           </div>
-          {/* BLOQUE B — Periodicidad */}
-          <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Periodicidad</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:6}}>
             <div><label className="lbl">{t("label.frequency")}</label><select className="inp" value={newBill.frequency===""||newBill.frequency==="once"?"once":newBill.frequency} onChange={e=>{
               const v=e.target.value;
@@ -4106,10 +4147,8 @@ function BillsView(){
             {isBillRecurringFrequency(newBill.frequency)&&<div style={{gridColumn:newBill.frequency==="monthly"?"1/-1":undefined}}><label className="lbl">{t("label.endDate")}</label><input className="inp" type="date" value={newBill.endDate||""} onChange={e=>setNewBill(p=>({...p,endDate:e.target.value}))}/><div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>}
           </div>
           {(()=>{const f=newBill.frequency;if(!isBillRecurringFrequency(f))return newBill.dueDate?<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Vencimiento: {fmtDate(newBill.dueDate)}</div>:null;if(f==="monthly"&&newBill.dayOfMonth){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá cada mes, el día {newBill.dayOfMonth}{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}if(f==="custom"&&newBill.intervalMonths&&newBill.dayOfMonth){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá cada {newBill.intervalMonths} meses, el día {newBill.dayOfMonth}{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}if(f==="annual"){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá una vez al año{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}return null;})()}
-          {/* BLOQUE C — Soporte y contexto */}
-          <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>Soporte y contexto</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
-            <div><label className="lbl">{t("bills.description")}</label><textarea className="inp" rows={2} placeholder={t("bills.descPlaceholder")} style={{resize:"vertical"}} value={newBill.description} onChange={e=>setNewBill(p=>({...p,description:e.target.value}))}/></div>
+            <div><label className="lbl">{t("bills.description")}</label><textarea className="inp" rows={1} placeholder={t("bills.descPlaceholder")} style={{resize:"vertical"}} value={newBill.description} onChange={e=>setNewBill(p=>({...p,description:e.target.value}))}/></div>
           </div>
           <div style={{marginTop:10}}>
             <SplitAllocationEditor t={t} user={billOwner} users={users} totalAmount={billTotal} splitOn={billSplitOn} setSplitOn={setBillSplitOn} splits={billSplits} setSplits={setBillSplits} spMode={billSpMode} setSpMode={setBillSpMode}/>
@@ -4137,16 +4176,16 @@ function BillsView(){
             )}
             <input ref={billNewFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} capture="environment" style={{display:"none"}} onChange={handleNewBillFile}/>
           </div>
-          <div style={{marginTop:12,marginBottom:9}}>
-            <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>{t("bills.paymentQuestion")}</div>
+          <div style={{marginTop:10,marginBottom:8,display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+            <label className="lbl" style={{marginBottom:0}}>{t("bills.paymentQuestion")}</label>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
-                <input type="radio" name="nb-pay" checked={newBill.paymentChoice!=="paid"} onChange={()=>setNewBill(p=>({...p,paymentChoice:"pending"}))}/>
-                {t("bills.paymentPending")}
-              </label>
               <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
                 <input type="radio" name="nb-pay" checked={newBill.paymentChoice==="paid"} onChange={()=>setNewBill(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}))}/>
                 {t("bills.paymentPaid")}
+              </label>
+              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+                <input type="radio" name="nb-pay" checked={newBill.paymentChoice!=="paid"} onChange={()=>setNewBill(p=>({...p,paymentChoice:"pending"}))}/>
+                {t("bills.paymentPending")}
               </label>
             </div>
             {newBill.paymentChoice==="paid"&&(
@@ -4307,7 +4346,7 @@ function BillsView(){
                   {l:t("label.category"),v:b.category},
                   {l:t("label.department"),v:(b.departmentId&&(departments.find(d=>d.id===b.departmentId)||{}).name)||t("detail.noDepartment")},
                   {l:t("label.frequency"),v:billFreqLabel(b.frequency,t)},
-                  ...(isBillRecurringFrequency(b.frequency)?[{l:t("bills.day"),v:b.dayOfMonth||"—"}]:[]),
+                  ...(isBillRecurringFrequency(b.frequency)?[{l:t("bills.day"),v:b.dayOfMonth||"N/A"}]:[]),
                   ...(!isBillRecurringFrequency(b.frequency)?[{l:t("label.date"),v:fmtDate((b.dueDate&&String(b.dueDate).slice(0,10))||getBillFilterDateRef(b))}]:[]),
                   {l:"Titular",v:(users.find(u=>u.id===(b.ownerId||b.submittedBy))||{name:UNKNOWN_USER_NAME}).name},
                   {l:t("bills.submittedBy"),v:(users.find(u=>u.id===b.submittedBy)||{name:UNKNOWN_USER_NAME}).name},
@@ -4517,7 +4556,7 @@ function ReportsView(){
             return(
             <div key={m.ym} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:0}}>
               <div style={{fontSize:9,fontWeight:600,color:G,fontVariantNumeric:"tabular-nums",textAlign:"center",lineHeight:1.2,minHeight:22}}>
-                {m.total>0?fmt(m.total):"—"}
+                {m.total>0?fmt(m.total):"0,00 €"}
               </div>
               <div style={{
                 width:"100%",maxWidth:40,height:trendBarTrackPx,display:"flex",flexDirection:"column",justifyContent:"flex-end",alignItems:"center",
@@ -4605,7 +4644,7 @@ function ReportsView(){
                         return(
                           <div key={e.id} className="row-hover" role="button" tabIndex={0} onKeyDown={ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();setView("expenses");setDetailId(e.id);setPanel("detail");}}} onClick={()=>{setView("expenses");setDetailId(e.id);setPanel("detail");}} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 0",borderBottom:"1px solid #F0EBE3",cursor:"pointer"}}>
                             <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontWeight:600,fontSize:12,lineHeight:1.35}}>{e.description||"—"}</div>
+                              <div style={{fontWeight:600,fontSize:12,lineHeight:1.35}}>{e.description||"Sin descripción"}</div>
                               <div style={{fontSize:10,color:"#9CAA9F",marginTop:3}}>{fmtDate(e.date)} · {t("filter.submitter")}: {subN} · {e.category}</div>
                             </div>
                             <div style={{textAlign:"right",flexShrink:0}}>
@@ -4668,7 +4707,7 @@ function ApiIntegrationsCard({ inline = false }) {
 
         <div style={{ background: "#F5F0EA", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
           <div style={{ fontWeight: 600, fontSize: 11, color: G, marginBottom: 6 }}>
-            Power BI / Excel — Cómo conectar
+            Power BI / Excel: cómo conectar
           </div>
           <div style={{ fontSize: 10, color: "#4B5E52", lineHeight: 1.7 }}>
             1. Pulsa <strong>Descargar datos (JSON)</strong> más abajo<br />
@@ -4731,15 +4770,15 @@ function AdminReadme(){
 
           <div style={S.heading}>ROLES</div>
           <div style={S.body}>
-            <b>user</b> — puede enviar gastos y facturas, subir recibos, exportar.<br/>
-            <b>admin</b> — todo lo anterior + aprobar/rechazar ítems de sus categorías, pausar/eliminar facturas.<br/>
-            <b>superadmin</b> — todo lo anterior + gestionar usuarios, categorías, ver el App Log y aprobar cuentas nuevas.
+            <b>user</b> puede enviar gastos y facturas, subir recibos, exportar.<br/>
+            <b>admin</b> todo lo anterior + aprobar/rechazar ítems de sus categorías, pausar/eliminar facturas.<br/>
+            <b>superadmin</b> todo lo anterior + gestionar usuarios, categorías, ver el App Log y aprobar cuentas nuevas.
           </div>
 
           <div style={S.heading}>CÓDIGOS DE ÍTEM</div>
           <div style={S.body}>
             Formato: <span style={S.code}>EXP-YYYYMMDD-XXXX</span> (gasto) / <span style={S.code}>FAC-YYYYMMDD-XXXX</span> (factura).<br/>
-            Son <b>inmutables</b> — se generan en el momento del envío y no cambian aunque el ítem se edite.<br/>
+            Son <b>inmutables</b>, se generan en el momento del envío y no cambian aunque el ítem se edite.<br/>
             Úsalos como ancla de trazabilidad en auditorías, conciliaciones y exports.<br/>
             El código aparece en la fila de lista, en el panel de detalle y en el CSV exportado.
           </div>
@@ -4759,7 +4798,7 @@ function AdminReadme(){
             Cada exportación CSV registra un evento <span style={S.code}>exported</span> en el auditTrail de cada ítem exportado.
           </div>
 
-          <div style={S.heading}>LOCALSTORE — CLAVES</div>
+          <div style={S.heading}>LOCALSTORE: CLAVES</div>
           <div style={S.body}>
             <span style={S.code}>sol-users</span> usuarios · <span style={S.code}>sol-exp</span> gastos · <span style={S.code}>sol-bills</span> facturas · <span style={S.code}>sol-cats</span> categorías<br/>
             <span style={S.code}>sol-pwd</span> contraseñas (plaintext, solo modo local)<br/>
@@ -4926,10 +4965,10 @@ function PendingUsersPanel(){
         {pending.map(u=>(
           <div key={u.id} style={{padding:"10px 0",borderBottom:"1px solid #F5F0EA",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name||"—"}</div>
+              <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name||"N/A"}</div>
               <div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{u.email}</div>
               <div style={{fontSize:9,color:"#B5C0B8",marginTop:1}}>
-                Solicitado: {u.createdAt?new Date(u.createdAt).toLocaleDateString("es-ES"):"—"} · ID: {String(u.id).slice(0,12)}
+                Solicitado: {u.createdAt?new Date(u.createdAt).toLocaleDateString("es-ES"):"N/A"} · ID: {String(u.id).slice(0,12)}
               </div>
             </div>
             <div style={{display:"flex",gap:5,flexShrink:0}}>
@@ -5131,7 +5170,7 @@ function DepartmentsSettingsBlock({t}){
         </button>
         {showArchived&&(
           <div style={{marginTop:8}}>
-            {archived.length===0&&<div style={{fontSize:11,color:"#9CAA9F"}}>—</div>}
+            {archived.length===0&&<div style={{fontSize:11,color:"#9CAA9F"}}>Sin archivados</div>}
             {archived.map(d=>(
               <div key={d.id} style={{borderBottom:"1px solid #F5F0EA",padding:"8px 0"}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -5306,6 +5345,7 @@ function SettingsView(){
                   setNuErr("");
                   if(!nu.name){setNuErr("El nombre es obligatorio.");return;}
                   if(!nu.email){setNuErr("El correo es obligatorio.");return;}
+                  if(!String(nu.email).includes("@")){setNuErr("Correo no válido.");return;}
                   if(!nu.tempPw||nu.tempPw.length<8){setNuErr(t("msg.tempPwRequired"));return;}
                   const newId=nu.name.toLowerCase().replace(/\s+/g,"-")+"-"+Date.now();
                   if(AUTH_URL){
@@ -5346,7 +5386,7 @@ function SettingsView(){
             <div key={u.id}>
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA"}}>
                 <UserAvatar user={u} size={28} fontSize={8}/>
-                <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"–"} · {u.role==="superadmin"?t("role.superadmin"):u.role==="admin"?t("role.admin"):t("role.user")}</div></div>
+                <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"N/A"} · {u.role==="superadmin"?t("role.superadmin"):u.role==="admin"?t("role.admin"):t("role.user")}</div></div>
                 <div style={{display:"flex",gap:3,flexShrink:0,flexWrap:"wrap"}}>
                   <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(u.id);setEf({name:u.name,title:u.title||"",email:u.email||"",phone:u.phone||"",role:u.role,color:u.color});}}>{t("action.edit")}</button>
                   {AUTH_URL&&u.id!==user.id&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #C4B5FD",background:"transparent",color:"#5B21B6",cursor:"pointer"}} onClick={()=>{setResetFor(resetFor===u.id?null:u.id);setResetPwInput("");}}>{t("team.resetPassword")}</button>}
@@ -5508,7 +5548,7 @@ function SettingsView(){
                 </label>
               ))}
               <label className="lbl">{t("settings.monthlyBudget")}</label>
-              <input className="inp" style={{marginBottom:8,fontSize:13}} type="text" inputMode="decimal" placeholder="—" value={newCat.budget||""} onChange={e=>setNewCat(p=>({...p,budget:e.target.value}))}/>
+              <input className="inp" style={{marginBottom:8,fontSize:13}} type="text" inputMode="decimal" placeholder="N/A" value={newCat.budget||""} onChange={e=>setNewCat(p=>({...p,budget:e.target.value}))}/>
               <div style={{display:"flex",gap:7,marginTop:8}}>
                 <button className="btn-primary" style={{flex:1,fontSize:12,padding:"6px 10px"}} onClick={()=>{if(!newCat.name)return;const picked=(newCat.approverIds||[]).filter(id=>users.some(u=>u.id===id));const approverIds=picked.length>0?picked:getAdminIds(users);if(approverIds.length<2){alert("Se requieren al menos 2 aprobadores por categoría.");return;}const b=newCat.budget===""||newCat.budget==null?null:parseFloat(String(newCat.budget).replace(",","."));saveCats([...cats,{id:"c"+Date.now(),name:newCat.name,approverIds,archived:false,budget:isNaN(b)?null:b}]);setNewCat({name:"",approverIds:[],budget:""});setAddCat(false);}}>{t("action.add")}</button>
                 <button className="btn-secondary" style={{flex:1,fontSize:12,padding:"6px 10px"}} onClick={()=>setAddCat(false)}>{t("action.cancel")}</button>
@@ -5541,7 +5581,7 @@ function SettingsView(){
                     </label>
                   ))}
                   <label className="lbl">{t("settings.monthlyBudget")}</label>
-                  <input className="inp" style={{marginBottom:8,fontSize:13}} type="text" inputMode="decimal" placeholder="—" value={catForm.budget||""} onChange={e=>setCatForm(p=>({...p,budget:e.target.value}))}/>
+                  <input className="inp" style={{marginBottom:8,fontSize:13}} type="text" inputMode="decimal" placeholder="N/A" value={catForm.budget||""} onChange={e=>setCatForm(p=>({...p,budget:e.target.value}))}/>
                   <div style={{display:"flex",gap:7,marginTop:8}}><button className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>{const picked=(catForm.approverIds||[]).filter(id=>users.some(u=>u.id===id));const approverIds=picked.length>=2?picked:getAdminIds(users);if(approverIds.length<2){alert("Se requieren al menos 2 aprobadores por categoría.");return;}const b=catForm.budget===""||catForm.budget==null?null:parseFloat(String(catForm.budget).replace(",","."));saveCats(cats.map(x=>x.id===c.id?{...x,name:catForm.name,approverIds,budget:isNaN(b)?null:b}:x));setCatEdit(null);}}>{t("action.save")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setCatEdit(null)}>{t("action.cancel")}</button></div>
                 </div>
               )}
@@ -5761,7 +5801,7 @@ function SolanaExpenses(){
 
   useEffect(()=>{
     const onSess=()=>{
-      dispatchSolanaToast("Sesión expirada — inicia sesión de nuevo","error");
+      dispatchSolanaToast("Sesión expirada, inicia sesión de nuevo","error");
       API.token=null;
       try{sessionStorage.removeItem("sol-session-token");}catch(e){}
       myExpFilterClearedRef.current=false;
@@ -5998,7 +6038,7 @@ function SolanaExpenses(){
       setCamOn(true);
     }catch(e){
       camCaptureForBillRef.current=false;
-      alert(t("msg.cameraUnavailable")+(e&&e.message?" — "+e.message:""));
+      alert(t("msg.cameraUnavailable")+(e&&e.message?" "+e.message:""));
     }
   };
   const startCam=async()=>{
@@ -6094,8 +6134,15 @@ function SolanaExpenses(){
 
   /* ── SUBMIT EXPENSE ─────────────────────────────────────────────────────── */
   const submitExp=()=>{
+    console.log("=== SUBMIT START ===", {
+      formValues: form,
+      userId: user.id,
+      authUrl: AUTH_URL,
+      hasToken: !!API.token
+    });
     const amount=parseMoney(form.amount);
     if(!amount||amount<=0||!String(form.description||"").trim()||!String(form.category||"").trim()||!String(form.date||"").trim()||!form.departmentId||!ownerId){
+      console.log("=== SUBMIT BLOCKED ===", { reason: "required_fields_invalid_expense" });
       setFormError("Completa los campos obligatorios marcados con *");
       return;
     }
@@ -6103,14 +6150,14 @@ function SolanaExpenses(){
     let splitModeOut=undefined;
     if(splitOn&&splits.filter(s=>s.checked).length>1){
       const sel=splits.filter(s=>s.checked);
-      if(sel.length<2){setFormError(t("split.minParticipants"));return;}
+      if(sel.length<2){console.log("=== SUBMIT BLOCKED ===", { reason: "split_min_participants" });setFormError(t("split.minParticipants"));return;}
       if(spMode==="percentage"){
         const sumPct=sel.reduce((s,x)=>s+(Number(x.percent)||0),0);
-        if(Math.abs(sumPct-100)>0.5){setFormError(t("msg.splitMustTotal100"));return;}
+        if(Math.abs(sumPct-100)>0.5){console.log("=== SUBMIT BLOCKED ===", { reason: "split_percentage_sum_invalid", sumPct });setFormError(t("msg.splitMustTotal100"));return;}
       }
       if(spMode==="amount"){
         const sumAmt=sel.reduce((s,x)=>s+(Number(x.value)||0),0);
-        if(Math.abs(sumAmt-amount)>0.01){setFormError(t("msg.valueMustMatch")+fmt(amount));return;}
+        if(Math.abs(sumAmt-amount)>0.01){console.log("=== SUBMIT BLOCKED ===", { reason: "split_amount_sum_invalid", sumAmt, amount });setFormError(t("msg.valueMustMatch")+fmt(amount));return;}
       }
       paidBy=buildPaidByFromSplitState(splits.filter(s=>users.some(u=>u.id===s.userId)),amount,spMode);
       if(paidBy.length>1)splitModeOut=spMode;
@@ -6146,8 +6193,10 @@ function SolanaExpenses(){
             ivaAmount:ivaAmountAuth,
             ...(splitModeOut?{splitMode:splitModeOut}:{}),
           };
+          console.log("=== SUBMIT BODY ===", JSON.stringify(body, null, 2));
           console.log("PRE-SUBMIT", { body, authUrl: AUTH_URL, token: API.token });
-          const { response, responseBody } = await debugApiRequest("POST", "/expenses", body);
+          const { response, responseBody, rawText } = await debugApiRequest("POST", "/expenses", body);
+          console.log("=== SUBMIT RESPONSE ===", { status: response.status, ok: response.ok, body: rawText });
           console.log("POST-SUBMIT", { status: response.status, responseBody });
           if (!response.ok) throw new Error(responseBody.error || ("HTTP " + response.status));
           const d = responseBody;
@@ -6182,6 +6231,7 @@ function SolanaExpenses(){
           resetForm();setPanel("detail");setDetailId(exp.id);
           appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
         }catch(err){
+          console.log("=== SUBMIT BLOCKED ===", { reason: "submit_expense_catch", error: err?.message });
           if(isOfflineQueuedError(err)){
             const baseTrailOff=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
             const{approvals:optAppr,auditTrail:optTrail}=shouldAutoApproveSubmitterAuth
@@ -6222,7 +6272,7 @@ function SolanaExpenses(){
             appLog("info","expense_submitted",{itemCode:optimistic.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt,pendingSync:true});
             return;
           }
-          alert(err.message||"Error al guardar el gasto.");
+          setFormError(err?.message||"No se pudo guardar el gasto. Revisa los datos e inténtalo de nuevo.");
         }
       })();
       return;
@@ -6674,7 +6724,7 @@ function SolanaExpenses(){
       <div style={{display:"flex",height:"100vh",width:"100vw",fontFamily:"'DM Sans',system-ui,sans-serif",background:"#F5F0EA",color:"#1A0E18",overflow:"hidden",WebkitOverflowScrolling:"touch"}}>
         {AUTH_URL&&!online&&(
           <div style={{position:"fixed",top:0,left:0,right:0,zIndex:7500,background:"rgba(245,240,234,0.95)",color:"#5C4A56",fontSize:11,padding:"7px 14px",textAlign:"center",borderBottom:"1px solid rgba(60,10,55,0.1)",fontWeight:500}}>
-            Sin conexión — los cambios se guardarán localmente
+            Sin conexión, los cambios se guardarán localmente
           </div>
         )}
         {toasts.length>0&&(
