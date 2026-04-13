@@ -6582,24 +6582,6 @@ function SolanaExpenses(){
     const ids=effectiveExpenseApproverIds(b,cats,users);
     return ids.includes(user.id)&&getItemStatus(b,cats,users)==="pending"&&approvalVoteFor(b.approvals,user.id,users)!=="approved";
   });
-  useEffect(()=>{
-    console.log("BILLS DEBUG", {
-      allBills: bills.map(b => ({ id: b.id, status: getItemStatus(b, cats, users), approvals: b.approvals })),
-      myPendingBills: myPendingBills.length,
-      userId: user.id,
-      isApprover: isApprover,
-    });
-  },[bills,myPendingBills.length,user.id,isApprover,cats,users]);
-  useEffect(()=>{
-    console.log("CORE CHECK", {
-      expenses: expenses.length,
-      bills: bills.length,
-      myPending: myPending.length,
-      myPendingBills: myPendingBills.length,
-      lastExpense: expenses[0],
-      lastBill: bills[0]
-    });
-  },[expenses,bills,myPending.length,myPendingBills.length]);
   /* Approved expenses: totApproved = sum of EUR once per expense (splits do not duplicate). Per-person = sum of paidBy-weighted EUR shares. */
   const approvedExpenses=expenses.filter(e=>getItemStatus(e,cats,users)==="approved");
   const totApproved=approvedExpenses.reduce((s,e)=>s+eurForExpense(e),0);
