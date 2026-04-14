@@ -601,18 +601,8 @@ const DEF_CATS=[
   {id:"c8",name:"Travel",          archived:false,approverIds:[]},
   {id:"c9",name:"Otro",           archived:false,approverIds:[]},
 ];
-const SEED_EXP=[
-  {id:"e1",amount:45.80, description:"Verduras de mercado prueba proveedor",category:"Food & Beverage",date:"2026-03-10",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:45.80}], approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"Mercat de la Boqueria",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-10T10:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-10T14:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-10T15:30:00Z",note:""}],departmentId:"dept_operaciones"},
-  {id:"e2",amount:1200.0,description:"Depósito máquina de espresso",         category:"Equipment",       date:"2026-03-08",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:600,pct:50},{userId:"marc",amount:600,pct:50}],splitMode:"equal",approvals:{sergio:"approved",marc:"approved"},receipt:null,receiptType:null,notes:"La Marzocco Linea Mini",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-08T09:00:00Z"},{action:"approved",by:"sergio",at:"2026-03-08T09:01:00Z",note:""},{action:"approved",by:"marc",at:"2026-03-08T12:00:00Z",note:""}],departmentId:"dept_estrategia"},
-  {id:"e3",amount:850.0, description:"Diseño de marca Janneke",           category:"Marketing",       date:"2026-03-12",submittedBy:"sergio", paidBy:[{userId:"sergio",amount:850}],  approvals:{sergio:"approved"},receipt:null,receiptType:null,notes:"Logo, tipografía, tarjetas",auditTrail:[{action:"submitted",by:"sergio",at:"2026-03-12T11:00:00Z"},{action:"auto_approved",by:"sergio",at:"2026-03-12T11:01:00Z",meta:{reason:"submitter_is_approver"}}],departmentId:"dept_branding"},
-  {id:"e4",amount:320.0, description:"Consultoría legal contrato de alquiler",        category:"Legal",           date:"2026-03-14",submittedBy:"humbert",paidBy:[{userId:"humbert",amount:320}], approvals:{},receipt:null,receiptType:null,notes:"Condiciones del contrato",auditTrail:[{action:"submitted",by:"humbert",at:"2026-03-14T16:00:00Z"}],departmentId:"dept_estrategia"},
-  {id:"e5",amount:180.0, description:"Material de investigación de mercado",         category:"Marketing",       date:"2026-03-15",submittedBy:"anna",   paidBy:[{userId:"anna",amount:90,pct:50},{userId:"humbert",amount:90,pct:50}],splitMode:"equal",approvals:{marc:"approved"},receipt:null,receiptType:null,notes:"Análisis de competencia",auditTrail:[{action:"submitted",by:"anna",at:"2026-03-15T10:00:00Z"},{action:"approved",by:"marc",at:"2026-03-15T14:00:00Z",note:""}],departmentId:"dept_branding"},
-];
-const SEED_BILLS=[
-  {id:"b1",name:"Notion workspace",amount:89, frequency:"monthly",category:"Software",dayOfMonth:"1", submittedBy:"marc",   approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"marc",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}],departmentId:"dept_branding"},
-  {id:"b2",name:"Unidad de almacenamiento",    amount:150,frequency:"monthly",category:"Rent",    dayOfMonth:"5", submittedBy:"sergio", approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"sergio",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}],departmentId:"dept_operaciones"},
-  {id:"b3",name:"Dominio y hosting",amount:20, frequency:"monthly",category:"Software",dayOfMonth:"15",submittedBy:"sergio", approvals:{sergio:"approved",marc:"approved"},active:true,auditTrail:[{action:"submitted",by:"sergio",at:"2026-01-01T00:00:00Z"},{action:"approved",by:"sergio",at:"2026-01-01T01:00:00Z",note:""},{action:"approved",by:"marc",at:"2026-01-01T01:00:00Z",note:""}],departmentId:"dept_branding"},
-];
+const SEED_EXP = [];
+const SEED_BILLS = [];
 /* === END SEED DATA ========================================================== */
 
 /* ── VERSION & SCHEMA ──────────────────────────────────────────────────────── */
@@ -620,7 +610,7 @@ const DATA_VERSION=6; // increment when schema changes; triggers normalize()
 /** Backend auth server URL. Set to empty string to use local-only mode (no signup/server login). */
 const AUTH_URL = (typeof window !== "undefined" && window.__SOLANA_AUTH_URL__) || "";
 /** Staging: allow sign-in without password (local users only). Email match if filled; otherwise first user. Set false for production. */
-const STAGING_OPEN_LOGIN = true;
+const STAGING_OPEN_LOGIN = false;
 
 /** HTTP API (same origin as AUTH_URL). Bearer token + refresh on 401. Offline write queue. */
 const OFFLINE_QUEUE_KEY = "solana_offline_queue";
@@ -1052,23 +1042,21 @@ function SplitDivergeIcon({size=16,color="#4B5E52"}){
     </svg>
   );
 }
-/** Collapsible paidBy breakdown (multi-participant); hover or click keeps panel useful on touch */
+/** Collapsible paidBy breakdown (multi-participant); click-only toggle */
 function ExpenseSplitBreakdown({e,t,users}){
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const [stick,setStick]=useState(false);
-  const [hover,setHover]=useState(false);
   const paid=e.paidBy||[];
   const n=paid.length;
-  useEffect(()=>{setStick(false);setHover(false);},[e.id]);
+  useEffect(()=>{setStick(false);},[e.id]);
   if(n<=1)return null;
-  const open=stick||hover;
+  const open=stick;
   const denom=Number(e.amount)||1;
   return(
-    <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}} onMouseLeave={()=>setHover(false)}>
+    <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}}>
       <div style={{fontSize:11,color:"#9CAA9F",marginBottom:4}}>{t("label.paidBy")}</div>
       <button type="button"
         aria-expanded={open}
-        onMouseEnter={()=>setHover(true)}
         onClick={()=>setStick(s=>!s)}
         style={{display:"flex",alignItems:"center",gap:8,width:"100%",border:"1px solid #EDE8E0",borderRadius:8,padding:"7px 10px",background:"#FAF7F2",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
         <SplitDivergeIcon size={16} color={G}/>
@@ -1077,7 +1065,7 @@ function ExpenseSplitBreakdown({e,t,users}){
         <span style={{marginLeft:"auto",fontSize:11,color:"#9CAA9F"}}>{open?"▼":"▶"}</span>
       </button>
       {open&&(
-        <div style={{marginTop:8,padding:"9px 11px",background:"#F5F0EA",borderRadius:8}} onMouseEnter={()=>setHover(true)}>
+        <div style={{marginTop:8,padding:"9px 11px",background:"#F5F0EA",borderRadius:8}}>
           {paid.map(p=>{
             const pct=p.pct!=null&&!isNaN(Number(p.pct))?Number(p.pct):Math.round((p.amount/denom)*1000)/10;
             const u=getU(p.userId);
@@ -1572,7 +1560,7 @@ function getBillFilterDateRef(b){
 
 /* ── UPLOAD RULES ──────────────────────────────────────────────────────────── */
 /* Session idle timeout — 30 minutes of inactivity signs the user out */
-const IDLE_TIMEOUT_MS   = 30 * 60 * 1000; // 30 min
+const IDLE_TIMEOUT_MS   = 8 * 60 * 60 * 1000; // 8 hours
 const IDLE_WARNING_MS   = 28 * 60 * 1000; // warn 2 min before
 const COMMON_PASSWORDS  = new Set([
   "password","123456","qwerty","abc123","letmein","monkey","dragon",
@@ -1846,6 +1834,7 @@ function readLocalDepartments(){
 }
 const BF={amount:"",description:"",category:"",date:"",notes:"",ivaRate:"21",departmentId:"",ownerId:""};
 const DRAFT_KEY="sol-exp-draft";
+const APPROVAL_BILL_FOCUS_KEY="sol-approval-focus-bill-id";
 const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",dueDate:"",departmentId:"",ownerId:"",paymentChoice:"paid",paymentDate:""};
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
@@ -2788,6 +2777,7 @@ function LoginScreen({ users, onLogin, passwords }) {
 function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode}){
   const expAmt=Number(totalAmount)||0;
   const ownerId=user?.id||"";
+  useEffect(()=>{if(spMode==="percentage")setSpMode("equal");},[spMode,setSpMode]);
   const calcEq=(arr,amt)=>{
     const on=arr.filter(s=>s.checked);const n=on.length||1;
     const eqPct=parseFloat((100/n).toFixed(2));
@@ -2829,7 +2819,7 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
       {splitOn&&(
         <div>
           <div style={{display:"flex",gap:4,marginBottom:10}}>
-            {[["equal",t("form.splitEq")],["percentage",t("form.splitPct")],["amount",t("form.splitEur")]].map(([m,lbl])=>(
+            {[["equal",t("form.splitEq")],["amount",t("form.splitEur")]].map(([m,lbl])=>(
               <button key={m} type="button" style={{flex:1,padding:"4px 2px",borderRadius:12,fontSize:10,fontWeight:600,border:"1.5px solid",borderColor:spMode===m?G:"#DDD6CC",background:spMode===m?G:"#fff",color:spMode===m?"#fff":"#4B5E52",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>{setSpMode(m);setSplits(prev=>calcEq(prev,expAmt));}}>{lbl}</button>
             ))}
           </div>
@@ -2856,7 +2846,6 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
                   <div key={s.userId} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,padding:"4px 0"}}>
                     <span style={{color:"#4B5E52"}}>{u.name}</span>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      {spMode==="percentage"&&<input className="inp" type="number" step="0.01" min="0" max="100" style={{width:64,fontSize:12,padding:"3px 6px",textAlign:"right"}} value={pct} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,percent:Math.max(0,Number(e.target.value)||0)}:x))}/>}
                       {spMode==="amount"&&<input className="inp" type="number" step="0.01" min="0" style={{width:80,fontSize:12,padding:"3px 6px",textAlign:"right"}} value={amt} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,value:Math.max(0,Number(e.target.value)||0)}:x))}/>}
                       {spMode==="equal"&&<span style={{fontWeight:600,fontVariantNumeric:"tabular-nums",color:G}}>{fmt(amt)}</span>}
                       <span style={{fontSize:10,color:"#9CAA9F",minWidth:36,textAlign:"right"}}>{pct}%</span>
@@ -2866,7 +2855,6 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
               })}
             </div>
           )}
-          {spMode==="percentage"&&Math.abs(totPct-100)>0.5&&<div style={{fontSize:11,color:"#A32D2D",marginTop:6}}>Los porcentajes suman {totPct.toFixed(1)}% deben sumar 100%</div>}
           {spMode==="amount"&&Math.abs(totAmt-expAmt)>0.01&&<div style={{fontSize:11,color:"#A32D2D",marginTop:6}}>Los importes suman {fmt(totAmt)} el total es {fmt(expAmt)}</div>}
         </div>
       )}
@@ -2936,12 +2924,10 @@ function NewPanel(){
     },500);
     return()=>clearTimeout(draftTimer.current);
   },[form,splitOn,spMode,splits]);
-  const totPct=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.percent)||0),0);
   const totVal=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
   const checkedSplitCount=splits.filter(s=>s.checked).length;
-  const pctSumBad=splitOn&&spMode==="percentage"&&Math.abs(totPct-100)>0.5;
   const amtSumBad=splitOn&&spMode==="amount"&&expAmt>0&&Math.abs(totVal-expAmt)>0.01;
-  const splitSubmitBlocked=splitOn&&(users.length<2||checkedSplitCount<2||pctSumBad||amtSumBad);
+  const splitSubmitBlocked=splitOn&&(users.length<2||checkedSplitCount<2||amtSumBad);
   const toggleSplitOn=()=>{
     if(users.length<2)return;
     if(splitOn){setSplitOn(false);setSpMode("equal");return;}
@@ -2978,9 +2964,8 @@ function NewPanel(){
               setForm(p=>({...p,...f,date:f.date!=null?String(f.date):"",ivaRate:f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):String(readIvaDefault()),departmentId:f.departmentId!=null?String(f.departmentId):""}));
               if(draftPrompt.splitOn&&draftPrompt.splits?.length){
                 let m=draftPrompt.spMode||"equal";
-                if(m==="percent")m="percentage";
                 if(m==="value")m="amount";
-                if(!["equal","percentage","amount"].includes(m))m="equal";
+                if(!["equal","amount"].includes(m))m="equal";
                 setSplitOn(true);setSpMode(m);setSplits(draftPrompt.splits);
               }
               setDraftPrompt(null);
@@ -3054,7 +3039,7 @@ function NewPanel(){
           onClick={()=>{
             setFormError("");
             if(splitSubmitBlocked){
-              console.log("=== SUBMIT BLOCKED ===", { reason: "split_submit_blocked_button_guard", splitOn, checkedSplitCount, pctSumBad, amtSumBad });
+              console.log("=== SUBMIT BLOCKED ===", { reason: "split_submit_blocked_button_guard", splitOn, checkedSplitCount, amtSumBad });
               setFormError("Revisa el reparto antes de enviar.");
               return;
             }
@@ -3079,6 +3064,9 @@ function DetailPanel(){
   const [ef,setEf]=useState({});        // edit form fields
   const [efDirty,setEfDirty]=useState(false);
   const [efRecPrev,setEfRecPrev]=useState(null);
+  const [efSplitOn,setEfSplitOn]=useState(false);
+  const [efSplits,setEfSplits]=useState([]);
+  const [efSpMode,setEfSpMode]=useState("equal");
   const [commentText,setCommentText]=useState("");
   const editFileRef=useRef(null);
   const e=expenses.find(x=>x.id===detailId);
@@ -3099,8 +3087,25 @@ function DetailPanel(){
     setEf({description:e.description,amount:String(e.amount),category:e.category,
       date:e.date,notes:e.notes||"",receipt:e.receipt||null,receiptType:e.receiptType||null,
       paidBy:e.paidBy,
+      ownerId:e.ownerId||e.submittedBy,
       ivaRate:defIva,
       departmentId:e.departmentId||defaultDeptId});
+    const ownerNow=e.ownerId||e.submittedBy||user.id;
+    const amtNow=parseMoney(String(e.amount))||0;
+    const baseSplits=users.map(u=>{
+      const hit=(e.paidBy||[]).find(p=>p.userId===u.id);
+      return{
+        userId:u.id,
+        checked:!!hit||u.id===ownerNow,
+        percent:Number(hit?.pct)||0,
+        value:Number(hit?.amount)||0,
+      };
+    });
+    const splitModeInit=e.splitMode==="amount"?"amount":"equal";
+    const checkedTotal=Math.max(1,baseSplits.filter(x=>x.checked).length);
+    setEfSplitOn((e.paidBy||[]).length>1);
+    setEfSpMode(splitModeInit);
+    setEfSplits(baseSplits.map(s=>s.checked?s:{...s,percent:0,value:0}).map(s=>s.checked&&splitModeInit==="equal"?{...s,value:parseFloat((amtNow/checkedTotal).toFixed(2))}:s));
     setEfRecPrev(e.receipt?(e.receiptType?.includes("pdf")?"PDF":`data:${e.receiptType||"image/jpeg"};base64,${e.receipt}`):null);
     setEditMode(true);setEfDirty(false);
   };
@@ -3111,8 +3116,19 @@ function DetailPanel(){
   const saveEdit=()=>{
     if(!ef.description||!ef.amount){return;}
     if(!ef.departmentId){alert(t("msg.deptRequired"));return;}
+    const editDate = new Date(ef.date);
+    const now = new Date();
+    const minDate = new Date(now.getFullYear() - 5, 0, 1);
+    const maxDate = new Date(now.getFullYear() + 1, 11, 31);
+    if(!ef.date || isNaN(editDate.getTime()) || editDate < minDate || editDate > maxDate){alert("La fecha debe estar entre los últimos 5 años y el próximo año.");return;}
     if(!confirm(t("expense.confirmEdit")))return;
     const amt=parseMoney(ef.amount)||e.amount;
+    let efPaidBy=ef.paidBy;
+    let efSplitMode=(ef.paidBy||[]).length>1?e.splitMode:undefined;
+    if(efSplitOn&&efSplits.filter(s=>s.checked).length>1){
+      efPaidBy=buildPaidByFromSplitState(efSplits,amt,efSpMode);
+      efSplitMode=efPaidBy.length>1?efSpMode:undefined;
+    }
     const rp=parseFloat(ef.ivaRate);
     const ivaRate=isNaN(rp)?21:rp;
     const ivaAmount=calcIvaParts(amt,ivaRate).iva;
@@ -3122,8 +3138,9 @@ function DetailPanel(){
       category:ef.category,date:ef.date,
       notes:ef.notes,receipt:ef.receipt||null,
       receiptType:ef.receiptType||null,
-      paidBy:ef.paidBy,
-      splitMode:(ef.paidBy||[]).length>1?e.splitMode:undefined,
+      ownerId:ef.ownerId||e.ownerId||e.submittedBy,
+      paidBy:efPaidBy,
+      splitMode:efSplitMode,
       ivaRate,ivaAmount,
       departmentId:ef.departmentId||defaultDeptId,
     },e);
@@ -3163,6 +3180,7 @@ function DetailPanel(){
           </div>
           <div style={{marginBottom:8}}><label className="lbl">{t("label.category")}</label><select className="inp" value={ef.category||"Otro"} onChange={ev=>{setEf(p=>({...p,category:ev.target.value}));setEfDirty(true);}}>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
           <div style={{marginBottom:8}}><label className="lbl">{t("label.department")} *</label><select className="inp" value={ef.departmentId||""} onChange={ev=>{setEf(p=>({...p,departmentId:ev.target.value}));setEfDirty(true);}}>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+          <div style={{marginBottom:8}}><label className="lbl">Titular del gasto *</label><select className="inp" value={ef.ownerId||e.ownerId||e.submittedBy||user.id} onChange={ev=>{const oid=ev.target.value;setEf(p=>({...p,ownerId:oid}));setEfSplits(prev=>prev.map(s=>s.userId===oid?{...s,checked:true}:s));setEfDirty(true);}}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
           <div style={{marginBottom:10,background:GL,borderRadius:8,padding:10}}>
             <label className="lbl">{t("form.ivaRate")}</label>
             <select className="inp" value={ef.ivaRate||String(readIvaDefault())} onChange={ev=>{setEf(p=>({...p,ivaRate:ev.target.value}));setEfDirty(true);}}>
@@ -3176,6 +3194,7 @@ function DetailPanel(){
             );})()}
           </div>
           <div style={{marginBottom:10}}><label className="lbl">{t("label.notes")}</label><textarea className="inp" rows={2} style={{resize:"vertical"}} value={ef.notes||""} onChange={ev=>{setEf(p=>({...p,notes:ev.target.value}));setEfDirty(true);}}/></div>
+          <SplitAllocationEditor t={t} user={(users.find(u=>u.id===(ef.ownerId||e.ownerId||e.submittedBy||user.id))||user)} users={users} totalAmount={parseMoney(ef.amount)||0} splitOn={efSplitOn} setSplitOn={v=>{setEfSplitOn(v);if(!v)setEfSpMode("equal");setEfDirty(true);}} splits={efSplits} setSplits={v=>{setEfSplits(v);setEfDirty(true);}} spMode={efSpMode} setSpMode={v=>{setEfSpMode(v==="amount"?"amount":"equal");setEfDirty(true);}}/>
           {/* Receipt edit */}
           <div style={{marginBottom:10}}>
             <label className="lbl">{t("label.receipt")}</label>
@@ -3447,16 +3466,19 @@ function DashboardView(){
       {drillPerson&&<PersonDrilldown userId={drillPerson} onClose={()=>setDrillPerson(null)}/>}
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.dashboard")}</h1>
       <p style={{fontSize:13,color:"#6B7B72",marginBottom:16}}>{t("dash.welcome")}, {user.name.split(" ")[0]}</p>
-      {myPending.length>0&&(
+      {(myPending.length>0||myPendingBills.length>0)&&(
         <div style={{background:"#F5E8F4",border:"1px solid #D4AED0",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
-          <div><div style={{fontSize:13,fontWeight:600,color:"#5C1057"}}>{myPending.length} {t("dash.awaitingApproval")}</div><div style={{fontSize:11,color:"#8A3D87",marginTop:1}}>{t("dash.bothMustApprove")}</div></div>
+          <div>
+            <div style={{fontSize:13,fontWeight:600,color:"#5C1057"}}>{myPending.length+myPendingBills.length} pendiente(s) de tu aprobación</div>
+            <div style={{fontSize:11,color:"#8A3D87",marginTop:1}}>
+              {myPending.length>0&&myPendingBills.length>0
+                ? `${myPending.length} gasto(s) · ${myPendingBills.length} factura(s)`
+                : myPending.length>0
+                  ? `${myPending.length} gasto(s)`
+                  : `${myPendingBills.length} factura(s)`}
+            </div>
+          </div>
           <button className="btn-sm" style={{fontSize:12}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
-        </div>
-      )}
-      {myPendingBills.length>0&&(
-        <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
-          <div><div style={{fontSize:13,fontWeight:600,color:"#92400E"}}>{myPendingBills.length} {t("dash.billsAwaitingApproval")}</div></div>
-          <button className="btn-sm" style={{fontSize:12,background:T}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:16}}>
@@ -3472,9 +3494,9 @@ function DashboardView(){
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         {[
           {label:t("dash.totalInvested"),val:dashTotApproved,sub:t("dash.totalInvestedSub")||"Gastos aprobados"},
-          {label:t("dash.thisMonth"),val:mTotal,sub:today.toLocaleString("es-ES",{month:"long"})},
-          {label:t("dash.monthlyFixed"),val:totFixed,sub:t("dash.monthlyFixedSub")||"Coste mensual fijo"},
-          {label:"Presupuesto restante",val:budgetRemainingTotal,sub:"Suma de departamentos",valueColor:budgetRemainingTotal<0?"#991B1B":G}
+          {label:"Presupuesto restante",val:budgetRemainingTotal,sub:"Suma de departamentos",valueColor:budgetRemainingTotal<0?"#991B1B":G},
+          {label:"Gasto en "+today.toLocaleString("es-ES",{month:"long"}).charAt(0).toUpperCase()+today.toLocaleString("es-ES",{month:"long"}).slice(1),val:mTotal,sub:""},
+          {label:t("dash.monthlyFixed"),val:totFixed,sub:t("dash.monthlyFixedSub")||"Coste mensual fijo"}
         ].map((m,i)=>{
           const kpi=fmtKpi(m.val);
           return(
@@ -3699,8 +3721,8 @@ function ReceiptThumb({expenseId}){
 
 /* ── APPROVALS ─────────────────────────────────────────────────────────────── */
 function ApprovalsView(){
-  const{t,expenses,bills,cats,users,isAdmin,isApprover,user,aNote,setANote,approve}=useApp();
-  const [tab,setTab]=useState("expenses");
+  const{t,expenses,bills,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel}=useApp();
+  const [tab,setTab]=useState("all");
   const canAct=isApprover||isAdmin;
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const priorityForItem=(item)=>{
@@ -3723,70 +3745,62 @@ function ApprovalsView(){
   });
   const mySubmittedExpenses=expenses.filter(e=>e.submittedBy===user.id).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
   const mySubmittedBills=bills.filter(b=>b.submittedBy===user.id).sort((a,b)=>String((b.dueDate||"")).localeCompare(String((a.dueDate||""))));
-  const expenseRows=canAct?sortByPriority(expenses.filter(e=>effectiveExpenseApproverIds(e,cats,users).includes(user.id))):mySubmittedExpenses;
-  const billRows=canAct?sortByPriority(bills.filter(b=>effectiveExpenseApproverIds(b,cats,users).includes(user.id))):mySubmittedBills;
-  const approvalTabs=[["expenses",t("nav.expenses"),expenseRows.length],["bills",t("nav.bills"),billRows.length]];
+  const expenseRows=canAct?sortByPriority(expenses.filter(e=>effectiveExpenseApproverIds(e,cats,users).includes(user.id))).map(e=>({...e,_approvalType:"expense"})):mySubmittedExpenses.map(e=>({...e,_approvalType:"expense"}));
+  const billRows=canAct?sortByPriority(bills.filter(b=>effectiveExpenseApproverIds(b,cats,users).includes(user.id))).map(b=>({...b,_approvalType:"bill"})):mySubmittedBills.map(b=>({...b,_approvalType:"bill"}));
+  const allRows=sortByPriority([...expenseRows,...billRows]);
+  const activeRows=tab==="all"?allRows:tab==="expenses"?expenseRows:billRows;
+  const approvalTabs=[["all","Todos",allRows.length],["expenses",t("nav.expenses"),expenseRows.length],["bills",t("nav.bills"),billRows.length]];
   return(
     <div>
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.approvals")}</h1>
       <p style={{fontSize:13,color:"#6B7B72",marginBottom:14}}>{AUTH_URL?"Gastos enviados al servidor pendientes de decisión.":t("dash.bothMustApprove")}</p>
       <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {approvalTabs.map(([id,lbl,cnt])=>(
+      {approvalTabs.map(([id,lbl,cnt])=>(
           <button key={id} style={{padding:"5px 14px",borderRadius:18,fontSize:12,fontWeight:500,border:"1.5px solid",borderColor:tab===id?G:"#DDD6CC",background:tab===id?G:"#fff",color:tab===id?"#fff":"#4B5E52",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}
             onClick={()=>setTab(id)}>
             {lbl}
-            {cnt>0&&<span style={{background:BL,color:"#fff",borderRadius:"50%",width:14,height:14,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700}}>{cnt}</span>}
           </button>
         ))}
       </div>
-      {tab==="expenses"&&(
-        expenseRows.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
-        expenseRows.map(e=>{
-          const rowApproverIds=effectiveExpenseApproverIds(e,cats,users);
-          const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
-          const ownerName=(users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
+      {activeRows.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
+        activeRows.map(item=>{
+          const isBill=item._approvalType==="bill";
+          const rowApproverIds=effectiveExpenseApproverIds(item,cats,users);
+          const submitterName=(users.find(u=>u.id===item.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
+          const ownerName=(users.find(u=>u.id===(item.ownerId||item.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
+          const rowDate=isBill?(item.dueDate||item.date):item.date;
+          const rowTitle=isBill?item.name:item.description;
+          const rowTypeLabel=isBill?"FACTURA":"GASTO";
+          const rowTypeStyle=isBill?{background:"#F5E8F4",color:"#5C1057"}:{background:"#EDE8E0",color:"#4B5E52"};
+          const st=getItemStatus(item,cats,users);
+          const myVote=approvalVoteFor(item.approvals||{},user.id,users);
+          const canActOnRow=canAct&&rowApproverIds.includes(user.id)&&myVote!=="approved";
           return(
-            <div key={e.id} className="card" style={{marginBottom:9,background:priorityForItem(e)===3?"#F7F7F7":"#fff",opacity:priorityForItem(e)===2?0.72:1,border:priorityForItem(e)===0?"1px solid #D4AED0":"none"}}>
+            <div key={`${item._approvalType}-${item.id}`} className="card row-hover" style={{marginBottom:9,background:priorityForItem(item)===3?"#F7F7F7":"#fff",opacity:priorityForItem(item)===2?0.72:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none",cursor:"pointer"}} onClick={()=>{if(isBill){try{sessionStorage.setItem(APPROVAL_BILL_FOCUS_KEY,item.id);}catch(e){}go("bills");}else{setView("expenses");setDetailId(item.id);setPanel("detail");}}}>
               <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7}}>
-                {AUTH_URL&&e.receiptPath&&<ReceiptThumb expenseId={e.id}/>}
+                {!isBill&&AUTH_URL&&item.receiptPath&&<ReceiptThumb expenseId={item.id}/>}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                        <div style={{fontWeight:600,fontSize:13}}>{e.description}</div>
-                        {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:10,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {(e.paidBy||[]).length}</span>}
+                        <div style={{fontWeight:600,fontSize:13}}>{rowTitle}</div>
+                        <span style={{display:"inline-flex",alignItems:"center",padding:"1px 6px",borderRadius:7,fontSize:10,fontWeight:700,...rowTypeStyle}}>{rowTypeLabel}</span>
+                        {(item.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:10,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {(item.paidBy||[]).length}</span>}
                       </div>
-                      <div style={{fontSize:11,color:"#9CAA9F",marginTop:2}}>{fmtDate(e.date)} · Titular: {ownerName} · Enviado por: {submitterName} · {e.category}</div>
+                      <div style={{fontSize:11,color:"#9CAA9F",marginTop:2}}>{fmtDate(rowDate)} · Titular: {ownerName} · Enviado por: {submitterName} · {item.category}</div>
                     </div>
-                    <div style={{fontSize:17,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmtExpenseAmt(e)}</div>
+                    <div style={{fontSize:17,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmtExpenseAmt(item)}</div>
                   </div>
-                  {AUTH_URL&&e.status&&<div style={{marginTop:6}}><span style={{padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,background:ST.pending.bg,color:ST.pending.color}}>{String(e.status).toUpperCase()}</span></div>}
+                  {AUTH_URL&&item.status&&<div style={{marginTop:6}}><span style={{padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,background:ST.pending.bg,color:ST.pending.color}}>{String(item.status).toUpperCase()}</span></div>}
                 </div>
               </div>
-              {(e.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={e} t={t} users={users}/></div>}
-              <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(e.approvals,aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {canAct?(AUTH_URL?(rowApproverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(approvalVoteFor(e.approvals,user.id,users)?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(e.approvals,user.id,users))}</div>:null)):(approvalVoteFor(e.approvals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(e.approvals,user.id,users))}</div>))):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>)}
+              {(item.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={item} t={t} users={users}/></div>}
+              <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(item.approvals||{},aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
+              {canAct?(canActOnRow?(<div onClick={ev=>ev.stopPropagation()}><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[item.id]||""} onChange={ev=>setANote(p=>({...p,[item.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(item.id,"approved",isBill?"bill":"expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(item.id,"rejected",isBill?"bill":"expense")}>{t("action.reject")}</button></div></div>):(myVote?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+myVote)}</div>:(!canAct||!rowApproverIds.includes(user.id)?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>:null))):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>)}
             </div>
           );
         })
-      )}
-      {tab==="bills"&&(
-        billRows.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
-        billRows.map(b=>{
-          const bApprovals=b.approvals||{};
-          const approverIds=effectiveExpenseApproverIds(b,cats,users);
-          return(
-            <div key={b.id} className="card" style={{marginBottom:9,background:priorityForItem(b)===3?"#F7F7F7":"#fff",opacity:priorityForItem(b)===2?0.72:1,border:priorityForItem(b)===0?"1px solid #D4AED0":"none"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:7}}>
-                <div><div style={{fontWeight:600,fontSize:13}}>{b.name}</div><div style={{fontSize:11,color:"#9CAA9F",marginTop:2}}>{b.category} · {billFreqLabel(b.frequency,t)}{isBillRecurringFrequency(b.frequency)&&b.dayOfMonth?` · ${t("bills.day")} ${b.dayOfMonth}`:""}</div></div>
-                <div style={{fontSize:17,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(b)}</div>
-              </div>
-              <div style={{marginBottom:7}}>{approverIds.map(aid=>{const a=bApprovals[aid];return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {canAct?(approvalVoteFor(bApprovals,user.id,users)!=="approved"?(<div><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[b.id]||""} onChange={ev=>setANote(p=>({...p,[b.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"approved","bill")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(b.id,"rejected","bill")}>{t("action.reject")}</button></div></div>):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+approvalVoteFor(bApprovals,user.id,users))}</div>)):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>)}
-            </div>
-          );
-        })
-      )}
+      }
     </div>
   );
 }
@@ -3795,6 +3809,16 @@ function ApprovalsView(){
 function BillsView(){
   const{t,user,users,bills,cats,saveBills,isAdmin,totFixed,addBill,setAddBill,newBill,setNewBill,markBillPaid,departments,defaultDeptId,newBillRecPrev,setNewBillRecPrev,startCamForNewBill}=useApp();
   const [selBillId,setSelBillId]=useState(null);
+  useEffect(()=>{
+    try{
+      const focusId=sessionStorage.getItem(APPROVAL_BILL_FOCUS_KEY);
+      if(!focusId)return;
+      if(bills.some(b=>b.id===focusId)){
+        setSelBillId(focusId);
+        sessionStorage.removeItem(APPROVAL_BILL_FOCUS_KEY);
+      }
+    }catch(e){}
+  },[bills]);
   const [editBillId,setEditBillId]=useState(null);
   const [billSearch,setBillSearch]=useState("");
   const [billCatFlt,setBillCatFlt]=useState("");
@@ -3834,7 +3858,6 @@ function BillsView(){
   const [billSubmitAttempt,setBillSubmitAttempt]=useState(false);
   const billOwner=users.find(u=>u.id===(newBill.ownerId||user.id))||user;
   const billTotal=parseMoney(newBill.amount)||0;
-  const billPctBad=billSplitOn&&billSpMode==="percentage"&&Math.abs(billSplits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.percent)||0),0)-100)>0.5;
   const billAmtBad=billSplitOn&&billSpMode==="amount"&&Math.abs(billSplits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0)-billTotal)>0.01;
   useEffect(()=>{if(billValid)setBillSubmitAttempt(false);},[billValid]);
   const bh=billSubmitAttempt&&!billValid;
@@ -3873,7 +3896,7 @@ function BillsView(){
     });
     setEditBillSplitOn(initialPaidBy.length>1);
     setEditBillSplits(seed);
-    setEditBillSpMode((b.splitMode==="equal"||b.splitMode==="percentage"||b.splitMode==="amount")?b.splitMode:"equal");
+    setEditBillSpMode((b.splitMode==="equal"||b.splitMode==="amount")?b.splitMode:"equal");
     setEditBillId(b.id);setEditBillDirty(false);
   };
   const cancelEditBill=()=>{
@@ -3986,6 +4009,15 @@ function BillsView(){
       hasToken: !!API.token
     });
     if(!billValid){console.log("=== SUBMIT BLOCKED ===", { reason: "required_fields_invalid_bill" });setBillSubmitAttempt(true);setBillFormError("Completa los campos obligatorios marcados con *");return;}
+    const billDateRaw=billDueISOFromForm(newBill);
+    const billDateObj=new Date(billDateRaw);
+    const billNow = new Date();
+    const billMinDate = new Date(billNow.getFullYear() - 5, 0, 1);
+    const billMaxDate = new Date(billNow.getFullYear() + 1, 11, 31);
+    if(!billDateRaw || isNaN(billDateObj.getTime()) || billDateObj < billMinDate || billDateObj > billMaxDate){
+      setBillFormError("La fecha debe estar entre los últimos 5 años y el próximo año.");
+      return;
+    }
     const billPaidByDefaultOwner=newBill.ownerId||user.id;
     let billPaidBy=[{userId:billPaidByDefaultOwner,amount:billTotal,pct:100}];
     let billSplitMode;
@@ -3993,7 +4025,7 @@ function BillsView(){
       billPaidBy=buildPaidByFromSplitState(billSplits,billTotal,billSpMode);
       billSplitMode=billPaidBy.length>1?billSpMode:undefined;
     }
-    if(billSplitOn&&(billPctBad||billAmtBad)){console.log("=== SUBMIT BLOCKED ===", { reason: "bill_split_invalid", billPctBad, billAmtBad });setBillFormError("Revisa el reparto antes de enviar.");return;}
+    if(billSplitOn&&billAmtBad){console.log("=== SUBMIT BLOCKED ===", { reason: "bill_split_invalid", billAmtBad });setBillFormError("Revisa el reparto antes de enviar.");return;}
     const freq=newBill.frequency||"once";
     const rec=isBillRecurringFrequency(freq);
     if(AUTH_URL){
@@ -4010,6 +4042,9 @@ function BillsView(){
             vendor:newBill.name,
             amount:parseMoney(newBill.amount),
             category:newBill.category,
+            approvalRequired: effectiveExpenseApproverIds(
+              {category: newBill.category}, cats, users
+            ).filter(id => id !== user.id),
             dueDate:due,
             notes:newBill.description||undefined,
             recurring:rec,
@@ -4169,6 +4204,25 @@ function BillsView(){
             <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.category} style={brs(bh&&!String(newBill.category||"").trim())} onChange={e=>setNewBill(p=>({...p,category:e.target.value}))}><option value="">{t("label.category")}</option>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
             <div><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.departmentId||""} style={brs(bh&&!String(newBill.departmentId||"").trim())} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}><option value="">{t("label.department")}</option>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
             <div><label className="lbl">Titular <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.ownerId||user.id} style={brs(bh&&!String(newBill.ownerId||user.id).trim())} onChange={e=>setNewBill(p=>({...p,ownerId:e.target.value}))}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
+            <div style={{gridColumn:"1/-1"}}>
+              <label className="lbl" style={{marginBottom:0}}>{t("bills.paymentQuestion")}</label>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+                  <input type="radio" name="nb-pay" checked={newBill.paymentChoice==="paid"} onChange={()=>setNewBill(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}))}/>
+                  {t("bills.paymentPaid")}
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+                  <input type="radio" name="nb-pay" checked={newBill.paymentChoice!=="paid"} onChange={()=>setNewBill(p=>({...p,paymentChoice:"pending"}))}/>
+                  {t("bills.paymentPending")}
+                </label>
+              </div>
+              {newBill.paymentChoice==="paid"&&(
+                <div style={{marginTop:8}}>
+                  <label className="lbl">{t("bills.paymentDate")}</label>
+                  <input className="inp" type="date" value={newBill.paymentDate||(newBill.dueDate||"").slice(0,10)||new Date().toISOString().slice(0,10)} onChange={e=>setNewBill(p=>({...p,paymentDate:e.target.value}))}/>
+                </div>
+              )}
+            </div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:6}}>
             <div><label className="lbl">{t("label.frequency")}</label><select className="inp" value={newBill.frequency===""||newBill.frequency==="once"?"once":newBill.frequency} onChange={e=>{
@@ -4214,25 +4268,6 @@ function BillsView(){
               </div>
             )}
             <input ref={billNewFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} capture="environment" style={{display:"none"}} onChange={handleNewBillFile}/>
-          </div>
-          <div style={{marginTop:10,marginBottom:8,display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-            <label className="lbl" style={{marginBottom:0}}>{t("bills.paymentQuestion")}</label>
-            <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
-                <input type="radio" name="nb-pay" checked={newBill.paymentChoice==="paid"} onChange={()=>setNewBill(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}))}/>
-                {t("bills.paymentPaid")}
-              </label>
-              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
-                <input type="radio" name="nb-pay" checked={newBill.paymentChoice!=="paid"} onChange={()=>setNewBill(p=>({...p,paymentChoice:"pending"}))}/>
-                {t("bills.paymentPending")}
-              </label>
-            </div>
-            {newBill.paymentChoice==="paid"&&(
-              <div style={{marginTop:8}}>
-                <label className="lbl">{t("bills.paymentDate")}</label>
-                <input className="inp" type="date" value={newBill.paymentDate||(newBill.dueDate||"").slice(0,10)||new Date().toISOString().slice(0,10)} onChange={e=>setNewBill(p=>({...p,paymentDate:e.target.value}))}/>
-              </div>
-            )}
           </div>
           <div style={{marginTop:9,padding:"8px 10px",background:"#FEF3C7",borderRadius:7,fontSize:11,color:"#92400E",marginBottom:9}}>{t("bills.approvalNote")}</div>
           {billFormError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{billFormError}</div>}
@@ -4329,6 +4364,26 @@ function BillsView(){
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:9}}>
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.billName")}</label><input className="inp" style={{fontSize:14}} value={editBillForm.name||""} onChange={e=>{setEditBillForm(p=>({...p,name:e.target.value}));setEditBillDirty(true);}}/></div>
                       <div><label className="lbl">{t("label.amount")}</label><input className="inp" type="text" inputMode="decimal" style={{fontSize:12}} value={editBillForm.amount||""} onChange={e=>{setEditBillForm(p=>({...p,amount:e.target.value}));setEditBillDirty(true);}}/></div>
+                      <div style={{gridColumn:"1/-1"}}><label className="lbl">Titular</label><select className="inp" style={{fontSize:14}} value={editBillForm.ownerId||user.id} onChange={e=>{const oid=e.target.value;setEditBillForm(p=>({...p,ownerId:oid}));setEditBillSplits(prev=>prev.map(s=>s.userId===oid?{...s,checked:true}:s));setEditBillDirty(true);}}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
+                      <div style={{gridColumn:"1/-1"}}>
+                        <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>{t("bills.paymentQuestion")}</div>
+                        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+                          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+                            <input type="radio" name={"eb-pay-top-"+b.id} checked={(editBillForm.paymentChoice||"pending")!=="paid"} onChange={()=>{setEditBillForm(p=>({...p,paymentChoice:"pending"}));setEditBillDirty(true);}}/>
+                            {t("bills.paymentPending")}
+                          </label>
+                          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+                            <input type="radio" name={"eb-pay-top-"+b.id} checked={editBillForm.paymentChoice==="paid"} onChange={()=>{setEditBillForm(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}));setEditBillDirty(true);}}/>
+                            {t("bills.paymentPaid")}
+                          </label>
+                        </div>
+                        {editBillForm.paymentChoice==="paid"&&(
+                          <div style={{marginTop:8}}>
+                            <label className="lbl">{t("bills.paymentDate")}</label>
+                            <input className="inp" type="date" value={editBillForm.paymentDate||(editBillForm.dueDate||"").slice(0,10)||new Date().toISOString().slice(0,10)} onChange={e=>{setEditBillForm(p=>({...p,paymentDate:e.target.value}));setEditBillDirty(true);}}/>
+                          </div>
+                        )}
+                      </div>
                       <div><label className="lbl">{t("label.frequency")}</label><select className="inp" style={{fontSize:14}} value={editBillForm.frequency===""||editBillForm.frequency==="once"?"once":editBillForm.frequency||"once"} onChange={e=>{const v=e.target.value;setEditBillDirty(true);setEditBillForm(p=>{const next={...p,frequency:v==="once"?"":v};if(!isBillRecurringFrequency(next.frequency))next.dayOfMonth="";else if(!next.dayOfMonth)next.dayOfMonth="1";return next;});}}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
                       {!isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">{t("label.date")}</label><input className="inp" style={{fontSize:14}} type="date" value={editBillForm.dueDate||""} onChange={e=>{setEditBillForm(p=>({...p,dueDate:e.target.value}));setEditBillDirty(true);}}/></div>}
                       {isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">{t("label.dayOfMonth")}</label><input className="inp" type="number" min="1" max="31" style={{fontSize:12}} value={editBillForm.dayOfMonth||""} onChange={e=>{setEditBillForm(p=>({...p,dayOfMonth:e.target.value}));setEditBillDirty(true);}}/></div>}
@@ -4336,30 +4391,10 @@ function BillsView(){
                       {isBillRecurringFrequency(editBillForm.frequency)&&<div style={{gridColumn:editBillForm.frequency==="monthly"?"1/-1":undefined}}><label className="lbl">{t("label.endDate")}</label><input className="inp" style={{fontSize:14}} type="date" value={editBillForm.endDate||""} onChange={e=>{setEditBillForm(p=>({...p,endDate:e.target.value}));setEditBillDirty(true);}}/><div style={{fontSize:11,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>}
                       <div><label className="lbl">{t("label.category")}</label><select className="inp" style={{fontSize:14}} value={editBillForm.category||"Otro"} onChange={e=>{setEditBillForm(p=>({...p,category:e.target.value}));setEditBillDirty(true);}}>{activeCats.map(c=><option key={c.id}>{c.name}</option>)}</select></div>
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")}</label><select className="inp" style={{fontSize:14}} value={editBillForm.departmentId||""} onChange={e=>{setEditBillForm(p=>({...p,departmentId:e.target.value}));setEditBillDirty(true);}}>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-                      <div style={{gridColumn:"1/-1"}}><label className="lbl">Titular</label><select className="inp" style={{fontSize:14}} value={editBillForm.ownerId||user.id} onChange={e=>{const oid=e.target.value;setEditBillForm(p=>({...p,ownerId:oid}));setEditBillSplits(prev=>prev.map(s=>s.userId===oid?{...s,checked:true}:s));setEditBillDirty(true);}}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("bills.description")}</label><textarea className="inp" rows={2} style={{resize:"vertical",fontSize:12}} value={editBillForm.description||""} onChange={e=>{setEditBillForm(p=>({...p,description:e.target.value}));setEditBillDirty(true);}}/></div>
                     </div>
                     <div style={{marginBottom:10}}>
                       <SplitAllocationEditor t={t} user={(users.find(u=>u.id===(editBillForm.ownerId||user.id))||user)} users={users} totalAmount={parseMoney(editBillForm.amount)||0} splitOn={editBillSplitOn} setSplitOn={v=>{setEditBillSplitOn(v);setEditBillDirty(true);}} splits={editBillSplits} setSplits={v=>{setEditBillSplits(v);setEditBillDirty(true);}} spMode={editBillSpMode} setSpMode={v=>{setEditBillSpMode(v);setEditBillDirty(true);}}/>
-                    </div>
-                    <div style={{marginTop:10,marginBottom:10}}>
-                      <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>{t("bills.paymentQuestion")}</div>
-                      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-                        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
-                          <input type="radio" name={"eb-pay-"+b.id} checked={(editBillForm.paymentChoice||"pending")!=="paid"} onChange={()=>{setEditBillForm(p=>({...p,paymentChoice:"pending"}));setEditBillDirty(true);}}/>
-                          {t("bills.paymentPending")}
-                        </label>
-                        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
-                          <input type="radio" name={"eb-pay-"+b.id} checked={editBillForm.paymentChoice==="paid"} onChange={()=>{setEditBillForm(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}));setEditBillDirty(true);}}/>
-                          {t("bills.paymentPaid")}
-                        </label>
-                      </div>
-                      {editBillForm.paymentChoice==="paid"&&(
-                        <div style={{marginTop:8}}>
-                          <label className="lbl">{t("bills.paymentDate")}</label>
-                          <input className="inp" type="date" value={editBillForm.paymentDate||(editBillForm.dueDate||"").slice(0,10)||new Date().toISOString().slice(0,10)} onChange={e=>{setEditBillForm(p=>({...p,paymentDate:e.target.value}));setEditBillDirty(true);}}/>
-                        </div>
-                      )}
                     </div>
                     {/* Attachment edit */}
                     <div style={{marginBottom:9}}>
@@ -4519,19 +4554,25 @@ function PaymentCalendar(){
 function ReportsView(){
   const{t,expenses,bills,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,departmentsWithStats,setDetailId,setPanel}=useApp();
   const [expFilter,setExpFilter]=useState("all");
+  const filteredExpenses = expFilter === "all"
+    ? expenses.filter(e => getItemStatus(e, cats, users) !== "deleted")
+    : expenses.filter(e => getItemStatus(e, cats, users) === expFilter);
+  const filterLabel = expFilter==="all" ? ""
+    : expFilter==="approved" ? ` — ${t("reports.approvedOnly")}`
+    : ` — ${t("reports.pendingOnly")}`;
   const [openPersonLog,setOpenPersonLog]=useState({});
   const personInvestmentRows=useMemo(()=>users.map(u=>{
-    const approvedTotal=expenses.filter(e=>getItemStatus(e,cats,users)==="approved").reduce((s,e)=>s+shareEurInExpense(e,u.id),0);
+    const filteredTotal=filteredExpenses.reduce((s,e)=>s+shareEurInExpense(e,u.id),0);
     const submittedCount=expenses.filter(e=>e.submittedBy===u.id&&getItemStatus(e,cats,users)!=="deleted").length;
-    const logExpenses=expenses.filter(e=>{
+    const logExpenses=filteredExpenses.filter(e=>{
       const st=getItemStatus(e,cats,users);
       if(st==="deleted"||st==="rejected")return false;
       if(st!=="approved"&&st!=="pending")return false;
       return(e.paidBy||[]).some(p=>p&&p.userId===u.id);
     }).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
-    return{...u,approvedTotal,submittedCount,logExpenses};
-  }).sort((a,b)=>b.approvedTotal-a.approvedTotal),[users,expenses,cats]);
-  const catTotals=cats.filter(c=>!c.archived).map(c=>({cat:c.name,total:expenses.filter(e=>e.category===c.name&&getItemStatus(e,cats)==="approved").reduce((s,e)=>s+eurForExpense(e),0)})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+    return{...u,filteredTotal,submittedCount,logExpenses};
+  }).sort((a,b)=>b.filteredTotal-a.filteredTotal),[users,expenses,cats,filteredExpenses]);
+  const catTotals=cats.filter(c=>!c.archived).map(c=>({cat:c.name,total:filteredExpenses.filter(e=>e.category===c.name).reduce((s,e)=>s+eurForExpense(e),0)})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const maxC=catTotals[0]?.total||1;
   const monthlyTrend=(()=>{
     const now=new Date();
@@ -4540,8 +4581,8 @@ function ReportsView(){
       const d=new Date(now.getFullYear(),now.getMonth()-i,1);
       const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
       const label=d.toLocaleString("es-ES",{month:"short"});
-      const total=expenses
-        .filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date?.slice(0,7)===ym)
+      const total=filteredExpenses
+        .filter(e=>e.date?.slice(0,7)===ym)
         .reduce((s,e)=>s+eurForExpense(e),0);
       months.push({ym,label,total});
     }
@@ -4588,7 +4629,7 @@ function ReportsView(){
       </div>
       {hasTrendData&&(
       <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>{t("reports.monthlyTrend")}</div>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>{t("reports.monthlyTrend")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
         <div style={{display:"flex",alignItems:"flex-end",gap:6,minHeight:120}}>
           {monthlyTrend.map(m=>{
             const barH=Math.max(4,Math.round((m.total/maxMonth)*trendBarTrackPx));
@@ -4614,11 +4655,12 @@ function ReportsView(){
         </div>
       </div>
       )}
+      {/* Department bars always show approved spend — controlled by context */}
       <DepartmentBudgetBars t={t} rows={departmentsWithStats} title={t("dash.deptBudgetsTitle")}/>
       {/* By category */}
       <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:11}}>{t("reports.byCategory")}</div>
-        {catTotals.length===0&&<div style={{color:"#9CAA9F",fontSize:12}}>{t("reports.noApproved")}</div>}
+        <div style={{fontWeight:600,fontSize:13,marginBottom:11}}>{t("reports.byCategory")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
+        {catTotals.length===0&&<div style={{color:"#9CAA9F",fontSize:12}}>Sin datos para el filtro seleccionado</div>}
         {catTotals.map(({cat,total})=>(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt(cat);setExpFlt("all");go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{cat}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:4,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:T,width:`${total/maxC*100}%`,transition:"width 0.4s"}}/></div></div>))}
       </div>
       {/* Budget vs actual */}
@@ -4627,7 +4669,7 @@ function ReportsView(){
         const budgeted=cats.filter(c=>!c.archived&&c.budget!=null&&c.budget>0);
         if(budgeted.length===0)return null;
         const rowsB=budgeted.map(c=>{
-          const spent=expenses.filter(e=>e.category===c.name&&getItemStatus(e,cats)==="approved"&&e.date?.slice(0,7)===ym).reduce((s,e)=>s+eurForExpense(e),0);
+          const spent=filteredExpenses.filter(e=>e.category===c.name&&e.date?.slice(0,7)===ym).reduce((s,e)=>s+eurForExpense(e),0);
           const pct=c.budget>0?spent/c.budget*100:0;
           const barColor=pct<75?"#16A34A":pct<=100?"#D97706":"#DC2626";
           return{...c,spent,pct,barColor};
@@ -4651,7 +4693,7 @@ function ReportsView(){
       })()}
       {/* Per person — approved share + submitted count + expandable log */}
       <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>{t("reports.perPerson")}</div>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>{t("reports.perPerson")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
         <p style={{fontSize:10,color:"#9CAA9F",marginBottom:12,lineHeight:1.45}}>{t("reports.personLogHint")}</p>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {personInvestmentRows.map(u=>{
@@ -4666,8 +4708,8 @@ function ReportsView(){
                     <div style={{fontSize:10,color:"#6B7B72",marginTop:4}}>{t("reports.submittedCount",{count:String(u.submittedCount)})}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontWeight:800,fontSize:14,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(u.approvedTotal)}</div>
-                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("filter.approved")}</div>
+                    <div style={{fontWeight:800,fontSize:14,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(u.filteredTotal)}</div>
+                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{expFilter==="pending" ? t("status.pending") : t("filter.approved")}</div>
                   </div>
                   <span style={{fontSize:14,color:"#9CAA9F",flexShrink:0,width:18}}>{open?"▼":"▶"}</span>
                 </button>
@@ -4699,10 +4741,15 @@ function ReportsView(){
             );
           })}
         </div>
+        {(() => {
+          const filteredTotal = filteredExpenses.reduce((s,e) => s + eurForExpense(e), 0);
+          return(
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14,paddingTop:12,borderTop:"2px solid #EDE8E0"}}>
           <span style={{fontWeight:700,fontSize:12}}>{t("reports.total")}</span>
-          <span style={{fontWeight:800,color:T,fontSize:14,fontVariantNumeric:"tabular-nums"}}>{fmt(totApproved)}</span>
+          <span style={{fontWeight:800,color:T,fontSize:14,fontVariantNumeric:"tabular-nums"}}>{fmt(filteredTotal)}</span>
         </div>
+          );
+        })()}
       </div>
       {/* Forecast — based on approved active bills only */}
       <div className="card" style={{marginBottom:11}}>
@@ -5654,80 +5701,6 @@ function SettingsView(){
 
       <DepartmentsSettingsBlock t={t}/>
 
-      {/* ── Categories + IVA: admins see categories; IVA editor superadmin only ── */}
-      {(isAdmin||isSA)&&<AccordionSection title={t("settings.accordion.categories")}>
-        {isSA&&(
-        <>
-        <div style={{marginBottom:12}}>
-          <label className="lbl">{t("settings.ivaDefault")}</label>
-          <select className="inp" style={{fontSize:14}} value={String(ivaDefault)} onChange={e=>saveIvaDefault(Number(e.target.value))} aria-label={t("settings.ivaDefault")}>
-            {ivaRates.map(r=><option key={String(r.value)+"-"+r.name} value={r.value}>{formatIvaOptionLabel(r)}</option>)}
-          </select>
-        </div>
-        <IvaRatesEditorBlock t={t} ivaRates={ivaRates} onSave={saveIvaRates}/>
-        <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"16px 0"}}/>
-        </>
-        )}
-        <div style={{fontSize:9,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>{t("settings.sectionCategories")}</div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <button className="btn-sm" style={{fontSize:10}} onClick={()=>{setCatEdit(null);setAddCat(v=>{const n=!v;if(n)setNewCat({name:"",approverIds:[],budget:""});return n;});}}>{t("action.addCategory")}</button>
-          </div>
-          <p style={{fontSize:10,color:"#9CAA9F",marginBottom:10,lineHeight:1.4}}>{t("settings.defaultApprovers")}</p>
-          <p style={{fontSize:10,color:"#7A8B82",marginBottom:10,lineHeight:1.4}}>{t("settings.approverAutoNote")}</p>
-          {addCat&&(
-            <div style={{background:"#F5F0EA",borderRadius:9,padding:12,marginBottom:10}}>
-              <div style={{fontWeight:600,fontSize:12,marginBottom:8}}>{t("settings.newCategory")}</div>
-              <label className="lbl">{t("label.categoryName")}</label>
-              <input className="inp" style={{marginBottom:8,fontSize:13}} value={newCat.name} onChange={e=>setNewCat(p=>({...p,name:e.target.value}))} placeholder={t("settings.categoryName.placeholder")}/>
-              <label className="lbl">{t("label.approvers")}</label>
-              {users.map(u=>(
-                <label key={u.id} style={{display:"flex",alignItems:"center",gap:7,marginBottom:5,fontSize:12,cursor:"pointer"}}>
-                  <input type="checkbox" checked={newCat.approverIds.includes(u.id)} onChange={e=>{const ids=e.target.checked?[...newCat.approverIds,u.id]:newCat.approverIds.filter(x=>x!==u.id);setNewCat(p=>({...p,approverIds:ids}));}}/>
-                  {u.name} <span style={{fontSize:9,color:"#9CAA9F"}}>({u.role})</span>
-                </label>
-              ))}
-              <label className="lbl">{t("settings.monthlyBudget")}</label>
-              <input className="inp" style={{marginBottom:8,fontSize:13}} type="text" inputMode="decimal" placeholder="N/A" value={newCat.budget||""} onChange={e=>setNewCat(p=>({...p,budget:e.target.value}))}/>
-              <div style={{display:"flex",gap:7,marginTop:8}}>
-                <button className="btn-primary" style={{flex:1,fontSize:12,padding:"6px 10px"}} onClick={()=>{if(!newCat.name)return;const picked=(newCat.approverIds||[]).filter(id=>users.some(u=>u.id===id));const approverIds=picked.length>0?picked:getAdminIds(users);if(approverIds.length<2){alert("Se requieren al menos 2 aprobadores por categoría.");return;}const b=newCat.budget===""||newCat.budget==null?null:parseFloat(String(newCat.budget).replace(",","."));saveCats([...cats,{id:"c"+Date.now(),name:newCat.name,approverIds,archived:false,budget:isNaN(b)?null:b}]);setNewCat({name:"",approverIds:[],budget:""});setAddCat(false);}}>{t("action.add")}</button>
-                <button className="btn-secondary" style={{flex:1,fontSize:12,padding:"6px 10px"}} onClick={()=>setAddCat(false)}>{t("action.cancel")}</button>
-              </div>
-            </div>
-          )}
-          {cats.map(c=>(
-            <div key={c.id}>
-              <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA",opacity:c.archived?0.5:1}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:600}}>{c.name}{c.archived&&<span style={{fontSize:9,color:"#9CAA9F",marginLeft:5}}>[archived]</span>}</div>
-                  <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{t("settings.approversLabel")} {effectiveExpenseApproverIds({category:c.name},cats,users).map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(", ")||t("settings.noApprovers")}</div>
-                </div>
-                <div style={{display:"flex",gap:3,flexShrink:0}}>
-                  {!c.archived&&<button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setCatEdit(c.id);const kept=(c.approverIds||[]).filter(id=>users.some(u=>u.id===id));setCatForm({name:c.name,approverIds:kept,budget:c.budget!=null&&c.budget!==""?String(c.budget):""});setAddCat(false);}}>{t("action.edit")}</button>}
-                  <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setArchC(c.id)}>{c.archived?t("action.restore"):t("action.archive")}</button>
-                </div>
-              </div>
-              {archC===c.id&&<div style={{background:"#FEF3C7",borderRadius:7,padding:"8px 10px",margin:"4px 0"}}><div style={{fontSize:11,color:"#92400E",marginBottom:6}}>{c.archived?t("settings.restoreCategory"):t("msg.archiveCategory")}</div><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>{saveCats(cats.map(x=>x.id===c.id?{...x,archived:!x.archived}:x));setArchC(null);}}>{t("action.confirm")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setArchC(null)}>{t("action.cancel")}</button></div></div>}
-              {catEdit===c.id&&(
-                <div style={{background:"#F5F0EA",borderRadius:9,padding:12,margin:"4px 0"}}>
-                  <div style={{fontWeight:600,fontSize:12,marginBottom:8}}>{t("settings.editCategory")}: {c.name}</div>
-                  <label className="lbl">{t("label.categoryName")}</label>
-                  <input className="inp" style={{marginBottom:8,fontSize:13}} value={catForm.name} onChange={e=>setCatForm(p=>({...p,name:e.target.value}))}/>
-                  <label className="lbl">{t("label.approvers")}</label>
-                  {users.map(u=>(
-                    <label key={u.id} style={{display:"flex",alignItems:"center",gap:7,marginBottom:5,fontSize:12,cursor:"pointer"}}>
-                      <input type="checkbox" checked={catForm.approverIds?.includes(u.id)||false} onChange={e=>{const ids=e.target.checked?[...catForm.approverIds,u.id]:catForm.approverIds.filter(x=>x!==u.id);setCatForm(p=>({...p,approverIds:ids}));}}/>
-                      {u.name} <span style={{fontSize:9,color:"#9CAA9F"}}>({u.role})</span>
-                    </label>
-                  ))}
-                  <label className="lbl">{t("settings.monthlyBudget")}</label>
-                  <input className="inp" style={{marginBottom:8,fontSize:13}} type="text" inputMode="decimal" placeholder="N/A" value={catForm.budget||""} onChange={e=>setCatForm(p=>({...p,budget:e.target.value}))}/>
-                  <div style={{display:"flex",gap:7,marginTop:8}}><button className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>{const picked=(catForm.approverIds||[]).filter(id=>users.some(u=>u.id===id));const approverIds=picked.length>=2?picked:getAdminIds(users);if(approverIds.length<2){alert("Se requieren al menos 2 aprobadores por categoría.");return;}const b=catForm.budget===""||catForm.budget==null?null:parseFloat(String(catForm.budget).replace(",","."));saveCats(cats.map(x=>x.id===c.id?{...x,name:catForm.name,approverIds,budget:isNaN(b)?null:b}:x));setCatEdit(null);}}>{t("action.save")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setCatEdit(null)}>{t("action.cancel")}</button></div>
-                </div>
-              )}
-            </div>
-          ))}
-      </AccordionSection>}
-
       {isSA&&<AccordionSection title="Ajustes de aplicación">
         {appSetMsg&&<div style={{padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",fontSize:11,marginBottom:8}}>{appSetMsg}</div>}
         {appSetErr&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{appSetErr}</div>}
@@ -6351,15 +6324,19 @@ function SolanaExpenses(){
       setFormError("Completa los campos obligatorios marcados con *");
       return;
     }
+    const expDate = new Date(form.date);
+    const now = new Date();
+    const minDate = new Date(now.getFullYear() - 5, 0, 1);
+    const maxDate = new Date(now.getFullYear() + 1, 11, 31);
+    if(!form.date || isNaN(expDate.getTime()) || expDate < minDate || expDate > maxDate) {
+      setFormError("La fecha debe estar entre los últimos 5 años y el próximo año.");
+      return;
+    }
     let paidBy=[{userId:ownerId,amount,pct:100}];
     let splitModeOut=undefined;
     if(splitOn&&splits.filter(s=>s.checked).length>1){
       const sel=splits.filter(s=>s.checked);
       if(sel.length<2){console.log("=== SUBMIT BLOCKED ===", { reason: "split_min_participants" });setFormError(t("split.minParticipants"));return;}
-      if(spMode==="percentage"){
-        const sumPct=sel.reduce((s,x)=>s+(Number(x.percent)||0),0);
-        if(Math.abs(sumPct-100)>0.5){console.log("=== SUBMIT BLOCKED ===", { reason: "split_percentage_sum_invalid", sumPct });setFormError(t("msg.splitMustTotal100"));return;}
-      }
       if(spMode==="amount"){
         const sumAmt=sel.reduce((s,x)=>s+(Number(x.value)||0),0);
         if(Math.abs(sumAmt-amount)>0.01){console.log("=== SUBMIT BLOCKED ===", { reason: "split_amount_sum_invalid", sumAmt, amount });setFormError(t("msg.valueMustMatch")+fmt(amount));return;}
@@ -6781,7 +6758,7 @@ function SolanaExpenses(){
           const full = await API.get("/bills");
           saveBills((full.bills || []).map(billFromApi));
         } catch(e) {
-          alert(e.message || "Error al procesar.");
+          alert(e.message || "Error al procesar la factura.");
         }
         setANote(p => ({...p, [itemId]: ""}));
       })();

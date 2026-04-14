@@ -128,6 +128,13 @@ addColumnIfMissing('bills', 'receiptPath', 'TEXT');
 addColumnIfMissing('bills', 'ownerId', 'TEXT');
 addColumnIfMissing('bills', 'paidByJson', 'TEXT');
 addColumnIfMissing('bills', 'splitMode', 'TEXT');
+addColumnIfMissing('bills', 'approversJson', 'TEXT');
+addColumnIfMissing('bills', 'approvalVotesJson', 'TEXT');
+addColumnIfMissing('bills', 'approvedBy', 'TEXT');
+addColumnIfMissing('bills', 'approvedAt', 'INTEGER');
+addColumnIfMissing('bills', 'rejectedBy', 'TEXT');
+addColumnIfMissing('bills', 'rejectedAt', 'INTEGER');
+addColumnIfMissing('bills', 'rejectionNote', 'TEXT');
 addColumnIfMissing('users', 'avatar', 'TEXT');
 addColumnIfMissing('departments', 'archived', 'INTEGER NOT NULL DEFAULT 0');
 
