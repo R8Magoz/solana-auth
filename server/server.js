@@ -36,6 +36,8 @@ const crypto     = require('crypto');
 const fs         = require('fs');
 const path       = require('path');
 const { Resend } = require('resend');
+const userStore = require('./userStore');
+const { runUsersJsonMigration } = require('./migrate');
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const PORT         = process.env.PORT         || 3001;
@@ -50,7 +52,7 @@ const BCRYPT_ROUNDS = 12;
 
 // ── SESSION TOKEN HELPERS ────────────────────────────────────────────────────
 // Lightweight signed session token: base64(payload).HMAC
-// Used to authorize admin actions without exposing ADMIN_KEY to the browser.
+// Used to authorize admin actions via signed Bearer session tokens.
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 /** POST /auth/refresh may re-issue a token this long after exp (sliding grace). */
 const SESSION_REFRESH_GRACE_MS = 30 * 60 * 1000; // 30 minutes
@@ -101,7 +103,7 @@ const AUDIT_LEGACY = path.join(DATA_DIR, 'audit.log');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const db = require('./db');
-const backupMod = require('./backup');
+const { runBackup, listBackups, resolveSafeBackupPath, replaceLiveDatabase } = require('./backup');
 const auditLog = require('./auditLog');
 auditLog.migrateLegacyFile(AUDIT_LEGACY);
 
@@ -109,10 +111,6 @@ function audit(event, data = {}) {
   auditLog.write(event, data);
   console.log('[AUDIT]', event, data);
 }
-
-const { runUsersJsonMigration } = require('./migrate');
-runUsersJsonMigration({ dataDir: DATA_DIR, audit });
-const userStore = require('./userStore');
 
 // Token helpers removed — email verification flow not used in this version.
 
@@ -337,47 +335,17 @@ const expenseReceiptUploadLimiter = rateLimit({
 });
 
 // ── ADMIN AUTH MIDDLEWARE ─────────────────────────────────────────────────────
-// Simple shared admin secret sent in header X-Admin-Key.
-// For production, replace with a proper JWT or session.
-const ADMIN_KEY = process.env.ADMIN_KEY || (() => {
-  const k = crypto.randomBytes(16).toString('hex');
-  console.warn('[SOLANA-AUTH] ADMIN_KEY not set. Generated ephemeral key:', k);
-  console.warn('[SOLANA-AUTH] Set ADMIN_KEY in .env to make this persistent.');
-  return k;
-})();
-
-function requireAdmin(req, res, next) {
-  const key = req.headers['x-admin-key'];
-  if (!key || key !== ADMIN_KEY) {
-    audit('failed_approval_attempt', { ip: req.ip, path: req.path });
-    return res.status(403).json({ error: 'No autorizado.' });
-  }
-  next();
-}
-
 function requireAdminSession(req, res, next) {
-  const key = req.headers['x-admin-key'];
-  if (key && key === ADMIN_KEY) {
-    req.authViaAdminKey = true;
-    return next();
-  }
   const auth = req.headers['authorization'] || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!token) {
-    audit('failed_admin_session', { ip: req.ip, path: req.path });
-    return res.status(403).json({ error: 'No autorizado.' });
-  }
   const session = verifySessionToken(token);
-  if (!session) {
-    return res.status(401).json({ error: 'No autorizado.' });
+  if (session && (session.role === 'admin' || session.role === 'superadmin')) {
+    req.userId = session.userId;
+    req.userRole = session.role;
+    return next();
   }
-  if (session.role !== 'admin' && session.role !== 'superadmin') {
-    audit('failed_admin_session', { ip: req.ip, path: req.path });
-    return res.status(403).json({ error: 'No autorizado.' });
-  }
-  req.userId = session.userId;
-  req.userRole = session.role;
-  return next();
+  audit('failed_admin_session', { ip: req.ip, path: req.path });
+  return res.status(403).json({ error: 'No autorizado.' });
 }
 
 function requireAuth(req, res, next) {
@@ -479,7 +447,7 @@ app.post('/auth/signup', signupLimiter, async (req, res) => {
     userStore.insertUser(newUser);
   } catch (e) {
     if (e && e.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-      return res.status(409).json({ error: 'Ya existe un usuario con ese correo.' });
+      return res.json({ ok: true, message: 'Solicitud recibida. Un administrador aprobará tu acceso en breve.' });
     }
     throw e;
   }
@@ -627,23 +595,22 @@ app.post('/auth/change-password', async (req, res) => {
     return res.status(403).json({ error: 'No autorizado.' });
   }
 
-  const pwError = checkPassword(newPassword);
-  if (pwError) return res.status(400).json({ error: pwError });
-
   const user = userStore.findUserById(uid);
   if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
 
   if (!user.mustChangePassword) {
-    const cur = currentPassword != null ? String(currentPassword) : '';
-    if (!cur) {
-      return res.status(400).json({ error: 'Contraseña actual requerida.' });
+    if (!currentPassword) {
+      return res.status(400).json({ error: 'La contraseña actual es obligatoria.' });
     }
-    const okCur = await bcrypt.compare(cur, user.passwordHash);
-    if (!okCur) {
+    const currentMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!currentMatch) {
       audit('password_change_wrong_current', { userId: uid, ip: req.ip });
-      return res.status(400).json({ error: 'La contraseña actual no es correcta.' });
+      return res.status(403).json({ error: 'La contraseña actual no es correcta.' });
     }
   }
+
+  const pwError = checkPassword(newPassword);
+  if (pwError) return res.status(400).json({ error: pwError });
 
   const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   userStore.updatePasswordAfterChange(uid, newHash);
@@ -739,22 +706,23 @@ app.post('/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
       // Admin user not in DB — create a minimal active record so login works.
       // This happens when bootstrap used a different SEED_ADMIN_EMAIL than ADMIN_EMAIL.
       const newAdminId = 'admin-' + crypto.randomBytes(4).toString('hex');
+      const now = Date.now();
       const newAdmin = {
         id:               newAdminId,
         email:            adminEmail,
-        name:             'Administrator',
+        name:             'Marc',
         passwordHash:     tempHash,
         tempPasswordExp:  tempExpiry,
         role:             'superadmin',
         color:            '#3C0A37',
         accountStatus:    'active',
         approvalStatus:   'approved',
-        emailVerifiedAt:  Date.now(),
+        emailVerifiedAt:  now,
         approvedBy:       'system',
-        approvedAt:       Date.now(),
+        approvedAt:       now,
         deniedAt:         null,
         deniedBy:         null,
-        createdAt:        Date.now(),
+        createdAt:        now,
       };
       try {
         userStore.insertUser(newAdmin);
@@ -828,7 +796,7 @@ app.post('/admin/users/create', requireAdminSession, async (req, res) => {
     return res.status(409).json({ error: `Ya existe un usuario con el email ${normalEmail}.` });
   }
 
-  const userId = 'u_' + crypto.randomBytes(8).toString('hex');
+  const userId = String(name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
   const passwordHash = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS);
   const now = Date.now();
 
@@ -972,7 +940,7 @@ app.get('/admin/users/pending', requireAdminSession, (req, res) => {
  * GET /admin/users/all
  * Lists all registered users (no passwords).
  */
-app.get('/admin/users/all', requireAdmin, (req, res) => {
+app.get('/admin/users/all', requireAdminSession, (req, res) => {
   const users = userStore.getAllUsers().map(({ passwordHash: _, ...u }) => u);
   res.json({ users });
 });
@@ -1047,7 +1015,7 @@ app.post('/admin/users/:id/deny', requireAdminSession, async (req, res) => {
  * GET /admin/audit
  * Paginated audit log from SQLite: ?limit=50&offset=0&event=&userId=
  */
-app.get('/admin/audit', requireAdmin, (req, res) => {
+app.get('/admin/audit', requireAdminSession, (req, res) => {
   try {
     const { entries, total, limit, offset } = auditLog.query({
       limit: req.query.limit,
@@ -1066,9 +1034,9 @@ app.get('/admin/audit', requireAdmin, (req, res) => {
  * POST /admin/backup
  * Trigger immediate SQLite backup (solana.db → data/backups/).
  */
-app.post('/admin/backup', adminBackupLimiter, requireAdmin, (req, res) => {
+app.post('/admin/backup', adminBackupLimiter, requireAdminSession, (req, res) => {
   try {
-    const r = backupMod.runBackup({ db });
+    const r = runBackup({ db });
     audit('admin_backup_created', { filename: r.filename, sizeBytes: r.sizeBytes, ip: req.ip });
     res.json({ ok: true, filename: r.filename, sizeBytes: r.sizeBytes });
   } catch (e) {
@@ -1081,13 +1049,57 @@ app.post('/admin/backup', adminBackupLimiter, requireAdmin, (req, res) => {
  * GET /admin/backups
  * List backup files with sizes and modified times.
  */
-app.get('/admin/backups', requireAdmin, (req, res) => {
+app.get('/admin/backups', requireAdminSession, (req, res) => {
+  const session = (() => {
+    const auth = req.headers['authorization'] || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    return verifySessionToken(token);
+  })();
+  if (!session || session.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Solo el superadmin puede ver copias de seguridad.' });
+  }
   try {
-    const backups = backupMod.listBackups();
+    const backups = listBackups();
     res.json({ ok: true, backups });
   } catch (e) {
     console.error('[admin/backups]', e);
     res.status(500).json({ error: 'Error al listar copias.' });
+  }
+});
+
+app.post('/admin/backups/run', requireAdminSession, (req, res) => {
+  const session = (() => {
+    const auth = req.headers['authorization'] || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    return verifySessionToken(token);
+  })();
+  if (!session || session.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Solo el superadmin puede ejecutar copias de seguridad.' });
+  }
+  try {
+    const result = runBackup({ db });
+    audit('backup_manual', { filename: result.filename, userId: session.userId });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/admin/backups/download/:filename', requireAdminSession, (req, res) => {
+  const session = (() => {
+    const auth = req.headers['authorization'] || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    return verifySessionToken(token);
+  })();
+  if (!session || session.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Solo el superadmin puede descargar copias de seguridad.' });
+  }
+  try {
+    const fullPath = resolveSafeBackupPath(req.params.filename);
+    res.download(fullPath, req.params.filename);
+    audit('backup_downloaded', { filename: req.params.filename, userId: session.userId });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 
@@ -1096,7 +1108,7 @@ app.get('/admin/backups', requireAdmin, (req, res) => {
  * Destructive: replaces live solana.db with a named backup. Requires X-Confirm: RESTORE.
  * Stops the HTTP server, closes DB, copies file, spawns a new process, exits.
  */
-app.post('/admin/restore', requireAdmin, (req, res) => {
+app.post('/admin/restore', requireAdminSession, (req, res) => {
   const confirm = req.headers['x-confirm'];
   if (confirm !== 'RESTORE') {
     return res.status(400).json({
@@ -1108,7 +1120,7 @@ app.post('/admin/restore', requireAdmin, (req, res) => {
     : '';
   let backupFull;
   try {
-    backupFull = backupMod.resolveSafeBackupPath(filename);
+    backupFull = resolveSafeBackupPath(filename);
   } catch (e) {
     return res.status(400).json({ error: e.message || 'filename inválido.' });
   }
@@ -1127,7 +1139,7 @@ app.post('/admin/restore', requireAdmin, (req, res) => {
         console.error('[RESTORE] db.close:', e.message);
       }
       try {
-        backupMod.replaceLiveDatabase(backupFull);
+        replaceLiveDatabase(backupFull);
       } catch (e) {
         console.error('[RESTORE] copy failed:', e);
         global.__SOLANA_RESTORE_PENDING = false;
@@ -1168,7 +1180,6 @@ app.post('/admin/restore', requireAdmin, (req, res) => {
  *
  * Headers:
  *   X-Bootstrap-Secret: <BOOTSTRAP_SECRET env var>
- *   X-Admin-Key:        <ADMIN_KEY env var>  (also required)
  *
  * Body: {
  *   adminEmail:    string (required — bootstrap admin email)
@@ -1180,7 +1191,7 @@ app.post('/admin/restore', requireAdmin, (req, res) => {
  *   pendingPassword?: string
  * }
  */
-app.post('/admin/seed/bootstrap', requireAdmin, async (req, res) => {
+app.post('/admin/seed/bootstrap', requireAdminSession, async (req, res) => {
   if (!ALLOW_SEED) {
     return res.status(403).json({
       error: 'Seed endpoints are disabled. Set ALLOW_SEED=true in env (dev/staging only).',
@@ -1304,7 +1315,7 @@ app.post('/admin/seed/bootstrap', requireAdmin, async (req, res) => {
  * Same authentication as /admin/seed/bootstrap.
  * Body: same as bootstrap.
  */
-app.post('/admin/seed/reset', requireAdmin, async (req, res) => {
+app.post('/admin/seed/reset', requireAdminSession, async (req, res) => {
   if (!ALLOW_SEED) {
     return res.status(403).json({ error: 'Seed endpoints are disabled.' });
   }
@@ -1335,7 +1346,7 @@ app.post('/admin/seed/reset', requireAdmin, async (req, res) => {
  * Returns current state of all seed accounts (without passwords).
  * Useful for verifying seed state in CI/test pipelines.
  */
-app.get('/admin/seed/status', requireAdmin, (req, res) => {
+app.get('/admin/seed/status', requireAdminSession, (req, res) => {
   if (!ALLOW_SEED) {
     return res.status(403).json({ error: 'Seed endpoints are disabled.' });
   }
@@ -1389,6 +1400,22 @@ app.post('/ai/scan-receipt', scanLimiter, async (req, res) => {
   const block = isPdf
     ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } }
     : { type: 'image',    source: { type: 'base64', media_type: mime,               data: b64 } };
+  let categoryList = 'Equipment|Supplies|Marketing|Legal|Rent|Software|Food & Beverage|Travel|Otro';
+  try {
+    const settingRow = db.prepare(
+      "SELECT value FROM app_settings WHERE key = 'categories'"
+    ).get();
+    if (settingRow) {
+      const cats = JSON.parse(settingRow.value);
+      const activeNames = cats
+        .filter(c => !c.archived)
+        .map(c => c.name)
+        .filter(Boolean);
+      if (activeNames.length > 0) categoryList = activeNames.join('|');
+    }
+  } catch (e) {
+    console.warn('[scan] Could not load categories from DB:', e.message);
+  }
 
   try {
     const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1403,7 +1430,7 @@ app.post('/ai/scan-receipt', scanLimiter, async (req, res) => {
         max_tokens: 400,
         messages: [{ role: 'user', content: [
           block,
-          { type: 'text', text: 'Extract receipt data. Return ONLY valid JSON no markdown: {"amount":number,"description":"string","date":"YYYY-MM-DD","category":"Equipment|Supplies|Marketing|Legal|Rent|Software|Food & Beverage|Travel|Other"}' }
+          { type: 'text', text: `Extract receipt data. Return ONLY valid JSON no markdown: {"amount":number,"description":"string","date":"YYYY-MM-DD","category":"${categoryList}"}` }
         ]}]
       })
     });
@@ -1427,6 +1454,65 @@ app.post('/ai/scan-receipt', scanLimiter, async (req, res) => {
   }
 });
 
+// GET /settings — returns all app_settings as { key: parsedValue }
+app.get('/settings', requireAdminSession, (req, res) => {
+  const session = (() => {
+    const auth = req.headers['authorization'] || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    return verifySessionToken(token);
+  })();
+  if (!session || session.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Solo el superadmin puede modificar ajustes.' });
+  }
+  const rows = db.prepare('SELECT key, value FROM app_settings').all();
+  const out = {};
+  for (const row of rows) {
+    try { out[row.key] = JSON.parse(row.value); }
+    catch { out[row.key] = row.value; }
+  }
+  res.json({ ok: true, settings: out });
+});
+
+// PUT /settings/:key — upserts a single setting (superadmin only)
+app.put('/settings/:key', requireAdminSession, (req, res) => {
+  const session = (() => {
+    const auth = req.headers['authorization'] || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    return verifySessionToken(token);
+  })();
+  if (!session || session.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Solo el superadmin puede modificar ajustes.' });
+  }
+
+  const ALLOWED_KEYS = new Set([
+    'categories', 'iva_rates', 'iva_default', 'currency'
+  ]);
+  const key = req.params.key;
+  if (!ALLOWED_KEYS.has(key)) {
+    return res.status(400).json({ error: 'Clave de ajuste no válida.' });
+  }
+
+  const { value } = req.body || {};
+  if (value === undefined) {
+    return res.status(400).json({ error: 'value es obligatorio.' });
+  }
+
+  const serialized = typeof value === 'string' ? JSON.stringify(value) : JSON.stringify(value);
+  const now = Date.now();
+
+  db.prepare(`
+    INSERT INTO app_settings (key, value, updatedBy, updatedAt)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET
+      value     = excluded.value,
+      updatedBy = excluded.updatedBy,
+      updatedAt = excluded.updatedAt
+  `).run(key, serialized, session.userId, now);
+
+  audit('setting_updated', { key, userId: session.userId });
+  res.json({ ok: true, key, value });
+});
+
 app.get('/health', (req, res) => {
   try {
     db.prepare('SELECT 1').get();
@@ -1447,8 +1533,25 @@ app.get('/health', (req, res) => {
 // verifyPageHtml removed — email verification not used in this version.
 
 // ── START ─────────────────────────────────────────────────────────────────────
-const BACKUP_HOUR = 3;
-let lastScheduledBackupUtcDate = null;
+runUsersJsonMigration({ dataDir: DATA_DIR, audit });
+
+// ── SCHEDULED BACKUPS ────────────────────────────────────────────────────────
+// Run once on startup, then every 6 hours.
+function scheduleBackups() {
+  function doBackup() {
+    try {
+      const result = runBackup({ db });
+      audit('backup_created', { filename: result.filename, sizeBytes: result.sizeBytes });
+      console.log('[backup] OK', result.filename, result.sizeBytes, 'bytes');
+    } catch (e) {
+      audit('backup_failed', { error: e.message });
+      console.error('[backup] FAILED:', e.message);
+    }
+  }
+  doBackup(); // immediate on startup
+  setInterval(doBackup, 6 * 60 * 60 * 1000); // then every 6 hours
+}
+scheduleBackups();
 
 httpServer = app.listen(PORT, () => {
   console.log(`[SOLANA-AUTH] Server running on port ${PORT}`);
@@ -1468,21 +1571,6 @@ httpServer = app.listen(PORT, () => {
     }
   }, 24 * 60 * 60 * 1000).unref();
 
-  setInterval(() => {
-    const now = new Date();
-    if (now.getUTCHours() === BACKUP_HOUR && now.getUTCMinutes() < 1) {
-      const d = now.toISOString().slice(0, 10);
-      if (lastScheduledBackupUtcDate !== d) {
-        lastScheduledBackupUtcDate = d;
-        try {
-          const r = backupMod.runBackup({ db });
-          console.log('[backup] scheduled daily', r.filename, r.sizeBytes, 'bytes');
-        } catch (e) {
-          console.error('[backup] scheduled:', e.message);
-        }
-      }
-    }
-  }, 60_000).unref();
 });
 
 function shutdown(signal) {

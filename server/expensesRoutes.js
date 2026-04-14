@@ -740,7 +740,14 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       return res.status(404).json({ error: 'Archivo no encontrado.' });
     }
     const ext = path.extname(abs).toLowerCase();
-    const type = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    const MIME_MAP = {
+      '.pdf':  'application/pdf',
+      '.png':  'image/png',
+      '.webp': 'image/webp',
+      '.jpg':  'image/jpeg',
+      '.jpeg': 'image/jpeg',
+    };
+    const type = MIME_MAP[ext] || 'image/jpeg';
     res.setHeader('Content-Type', type);
     res.sendFile(path.resolve(abs));
   });

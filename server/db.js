@@ -99,6 +99,13 @@ db.exec(`
     archived  INTEGER NOT NULL DEFAULT 0,
     createdAt INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key       TEXT PRIMARY KEY,
+    value     TEXT NOT NULL,
+    updatedBy TEXT,
+    updatedAt INTEGER
+  );
 `);
 
 function addColumnIfMissing(table, column, colDef) {
@@ -123,6 +130,41 @@ addColumnIfMissing('bills', 'paidByJson', 'TEXT');
 addColumnIfMissing('bills', 'splitMode', 'TEXT');
 addColumnIfMissing('users', 'avatar', 'TEXT');
 addColumnIfMissing('departments', 'archived', 'INTEGER NOT NULL DEFAULT 0');
+
+function seedAppSettings() {
+  const count = db.prepare(
+    'SELECT COUNT(*) AS c FROM app_settings'
+  ).get().c;
+  if (count > 0) return;
+
+  const now = Date.now();
+  const insert = db.prepare(
+    'INSERT INTO app_settings (key, value, updatedBy, updatedAt) VALUES (?, ?, ?, ?)'
+  );
+
+  insert.run('categories', JSON.stringify([
+    { id: 'c1', name: 'Equipment',       archived: false, approverIds: [] },
+    { id: 'c2', name: 'Supplies',        archived: false, approverIds: [] },
+    { id: 'c3', name: 'Marketing',       archived: false, approverIds: [] },
+    { id: 'c4', name: 'Legal',           archived: false, approverIds: [] },
+    { id: 'c5', name: 'Rent',            archived: false, approverIds: [] },
+    { id: 'c6', name: 'Software',        archived: false, approverIds: [] },
+    { id: 'c7', name: 'Food & Beverage', archived: false, approverIds: [] },
+    { id: 'c8', name: 'Travel',          archived: false, approverIds: [] },
+    { id: 'c9', name: 'Otro',            archived: false, approverIds: [] },
+  ]), 'system', now);
+
+  insert.run('iva_rates', JSON.stringify([
+    { value: 0,  name: 'exento'        },
+    { value: 4,  name: 'superreducido' },
+    { value: 10, name: 'reducido'      },
+    { value: 21, name: 'general'       },
+  ]), 'system', now);
+
+  insert.run('iva_default', '21', 'system', now);
+  insert.run('currency',    '"EUR"', 'system', now);
+}
+seedAppSettings();
 
 const _deptCount = db.prepare('SELECT COUNT(*) AS c FROM departments').get();
 if (_deptCount.c === 0) {
