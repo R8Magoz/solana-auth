@@ -3223,7 +3223,7 @@ function DetailPanel(){
           </div>
         );})}
       </div>
-      {((AUTH_URL&&e._apiType==="expense"&&e.status==="submitted"&&approverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved")||(!AUTH_URL&&approverIds.includes(user.id)&&st==="pending"&&approvalVoteFor(e.approvals,user.id,users)!=="approved"))&&(
+      {((AUTH_URL&&e._apiType==="expense"&&(e.status==="submitted"||e.status==="pending")&&approverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved")||(!AUTH_URL&&approverIds.includes(user.id)&&st==="pending"&&approvalVoteFor(e.approvals,user.id,users)!=="approved"))&&(
         <div style={{marginTop:9}}>
           <label className="lbl" style={{marginBottom:3}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
@@ -6336,6 +6336,9 @@ function SolanaExpenses(){
 
   /* ── SUBMIT EXPENSE ─────────────────────────────────────────────────────── */
   const submitExp=()=>{
+    const ownerId = (form.ownerId && String(form.ownerId).trim())
+      ? String(form.ownerId).trim()
+      : (user?.id || "");
     console.log("=== SUBMIT START ===", {
       formValues: form,
       userId: user.id,
@@ -6373,7 +6376,7 @@ function SolanaExpenses(){
     const canSubmitterAutoApprove=String(user.id)===String(ownerId);
     if(AUTH_URL){
       const expApproverIdsAuth=effectiveExpenseApproverIds({category:form.category},cats,users);
-      const approvalRequiredForSubmit=canSubmitterAutoApprove?expApproverIdsAuth:expApproverIdsAuth.filter(id=>id!==user.id);
+      const approvalRequiredForSubmit=expApproverIdsAuth.filter(id=>id!==user.id);
       const shouldAutoApproveSubmitterAuth=canSubmitterAutoApprove&&approvalRequiredForSubmit.includes(user.id);
       void (async()=>{
         const clientRef="tmp_exp_"+genUuid();
@@ -6481,7 +6484,7 @@ function SolanaExpenses(){
     }
     const expApproverIds=effectiveExpenseApproverIds({category:form.category},cats,users);
     const baseTrail=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
-    const approvalRequiredLocal=canSubmitterAutoApprove?expApproverIds:expApproverIds.filter(id=>id!==user.id);
+    const approvalRequiredLocal=expApproverIds.filter(id=>id!==user.id);
     const shouldAutoApproveSubmitterLocal=canSubmitterAutoApprove&&approvalRequiredLocal.includes(user.id);
     const{approvals:expApprovals,auditTrail:expTrail}=shouldAutoApproveSubmitterLocal
       ? autoApprove(user.id,approvalRequiredLocal,{},baseTrail)
@@ -6762,7 +6765,26 @@ function SolanaExpenses(){
       return;
     }
     if(type==="bill"&&AUTH_URL){
-      setANote(p=>({...p,[itemId]:""}));
+      if(item && item._pendingSync) {
+        alert("Esta factura aún no está en el servidor; sincroniza antes de aprobar.");
+        return;
+      }
+      void (async () => {
+        try {
+          if(action === "approved") {
+            await API.post("/bills/" + encodeURIComponent(itemId) + "/approve",
+              { note: note || undefined });
+          } else {
+            await API.post("/bills/" + encodeURIComponent(itemId) + "/reject",
+              { note: note || undefined });
+          }
+          const full = await API.get("/bills");
+          saveBills((full.bills || []).map(billFromApi));
+        } catch(e) {
+          alert(e.message || "Error al procesar.");
+        }
+        setANote(p => ({...p, [itemId]: ""}));
+      })();
       return;
     }
     if(type==="expense"){
