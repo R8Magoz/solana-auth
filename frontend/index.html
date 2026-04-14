@@ -705,7 +705,7 @@ const API = {
   ensureSessionToken() {
     if (this.token) return;
     try {
-      const s = sessionStorage.getItem("sol-session-token");
+      const s = localStorage.getItem("sol-session-token");
       if (s) this.token = s;
     } catch (e) {
       this.token = null;
@@ -805,7 +805,7 @@ const API = {
         if (data.sessionToken) {
           this.token = data.sessionToken;
           try {
-            sessionStorage.setItem("sol-session-token", data.sessionToken);
+            localStorage.setItem("sol-session-token", data.sessionToken);
           } catch (e) {}
           return true;
         }
@@ -911,7 +911,16 @@ async function debugApiRequest(method, path, body) {
 }
 
 /* ── HELPERS ───────────────────────────────────────────────────────────────── */
-const fmt=n=>`€${Number(n||0).toFixed(2)}`;
+const fmt=n=>new Intl.NumberFormat("es-ES",{
+  style:"currency",currency:"EUR",
+  minimumFractionDigits:2,maximumFractionDigits:2
+}).format(Number(n||0));
+const fmtKpi=n=>{
+  const full=fmt(n);
+  const idx=full.lastIndexOf(",");
+  if(idx===-1)return{whole:full,cents:""};
+  return{whole:full.slice(0,idx),cents:full.slice(idx)};
+};
 /** Presupuestos / informes: 2 decimales si |importe| < 100; sin céntimos si ≥ 100 o > 999 (es-ES). */
 function formatBudgetCurrencyEUR(amount){
   const n=Number(amount)||0;
@@ -1777,6 +1786,32 @@ const readIvaDefault=()=>{
     return rates[0].value;
   }catch{return rates[0].value;}
 };
+async function fetchAndApplyServerSettings(authUrl, token) {
+  if (!authUrl || !token) return;
+  try {
+    const r = await fetch(authUrl + '/settings', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (!r.ok) return;
+    const { settings } = await r.json();
+    if (!settings) return;
+
+    if (Array.isArray(settings.categories) && settings.categories.length > 0) {
+      try { localStorage.setItem('sol-cats', JSON.stringify(settings.categories)); } catch(e) {}
+    }
+    if (Array.isArray(settings.iva_rates) && settings.iva_rates.length > 0) {
+      try { localStorage.setItem(IVA_RATES_KEY, JSON.stringify(settings.iva_rates)); } catch(e) {}
+    }
+    if (settings.iva_default != null) {
+      try { localStorage.setItem(IVA_DEFAULT_KEY, JSON.stringify(Number(settings.iva_default))); } catch(e) {}
+    }
+    if (settings.currency) {
+      try { localStorage.setItem('sol-currency', JSON.stringify(settings.currency)); } catch(e) {}
+    }
+  } catch(e) {
+    // non-blocking — local defaults remain in effect
+  }
+}
 
 /** After status/comment change: only actor has "seen" the update */
 const seenByAfterActor=(actorId)=>[actorId];
@@ -2354,7 +2389,7 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
 
     // 1. Persist to backend (clears mustChangePassword in users.json — prevents loop on next login)
     if(AUTH_URL){
-      const sessionToken=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+      const sessionToken=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
       if(!sessionToken){
         setMsg(t("msg.sessionExpired"));
         return;
@@ -2522,13 +2557,14 @@ function LoginScreen({ users, onLogin, passwords }) {
           return;
         }
         try {
-          sessionStorage.setItem("sol-session-token", tok);
+          localStorage.setItem("sol-session-token", tok);
         } catch (e) {
           setLoading(false);
           setErr(tl("login.invalidCreds"));
           return;
         }
         API.token = tok;
+        void fetchAndApplyServerSettings(AUTH_URL, API.token);
 
         setLoading(false);
         const srv = d.user;
@@ -3435,13 +3471,16 @@ function DashboardView(){
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         {[
-          {label:t("dash.totalInvested"),val:fmt(dashTotApproved),sub:t("dash.totalInvestedSub")||"Gastos aprobados"},
-          {label:t("dash.thisMonth"),val:fmt(mTotal),sub:today.toLocaleString("es-ES",{month:"long"})},
-          {label:t("dash.monthlyFixed"),val:fmt(totFixed),sub:t("dash.monthlyFixedSub")||"Coste mensual fijo"},
-          {label:"Presupuesto restante",val:fmt(budgetRemainingTotal),sub:"Suma de departamentos",valueColor:budgetRemainingTotal<0?"#991B1B":G}
-        ].map((m,i)=>(
-          <div key={i} className="card"><div style={{fontSize:10,color:"#9CAA9F",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{m.label}</div><div style={{fontSize:22,fontWeight:700,color:m.valueColor||G,fontVariantNumeric:"tabular-nums"}}>{m.val}</div><div style={{fontSize:11,color:"#B5C0B8",marginTop:1}}>{m.sub}</div></div>
-        ))}
+          {label:t("dash.totalInvested"),val:dashTotApproved,sub:t("dash.totalInvestedSub")||"Gastos aprobados"},
+          {label:t("dash.thisMonth"),val:mTotal,sub:today.toLocaleString("es-ES",{month:"long"})},
+          {label:t("dash.monthlyFixed"),val:totFixed,sub:t("dash.monthlyFixedSub")||"Coste mensual fijo"},
+          {label:"Presupuesto restante",val:budgetRemainingTotal,sub:"Suma de departamentos",valueColor:budgetRemainingTotal<0?"#991B1B":G}
+        ].map((m,i)=>{
+          const kpi=fmtKpi(m.val);
+          return(
+          <div key={i} className="card"><div style={{fontSize:10,color:"#9CAA9F",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{m.label}</div><div style={{fontSize:22,fontWeight:700,color:m.valueColor||G,fontVariantNumeric:"tabular-nums"}}><span>{kpi.whole}</span><span style={{fontSize:14,verticalAlign:"baseline"}}>{kpi.cents}</span></div><div style={{fontSize:11,color:"#B5C0B8",marginTop:1}}>{m.sub}</div></div>
+          );
+        })}
       </div>
       <div className="card" style={{marginBottom:14}}>
         <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>{t("dash.activityTitle")}</div>
@@ -4915,7 +4954,7 @@ function PendingUsersPanel(){
 
   const authHeaders=()=>{
     API.ensureSessionToken();
-    const tok=API.token||(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return"";}})();
+    const tok=API.token||(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return"";}})();
     return tok?{Authorization:"Bearer "+tok,"Content-Type":"application/json"}:null;
   };
 
@@ -5047,7 +5086,7 @@ function DepartmentsSettingsBlock({t}){
   const [delId,setDelId]=useState(null);
   const [showArchived,setShowArchived]=useState(false);
   if(!isSA)return null;
-  const sessionTok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
+  const sessionTok=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
   const saveLocal=(next)=>{
     lsSet(DEPTS_LS_KEY,next.map(x=>({id:x.id,name:x.name,budget:Number(x.budget)||0,archived:!!x.archived,createdAt:x.createdAt||Date.now()})));
     void refreshDepartments();
@@ -5229,8 +5268,108 @@ function SettingsView(){
   const [resetFor,setResetFor]=useState(null);
   const [resetPwInput,setResetPwInput]=useState("");
   const [resetBusy,setResetBusy]=useState(false);
+  const [appSetMsg,setAppSetMsg]=useState("");
+  const [appSetErr,setAppSetErr]=useState("");
+  const [backups,setBackups]=useState([]);
+  const [backupsLoading,setBackupsLoading]=useState(false);
+  const [backupsError,setBackupsError]=useState("");
+  const [backupsMsg,setBackupsMsg]=useState("");
+  const [appIvaDefaultDraft,setAppIvaDefaultDraft]=useState(()=>readIvaDefault());
+  const [appCatsDraft,setAppCatsDraft]=useState(()=>cats.map(c=>({...c})));
+  const [appCurrency,setAppCurrency]=useState(()=>{
+    try{
+      const raw=localStorage.getItem("sol-currency");
+      const code=raw?JSON.parse(raw):"EUR";
+      return String(code||"EUR").toUpperCase().slice(0,3);
+    }catch(e){return"EUR";}
+  });
   const [ivaDefault,setIvaDefault]=useState(()=>readIvaDefault());
   useEffect(()=>{setIvaDefault(readIvaDefault());},[ivaRates]);
+  useEffect(()=>{setAppIvaDefaultDraft(readIvaDefault());},[ivaRates]);
+  useEffect(()=>{setAppCatsDraft(cats.map(c=>({...c})));},[cats]);
+  const appSettingsToken=()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return"";}};
+  const loadBackups=useCallback(async()=>{
+    if(!isSA||!AUTH_URL)return;
+    setBackupsLoading(true);setBackupsError("");
+    const tok=appSettingsToken()||(API.token?String(API.token):"");
+    if(!tok){setBackupsError(t("msg.sessionExpired"));setBackupsLoading(false);return;}
+    try{
+      const r=await fetch(AUTH_URL+"/admin/backups",{headers:{Authorization:"Bearer "+tok}});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){setBackupsError(d.error||t("msg.genericShort"));setBackupsLoading(false);return;}
+      setBackups(Array.isArray(d.backups)?d.backups:[]);
+    }catch(e){setBackupsError(t("signup.serverDown"));}
+    finally{setBackupsLoading(false);}
+  },[isSA]);
+  useEffect(()=>{if(isSA&&AUTH_URL)void loadBackups();},[isSA,AUTH_URL,loadBackups]);
+  const runBackupNow=async()=>{
+    setBackupsError("");setBackupsMsg("");
+    const tok=appSettingsToken()||(API.token?String(API.token):"");
+    if(!tok){setBackupsError(t("msg.sessionExpired"));return;}
+    try{
+      const r=await fetch(AUTH_URL+"/admin/backups/run",{method:"POST",headers:{Authorization:"Bearer "+tok}});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){setBackupsError(d.error||t("msg.genericShort"));return;}
+      setBackupsMsg("Copia creada: "+(d.filename||"ok"));
+      await loadBackups();
+    }catch(e){setBackupsError(t("signup.serverDown"));}
+  };
+  const openBackupDownload=filename=>{
+    if(!filename)return;
+    window.open(AUTH_URL+"/admin/backups/download/"+encodeURIComponent(filename),"_blank");
+  };
+  const saveAppIvaSettings=async(nextRates,nextDefault)=>{
+    setAppSetErr("");setAppSetMsg("");
+    const normalized=normalizeIvaRatesPayload(nextRates);
+    const defVal=normalized.some(r=>Number(r.value)===Number(nextDefault))?Number(nextDefault):Number(normalized[0]?.value||21);
+    if(AUTH_URL){
+      const tok=appSettingsToken()||(API.token?String(API.token):"");
+      if(!tok){setAppSetErr(t("msg.sessionExpired"));return;}
+      try{
+        const r1=await fetch(AUTH_URL+"/settings/iva_rates",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:normalized})});
+        const d1=await r1.json().catch(()=>({}));
+        if(!r1.ok){setAppSetErr(d1.error||t("msg.genericShort"));return;}
+        const r2=await fetch(AUTH_URL+"/settings/iva_default",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:defVal})});
+        const d2=await r2.json().catch(()=>({}));
+        if(!r2.ok){setAppSetErr(d2.error||t("msg.genericShort"));return;}
+      }catch(e){setAppSetErr(t("signup.serverDown"));return;}
+    }
+    saveIvaRates(normalized);
+    try{localStorage.setItem(IVA_DEFAULT_KEY,JSON.stringify(defVal));}catch(e){}
+    setAppIvaDefaultDraft(defVal);
+    setAppSetMsg("Ajustes de IVA guardados.");
+  };
+  const saveAppCategories=async()=>{
+    setAppSetErr("");setAppSetMsg("");
+    if(AUTH_URL){
+      const tok=appSettingsToken()||(API.token?String(API.token):"");
+      if(!tok){setAppSetErr(t("msg.sessionExpired"));return;}
+      try{
+        const r=await fetch(AUTH_URL+"/settings/categories",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:appCatsDraft})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok){setAppSetErr(d.error||t("msg.genericShort"));return;}
+      }catch(e){setAppSetErr(t("signup.serverDown"));return;}
+    }
+    saveCats(appCatsDraft);
+    setAppSetMsg("Categorías guardadas.");
+  };
+  const saveAppCurrency=async()=>{
+    setAppSetErr("");setAppSetMsg("");
+    const code=String(appCurrency||"EUR").toUpperCase().slice(0,3);
+    if(!code){setAppSetErr("Moneda no válida.");return;}
+    if(AUTH_URL){
+      const tok=appSettingsToken()||(API.token?String(API.token):"");
+      if(!tok){setAppSetErr(t("msg.sessionExpired"));return;}
+      try{
+        const r=await fetch(AUTH_URL+"/settings/currency",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:code})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok){setAppSetErr(d.error||t("msg.genericShort"));return;}
+      }catch(e){setAppSetErr(t("signup.serverDown"));return;}
+    }
+    try{localStorage.setItem("sol-currency",JSON.stringify(code));}catch(e){}
+    setAppCurrency(code);
+    setAppSetMsg("Moneda guardada.");
+  };
   const saveIvaDefault=v=>{
     const n=Number(v);
     if(Number.isNaN(n))return;
@@ -5244,7 +5383,7 @@ function SettingsView(){
     if(AUTH_URL){
       setProfileSaving(true);
       try{
-        const token=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+        const token=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
         if(!token){alert(t("msg.sessionExpired"));return;}
         const r=await fetch(AUTH_URL+"/auth/update-profile",{
           method:"PUT",
@@ -5281,7 +5420,7 @@ function SettingsView(){
     if(AUTH_URL){
       setPwSaving(true);
       try{
-        const token=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+        const token=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
         if(!token){setPwMsg(t("msg.sessionExpired"));return;}
         if(!String(pwForm.cur||"").trim()){setPwMsg(t("msg.currentPasswordRequired"));return;}
         const r=await fetch(AUTH_URL+"/auth/change-password",{
@@ -5350,7 +5489,7 @@ function SettingsView(){
                   const newId=nu.name.toLowerCase().replace(/\s+/g,"-")+"-"+Date.now();
                   if(AUTH_URL){
                     // Use session token (set at login) — no admin key needed in UI
-                    const sessionToken=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
+                    const sessionToken=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
                     if(!sessionToken){setNuErr("Tu sesión ha expirado. Cierra sesión y vuelve a entrar para crear usuarios.");return;}
                     try{
                       const r=await fetch(AUTH_URL+"/admin/users/create",{
@@ -5395,7 +5534,7 @@ function SettingsView(){
               </div>
               {delC===u.id&&<div style={{background:"#FEE2E2",borderRadius:7,padding:"8px 10px",margin:"4px 0"}}><div style={{fontSize:11,color:"#7F1D1D",marginBottom:6}}>{t("msg.deleteUser")} {u.name}?</div><div style={{display:"flex",gap:6}}><button className="btn-danger" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>void (async()=>{
                 if(AUTH_URL){
-                  const tok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+                  const tok=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
                   if(!tok){alert(t("msg.sessionExpired"));return;}
                   try{
                     const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(u.id),{method:"DELETE",headers:{Authorization:"Bearer "+tok}});
@@ -5415,7 +5554,7 @@ function SettingsView(){
                       if(!resetPwInput||resetPwInput.length<8){alert(t("msg.tempPwRequired"));return;}
                       setResetBusy(true);
                       try{
-                        const tok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+                        const tok=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
                         if(!tok){alert(t("msg.sessionExpired"));return;}
                         const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(u.id)+"/reset-password",{
                           method:"POST",
@@ -5446,7 +5585,7 @@ function SettingsView(){
                   </div>
                   <div style={{display:"flex",gap:7,marginTop:7}}><button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>void (async()=>{
                     if(AUTH_URL){
-                      const tok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+                      const tok=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
                       if(!tok){alert(t("msg.sessionExpired"));return;}
                       try{
                         const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(editId),{method:"PUT",headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},body:JSON.stringify({name:ef.name,email:ef.email,phone:ef.phone,title:ef.title,role:ef.role,color:ef.color})});
@@ -5587,6 +5726,69 @@ function SettingsView(){
               )}
             </div>
           ))}
+      </AccordionSection>}
+
+      {isSA&&<AccordionSection title="Ajustes de aplicación">
+        {appSetMsg&&<div style={{padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",fontSize:11,marginBottom:8}}>{appSetMsg}</div>}
+        {appSetErr&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{appSetErr}</div>}
+
+        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>IVA Rates</div>
+        <div style={{marginBottom:8}}>
+          <label className="lbl">{t("settings.ivaDefault")}</label>
+          <select className="inp" style={{fontSize:14}} value={String(appIvaDefaultDraft)} onChange={e=>setAppIvaDefaultDraft(Number(e.target.value))}>
+            {ivaRates.map(r=><option key={"app-iva-def-"+String(r.value)+"-"+r.name} value={r.value}>{formatIvaOptionLabel(r)}</option>)}
+          </select>
+        </div>
+        <IvaRatesEditorBlock t={t} ivaRates={ivaRates} onSave={(rates)=>{void saveAppIvaSettings(rates,appIvaDefaultDraft);}}/>
+
+        <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"14px 0"}}/>
+        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Categorías (nombres rápidos)</div>
+        <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:8}}>
+          {appCatsDraft.map((c,idx)=>(
+            <div key={c.id||("tmp-"+idx)} style={{display:"flex",gap:7,alignItems:"center"}}>
+              <input className="inp" style={{flex:1,fontSize:13,opacity:c.archived?0.65:1}} value={c.name||""} onChange={e=>setAppCatsDraft(prev=>prev.map((x,i)=>i===idx?{...x,name:e.target.value}:x))}/>
+              <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>setAppCatsDraft(prev=>prev.map((x,i)=>i===idx?{...x,archived:!x.archived}:x))}>
+                {c.archived?"Restaurar":"Archivar"}
+              </button>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:7,marginBottom:12}}>
+          <button type="button" className="btn-sm" style={{fontSize:10}} onClick={()=>setAppCatsDraft(prev=>[...prev,{id:"c_"+Date.now(),name:"Nueva categoría",archived:false,approverIds:[]}])}>Añadir categoría</button>
+          <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void saveAppCategories()}>Guardar categorías</button>
+        </div>
+
+        <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"14px 0"}}/>
+        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Currency</div>
+        <label className="lbl">Moneda base</label>
+        <input className="inp" style={{maxWidth:120,fontSize:13,marginBottom:6,textTransform:"uppercase"}} maxLength={3} value={appCurrency} onChange={e=>setAppCurrency(String(e.target.value||"").toUpperCase().replace(/[^A-Z]/g,"").slice(0,3))}/>
+        <div style={{fontSize:10,color:"#9CAA9F",marginBottom:8}}>Solo afecta a etiquetas visuales. Los importes ya registrados no se convierten.</div>
+        <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void saveAppCurrency()}>Guardar moneda</button>
+      </AccordionSection>}
+
+      {isSA&&<AccordionSection title="Copias de seguridad">
+        {backupsMsg&&<div style={{padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",fontSize:11,marginBottom:8}}>{backupsMsg}</div>}
+        {backupsError&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{backupsError}</div>}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{fontSize:11,color:"#6B7B72"}}>{backupsLoading?"Cargando copias...":"Copias disponibles: "+backups.length}</div>
+          <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void runBackupNow()}>Crear copia ahora</button>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {backups.map((b,i)=>{
+            const sizeKb=Math.round((Number(b.sizeBytes)||0)/1024);
+            const dt=b.modifiedAt?new Date(b.modifiedAt).toLocaleString("es-ES"):"";
+            return(
+              <div key={b.filename||i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid #F5F0EA"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.filename}</div>
+                  <div style={{fontSize:10,color:"#9CAA9F"}}>{sizeKb} KB{dt?" · "+dt:""}</div>
+                </div>
+                <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>openBackupDownload(b.filename)}>Descargar</button>
+              </div>
+            );
+          })}
+          {!backupsLoading&&backups.length===0&&<div style={{fontSize:11,color:"#9CAA9F"}}>No hay copias de seguridad.</div>}
+        </div>
       </AccordionSection>}
 
       {isSA&&AUTH_URL&&<PendingUsersPanel/>}
@@ -5749,7 +5951,7 @@ function SolanaExpenses(){
     migrAttemptRef.current=false;
     resetExpenseFiltersToDefault();
     void API.logout();
-    try{sessionStorage.removeItem("sol-session-token");}catch(e){}
+    try{localStorage.removeItem("sol-session-token");}catch(e){}
     API.token=null;
     setUser(null);
     setView("dashboard");
@@ -5794,7 +5996,7 @@ function SolanaExpenses(){
       return;
     }
     try{
-      const s=sessionStorage.getItem("sol-session-token");
+      const s=localStorage.getItem("sol-session-token");
       if(s) API.token=s;
     }catch(e){/* keep existing API.token from login */}
   },[user]);
@@ -5803,7 +6005,7 @@ function SolanaExpenses(){
     const onSess=()=>{
       dispatchSolanaToast("Sesión expirada, inicia sesión de nuevo","error");
       API.token=null;
-      try{sessionStorage.removeItem("sol-session-token");}catch(e){}
+      try{localStorage.removeItem("sol-session-token");}catch(e){}
       myExpFilterClearedRef.current=false;
       setUser(null);
       setView("dashboard");
@@ -6106,7 +6308,7 @@ function SolanaExpenses(){
       myExpFilterClearedRef.current=false;
       resetExpenseFiltersToDefault();
       API.token=null;
-      try{sessionStorage.removeItem("sol-session-token");}catch(e){}
+      try{localStorage.removeItem("sol-session-token");}catch(e){}
       setUser(null);setView("dashboard");setDetailId(null);setPanel(null);
       setSessionExpired(true);setIdleWarning(false);
     }, IDLE_TIMEOUT_MS);
@@ -6301,10 +6503,11 @@ function SolanaExpenses(){
     appLog("info","attachment_removed",{itemCode:e.itemCode,userId:user.id});
   };
   const resetForm=useCallback(()=>{
-    setForm({...BF,ivaRate:String(readIvaDefault()),ownerId:user?.id||""});
+    const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
+    setForm({...BF,ivaRate:String(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId});
     setSplitOn(false);setSplits([]);setSpMode("equal");setReceipt(null);setRecPrev(null);setFormError("");
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
-  },[user?.id]);
+  },[user?.id,defaultDeptId,departments]);
   const openNew  =()=>{resetForm();setDetailId(null);setPanel("new");setView("expenses");};
 
   /* deleteExp — removes expense with permission check and audit trail */
