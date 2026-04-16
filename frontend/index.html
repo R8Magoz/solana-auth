@@ -1043,7 +1043,7 @@ function SplitDivergeIcon({size=16,color="#4B5E52"}){
   );
 }
 /** Collapsible paidBy breakdown (multi-participant); click-only toggle */
-function ExpenseSplitBreakdown({e,t,users}){
+function ExpenseSplitBreakdown({e,t,users,alwaysInline=false}){
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const [stick,setStick]=useState(false);
   const paid=e.paidBy||[];
@@ -1051,6 +1051,21 @@ function ExpenseSplitBreakdown({e,t,users}){
   useEffect(()=>{setStick(false);},[e.id]);
   if(n<=1)return null;
   const open=stick;
+  if(alwaysInline){
+    return(
+      <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:4}}>
+        {paid.map(p=>{
+          const u=getU(p.userId);
+          return(
+            <div key={p.userId} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12}}>
+              <span style={{color:"#4B5E52"}}>{u.name}</span>
+              <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",color:G}}>{fmt(p.amount)}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
   const denom=Number(e.amount)||1;
   return(
     <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}}>
@@ -2774,7 +2789,7 @@ function LoginScreen({ users, onLogin, passwords }) {
 }
   
   
-function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode}){
+function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,showSplitError=false}){
   const expAmt=Number(totalAmount)||0;
   const ownerId=user?.id||"";
   useEffect(()=>{if(spMode==="percentage")setSpMode("equal");},[spMode,setSpMode]);
@@ -2785,8 +2800,8 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
     return arr.map(s=>s.checked?{...s,percent:eqPct,value:eqAmt}:{...s,percent:0,value:0});
   };
   const checkedCount=splits.filter(s=>s.checked).length;
-  const totPct=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.percent)||0),0);
   const totAmt=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
+  const amtMismatch=splitOn&&spMode==="amount"&&expAmt>0&&Math.abs(totAmt-expAmt)>0.01;
   const toggleSplit=()=>{
     if(users.length<2)return;
     if(splitOn){setSplitOn(false);setSpMode("equal");return;}
@@ -2840,22 +2855,25 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
             <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:4}}>
               {splits.filter(s=>s.checked).map(s=>{
                 const u=users.find(x=>x.id===s.userId)||{name:s.userId};
-                const pct=Math.round((Number(s.percent)||0)*100)/100;
                 const amt=Math.round((Number(s.value)||0)*100)/100;
                 return(
                   <div key={s.userId} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,padding:"4px 0"}}>
                     <span style={{color:"#4B5E52"}}>{u.name}</span>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      {spMode==="amount"&&<input className="inp" type="number" step="0.01" min="0" style={{width:80,fontSize:12,padding:"3px 6px",textAlign:"right"}} value={amt} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,value:Math.max(0,Number(e.target.value)||0)}:x))}/>}
+                      {spMode==="amount"&&<input className="inp" type="number" step="0.01" min="0" style={{width:80,fontSize:12,padding:"3px 6px",textAlign:"right",borderColor:(showSplitError&&amtMismatch)?"#DC2626":undefined}} value={amt} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,value:Math.max(0,Number(e.target.value)||0)}:x))}/>}
                       {spMode==="equal"&&<span style={{fontWeight:600,fontVariantNumeric:"tabular-nums",color:G}}>{fmt(amt)}</span>}
-                      <span style={{fontSize:10,color:"#9CAA9F",minWidth:36,textAlign:"right"}}>{pct}%</span>
                     </div>
                   </div>
                 );
               })}
             </div>
           )}
-          {spMode==="amount"&&Math.abs(totAmt-expAmt)>0.01&&<div style={{fontSize:11,color:"#A32D2D",marginTop:6}}>Los importes suman {fmt(totAmt)} el total es {fmt(expAmt)}</div>}
+          {spMode==="amount"&&(
+            <div style={{fontSize:11,marginTop:6,color:(amtMismatch&&showSplitError)?"#A32D2D":"#6B7B72"}}>
+              Suma: {fmt(totAmt)} de {fmt(expAmt)}
+              {amtMismatch&&showSplitError&&<span> · Debe coincidir con el total.</span>}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -3031,7 +3049,19 @@ function NewPanel(){
         <textarea className="inp" rows={2} value={form.notes}
           onChange={e=>setForm(p=>({...p,notes:e.target.value}))} style={{resize:"vertical"}}/>
       </div>
-      <SplitAllocationEditor t={t} user={ownerUser} users={users} totalAmount={expAmt} splitOn={splitOn} setSplitOn={setSplitOn} splits={splits} setSplits={setSplits} spMode={spMode} setSpMode={setSpMode}/>
+      <SplitAllocationEditor
+        t={t}
+        user={ownerUser}
+        users={users}
+        totalAmount={expAmt}
+        splitOn={splitOn}
+        setSplitOn={setSplitOn}
+        splits={splits}
+        setSplits={setSplits}
+        spMode={spMode}
+        setSpMode={setSpMode}
+        showSplitError={submitAttempt && splitSubmitBlocked}
+      />
       </div>
       {formError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{formError}</div>}
       <div style={{position:"relative",width:"100%"}}>
@@ -3448,9 +3478,11 @@ function DashboardView(){
   const rejCnt=rejList.length;
   const watchCats=cats.filter(c=>!c.archived&&c.budget!=null&&c.budget>0&&effectiveExpenseApproverIds({category:c.name},cats,users)[0]===user.id);
   const [drillPerson,setDrillPerson]=useState(null);
-  const budgetRemainingTotal=(departmentsWithStats||[])
-    .filter(d=>!d.archived&&Number(d.budget)>0)
-    .reduce((s,d)=>s+(Number(d.budget||0)-Number(d.spent||0)),0);
+  const deptBudgetActive=(departmentsWithStats||[]).filter(d=>!d.archived&&Number(d.budget)>0);
+  const budgetTotalActive=deptBudgetActive.reduce((s,d)=>s+Number(d.budget||0),0);
+  const spentActive=deptBudgetActive.reduce((s,d)=>s+Number(d.spent||0),0);
+  const budgetRemainingTotal=budgetTotalActive-spentActive;
+  const budgetProgressPct=budgetTotalActive>0 ? (spentActive/budgetTotalActive)*100 : 0;
   // Upcoming bills in 15 days
   const upcoming15=[];
   bills.filter(b=>getItemStatus(b,cats,users)==="approved"&&b.active&&b.frequency==="monthly"&&b.dayOfMonth).forEach(b=>{
@@ -3492,17 +3524,55 @@ function DashboardView(){
         ))}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-        {[
-          {label:t("dash.totalInvested"),val:dashTotApproved,sub:t("dash.totalInvestedSub")||"Gastos aprobados"},
-          {label:"Presupuesto restante",val:budgetRemainingTotal,sub:"Suma de departamentos",valueColor:budgetRemainingTotal<0?"#991B1B":G},
-          {label:"Gasto en "+today.toLocaleString("es-ES",{month:"long"}).charAt(0).toUpperCase()+today.toLocaleString("es-ES",{month:"long"}).slice(1),val:mTotal,sub:""},
-          {label:t("dash.monthlyFixed"),val:totFixed,sub:t("dash.monthlyFixedSub")||"Coste mensual fijo"}
-        ].map((m,i)=>{
-          const kpi=fmtKpi(m.val);
+        {(() => {
+          const monthLong=today.toLocaleString("es-ES",{month:"long"});
+          const monthLabel="Gasto en "+monthLong.charAt(0).toUpperCase()+monthLong.slice(1);
+
+          const totalKpiLabel="Total gastado";
+          const budgetKpiLabel="Presupuesto disponible";
+          const fixedKpiLabel="Coste fijo mensual";
+
+          const totalKpiBg="#FEE2E2";
+          const totalKpiText="#991B1B";
+          const budgetKpiBg=budgetRemainingTotal<0 ? "#FEF2F2" : "#DCFCE7";
+          const budgetKpiText=budgetRemainingTotal<0 ? "#991B1B" : "#065F46";
+          const monthKpiBg="#FFF7ED";
+          const monthKpiText="#92400E";
+          const fixedKpiBg="#F5F0EA";
+          const fixedKpiText="#6B7B72";
+
+          const renderKpiCard=(key,label,val,bg,text,sub,progressColor,showProgress=false)=> {
+            const kpi=fmtKpi(val);
+            return(
+              <div key={key} className="card" style={{background:bg,border:"1px solid rgba(0,0,0,0.02)"}}>
+                <div style={{fontSize:10,color:"#9CAA9F",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{label}</div>
+                <div style={{fontSize:22,fontWeight:700,color:text,fontVariantNumeric:"tabular-nums"}}>
+                  <span>{kpi.whole}</span><span style={{fontSize:14,verticalAlign:"baseline"}}>{kpi.cents}</span>
+                </div>
+                {showProgress&&(
+                  <div style={{height:6,background:"#EDE8E0",borderRadius:999,marginTop:10}}>
+                    <div style={{height:"100%",width:`${Math.max(0,Math.min(100,budgetProgressPct))}%`,background:progressColor,borderRadius:999}}/>
+                  </div>
+                )}
+                <div style={{fontSize:11,color:"#9CAA9F",marginTop:5}}>{sub}</div>
+              </div>
+            );
+          };
+
+          const totalSub=t("dash.totalInvestedSub")||"Gastos aprobados";
+          const budgetSub="Suma de departamentos";
+          const monthSub=mTotal===0 ? "Sin gastos este mes aún" : "";
+          const fixedSub=totFixed===0 ? "Sin facturas recurrentes" : (t("dash.monthlyFixedSub")||"");
+
           return(
-          <div key={i} className="card"><div style={{fontSize:10,color:"#9CAA9F",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{m.label}</div><div style={{fontSize:22,fontWeight:700,color:m.valueColor||G,fontVariantNumeric:"tabular-nums"}}><span>{kpi.whole}</span><span style={{fontSize:14,verticalAlign:"baseline"}}>{kpi.cents}</span></div><div style={{fontSize:11,color:"#B5C0B8",marginTop:1}}>{m.sub}</div></div>
+            <>
+              {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,totalKpiText,true)}
+              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetSub,budgetKpiText,true)}
+              {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,monthSub,null,false)}
+              {renderKpiCard("k-fixed",fixedKpiLabel,totFixed,fixedKpiBg,fixedKpiText,fixedSub,null,false)}
+            </>
           );
-        })}
+        })()}
       </div>
       <div className="card" style={{marginBottom:14}}>
         <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>{t("dash.activityTitle")}</div>
@@ -3770,9 +3840,8 @@ function ApprovalsView(){
           const ownerName=(users.find(u=>u.id===(item.ownerId||item.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
           const rowDate=isBill?(item.dueDate||item.date):item.date;
           const rowTitle=isBill?item.name:item.description;
-          const rowTypeLabel=isBill?"FACTURA":"GASTO";
-          const rowTypeStyle=isBill?{background:"#F5E8F4",color:"#5C1057"}:{background:"#EDE8E0",color:"#4B5E52"};
           const st=getItemStatus(item,cats,users);
+          const stStyle=ST[st]||ST.pending;
           const myVote=approvalVoteFor(item.approvals||{},user.id,users);
           const canActOnRow=canAct&&rowApproverIds.includes(user.id)&&myVote!=="approved";
           return(
@@ -3782,19 +3851,22 @@ function ApprovalsView(){
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                        <div style={{fontWeight:600,fontSize:13}}>{rowTitle}</div>
-                        <span style={{display:"inline-flex",alignItems:"center",padding:"1px 6px",borderRadius:7,fontSize:10,fontWeight:700,...rowTypeStyle}}>{rowTypeLabel}</span>
-                        {(item.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:10,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {(item.paidBy||[]).length}</span>}
-                      </div>
-                      <div style={{fontSize:11,color:"#9CAA9F",marginTop:2}}>{fmtDate(rowDate)} · Titular: {ownerName} · Enviado por: {submitterName} · {item.category}</div>
+                      <div style={{fontWeight:600,fontSize:16,color:"#4B5E52"}}>{rowTitle}</div>
+                      <div style={{fontSize:13,fontWeight:700,color:"#4B5E52",marginTop:2}}>Titular: {ownerName}</div>
+                      <div style={{fontSize:12,color:"#9CAA9F",marginTop:2}}>{item.category} · {fmtDate(rowDate)} · Enviado por: {submitterName}</div>
                     </div>
-                    <div style={{fontSize:17,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmtExpenseAmt(item)}</div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
+                      <div style={{marginTop:6}}>
+                        <span style={{padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,background:stStyle.bg,color:stStyle.color}}>
+                          {t("status."+st)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  {AUTH_URL&&item.status&&<div style={{marginTop:6}}><span style={{padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,background:ST.pending.bg,color:ST.pending.color}}>{String(item.status).toUpperCase()}</span></div>}
                 </div>
               </div>
-              {(item.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={item} t={t} users={users}/></div>}
+              {(item.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={item} t={t} users={users} alwaysInline/></div>}
               <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(item.approvals||{},aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
               {canAct?(canActOnRow?(<div onClick={ev=>ev.stopPropagation()}><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[item.id]||""} onChange={ev=>setANote(p=>({...p,[item.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(item.id,"approved",isBill?"bill":"expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(item.id,"rejected",isBill?"bill":"expense")}>{t("action.reject")}</button></div></div>):(myVote?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+myVote)}</div>:(!canAct||!rowApproverIds.includes(user.id)?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>:null))):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>)}
             </div>
@@ -3853,6 +3925,8 @@ function BillsView(){
   const activeCats=cats.filter(c=>!c.archived);
   const freqNb=newBill.frequency||"once";
   const recNb=isBillRecurringFrequency(freqNb);
+  const billFreqUi=freqNb==="once"||freqNb===""?"once":freqNb;
+  const nextDueUiText=billFreqUi==="once" ? "— (pago único)" : (()=>{try{return fmtDate(billDueISOFromForm({...newBill,frequency:billFreqUi}));}catch(e){return"";}})();
   const billAmtOk=parseMoney(newBill.amount)>0;
   const billValid=!!String(newBill.name||"").trim()&&billAmtOk&&!!String(newBill.category||"").trim()&&!!String(newBill.departmentId||"").trim()&&!!String(newBill.ownerId||user.id).trim()&&(!recNb||!!String(newBill.dayOfMonth||"").trim());
   const [billSubmitAttempt,setBillSubmitAttempt]=useState(false);
@@ -4196,25 +4270,50 @@ function BillsView(){
         )}
       </div>
       {addBill&&(
-        <div className="card" style={{marginBottom:11}}>
-          <div style={{fontWeight:600,fontSize:13,marginBottom:9}}>{t("bills.newBill")}</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-            <div><label className="lbl">{t("label.billName")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" placeholder={t("label.billName")} value={newBill.name} style={brs(bh&&!String(newBill.name||"").trim())} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
-            <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" type="text" inputMode="decimal" placeholder="0,00" value={newBill.amount} style={brs(bh&&!billAmtOk)} onChange={e=>setNewBill(p=>({...p,amount:e.target.value}))}/></div>
-            <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.category} style={brs(bh&&!String(newBill.category||"").trim())} onChange={e=>setNewBill(p=>({...p,category:e.target.value}))}><option value="">{t("label.category")}</option>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
-            <div><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.departmentId||""} style={brs(bh&&!String(newBill.departmentId||"").trim())} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}><option value="">{t("label.department")}</option>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-            <div><label className="lbl">Titular <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.ownerId||user.id} style={brs(bh&&!String(newBill.ownerId||user.id).trim())} onChange={e=>setNewBill(p=>({...p,ownerId:e.target.value}))}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
-            <div style={{gridColumn:"1/-1"}}>
-              <label className="lbl" style={{marginBottom:0}}>{t("bills.paymentQuestion")}</label>
-              <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
-                  <input type="radio" name="nb-pay" checked={newBill.paymentChoice==="paid"} onChange={()=>setNewBill(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}))}/>
+        <div
+          style={{position:"fixed",inset:0,background:"rgba(60,10,55,0.12)",zIndex:200,display:"flex",justifyContent:"flex-end"}}
+          onClick={()=>{setAddBill(false);setBillSubmitAttempt(false);}}
+        >
+          <div
+            style={{width:"min(560px,100%)",height:"100%",background:"#fff",overflowY:"auto",padding:"14px 14px 80px",boxShadow:"-10px 0 30px rgba(0,0,0,0.08)"}}
+            onClick={e=>e.stopPropagation()}
+          >
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontWeight:700,fontSize:14,color:"#4B5E52"}}>{t("bills.newBill")}</div>
+              <button className="btn-sm" style={{border:"none",background:"none",color:"#9CAA9F",fontSize:22,cursor:"pointer"}} onClick={()=>{setAddBill(false);setBillSubmitAttempt(false);}}>×</button>
+            </div>
+
+            {/* Row 1: [Nombre de factura] [Importe] */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+              <div><label className="lbl">{t("label.billName")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" placeholder={t("label.billName")} value={newBill.name} style={brs(bh&&!String(newBill.name||"").trim())} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
+              <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" type="text" inputMode="decimal" placeholder="0,00" value={newBill.amount} style={brs(bh&&!billAmtOk)} onChange={e=>setNewBill(p=>({...p,amount:e.target.value}))}/></div>
+            </div>
+
+            {/* Row 2: [Titular] [Categoría] [Departamento] */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
+              <div><label className="lbl">Titular <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.ownerId||user.id} style={brs(bh&&!String(newBill.ownerId||user.id).trim())} onChange={e=>setNewBill(p=>({...p,ownerId:e.target.value}))}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
+              <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.category} style={brs(bh&&!String(newBill.category||"").trim())} onChange={e=>setNewBill(p=>({...p,category:e.target.value}))}><option value="">{t("label.category")}</option>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
+              <div><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.departmentId||""} style={brs(bh&&!String(newBill.departmentId||"").trim())} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}><option value="">{t("label.department")}</option>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+            </div>
+
+            {/* Estado de pago */}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#6B7B72",margin:"4px 0 8px"}}>Estado de pago</div>
+              <div style={{display:"flex",border:"1.5px solid #DDD6CC",borderRadius:10,overflow:"hidden"}}>
+                <button
+                  type="button"
+                  style={{flex:1,padding:"9px 6px",border:"none",background:newBill.paymentChoice==="paid"?G:"#fff",color:newBill.paymentChoice==="paid"?"#fff":"#4B5E52",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
+                  onClick={()=>setNewBill(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}))}
+                >
                   {t("bills.paymentPaid")}
-                </label>
-                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
-                  <input type="radio" name="nb-pay" checked={newBill.paymentChoice!=="paid"} onChange={()=>setNewBill(p=>({...p,paymentChoice:"pending"}))}/>
+                </button>
+                <button
+                  type="button"
+                  style={{flex:1,padding:"9px 6px",border:"none",background:newBill.paymentChoice!=="paid"?G:"#fff",color:newBill.paymentChoice!=="paid"?"#fff":"#4B5E52",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
+                  onClick={()=>setNewBill(p=>({...p,paymentChoice:"pending"}))}
+                >
                   {t("bills.paymentPending")}
-                </label>
+                </button>
               </div>
               {newBill.paymentChoice==="paid"&&(
                 <div style={{marginTop:8}}>
@@ -4223,59 +4322,110 @@ function BillsView(){
                 </div>
               )}
             </div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:6}}>
-            <div><label className="lbl">{t("label.frequency")}</label><select className="inp" value={newBill.frequency===""||newBill.frequency==="once"?"once":newBill.frequency} onChange={e=>{
-              const v=e.target.value;
-              setNewBill(p=>{
-                const next={...p,frequency:v==="once"?"":v};
-                if(!isBillRecurringFrequency(next.frequency))next.dayOfMonth="";
-                else if(!next.dayOfMonth)next.dayOfMonth="1";
-                return next;
-              });
-            }}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
-            {!isBillRecurringFrequency(newBill.frequency)&&<div><label className="lbl">{t("label.date")}</label><input className="inp" type="date" value={newBill.dueDate||""} onChange={e=>setNewBill(p=>({...p,dueDate:e.target.value}))}/></div>}
-            {isBillRecurringFrequency(newBill.frequency)&&<div><label className="lbl">{t("label.dayOfMonth")}</label><input className="inp" type="number" min="1" max="31" placeholder="1" value={newBill.dayOfMonth} style={brs(bh&&recNb&&!String(newBill.dayOfMonth||"").trim())} onChange={e=>setNewBill(p=>({...p,dayOfMonth:e.target.value}))}/></div>}
-            {newBill.frequency==="custom"&&<div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" type="number" min="2" max="24" placeholder="2" value={newBill.intervalMonths||""} onChange={e=>setNewBill(p=>({...p,intervalMonths:e.target.value}))}/></div>}
-            {isBillRecurringFrequency(newBill.frequency)&&<div style={{gridColumn:newBill.frequency==="monthly"?"1/-1":undefined}}><label className="lbl">{t("label.endDate")}</label><input className="inp" type="date" value={newBill.endDate||""} onChange={e=>setNewBill(p=>({...p,endDate:e.target.value}))}/><div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>}
-          </div>
-          {(()=>{const f=newBill.frequency;if(!isBillRecurringFrequency(f))return newBill.dueDate?<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Vencimiento: {fmtDate(newBill.dueDate)}</div>:null;if(f==="monthly"&&newBill.dayOfMonth){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá cada mes, el día {newBill.dayOfMonth}{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}if(f==="custom"&&newBill.intervalMonths&&newBill.dayOfMonth){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá cada {newBill.intervalMonths} meses, el día {newBill.dayOfMonth}{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}if(f==="annual"){return<div style={{fontSize:10,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"5px 9px",marginBottom:10}}>Se repetirá una vez al año{newBill.endDate?" hasta "+fmtDate(newBill.endDate):""}</div>;}return null;})()}
-          <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
-            <div><label className="lbl">{t("bills.description")}</label><textarea className="inp" rows={1} placeholder={t("bills.descPlaceholder")} style={{resize:"vertical"}} value={newBill.description} onChange={e=>setNewBill(p=>({...p,description:e.target.value}))}/></div>
-          </div>
-          <div style={{marginTop:10}}>
-            <SplitAllocationEditor t={t} user={billOwner} users={users} totalAmount={billTotal} splitOn={billSplitOn} setSplitOn={setBillSplitOn} splits={billSplits} setSplits={setBillSplits} spMode={billSpMode} setSpMode={setBillSpMode}/>
-          </div>
-          {/* New bill attachment */}
-          <div style={{marginTop:10}}>
-            <label className="lbl">{t("bills.attachment")}</label>
-            {newBillRecPrev&&newBillRecPrev!=="PDF"&&(
-              <div style={{position:"relative",marginBottom:6}}>
-                <img src={newBillRecPrev} alt="" style={{width:"100%",maxHeight:90,objectFit:"contain",borderRadius:7,background:"#F5F0EA"}}/>
-                <button style={{position:"absolute",top:4,right:4,width:18,height:18,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setNewBill(p=>({...p,receipt:null,receiptType:null}));setNewBillRecPrev(null);}}>×</button>
+
+            {/* Recurrencia (opcional) */}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#6B7B72",margin:"4px 0 8px"}}>Recurrencia (opcional)</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                <div><label className="lbl">{t("label.frequency")}</label><select className="inp" value={newBill.frequency===""||newBill.frequency==="once"?"once":newBill.frequency} onChange={e=>{
+                  const v=e.target.value;
+                  setNewBill(p=>{
+                    const next={...p,frequency:v==="once"?"":v};
+                    if(!isBillRecurringFrequency(next.frequency))next.dayOfMonth="";
+                    else if(!next.dayOfMonth)next.dayOfMonth="1";
+                    return next;
+                  });
+                }}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
+                <div>
+                  <label className="lbl">Próximo vencimiento</label>
+                  <input
+                    className="inp"
+                    type="text"
+                    disabled
+                    value={nextDueUiText}
+                    style={{background:"#F5F0EA",color:"#9CAA9F"}}
+                  />
+                </div>
               </div>
-            )}
-            {newBillRecPrev==="PDF"&&(
-              <div style={{background:"#F5E8F4",borderRadius:6,padding:"5px 9px",fontSize:11,color:"#5C1057",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
-                <span>PDF adjunto</span>
-                <button style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={()=>{setNewBill(p=>({...p,receipt:null,receiptType:null}));setNewBillRecPrev(null);}}>×</button>
+
+              {isBillRecurringFrequency(newBill.frequency)&&(
+                <>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:6}}>
+                    <div><label className="lbl">{t("label.dayOfMonth")}</label><input className="inp" type="number" min="1" max="31" placeholder="1" value={newBill.dayOfMonth} style={brs(bh&&recNb&&!String(newBill.dayOfMonth||"").trim())} onChange={e=>setNewBill(p=>({...p,dayOfMonth:e.target.value}))}/></div>
+                    {newBill.frequency==="custom"&&(
+                      <div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" type="number" min="2" max="24" placeholder="2" value={newBill.intervalMonths||""} onChange={e=>setNewBill(p=>({...p,intervalMonths:e.target.value}))}/></div>
+                    )}
+                  </div>
+                  {isBillRecurringFrequency(newBill.frequency)&&(
+                    <div style={{gridColumn:"1/-1",marginBottom:6}}>
+                      <label className="lbl">{t("label.endDate")}</label>
+                      <input className="inp" type="date" value={newBill.endDate||""} onChange={e=>setNewBill(p=>({...p,endDate:e.target.value}))}/>
+                      <div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Dividir gasto (opcional) */}
+            <div style={{marginTop:2,marginBottom:12}}>
+              <SplitAllocationEditor
+                t={t}
+                user={billOwner}
+                users={users}
+                totalAmount={billTotal}
+                splitOn={billSplitOn}
+                setSplitOn={setBillSplitOn}
+                splits={billSplits}
+                setSplits={setBillSplits}
+                spMode={billSpMode}
+                setSpMode={setBillSpMode}
+                showSplitError={billSubmitAttempt && billAmtBad}
+              />
+            </div>
+
+            {/* Row 5: [Descripción textarea] [Adjunto file upload] */}
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#6B7B72",margin:"4px 0 8px"}}>Notas y adjunto (opcional)</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div>
+                  <label className="lbl">{t("bills.description")}</label>
+                  <textarea className="inp" rows={1} placeholder={t("bills.descPlaceholder")} style={{resize:"vertical"}} value={newBill.description} onChange={e=>setNewBill(p=>({...p,description:e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="lbl">{t("bills.attachment")}</label>
+                  {newBillRecPrev&&newBillRecPrev!=="PDF"&&(
+                    <div style={{position:"relative",marginBottom:6}}>
+                      <img src={newBillRecPrev} alt="" style={{width:"100%",maxHeight:90,objectFit:"contain",borderRadius:7,background:"#F5F0EA"}}/>
+                      <button style={{position:"absolute",top:4,right:4,width:18,height:18,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setNewBill(p=>({...p,receipt:null,receiptType:null}));setNewBillRecPrev(null);}}>×</button>
+                    </div>
+                  )}
+                  {newBillRecPrev==="PDF"&&(
+                    <div style={{background:"#F5E8F4",borderRadius:6,padding:"5px 9px",fontSize:11,color:"#5C1057",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
+                      <span>PDF adjunto</span>
+                      <button style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={()=>{setNewBill(p=>({...p,receipt:null,receiptType:null}));setNewBillRecPrev(null);}}>×</button>
+                    </div>
+                  )}
+                  {!newBillRecPrev&&(
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <button type="button" className="btn-sm" style={{fontSize:10,padding:"4px 10px"}} onClick={startCamForNewBill}>{t("action.scanBill")}</button>
+                      <button type="button" style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>billNewFileRef.current?.click()}>+ {t("item.attachment")||"Añadir adjunto"}</button>
+                    </div>
+                  )}
+                  <input ref={billNewFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} capture="environment" style={{display:"none"}} onChange={handleNewBillFile}/>
+                </div>
               </div>
-            )}
-            {!newBillRecPrev&&(
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                <button type="button" className="btn-sm" style={{fontSize:10,padding:"4px 10px"}} onClick={startCamForNewBill}>{t("action.scanBill")}</button>
-                <button type="button" style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>billNewFileRef.current?.click()}>+ {t("item.attachment")||"Añadir adjunto"}</button>
-              </div>
-            )}
-            <input ref={billNewFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} capture="environment" style={{display:"none"}} onChange={handleNewBillFile}/>
-          </div>
-          <div style={{marginTop:9,padding:"8px 10px",background:"#FEF3C7",borderRadius:7,fontSize:11,color:"#92400E",marginBottom:9}}>{t("bills.approvalNote")}</div>
-          {billFormError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{billFormError}</div>}
-          <div style={{position:"relative",width:"100%"}}>
-            <button type="button" className="btn-primary" style={{width:"100%",fontSize:13,opacity:billValid?1:0.5,cursor:billValid?"pointer":"not-allowed"}} onClick={submitBill}>{t("action.submitBill")}</button>
-            {!billValid&&(
-              <button type="button" aria-label="Completar campos obligatorios" style={{position:"absolute",inset:0,opacity:0.001,width:"100%",height:"100%",cursor:"pointer"}}
-                onClick={()=>setBillSubmitAttempt(true)}/>)}
+            </div>
+
+            <div style={{marginTop:9,padding:"8px 10px",background:"#FEF3C7",borderRadius:7,fontSize:11,color:"#92400E",marginBottom:9}}>{t("bills.approvalNote")}</div>
+            {billFormError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{billFormError}</div>}
+            <div style={{position:"relative",width:"100%"}}>
+              <button type="button" className="btn-primary" style={{width:"100%",fontSize:13,opacity:billValid?1:0.5,cursor:billValid?"pointer":"not-allowed"}} onClick={submitBill}>{t("action.submitBill")}</button>
+              {!billValid&&(
+                <button type="button" aria-label="Completar campos obligatorios" style={{position:"absolute",inset:0,opacity:0.001,width:"100%",height:"100%",cursor:"pointer"}}
+                  onClick={()=>setBillSubmitAttempt(true)}/>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -4367,15 +4517,21 @@ function BillsView(){
                       <div style={{gridColumn:"1/-1"}}><label className="lbl">Titular</label><select className="inp" style={{fontSize:14}} value={editBillForm.ownerId||user.id} onChange={e=>{const oid=e.target.value;setEditBillForm(p=>({...p,ownerId:oid}));setEditBillSplits(prev=>prev.map(s=>s.userId===oid?{...s,checked:true}:s));setEditBillDirty(true);}}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
                       <div style={{gridColumn:"1/-1"}}>
                         <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>{t("bills.paymentQuestion")}</div>
-                        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-                          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
-                            <input type="radio" name={"eb-pay-top-"+b.id} checked={(editBillForm.paymentChoice||"pending")!=="paid"} onChange={()=>{setEditBillForm(p=>({...p,paymentChoice:"pending"}));setEditBillDirty(true);}}/>
+                        <div style={{display:"flex",border:"1.5px solid #DDD6CC",borderRadius:10,overflow:"hidden"}}>
+                          <button
+                            type="button"
+                            style={{flex:1,padding:"9px 6px",border:"none",background:(editBillForm.paymentChoice||"pending")!=="paid"?G:"#fff",color:(editBillForm.paymentChoice||"pending")!=="paid"?"#fff":"#4B5E52",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
+                            onClick={()=>{setEditBillForm(p=>({...p,paymentChoice:"pending"}));setEditBillDirty(true);}}
+                          >
                             {t("bills.paymentPending")}
-                          </label>
-                          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
-                            <input type="radio" name={"eb-pay-top-"+b.id} checked={editBillForm.paymentChoice==="paid"} onChange={()=>{setEditBillForm(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}));setEditBillDirty(true);}}/>
+                          </button>
+                          <button
+                            type="button"
+                            style={{flex:1,padding:"9px 6px",border:"none",background:editBillForm.paymentChoice==="paid"?G:"#fff",color:editBillForm.paymentChoice==="paid"?"#fff":"#4B5E52",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
+                            onClick={()=>{setEditBillForm(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}));setEditBillDirty(true);}}
+                          >
                             {t("bills.paymentPaid")}
-                          </label>
+                          </button>
                         </div>
                         {editBillForm.paymentChoice==="paid"&&(
                           <div style={{marginTop:8}}>
