@@ -147,7 +147,7 @@ const TR = {
     "action.openFile": "Abrir archivo",
     "action.downloadFile": "Descargar",
     "label.amount": "Importe",
-    "label.description": "Descripción",
+    "label.description": "Concepto",
     "label.category": "Categoría",
     "label.department": "Departamento",
     "label.date": "Fecha",
@@ -175,7 +175,7 @@ const TR = {
     "label.confirmPassword": "Confirmar contraseña",
     "label.approvers": "Aprobadores",
     "label.categoryName": "Nombre de categoría",
-    "label.billName": "Nombre de factura",
+    "label.billName": "Concepto",
     "label.monthly": "Mensual",
     "label.everyXMonths": "Cada X meses",
     "label.intervalMonths": "Intervalo en meses",
@@ -2998,6 +2998,9 @@ function NewPanel(){
       )}
       {/* Zona principal compacta */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
+        <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.description")} <span style={{color:"#A32D2D"}}>*</span></label>
+          <input className="inp" placeholder={t("label.description")} value={form.description} style={rs(hi&&!String(form.description||"").trim())} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
+        </div>
         <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label>
           <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount} style={rs(hi&&!amountOk)}
             onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amount:v}));}}/>
@@ -3007,9 +3010,6 @@ function NewPanel(){
             <option value="">{t("label.category")}</option>
             {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
           </select>
-        </div>
-        <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.description")} <span style={{color:"#A32D2D"}}>*</span></label>
-          <input className="inp" placeholder={t("label.description")} value={form.description} style={rs(hi&&!String(form.description||"").trim())} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
         </div>
         <div><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
           <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
@@ -3721,8 +3721,6 @@ function ExpensesView(){
         </select>
         <input className="inp" type="date" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
           value={dateFrom} onChange={e=>setDateFrom(e.target.value)} title={t("filter.dateFrom")}/>
-        <input className="inp" type="date" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
-          value={dateTo} onChange={e=>setDateTo(e.target.value)} title={t("filter.dateTo")}/>
         {activeFilterCount>0&&(
           <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
             onClick={()=>{
@@ -3733,7 +3731,6 @@ function ExpensesView(){
               setCatFlt("");
               setSubmFlt("");
               setDateFrom("");
-              setDateTo("");
               setExpSrc("");
             }}>
             {t("filter.clearFilters")} ({activeFilterCount + (expSrc?1:0)})
@@ -3748,7 +3745,7 @@ function ExpensesView(){
           const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
           const ownerName=(users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
           return(
-            <div key={e.id} className="row-hover" style={{padding:"9px 13px",borderBottom:idx<filtered.length-1?"1px solid #F5F0EA":"none",cursor:"pointer",background:sel?"#F5F0EA":"transparent",display:"flex",alignItems:"flex-start",gap:8}}
+            <div key={e.id} className="row-hover" style={{padding:"9px 13px",borderBottom:idx<filtered.length-1?"1px solid #F5F0EA":"none",cursor:"pointer",background:sel?"#F5F0EA":"#FFFFFF",display:"flex",alignItems:"flex-start",gap:8}}
               onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}><span style={{fontSize:12,fontWeight:600}}>{e.description}</span><span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:ST[st].bg,color:ST[st].color,flexShrink:0}}>{t("status."+st)}</span>{(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span aria-hidden="true">👥</span><span>{(e.paidBy||[]).length}</span></span>}</div>
@@ -3852,10 +3849,10 @@ function ApprovalsView(){
           const st=getItemStatus(item,cats,users);
           const stStyle=ST[st]||ST.pending;
           const myVote=approvalVoteFor(item.approvals||{},user.id,users);
-          const canActOnRow=canAct&&rowApproverIds.includes(user.id)&&myVote!=="approved";
+          const canActOnRow=canAct&&rowApproverIds.includes(user.id);
           const isExpanded=itemId===expandedId;
           return(
-            <div key={`${item._approvalType}-${item.id}`} className="card row-hover" style={{marginBottom:9,background:priorityForItem(item)===3?"#F7F7F7":"#fff",opacity:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none"}}>
+            <div key={`${item._approvalType}-${item.id}`} className="card row-hover" style={{marginBottom:9,background:"#fff",opacity:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none"}}>
               <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7,cursor:"pointer"}} onClick={()=>setExpandedId(prev=>prev===itemId?null:itemId)}>
                 {!isBill&&AUTH_URL&&item.receiptPath&&<ReceiptThumb expenseId={item.id}/>}
                 <div style={{flex:1,minWidth:0}}>
@@ -3867,10 +3864,20 @@ function ApprovalsView(){
                     </div>
                     <div style={{textAlign:"right",flexShrink:0}}>
                       <div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
-                      <div style={{marginTop:6}}>
+                      <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center",justifyContent:"flex-end"}}>
                         <span style={{padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,background:stStyle.bg,color:stStyle.color}}>
                           {t("status."+st)}
                         </span>
+                        {!isExpanded&&(
+                          <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px"}} onClick={ev=>{ev.stopPropagation();setExpandedId(itemId);}}>
+                            Revisar
+                          </button>
+                        )}
+                        {isExpanded&&(
+                          <button type="button" style={{background:"none",border:"none",color:"#9CAA9F",cursor:"pointer",fontSize:16,lineHeight:1,fontFamily:"inherit"}} onClick={ev=>{ev.stopPropagation();setExpandedId(null);}}>
+                            ×
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -3878,7 +3885,31 @@ function ApprovalsView(){
               </div>
               {(item.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={item} t={t} users={users} alwaysInline/></div>}
               <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(item.approvals||{},aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {canAct?(canActOnRow?(isExpanded?<div onClick={ev=>ev.stopPropagation()}><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[itemId]||""} onChange={ev=>setANote(p=>({...p,[itemId]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"approved",isBill?"bill":"expense");setExpandedId(null);}}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"rejected",isBill?"bill":"expense");setExpandedId(null);}}>{t("action.reject")}</button></div></div>:null):(myVote?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+myVote)}</div>:(!canAct||!rowApproverIds.includes(user.id)?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>:null))):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>)}
+              {canAct?(
+                canActOnRow?(
+                  isExpanded?(
+                    <div onClick={ev=>ev.stopPropagation()}>
+                      <label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label>
+                      <textarea className="inp" rows={2} placeholder="" value={aNote[itemId]||""} onChange={ev=>setANote(p=>({...p,[itemId]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
+                      <div style={{display:"flex",gap:6}}>
+                        <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"approved",isBill?"bill":"expense");setExpandedId(null);}}>{t("action.approve")}</button>
+                        <button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"rejected",isBill?"bill":"expense");setExpandedId(null);}}>{t("action.reject")}</button>
+                      </div>
+                    </div>
+                  ):(
+                    myVote?(
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>
+                        <div style={{fontSize:11,color:"#4B5E52"}}>{t("status."+myVote)}</div>
+                        <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setExpandedId(itemId)}>Cambiar</button>
+                      </div>
+                    ):null
+                  )
+                ):(
+                  <div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>
+                )
+              ):(
+                <div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>
+              )}
             </div>
           );
         })
@@ -4233,7 +4264,7 @@ function BillsView(){
     const rej=bills.filter(b=>getItemStatus(b,cats)==="rejected");
     return{all:bills,pending:pend,approved:appr,rejected:rej};
   },[bills,cats]);
-  const billActiveFilterCount=[billCatFlt,billSubmFlt,billDateFrom,billDateTo].filter(Boolean).length;
+  const billActiveFilterCount=[billCatFlt,billSubmFlt,billDateFrom].filter(Boolean).length;
   return(
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
@@ -4270,11 +4301,9 @@ function BillsView(){
         </select>
         <input className="inp" type="date" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
           value={billDateFrom} onChange={e=>setBillDateFrom(e.target.value)} title={t("filter.dateFrom")}/>
-        <input className="inp" type="date" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
-          value={billDateTo} onChange={e=>setBillDateTo(e.target.value)} title={t("filter.dateTo")}/>
         {billActiveFilterCount>0&&(
           <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
-            onClick={()=>{setBillCatFlt("");setBillSubmFlt("");setBillDateFrom("");setBillDateTo("");setBillSearch("");}}>
+            onClick={()=>{setBillCatFlt("");setBillSubmFlt("");setBillDateFrom("");setBillSearch("");}}>
             {t("filter.clearFilters")} ({billActiveFilterCount + (billSearch?1:0)})
           </button>
         )}
@@ -4340,7 +4369,7 @@ function BillsView(){
                     return next;
                   });
                 }}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
-                <div style={{opacity:isBillRecurringFrequency(newBill.frequency)?1:0.4}}>
+                <div>
                   <label className="lbl">Próximo vencimiento</label>
                   <input
                     className="inp"
@@ -4353,7 +4382,7 @@ function BillsView(){
                       const d=new Date(pickedDate);
                       setNewBill(p=>({...p,dueDate:pickedDate,dayOfMonth:String(d.getDate())}));
                     }}
-                    style={{background:"#F5F0EA",color:"#9CAA9F"}}
+                    style={!isBillRecurringFrequency(newBill.frequency)?{background:"#F5F0EA",color:"#9CAA9F"}:undefined}
                   />
                 </div>
               </div>
@@ -4417,8 +4446,8 @@ function BillsView(){
                   )}
                   {!newBillRecPrev&&(
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      <button type="button" className="btn-sm" style={{fontSize:10,padding:"4px 10px",width:"100%"}} onClick={startCamForNewBill}>{t("action.scanBill")}</button>
-                      <button type="button" style={{fontSize:10,padding:"4px 10px",width:"100%",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>billNewFileRef.current?.click()}>+ {t("item.attachment")||"Añadir adjunto"}</button>
+                      <button type="button" style={{width:"100%",padding:"10px 12px",borderRadius:7,border:"1.5px solid #0F6E56",background:"transparent",color:"#0F6E56",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700}} onClick={startCamForNewBill}>{t("action.scanBill")}</button>
+                      <button type="button" style={{width:"100%",padding:"10px 12px",borderRadius:7,border:"1.5px solid #0F6E56",background:"transparent",color:"#0F6E56",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700}} onClick={()=>billNewFileRef.current?.click()}>+ {t("item.attachment")||"Añadir adjunto"}</button>
                     </div>
                   )}
                   <input ref={billNewFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} capture="environment" style={{display:"none"}} onChange={handleNewBillFile}/>
@@ -4426,10 +4455,9 @@ function BillsView(){
               </div>
             </div>
 
-            <div style={{marginTop:9,padding:"8px 10px",background:"#FEF3C7",borderRadius:7,fontSize:11,color:"#92400E",marginBottom:9}}>{t("bills.approvalNote")}</div>
             {billFormError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{billFormError}</div>}
             <div style={{position:"relative",width:"100%"}}>
-              <button type="button" className="btn-primary" style={{width:"100%",fontSize:13,opacity:billValid?1:0.5,cursor:billValid?"pointer":"not-allowed",background:"#0F6E56"}} onClick={submitBill}>{t("action.submitBill")}</button>
+              <button type="button" className="btn-primary" style={{width:"100%",fontSize:13,opacity:billValid?1:0.5,cursor:billValid?"pointer":"not-allowed",background:"#C2622A",color:"#FFFFFF"}} onClick={submitBill}>{t("action.submitBill")}</button>
               {!billValid&&(
                 <button type="button" aria-label="Completar campos obligatorios" style={{position:"absolute",inset:0,opacity:0.001,width:"100%",height:"100%",cursor:"pointer"}}
                   onClick={()=>setBillSubmitAttempt(true)}/>
@@ -4441,7 +4469,7 @@ function BillsView(){
       <div className="card" style={{padding:0,overflow:"hidden"}}>
         {(()=>{const pool=(byBillStatus[billStatusFlt]||bills);const visible=pool.filter(b=>{if(billCatFlt&&b.category!==billCatFlt)return false;if(billSubmFlt&&b.submittedBy!==billSubmFlt)return false;const refD=getBillFilterDateRef(b);if(billDateFrom&&refD<billDateFrom)return false;if(billDateTo&&refD>billDateTo)return false;if(billSearch&&!b.name.toLowerCase().includes(billSearch.toLowerCase())&&!(b.description||"").toLowerCase().includes(billSearch.toLowerCase()))return false;return true;});if(visible.length===0)return<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{bills.length===0?t("empty.bills"):t("empty.billsFiltered")}</div>;return visible.map((b,i)=>{const bst=getItemStatus(b,cats);const isSelBill=selBillId===b.id;const amtSuf=billListAmountSuffix(b,t);return(
             <div key={b.id}>
-            <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:1,cursor:"pointer",background:isSelBill?"#F5F0EA":"transparent"}}>
+            <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:1,cursor:"pointer",background:isSelBill?"#F5F0EA":"#FFFFFF"}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                   <span style={{fontWeight:600,fontSize:12}}>{b.name}</span>
@@ -4805,7 +4833,7 @@ function ReportsView(){
       <div className="card" style={{marginBottom:11}}>
         <div style={{fontWeight:600,fontSize:13,marginBottom:11}}>{t("reports.byCategory")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
         {catTotals.length===0&&<div style={{color:"#9CAA9F",fontSize:12}}>Sin datos para el filtro seleccionado</div>}
-        {catTotals.map(({cat,total})=>(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt(cat);setExpFlt("all");go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{cat}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:4,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:T,width:`${total/maxC*100}%`,transition:"width 0.4s"}}/></div></div>))}
+        {catTotals.map(({cat,total})=>(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt(cat);setExpFlt("all");go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{tCat(cat,t)}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:4,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:T,width:`${total/maxC*100}%`,transition:"width 0.4s"}}/></div></div>))}
       </div>
       {/* Budget vs actual */}
       {(()=>{
@@ -5859,7 +5887,7 @@ function SettingsView(){
         <IvaRatesEditorBlock t={t} ivaRates={ivaRates} onSave={(rates)=>{void saveAppIvaSettings(rates,appIvaDefaultDraft);}}/>
 
         <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"14px 0"}}/>
-        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Categorías (nombres rápidos)</div>
+        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Categorías</div>
         <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:8}}>
           {appCatsDraft.map((c,idx)=>(
             <div key={c.id||("tmp-"+idx)} style={{display:"flex",gap:7,alignItems:"center"}}>
@@ -6949,7 +6977,7 @@ function SolanaExpenses(){
     if(dateTo&&e.date>dateTo)return false;
     return true;
   });
-  const activeFilterCount=[catFlt,submFlt,dateFrom,dateTo].filter(Boolean).length;
+  const activeFilterCount=[catFlt,submFlt,dateFrom].filter(Boolean).length;
   const isApprover=cats.some(c=>{
     if(c.archived)return false;
     return effectiveExpenseApproverIds({category:c.name},cats,users).includes(user.id);
