@@ -1496,7 +1496,7 @@ const ST={
   rejected:{bg:"#F5E8F4",color:"#5C1057"},
   pending: {bg:"#FEF3C7",color:"#78350F"},
   paid: {bg:"#D1FAE5",color:"#065F46"},
-  overdue: {bg:"#FDE68A",color:"#92400E"},
+  overdue: {bg:"#FEE2E2",color:"#991B1B"},
   cancelled: {bg:"#F5E8F4",color:"#5C1057"},
 };
 /** Dashboard activity + recent list — semantic greens/amber/red per spec */
@@ -3537,31 +3537,31 @@ function DashboardView(){
           const fixedKpiLabel="Coste fijo mensual";
 
           const totalKpiBg="#FECACA";
-          const totalKpiText="#991B1B";
+          const totalKpiText="#7F1D1D";
           const budgetKpiBg=budgetRemainingTotal<0 ? "#FEF2F2" : "#BBF7D0";
-          const budgetKpiText=budgetRemainingTotal<0 ? "#991B1B" : "#065F46";
+          const budgetKpiText=budgetRemainingTotal<0 ? "#991B1B" : "#064E3B";
           const monthKpiBg="#FDE68A";
           const monthKpiText="#92400E";
           const fixedKpiBg="#F5F0EA";
           const fixedKpiText="#6B7B72";
 
-          const renderKpiCard=(key,label,val,bg,text,sub,progressColor,showProgress=false,valueFontSize=22)=> {
+          const renderKpiCard=(key,label,val,bg,text,sub,progressFill,showProgress=false,valueFontSize=22,labelColor="#9CAA9F",subColor="#9CAA9F",progressTrack="#EDE8E0",progressLabel="",progressLabelColor="#6B7B72")=> {
             const kpi=fmtKpi(val);
             return(
               <div key={key} className="card" style={{background:bg,border:"1px solid rgba(0,0,0,0.02)"}}>
-                <div style={{fontSize:10,color:"#9CAA9F",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{label}</div>
+                <div style={{fontSize:10,color:labelColor,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{label}</div>
                 <div style={{fontSize:valueFontSize,fontWeight:700,color:text,fontVariantNumeric:"tabular-nums"}}>
                   <span>{kpi.whole}</span><span style={{fontSize:14,verticalAlign:"baseline"}}>{kpi.cents}</span>
                 </div>
                 {showProgress&&(
                   <>
-                  <div style={{height:10,background:"#EDE8E0",borderRadius:999,marginTop:10}}>
-                    <div style={{height:"100%",width:`${Math.max(0,Math.min(100,budgetProgressPct))}%`,background:progressColor,borderRadius:999}}/>
+                  <div style={{height:8,background:progressTrack,borderRadius:4,marginTop:10}}>
+                    <div style={{height:"100%",width:`${Math.max(0,Math.min(100,budgetProgressPct))}%`,background:progressFill,borderRadius:4}}/>
                   </div>
-                  <div style={{fontSize:12,color:"#6B7B72",marginTop:5}}>{budgetProgressPct.toFixed(1)}% usado</div>
+                  <div style={{fontSize:11,color:progressLabelColor,marginTop:5}}>{progressLabel}</div>
                   </>
                 )}
-                <div style={{fontSize:11,color:"#9CAA9F",marginTop:5}}>{sub}</div>
+                <div style={{fontSize:11,color:subColor,marginTop:5}}>{sub}</div>
               </div>
             );
           };
@@ -3573,9 +3573,9 @@ function DashboardView(){
 
           return(
             <>
-              {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,"#D94F4F",true,28)}
-              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetSub,"#2E7D52",true,28)}
-              {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,monthSub,null,false)}
+              {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,"#DC2626",true,28,"#7F1D1D","#991B1B","#FCA5A5",`${budgetProgressPct.toFixed(1)}% usado`,"#7F1D1D")}
+              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetSub,"#059669",true,28,"#064E3B","#065F46","#6EE7B7",`${budgetProgressPct.toFixed(1)}% disponible`,"#064E3B")}
+              {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,monthSub,null,false,22,"#78350F","#78350F")}
               {renderKpiCard("k-fixed",fixedKpiLabel,totFixed,fixedKpiBg,fixedKpiText,fixedSub,null,false)}
             </>
           );
@@ -3800,6 +3800,7 @@ function ReceiptThumb({expenseId}){
 function ApprovalsView(){
   const{t,expenses,bills,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel}=useApp();
   const [tab,setTab]=useState("all");
+  const [expandedId,setExpandedId]=useState(null);
   const canAct=isApprover||isAdmin;
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const priorityForItem=(item)=>{
@@ -3842,6 +3843,7 @@ function ApprovalsView(){
       {activeRows.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
         activeRows.map(item=>{
           const isBill=item._approvalType==="bill";
+          const itemId=item.id;
           const rowApproverIds=effectiveExpenseApproverIds(item,cats,users);
           const submitterName=(users.find(u=>u.id===item.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
           const ownerName=(users.find(u=>u.id===(item.ownerId||item.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
@@ -3851,9 +3853,10 @@ function ApprovalsView(){
           const stStyle=ST[st]||ST.pending;
           const myVote=approvalVoteFor(item.approvals||{},user.id,users);
           const canActOnRow=canAct&&rowApproverIds.includes(user.id)&&myVote!=="approved";
+          const isExpanded=itemId===expandedId;
           return(
-            <div key={`${item._approvalType}-${item.id}`} className="card row-hover" style={{marginBottom:9,background:priorityForItem(item)===3?"#F7F7F7":"#fff",opacity:priorityForItem(item)===2?0.72:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none",cursor:"pointer"}} onClick={()=>{if(isBill){try{sessionStorage.setItem(APPROVAL_BILL_FOCUS_KEY,item.id);}catch(e){}go("bills");}else{setView("expenses");setDetailId(item.id);setPanel("detail");}}}>
-              <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7}}>
+            <div key={`${item._approvalType}-${item.id}`} className="card row-hover" style={{marginBottom:9,background:priorityForItem(item)===3?"#F7F7F7":"#fff",opacity:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none"}}>
+              <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7,cursor:"pointer"}} onClick={()=>setExpandedId(prev=>prev===itemId?null:itemId)}>
                 {!isBill&&AUTH_URL&&item.receiptPath&&<ReceiptThumb expenseId={item.id}/>}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
@@ -3875,7 +3878,7 @@ function ApprovalsView(){
               </div>
               {(item.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={item} t={t} users={users} alwaysInline/></div>}
               <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(item.approvals||{},aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {canAct?(canActOnRow?(<div onClick={ev=>ev.stopPropagation()}><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[item.id]||""} onChange={ev=>setANote(p=>({...p,[item.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(item.id,"approved",isBill?"bill":"expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(item.id,"rejected",isBill?"bill":"expense")}>{t("action.reject")}</button></div></div>):(myVote?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+myVote)}</div>:(!canAct||!rowApproverIds.includes(user.id)?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>:null))):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>)}
+              {canAct?(canActOnRow?(isExpanded?<div onClick={ev=>ev.stopPropagation()}><label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label><textarea className="inp" rows={2} placeholder="" value={aNote[itemId]||""} onChange={ev=>setANote(p=>({...p,[itemId]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/><div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"approved",isBill?"bill":"expense");setExpandedId(null);}}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"rejected",isBill?"bill":"expense");setExpandedId(null);}}>{t("action.reject")}</button></div></div>:null):(myVote?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>{t("status."+myVote)}</div>:(!canAct||!rowApproverIds.includes(user.id)?<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>:null))):(<div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>)}
             </div>
           );
         })
@@ -4277,16 +4280,10 @@ function BillsView(){
         )}
       </div>
       {addBill&&(
-        <div
-          style={{position:"fixed",inset:0,background:"rgba(60,10,55,0.12)",zIndex:200,display:"flex",justifyContent:"flex-end"}}
-          onClick={()=>{setAddBill(false);setBillSubmitAttempt(false);}}
-        >
-          <div
-            style={{width:"min(560px,100%)",height:"100%",background:"#fff",overflowY:"auto",padding:"14px 14px 80px",boxShadow:"-10px 0 30px rgba(0,0,0,0.08)"}}
-            onClick={e=>e.stopPropagation()}
-          >
+        <div className="card" style={{marginBottom:11,borderLeft:"4px solid #0F6E56"}}>
+          <div style={{padding:"14px 14px 18px"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-              <div style={{fontWeight:700,fontSize:14,color:"#4B5E52"}}>{t("bills.newBill")}</div>
+              <div style={{fontWeight:700,fontSize:14,color:"#0F6E56"}}>{t("bills.newBill")}</div>
               <button className="btn-sm" style={{border:"none",background:"none",color:"#9CAA9F",fontSize:22,cursor:"pointer"}} onClick={()=>{setAddBill(false);setBillSubmitAttempt(false);}}>×</button>
             </div>
 
@@ -4347,11 +4344,15 @@ function BillsView(){
                   <label className="lbl">Próximo vencimiento</label>
                   <input
                     className="inp"
-                    type="text"
+                    type="date"
                     disabled={!isBillRecurringFrequency(newBill.frequency)}
                     placeholder=""
-                    value={isBillRecurringFrequency(newBill.frequency)?nextDueUiText:""}
-                    readOnly={isBillRecurringFrequency(newBill.frequency)}
+                    value={isBillRecurringFrequency(newBill.frequency)?(newBill.dueDate||""):""}
+                    onChange={e=>{
+                      const pickedDate=e.target.value;
+                      const d=new Date(pickedDate);
+                      setNewBill(p=>({...p,dueDate:pickedDate,dayOfMonth:String(d.getDate())}));
+                    }}
                     style={{background:"#F5F0EA",color:"#9CAA9F"}}
                   />
                 </div>
@@ -4360,7 +4361,6 @@ function BillsView(){
               {isBillRecurringFrequency(newBill.frequency)&&(
                 <>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:6}}>
-                    <div><label className="lbl">{t("label.dayOfMonth")}</label><input className="inp" type="number" min="1" max="31" placeholder="1" value={newBill.dayOfMonth} style={brs(bh&&recNb&&!String(newBill.dayOfMonth||"").trim())} onChange={e=>setNewBill(p=>({...p,dayOfMonth:e.target.value}))}/></div>
                     {newBill.frequency==="custom"&&(
                       <div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" type="number" min="2" max="24" placeholder="2" value={newBill.intervalMonths||""} onChange={e=>setNewBill(p=>({...p,intervalMonths:e.target.value}))}/></div>
                     )}
@@ -4429,7 +4429,7 @@ function BillsView(){
             <div style={{marginTop:9,padding:"8px 10px",background:"#FEF3C7",borderRadius:7,fontSize:11,color:"#92400E",marginBottom:9}}>{t("bills.approvalNote")}</div>
             {billFormError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{billFormError}</div>}
             <div style={{position:"relative",width:"100%"}}>
-              <button type="button" className="btn-primary" style={{width:"100%",fontSize:13,opacity:billValid?1:0.5,cursor:billValid?"pointer":"not-allowed"}} onClick={submitBill}>{t("action.submitBill")}</button>
+              <button type="button" className="btn-primary" style={{width:"100%",fontSize:13,opacity:billValid?1:0.5,cursor:billValid?"pointer":"not-allowed",background:"#0F6E56"}} onClick={submitBill}>{t("action.submitBill")}</button>
               {!billValid&&(
                 <button type="button" aria-label="Completar campos obligatorios" style={{position:"absolute",inset:0,opacity:0.001,width:"100%",height:"100%",cursor:"pointer"}}
                   onClick={()=>setBillSubmitAttempt(true)}/>
@@ -4441,7 +4441,7 @@ function BillsView(){
       <div className="card" style={{padding:0,overflow:"hidden"}}>
         {(()=>{const pool=(byBillStatus[billStatusFlt]||bills);const visible=pool.filter(b=>{if(billCatFlt&&b.category!==billCatFlt)return false;if(billSubmFlt&&b.submittedBy!==billSubmFlt)return false;const refD=getBillFilterDateRef(b);if(billDateFrom&&refD<billDateFrom)return false;if(billDateTo&&refD>billDateTo)return false;if(billSearch&&!b.name.toLowerCase().includes(billSearch.toLowerCase())&&!(b.description||"").toLowerCase().includes(billSearch.toLowerCase()))return false;return true;});if(visible.length===0)return<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{bills.length===0?t("empty.bills"):t("empty.billsFiltered")}</div>;return visible.map((b,i)=>{const bst=getItemStatus(b,cats);const isSelBill=selBillId===b.id;const amtSuf=billListAmountSuffix(b,t);return(
             <div key={b.id}>
-            <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:(AUTH_URL&&b._apiType==="bill"&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue"))||(b.active&&bst==="approved")?1:0.65,cursor:"pointer",background:isSelBill?"#F5F0EA":"transparent"}}>
+            <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:1,cursor:"pointer",background:isSelBill?"#F5F0EA":"transparent"}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                   <span style={{fontWeight:600,fontSize:12}}>{b.name}</span>
@@ -4530,7 +4530,7 @@ function BillsView(){
                       </div>
                       <div><label className="lbl">{t("label.frequency")}</label><select className="inp" style={{fontSize:14}} value={editBillForm.frequency===""||editBillForm.frequency==="once"?"once":editBillForm.frequency||"once"} onChange={e=>{const v=e.target.value;setEditBillDirty(true);setEditBillForm(p=>{const next={...p,frequency:v==="once"?"":v};if(!isBillRecurringFrequency(next.frequency))next.dayOfMonth="";else if(!next.dayOfMonth)next.dayOfMonth="1";return next;});}}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
                       {!isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">{t("label.date")}</label><input className="inp" style={{fontSize:14}} type="date" value={editBillForm.dueDate||""} onChange={e=>{setEditBillForm(p=>({...p,dueDate:e.target.value}));setEditBillDirty(true);}}/></div>}
-                      {isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">{t("label.dayOfMonth")}</label><input className="inp" type="number" min="1" max="31" style={{fontSize:12}} value={editBillForm.dayOfMonth||""} onChange={e=>{setEditBillForm(p=>({...p,dayOfMonth:e.target.value}));setEditBillDirty(true);}}/></div>}
+                      {isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">Próximo vencimiento</label><input className="inp" style={{fontSize:14}} type="date" value={editBillForm.dueDate||""} onChange={e=>{const pickedDate=e.target.value;const d=new Date(pickedDate);setEditBillForm(p=>({...p,dueDate:pickedDate,dayOfMonth:String(d.getDate())}));setEditBillDirty(true);}}/></div>}
                       {editBillForm.frequency==="custom"&&<div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" style={{fontSize:14}} type="number" min="1" max="24" value={editBillForm.intervalMonths||""} onChange={e=>{setEditBillForm(p=>({...p,intervalMonths:e.target.value}));setEditBillDirty(true);}}/></div>}
                       {isBillRecurringFrequency(editBillForm.frequency)&&<div style={{gridColumn:editBillForm.frequency==="monthly"?"1/-1":undefined}}><label className="lbl">{t("label.endDate")}</label><input className="inp" style={{fontSize:14}} type="date" value={editBillForm.endDate||""} onChange={e=>{setEditBillForm(p=>({...p,endDate:e.target.value}));setEditBillDirty(true);}}/><div style={{fontSize:11,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>}
                       <div><label className="lbl">{t("label.category")}</label><select className="inp" style={{fontSize:14}} value={editBillForm.category||"Otro"} onChange={e=>{setEditBillForm(p=>({...p,category:e.target.value}));setEditBillDirty(true);}}>{activeCats.map(c=><option key={c.id}>{c.name}</option>)}</select></div>
