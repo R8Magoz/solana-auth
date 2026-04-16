@@ -38,6 +38,8 @@ const path       = require('path');
 const { Resend } = require('resend');
 const userStore = require('./userStore');
 const { runUsersJsonMigration } = require('./migrate');
+const { createExpensesRouter } = require('./expensesRoutes');
+const { createBillsRouter } = require('./billsRoutes');
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const PORT         = process.env.PORT         || 3001;
@@ -258,6 +260,20 @@ app.use((req, res, next) => {
 
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '6mb' }));
+app.use('/expenses', createExpensesRouter({
+  audit,
+  requireAuth: requireAdminSession,
+  DATA_DIR,
+  userStore: {
+    findUserById: userStore.findUserById,
+    findUserByEmail: userStore.findUserByEmail,
+  },
+}));
+app.use('/bills', createBillsRouter({
+  audit,
+  requireAuth: requireAdminSession,
+  DATA_DIR,
+}));
 
 // ── RATE LIMITERS ─────────────────────────────────────────────────────────────
 const signupLimiter = rateLimit({
@@ -371,21 +387,10 @@ function requireSuperAdmin(req, res, next) {
   next();
 }
 
-const { createExpensesRouter } = require('./expensesRoutes');
-const { createBillsRouter } = require('./billsRoutes');
 const { createDepartmentsRouter } = require('./departmentsRoutes');
 const { createReportsRouter } = require('./reportsRoutes');
 const { runBillMaintenance } = require('./billJobs');
 
-app.use('/expenses', expensesApiLimiter, createExpensesRouter({
-  audit, requireAuth, requireAdminSession, DATA_DIR, receiptUploadLimiter: expenseReceiptUploadLimiter, userStore,
-}));
-app.use('/bills', billsApiLimiter, createBillsRouter({
-  audit,
-  requireAuth,
-  DATA_DIR,
-  receiptUploadLimiter: expenseReceiptUploadLimiter,
-}));
 app.use(
   '/departments',
   departmentsApiLimiter,

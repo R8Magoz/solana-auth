@@ -97,7 +97,7 @@ const TR = {
     "nav.settings": "Ajustes",
     "nav.signOut": "Cerrar sesión",
     "action.newExpense": "Nuevo gasto",
-    "action.addBill": "Añadir factura",
+    "action.addBill": "Nueva factura",
     "action.addUser": "+ Añadir usuario",
     "label.tempPassword": "Contraseña temporal",
     "label.tempPasswordHint": "El usuario deberá cambiarla tras el primer inicio de sesión.",
@@ -1470,6 +1470,7 @@ function billFromApi(row){
     endDate:"",
     submittedBy:row.userId,
     ownerId:row.ownerId||row.userId,
+    status:row.status,
     apiBillStatus:row.status,
     recurring,
     recurrenceRule:row.recurrenceRule,
@@ -1494,6 +1495,9 @@ const ST={
   approved:{bg:"#D1FAE5",color:"#065F46"},
   rejected:{bg:"#F5E8F4",color:"#5C1057"},
   pending: {bg:"#FEF3C7",color:"#78350F"},
+  paid: {bg:"#D1FAE5",color:"#065F46"},
+  overdue: {bg:"#FDE68A",color:"#92400E"},
+  cancelled: {bg:"#F5E8F4",color:"#5C1057"},
 };
 /** Dashboard activity + recent list — semantic greens/amber/red per spec */
 const ACTIVITY_COLORS={
@@ -1847,10 +1851,10 @@ function readLocalDepartments(){
     return SEED_DEPARTMENTS.map(d=>({...d,createdAt:Date.now()}));
   }
 }
-const BF={amount:"",description:"",category:"",date:"",notes:"",ivaRate:"21",departmentId:"",ownerId:""};
+const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:""};
 const DRAFT_KEY="sol-exp-draft";
 const APPROVAL_BILL_FOCUS_KEY="sol-approval-focus-bill-id";
-const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",dueDate:"",departmentId:"",ownerId:"",paymentChoice:"paid",paymentDate:""};
+const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",dueDate:new Date().toISOString().slice(0,10),departmentId:"",ownerId:"",paymentChoice:"paid",paymentDate:new Date().toISOString().slice(0,10)};
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
 const Ctx=createContext(null);
@@ -3532,27 +3536,30 @@ function DashboardView(){
           const budgetKpiLabel="Presupuesto disponible";
           const fixedKpiLabel="Coste fijo mensual";
 
-          const totalKpiBg="#FEE2E2";
+          const totalKpiBg="#FECACA";
           const totalKpiText="#991B1B";
-          const budgetKpiBg=budgetRemainingTotal<0 ? "#FEF2F2" : "#DCFCE7";
+          const budgetKpiBg=budgetRemainingTotal<0 ? "#FEF2F2" : "#BBF7D0";
           const budgetKpiText=budgetRemainingTotal<0 ? "#991B1B" : "#065F46";
-          const monthKpiBg="#FFF7ED";
+          const monthKpiBg="#FDE68A";
           const monthKpiText="#92400E";
           const fixedKpiBg="#F5F0EA";
           const fixedKpiText="#6B7B72";
 
-          const renderKpiCard=(key,label,val,bg,text,sub,progressColor,showProgress=false)=> {
+          const renderKpiCard=(key,label,val,bg,text,sub,progressColor,showProgress=false,valueFontSize=22)=> {
             const kpi=fmtKpi(val);
             return(
               <div key={key} className="card" style={{background:bg,border:"1px solid rgba(0,0,0,0.02)"}}>
                 <div style={{fontSize:10,color:"#9CAA9F",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{label}</div>
-                <div style={{fontSize:22,fontWeight:700,color:text,fontVariantNumeric:"tabular-nums"}}>
+                <div style={{fontSize:valueFontSize,fontWeight:700,color:text,fontVariantNumeric:"tabular-nums"}}>
                   <span>{kpi.whole}</span><span style={{fontSize:14,verticalAlign:"baseline"}}>{kpi.cents}</span>
                 </div>
                 {showProgress&&(
-                  <div style={{height:6,background:"#EDE8E0",borderRadius:999,marginTop:10}}>
+                  <>
+                  <div style={{height:10,background:"#EDE8E0",borderRadius:999,marginTop:10}}>
                     <div style={{height:"100%",width:`${Math.max(0,Math.min(100,budgetProgressPct))}%`,background:progressColor,borderRadius:999}}/>
                   </div>
+                  <div style={{fontSize:12,color:"#6B7B72",marginTop:5}}>{budgetProgressPct.toFixed(1)}% usado</div>
+                  </>
                 )}
                 <div style={{fontSize:11,color:"#9CAA9F",marginTop:5}}>{sub}</div>
               </div>
@@ -3566,8 +3573,8 @@ function DashboardView(){
 
           return(
             <>
-              {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,totalKpiText,true)}
-              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetSub,budgetKpiText,true)}
+              {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,"#D94F4F",true,28)}
+              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetSub,"#2E7D52",true,28)}
               {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,monthSub,null,false)}
               {renderKpiCard("k-fixed",fixedKpiLabel,totFixed,fixedKpiBg,fixedKpiText,fixedSub,null,false)}
             </>
@@ -4325,7 +4332,7 @@ function BillsView(){
 
             {/* Recurrencia (opcional) */}
             <div style={{marginBottom:12}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#6B7B72",margin:"4px 0 8px"}}>Recurrencia (opcional)</div>
+              <div style={{fontSize:12,fontWeight:700,color:"#6B7B72",margin:"4px 0 8px"}}>Recurrencia</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
                 <div><label className="lbl">{t("label.frequency")}</label><select className="inp" value={newBill.frequency===""||newBill.frequency==="once"?"once":newBill.frequency} onChange={e=>{
                   const v=e.target.value;
@@ -4336,13 +4343,15 @@ function BillsView(){
                     return next;
                   });
                 }}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
-                <div>
+                <div style={{opacity:isBillRecurringFrequency(newBill.frequency)?1:0.4}}>
                   <label className="lbl">Próximo vencimiento</label>
                   <input
                     className="inp"
                     type="text"
-                    disabled
-                    value={nextDueUiText}
+                    disabled={!isBillRecurringFrequency(newBill.frequency)}
+                    placeholder=""
+                    value={isBillRecurringFrequency(newBill.frequency)?nextDueUiText:""}
+                    readOnly={isBillRecurringFrequency(newBill.frequency)}
                     style={{background:"#F5F0EA",color:"#9CAA9F"}}
                   />
                 </div>
@@ -4386,11 +4395,11 @@ function BillsView(){
 
             {/* Row 5: [Descripción textarea] [Adjunto file upload] */}
             <div style={{marginBottom:10}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#6B7B72",margin:"4px 0 8px"}}>Notas y adjunto (opcional)</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#6B7B72",margin:"4px 0 8px"}}>Notas y adjunto</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
                 <div>
                   <label className="lbl">{t("bills.description")}</label>
-                  <textarea className="inp" rows={1} placeholder={t("bills.descPlaceholder")} style={{resize:"vertical"}} value={newBill.description} onChange={e=>setNewBill(p=>({...p,description:e.target.value}))}/>
+                  <textarea className="inp" rows={1} placeholder={t("bills.descPlaceholder")} style={{resize:"vertical",minHeight:"80px",fontSize:"14px"}} value={newBill.description} onChange={e=>setNewBill(p=>({...p,description:e.target.value}))}/>
                 </div>
                 <div>
                   <label className="lbl">{t("bills.attachment")}</label>
@@ -4407,9 +4416,9 @@ function BillsView(){
                     </div>
                   )}
                   {!newBillRecPrev&&(
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      <button type="button" className="btn-sm" style={{fontSize:10,padding:"4px 10px"}} onClick={startCamForNewBill}>{t("action.scanBill")}</button>
-                      <button type="button" style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>billNewFileRef.current?.click()}>+ {t("item.attachment")||"Añadir adjunto"}</button>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      <button type="button" className="btn-sm" style={{fontSize:10,padding:"4px 10px",width:"100%"}} onClick={startCamForNewBill}>{t("action.scanBill")}</button>
+                      <button type="button" style={{fontSize:10,padding:"4px 10px",width:"100%",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>billNewFileRef.current?.click()}>+ {t("item.attachment")||"Añadir adjunto"}</button>
                     </div>
                   )}
                   <input ref={billNewFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} capture="environment" style={{display:"none"}} onChange={handleNewBillFile}/>
@@ -4430,7 +4439,7 @@ function BillsView(){
         </div>
       )}
       <div className="card" style={{padding:0,overflow:"hidden"}}>
-        {(()=>{const pool=(byBillStatus[billStatusFlt]||bills);const visible=pool.filter(b=>{if(billCatFlt&&b.category!==billCatFlt)return false;if(billSubmFlt&&b.submittedBy!==billSubmFlt)return false;const refD=getBillFilterDateRef(b);if(billDateFrom&&refD<billDateFrom)return false;if(billDateTo&&refD>billDateTo)return false;if(billSearch&&!b.name.toLowerCase().includes(billSearch.toLowerCase())&&!(b.description||"").toLowerCase().includes(billSearch.toLowerCase()))return false;return true;});if(visible.length===0)return<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{bills.length===0?t("empty.bills"):t("empty.billsFiltered")}</div>;return visible.map((b,i)=>{const bst=getItemStatus(b,cats);const isSelBill=selBillId===b.id;const amtSuf=billListAmountSuffix(b,t);const showPaused=bst==="approved"&&!b.active&&!(AUTH_URL&&b._apiType==="bill"&&(b.apiBillStatus==="paid"||!b.recurring));return(
+        {(()=>{const pool=(byBillStatus[billStatusFlt]||bills);const visible=pool.filter(b=>{if(billCatFlt&&b.category!==billCatFlt)return false;if(billSubmFlt&&b.submittedBy!==billSubmFlt)return false;const refD=getBillFilterDateRef(b);if(billDateFrom&&refD<billDateFrom)return false;if(billDateTo&&refD>billDateTo)return false;if(billSearch&&!b.name.toLowerCase().includes(billSearch.toLowerCase())&&!(b.description||"").toLowerCase().includes(billSearch.toLowerCase()))return false;return true;});if(visible.length===0)return<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{bills.length===0?t("empty.bills"):t("empty.billsFiltered")}</div>;return visible.map((b,i)=>{const bst=getItemStatus(b,cats);const isSelBill=selBillId===b.id;const amtSuf=billListAmountSuffix(b,t);return(
             <div key={b.id}>
             <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:(AUTH_URL&&b._apiType==="bill"&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue"))||(b.active&&bst==="approved")?1:0.65,cursor:"pointer",background:isSelBill?"#F5F0EA":"transparent"}}>
               <div style={{flex:1,minWidth:0}}>
@@ -4438,7 +4447,6 @@ function BillsView(){
                   <span style={{fontWeight:600,fontSize:12}}>{b.name}</span>
                   <span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:ST[bst].bg,color:ST[bst].color}}>{billStatusBadgeLabel(b,bst,t)}</span>
                   {!isBillRecurringFrequency(b.frequency)&&<span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:"#EDE8E0",color:"#4B5E52"}}>{t("bills.badgeOnce")}</span>}
-                  {showPaused&&<span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:"#F5F0EA",color:"#9CAA9F"}}>{t("status.paused")}</span>}
                 </div>
                 <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{billListMetadataLine(b,t,users)}</div>
               </div>
@@ -4447,26 +4455,6 @@ function BillsView(){
               </div>
               {isAdmin&&<div style={{display:"flex",gap:3}} onClick={e=>e.stopPropagation()}>
                 <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer"}} onClick={()=>{setSelBillId(b.id);startEditBill(b);}}>{t("action.editItem")}</button>
-                {bst==="approved"&&<button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"#F5F0EA",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{
-                  if(AUTH_URL&&b._apiType==="bill"){
-                    if(b._pendingSync){alert("Espera a sincronizar esta factura.");return;}
-                    void (async()=>{
-                      try{
-                        await API.put("/bills/"+encodeURIComponent(b.id),{recurring:!b.recurring});
-                        const d=await API.get("/bills");
-                        saveBills((d.bills||[]).map(billFromApi));
-                      }catch(e){
-                        if(isOfflineQueuedError(e)){
-                          saveBills(bills.map(x=>x.id===b.id?{...x,recurring:!x.recurring,active:!x.recurring}:x));
-                          return;
-                        }
-                        alert(e.message||"Error.");
-                      }
-                    })();
-                    return;
-                  }
-                  saveBills(bills.map(x=>x.id===b.id?{...x,active:!x.active}:x));
-                }}>{b.active?t("action.pause"):t("action.resume")}</button>}
                 <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>{
   const bst2=getItemStatus(b,cats);
   if(!isAdmin&&user.id!==b.submittedBy){alert(t("action.deleteOwnOnly"));return;}
@@ -6898,25 +6886,17 @@ function SolanaExpenses(){
       return;
     }
     if(type==="bill"&&AUTH_URL){
-      if(item && item._pendingSync) {
-        alert("Esta factura aún no está en el servidor; sincroniza antes de aprobar.");
-        return;
-      }
-      void (async () => {
-        try {
-          if(action === "approved") {
-            await API.post("/bills/" + encodeURIComponent(itemId) + "/approve",
-              { note: note || undefined });
-          } else {
-            await API.post("/bills/" + encodeURIComponent(itemId) + "/reject",
-              { note: note || undefined });
-          }
-          const full = await API.get("/bills");
-          saveBills((full.bills || []).map(billFromApi));
-        } catch(e) {
-          alert(e.message || "Error al procesar la factura.");
+      if(item&&item._pendingSync){alert("Esta factura aún no está en el servidor; sincroniza antes de aprobar.");return;}
+      void (async()=>{
+        try{
+          if(action==="approved")await API.post("/bills/"+encodeURIComponent(itemId)+"/approve",{note:note||undefined});
+          else await API.post("/bills/"+encodeURIComponent(itemId)+"/reject",{note:note||undefined});
+          const full=await API.get("/bills");
+          saveBills((full.bills||[]).map(billFromApi));
+        }catch(e){
+          alert(e.message||"Error al procesar.");
         }
-        setANote(p => ({...p, [itemId]: ""}));
+        setANote(p=>({...p,[itemId]:""}));
       })();
       return;
     }

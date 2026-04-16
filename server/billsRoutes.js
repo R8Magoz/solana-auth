@@ -451,6 +451,29 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
     res.json({ ok: true, bill: updated });
   });
 
+  router.post('/:id/approve', (req, res) => {
+    const bill = getBillById(req.params.id);
+    if (!bill) return res.status(404).json({ error: 'Factura no encontrada.' });
+    if (!canAccessBill(req, bill)) return res.status(403).json({ error: 'No autorizado.' });
+    const now = Date.now();
+    db.prepare('UPDATE bills SET status = ?, updatedAt = ? WHERE id = ?').run('paid', now, bill.id);
+    const updated = getBillById(bill.id);
+    audit('bill_approved', { userId: req.userId, targetId: bill.id });
+    res.json({ ok: true, bill: updated });
+  });
+
+  router.post('/:id/reject', (req, res) => {
+    const bill = getBillById(req.params.id);
+    if (!bill) return res.status(404).json({ error: 'Factura no encontrada.' });
+    if (!canAccessBill(req, bill)) return res.status(403).json({ error: 'No autorizado.' });
+    const note = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : null;
+    const now = Date.now();
+    db.prepare('UPDATE bills SET status = ?, updatedAt = ? WHERE id = ?').run('cancelled', now, bill.id);
+    const updated = getBillById(bill.id);
+    audit('bill_rejected', { userId: req.userId, targetId: bill.id, note });
+    res.json({ ok: true, bill: updated });
+  });
+
   return router;
 }
 
