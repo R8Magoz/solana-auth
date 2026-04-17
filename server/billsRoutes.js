@@ -125,6 +125,12 @@ function listBills(req) {
   return db.prepare(sql).all(...vals).map(rowToBill);
 }
 
+function defaultApproverIdsFromDb() {
+  return db.prepare(
+    "SELECT id FROM users WHERE role IN ('admin','superadmin')"
+  ).all().map(r => r.id);
+}
+
 const insertBill = db.prepare(`
   INSERT INTO bills (
     id, userId, vendor, amount, currency, amountEUR, category, dueDate, status,
@@ -238,6 +244,18 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
       departmentId: dept.id,
       receiptPath: null,
     });
+
+    // Auto-approve if submitter is an approver
+    const approverIds = defaultApproverIdsFromDb();
+    if (approverIds.includes(req.userId)) {
+      const allApproved = approverIds.every(id => id === req.userId);
+      if (allApproved) {
+        db.prepare(
+          "UPDATE bills SET status = 'paid', updatedAt = ? WHERE id = ?"
+        ).run(Date.now(), id);
+        audit('bill_auto_approved', { userId: req.userId, targetId: id });
+      }
+    }
 
     const bill = getBillById(id);
     audit('bill_created', { userId: req.userId, targetId: id, vendor: bill.vendor });

@@ -3647,7 +3647,7 @@ function DashboardView(){
       <div className="card">
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}><div style={{fontWeight:600,fontSize:13}}>{isAdmin?t("dash.recentAll"):t("dash.recentMine")}</div><button style={{background:"none",border:"none",color:T,fontSize:11,fontWeight:500,cursor:"pointer"}} onClick={()=>go("expenses")}>{t("action.viewAll")}</button></div>
         {(()=>{
-          const pool=isAdmin?expenses.slice():expenses.filter(e=>(e.ownerId||e.submittedBy)===user.id);
+          const pool=expenses.slice();
           const sorted=[...pool].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
           if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{isAdmin?"Sin datos":t("dash.recentEmpty")}</div>;
           return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;const sub=(users.find(x=>x.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;return(
@@ -3701,12 +3701,6 @@ function ExpensesView(){
         <div style={{fontWeight:700,color:"#4B5E52"}}>{t("page.expensesDefTitle")}</div>
         <div style={{color:"#9CAA9F"}}>{t("page.expensesDefBody")}</div>
       </div>
-      {!isAdmin&&submFlt===user.id&&(
-        <div style={{display:"inline-flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-          <span style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,background:GL,color:G,border:`1px solid ${G}`}}>{t("filter.showingMyExpenses")}</span>
-          <button type="button" style={{fontSize:11,fontWeight:600,color:T,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}} onClick={clearMyExpenseFilter}>{t("filter.showAllExpenses")}</button>
-        </div>
-      )}
       {/* ── Status pills */}
       <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
         {["all","pending","approved","rejected"].map(f=>(
@@ -3874,8 +3868,16 @@ function ApprovalsView(){
   });
   const mySubmittedExpenses=expenses.filter(e=>e.submittedBy===user.id).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
   const mySubmittedBills=bills.filter(b=>b.submittedBy===user.id).sort((a,b)=>String((b.dueDate||"")).localeCompare(String((a.dueDate||""))));
-  const expenseRows=canAct?sortByPriority(expenses.filter(e=>effectiveExpenseApproverIds(e,cats,users).includes(user.id))).map(e=>({...e,_approvalType:"expense"})):mySubmittedExpenses.map(e=>({...e,_approvalType:"expense"}));
-  const billRows=canAct?sortByPriority(bills.filter(b=>effectiveExpenseApproverIds(b,cats,users).includes(user.id))).map(b=>({...b,_approvalType:"bill"})):mySubmittedBills.map(b=>({...b,_approvalType:"bill"}));
+  const expenseRows=sortByPriority(
+    canAct
+      ? expenses.filter(e=>effectiveExpenseApproverIds(e,cats,users).includes(user.id))
+      : expenses
+  ).map(e=>({...e,_approvalType:"expense"}));
+  const billRows=sortByPriority(
+    canAct
+      ? bills.filter(b=>effectiveExpenseApproverIds(b,cats,users).includes(user.id))
+      : bills
+  ).map(b=>({...b,_approvalType:"bill"}));
   const allRows=sortByPriority([...expenseRows,...billRows]);
   const activeRows=tab==="all"?allRows:tab==="expenses"?expenseRows:billRows;
   const approvalTabs=[["all","Todos",allRows.length],["expenses",t("nav.expenses"),expenseRows.length],["bills",t("nav.bills"),billRows.length]];
@@ -3912,7 +3914,18 @@ function ApprovalsView(){
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:16,color:"#4B5E52"}}>{rowTitle}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+                        <span style={{
+                          fontSize:9, fontWeight:700, padding:"2px 7px", borderRadius:10,
+                          textTransform:"uppercase", letterSpacing:"0.05em",
+                          background: isBill ? "#E0F2FE" : "#EDE8E0",
+                          color:       isBill ? "#0369A1" : "#4B5E52",
+                          flexShrink:0
+                        }}>
+                          {isBill ? "Factura" : "Gasto"}
+                        </span>
+                        <span style={{fontWeight:600,fontSize:16,color:"#4B5E52"}}>{rowTitle}</span>
+                      </div>
                       <div style={{fontSize:13,fontWeight:700,color:"#4B5E52",marginTop:2}}>Titular: {ownerName}</div>
                       <div style={{fontSize:12,color:"#9CAA9F",marginTop:2}}>{item.category} · {fmtDate(rowDate)} · Enviado por: {submitterName}</div>
                     </div>
@@ -6339,13 +6352,6 @@ function SolanaExpenses(){
     window.addEventListener("solana-offline-sync",h);
     return()=>window.removeEventListener("solana-offline-sync",h);
   },[]);
-
-  useEffect(()=>{
-    if(!user)return;
-    if(view==="expenses"&&!isAdmin&&!myExpFilterClearedRef.current){
-      setSubmFlt(user.id);
-    }
-  },[view,user?.id,isAdmin,user]);
 
   /* Server mode: replace local demo user ids with SQLite-backed roster so submittedBy matches users[].id */
   useEffect(()=>{

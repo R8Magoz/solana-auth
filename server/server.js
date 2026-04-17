@@ -262,7 +262,7 @@ app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '6mb' }));
 app.use('/expenses', createExpensesRouter({
   audit,
-  requireAuth: requireAdminSession,
+  requireAuth: requireAuth,
   DATA_DIR,
   userStore: {
     findUserById: userStore.findUserById,
@@ -271,7 +271,7 @@ app.use('/expenses', createExpensesRouter({
 }));
 app.use('/bills', createBillsRouter({
   audit,
-  requireAuth: requireAdminSession,
+  requireAuth: requireAuth,
   DATA_DIR,
 }));
 
