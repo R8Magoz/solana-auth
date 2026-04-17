@@ -2514,6 +2514,7 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [slowServerHint, setSlowServerHint] = useState(false);
   const emailF = useInpFocus(), pwF = useInpFocus();
 
   // Helper to clear stray messages when the user interacts
@@ -2535,6 +2536,7 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
   /* ── Login ── */
   const doLogin = async () => {
     const cleanEmail = email.trim().toLowerCase();
+    let slowHintTimer;
 
     if (!cleanEmail || !pw) {
       setErr(tl("login.invalidCreds"));
@@ -2542,15 +2544,16 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
     }
 
     setLoading(true);
+    setSlowServerHint(false);
+    slowHintTimer = setTimeout(() => setSlowServerHint(true), 3000);
     clearMessages();
 
     // 1. Try Remote Auth (Render backend)
     if (typeof AUTH_URL !== "undefined" && AUTH_URL) {
       let timeoutId;
       try {
-        setErr("Conectando con el servidor…");
         const controller = new AbortController();
-        timeoutId = setTimeout(() => controller.abort(), 8000);
+        timeoutId = setTimeout(() => controller.abort(), 10000);
         console.log("[LOGIN] AUTH_URL:", AUTH_URL, "email:", cleanEmail);
         const r = await fetch(AUTH_URL + "/auth/login", {
           method: "POST",
@@ -2568,6 +2571,8 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
 
         if (!r.ok) {
           setLoading(false);
+          clearTimeout(slowHintTimer);
+          setSlowServerHint(false);
           if (d.code === "PENDING_APPROVAL") {
             setStatusType("pending_approval");
             setScreen("status");
@@ -2588,6 +2593,8 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
         const tok = rawTok != null ? String(rawTok).trim() : "";
         if (!tok) {
           setLoading(false);
+          clearTimeout(slowHintTimer);
+          setSlowServerHint(false);
           setErr(tl("login.invalidCreds"));
           return;
         }
@@ -2595,6 +2602,8 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
           localStorage.setItem("sol-session-token", tok);
         } catch (e) {
           setLoading(false);
+          clearTimeout(slowHintTimer);
+          setSlowServerHint(false);
           setErr(tl("login.invalidCreds"));
           return;
         }
@@ -2603,6 +2612,8 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
         void fetchAndApplyServerSettings(AUTH_URL, API.token);
 
         setLoading(false);
+        clearTimeout(slowHintTimer);
+        setSlowServerHint(false);
         const srv = d.user;
         API._userId = srv?.id || null;
         const loc = users.find(u => (u.email || "").toLowerCase() === (srv.email || "").toLowerCase());
@@ -2622,12 +2633,20 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
         console.error("[LOGIN] fetch threw:", e);
         appLog("warn", "auth_server_unreachable", { error: e?.message });
         setLoading(false);
-        setErr("No se puede conectar con el servidor. Comprueba tu conexión.");
+        clearTimeout(slowHintTimer);
+        setSlowServerHint(false);
+        if (e && e.name === "AbortError") {
+          setErr("El servidor tardó demasiado. Inténtalo de nuevo.");
+        } else {
+          setErr("No se puede conectar con el servidor.");
+        }
         return;
       }
     }
 
     setLoading(false);
+    clearTimeout(slowHintTimer);
+    setSlowServerHint(false);
     setErr(tl("login.invalidCreds"));
     return;
   };
@@ -2793,8 +2812,13 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
             onClick={doLogin}
             disabled={loading}
           >
-            {loading ? tl("login.signingIn") : tl("login.signIn")}
+            {loading ? "Entrando..." : tl("login.signIn")}
           </button>
+          {loading && slowServerHint && (
+            <div style={{marginTop:6,fontSize:11,color:"#8A7A87",textAlign:"center"}}>
+              Esto puede tardar unos segundos si el servidor esta iniciando...
+            </div>
+          )}
 
           {/* Divider */}
           <div style={AUTH.divider} />
