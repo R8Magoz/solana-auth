@@ -88,15 +88,8 @@ function createReportsRouter({ requireAdminSession, userStore }) {
       )
       .all(from, to);
 
-    const bills = db
-      .prepare(
-        `SELECT * FROM bills
-         WHERE dueDate >= ? AND dueDate <= ? AND status != 'cancelled'
-         ORDER BY dueDate ASC`,
-      )
-      .all(from, to);
-
     let totalExpenses = 0;
+    let totalBills = 0;
     const byCategory = {};
     const byUser = {};
     const byMonth = {};
@@ -106,15 +99,20 @@ function createReportsRouter({ requireAdminSession, userStore }) {
 
     for (const e of expenses) {
       const amt = eurAmount(e);
-      totalExpenses += amt;
-      const cat = e.category || '—';
-      byCategory[cat] = (byCategory[cat] || 0) + amt;
+      const isInvoice = e.expenseType === 'invoice';
+      if (isInvoice) {
+        totalBills += amt;
+      } else {
+        totalExpenses += amt;
+        const cat = e.category || '—';
+        byCategory[cat] = (byCategory[cat] || 0) + amt;
 
-      const uname = userMap[e.userId] || e.userId || '—';
-      byUser[uname] = (byUser[uname] || 0) + amt;
+        const uname = userMap[e.userId] || e.userId || '—';
+        byUser[uname] = (byUser[uname] || 0) + amt;
 
-      const monthKey = e.date && e.date.length >= 7 ? e.date.slice(0, 7) : '—';
-      byMonth[monthKey] = (byMonth[monthKey] || 0) + amt;
+        const monthKey = e.date && e.date.length >= 7 ? e.date.slice(0, 7) : '—';
+        byMonth[monthKey] = (byMonth[monthKey] || 0) + amt;
+      }
 
       if (e.status === 'approved') approvedN += 1;
       else if (e.status === 'rejected') rejectedN += 1;
@@ -124,12 +122,8 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     for (const k of Object.keys(byUser)) byUser[k] = roundMoney(byUser[k]);
     for (const k of Object.keys(byMonth)) byMonth[k] = roundMoney(byMonth[k]);
 
-    let totalBills = 0;
-    for (const b of bills) {
-      totalBills += eurAmount(b);
-    }
-
-    const expenseCount = expenses.length;
+    const gastosOnly = expenses.filter((e) => e.expenseType !== 'invoice');
+    const expenseCount = gastosOnly.length;
     const decided = approvedN + rejectedN;
     const approvalRate = decided > 0 ? Math.round((approvedN / decided) * 10000) / 10000 : null;
     const avgExpenseAmount =
@@ -171,9 +165,11 @@ function createReportsRouter({ requireAdminSession, userStore }) {
 
     const billRows = db
       .prepare(
-        `SELECT * FROM bills
-         WHERE dueDate >= ? AND dueDate <= ?
-         ORDER BY dueDate ASC, id ASC`,
+        `SELECT * FROM expenses
+         WHERE expenseType = 'invoice'
+           AND date >= ? AND date <= ?
+           AND status != 'deleted'
+         ORDER BY date ASC, id ASC`,
       )
       .all(from, to);
 
@@ -256,17 +252,17 @@ function createReportsRouter({ requireAdminSession, userStore }) {
           id: b.id,
           userId: b.userId,
           userName: userMap[b.userId] || '',
-          vendor: b.vendor,
+          vendor: b.vendor || b.description || '',
           amount: b.amount,
           currency: b.currency,
           amountEUR: b.amountEUR,
           category: b.category,
-          dueDate: b.dueDate,
-          status: b.status,
+          dueDate: b.dueDate || b.date,
+          status: b.paymentStatus || b.status,
           recurring: b.recurring ? 1 : 0,
           recurrenceRule: b.recurrenceRule,
           paidAt: b.paidAt,
-          paidBy: b.paidBy,
+          paidBy: b.paidConfirmedBy || '',
           notes: b.notes,
           createdAt: b.createdAt,
           updatedAt: b.updatedAt,

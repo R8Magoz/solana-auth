@@ -62,14 +62,14 @@ Use **Bearer** of a normal user unless noted.
 
 ---
 
-## Bills
+## Facturas (invoices as `expenseType: invoice` on `/expenses`)
 
-- [ ] **POST** `/bills` → bill created, owned by caller.
-- [ ] **GET** `/bills` → filtered by ownership (non-admin sees own).
-- [ ] **PUT** `/bills/:id` → updated (authorized).
-- [ ] **DELETE** `/bills/:id` → deleted.
-- [ ] **POST** `/bills/:id/mark-paid` → `status = paid`, `paidAt` / `paidBy` set.
-- [ ] **Recurring bill paid → next occurrence** — `runBillMaintenance` runs on **server start** and then on a **24-hour** interval. After marking a recurring bill paid, **restart the server** (or wait for the next run) and confirm a **new pending** bill row with the next `dueDate` and the old paid row `recurring` cleared per `billJobs.js`.
+- [ ] **POST** `/expenses` with `expenseType: invoice`, `vendor`, `dueDate`, etc. → invoice row in `expenses`, owned by caller.
+- [ ] **GET** `/expenses` → includes invoice rows; non-admin sees own (+ approver rules as implemented).
+- [ ] **PUT** `/expenses/:id` → invoice fields updated (authorized).
+- [ ] **DELETE** `/expenses/:id` → deleted.
+- [ ] **POST** `/expenses/:id/mark-paid` → `paymentStatus = paid`, `paidAt` / `paidConfirmedBy` set; recurring spawns next invoice when applicable.
+- [ ] **Recurring invoice paid → next occurrence** — `runExpenseMaintenance` runs on **server start** and on a **24-hour** interval. After marking a recurring invoice paid, confirm a **new** unpaid invoice row with the next `dueDate` per `expenseJobs.js`.
 
 ---
 

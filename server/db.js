@@ -124,6 +124,16 @@ addColumnIfMissing('expenses', 'ivaRate', 'REAL');
 addColumnIfMissing('expenses', 'ivaAmount', 'REAL');
 addColumnIfMissing('expenses', 'commentsJson', 'TEXT');
 addColumnIfMissing('expenses', 'ownerId', 'TEXT');
+addColumnIfMissing('expenses', 'expenseType',    'TEXT DEFAULT \'expense\'');
+addColumnIfMissing('expenses', 'vendor',          'TEXT');
+addColumnIfMissing('expenses', 'dueDate',         'TEXT');
+addColumnIfMissing('expenses', 'paymentStatus',   'TEXT DEFAULT \'na\'');
+addColumnIfMissing('expenses', 'paidAt',          'INTEGER');
+addColumnIfMissing('expenses', 'paidConfirmedBy', 'TEXT');
+addColumnIfMissing('expenses', 'paymentTermDays', 'INTEGER DEFAULT 0');
+addColumnIfMissing('expenses', 'recurring',       'INTEGER DEFAULT 0');
+addColumnIfMissing('expenses', 'recurrenceRule',  'TEXT');
+addColumnIfMissing('expenses', 'originBillId',    'TEXT');
 addColumnIfMissing('bills', 'departmentId', 'TEXT');
 addColumnIfMissing('bills', 'receiptPath', 'TEXT');
 addColumnIfMissing('bills', 'ownerId', 'TEXT');
@@ -139,6 +149,19 @@ addColumnIfMissing('bills', 'rejectionNote', 'TEXT');
 addColumnIfMissing('users', 'avatar', 'TEXT');
 addColumnIfMissing('departments', 'archived', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('app_settings', 'description', 'TEXT');
+
+/* Facturas → gastos unification (migration plan) */
+addColumnIfMissing('expenses', 'expenseType', 'TEXT DEFAULT \'expense\'');
+addColumnIfMissing('expenses', 'vendor', 'TEXT');
+addColumnIfMissing('expenses', 'dueDate', 'TEXT');
+addColumnIfMissing('expenses', 'paymentStatus', 'TEXT DEFAULT \'na\'');
+addColumnIfMissing('expenses', 'paidAt', 'INTEGER');
+addColumnIfMissing('expenses', 'paidConfirmedBy', 'TEXT');
+addColumnIfMissing('expenses', 'paymentTermDays', 'INTEGER DEFAULT 0');
+addColumnIfMissing('expenses', 'recurring', 'INTEGER DEFAULT 0');
+addColumnIfMissing('expenses', 'recurrenceRule', 'TEXT');
+addColumnIfMissing('expenses', 'originBillId', 'TEXT');
+addColumnIfMissing('bills', 'migratedAt', 'INTEGER');
 
 function seedAppSettings() {
   const count = db.prepare(

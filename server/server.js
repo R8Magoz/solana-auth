@@ -39,7 +39,6 @@ const { Resend } = require('resend');
 const userStore = require('./userStore');
 const { runUsersJsonMigration } = require('./migrate');
 const { createExpensesRouter } = require('./expensesRoutes');
-const { createBillsRouter } = require('./billsRoutes');
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const PORT         = process.env.PORT         || 3001;
@@ -276,14 +275,6 @@ const expensesApiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const billsApiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 60,
-  message: { error: 'Demasiadas solicitudes a /bills. Inténtalo en un minuto.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 const departmentsApiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
@@ -382,15 +373,9 @@ app.use('/expenses', expensesApiLimiter, createExpensesRouter({
     findUserByEmail: userStore.findUserByEmail,
   },
 }));
-app.use('/bills', billsApiLimiter, createBillsRouter({
-  audit,
-  requireAuth: requireAuth,
-  DATA_DIR,
-}));
-
 const { createDepartmentsRouter } = require('./departmentsRoutes');
 const { createReportsRouter } = require('./reportsRoutes');
-const { runBillMaintenance } = require('./billJobs');
+const { runExpenseMaintenance } = require('./expenseJobs');
 
 app.use(
   '/departments',
@@ -1698,15 +1683,15 @@ httpServer = app.listen(PORT, () => {
   console.log(`[SOLANA-AUTH] App URL: ${APP_URL}`);
   console.log(`[SOLANA-AUTH] Email: ${resend ? 'Resend active' : 'STUB (no RESEND_API_KEY)'}`);
   try {
-    runBillMaintenance(audit);
+    runExpenseMaintenance(audit);
   } catch (e) {
-    console.error('[BILL-JOBS] startup:', e.message);
+    console.error('[EXPENSE-JOBS] startup:', e.message);
   }
   setInterval(() => {
     try {
-      runBillMaintenance(audit);
+      runExpenseMaintenance(audit);
     } catch (e) {
-      console.error('[BILL-JOBS] interval:', e.message);
+      console.error('[EXPENSE-JOBS] interval:', e.message);
     }
   }, 24 * 60 * 60 * 1000).unref();
 

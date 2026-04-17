@@ -241,7 +241,7 @@ function adminPatchUser(targetId, body) {
 }
 
 /**
- * Hard delete user row. Fails with FK if expenses/bills reference this user.
+ * Hard delete user row. Fails with FK if expenses reference this user.
  */
 function deleteUserByIdHard(id) {
   try {

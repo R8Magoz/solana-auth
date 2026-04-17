@@ -429,8 +429,22 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
       return res.status(404).json({ error: 'Archivo no encontrado.' });
     }
     const ext = path.extname(abs).toLowerCase();
-    const type = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.pdf' ? 'application/pdf' : 'image/jpeg';
+    const MIME_MAP = {
+      '.pdf':  'application/pdf',
+      '.png':  'image/png',
+      '.webp': 'image/webp',
+      '.jpg':  'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif':  'image/gif',
+      '.tiff': 'image/tiff',
+      '.tif':  'image/tiff',
+      '.heic': 'image/heic',
+      '.heif': 'image/heif',
+    };
+    const type = MIME_MAP[ext] || 'image/jpeg';
     res.setHeader('Content-Type', type);
+    const fname = path.basename(abs);
+    res.setHeader('Content-Disposition', `inline; filename="${fname}"`);
     res.sendFile(path.resolve(abs));
   });
 
