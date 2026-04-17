@@ -2502,7 +2502,7 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
 }
 
 /* ── LOGIN ─────────────────────────────────────────────────────────────────── */
-function LoginScreen({ users, onLogin, passwords }) {
+function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
   const tl = React.useMemo(() => mkT(), []);
   const [screen, setScreen] = useState("login"); // "login" | "signup" | "status"
   const [statusType, setStatusType] = useState(null); // "pending_verification"|"pending_approval"|"denied"
@@ -2563,6 +2563,7 @@ function LoginScreen({ users, onLogin, passwords }) {
     // 1. Try Remote Auth (Render backend)
     if (typeof AUTH_URL !== "undefined" && AUTH_URL) {
       try {
+        console.log("[LOGIN] AUTH_URL:", AUTH_URL, "email:", cleanEmail);
         const r = await fetch(AUTH_URL + "/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2573,6 +2574,7 @@ function LoginScreen({ users, onLogin, passwords }) {
         });
 
         const d = await r.json();
+        console.log("[LOGIN] server response:", r.status, d);
 
         if (!r.ok) {
           setLoading(false);
@@ -2607,6 +2609,7 @@ function LoginScreen({ users, onLogin, passwords }) {
           return;
         }
         API.token = tok;
+        sessionRestoreAttempted.current = true;
         void fetchAndApplyServerSettings(AUTH_URL, API.token);
 
         setLoading(false);
@@ -2621,14 +2624,24 @@ function LoginScreen({ users, onLogin, passwords }) {
         } else {
           onLogin(mergedUser);
         }
+        if(sessionRestoreAttempted)sessionRestoreAttempted.current=true;
+        console.log("[LOGIN] onLogin called with user:", mergedUser?.id, mergedUser?.role);
         return;
-      } catch {
-        appLog("warn", "auth_server_unreachable", { fallback: "local" });
-        // Falls through to local fallback if server is unreachable
+      } catch (e) {
+        console.error("[LOGIN] fetch threw:", e);
+        appLog("warn", "auth_server_unreachable", { error: e?.message });
+        setLoading(false);
+        setErr("El servidor no responde. Comprueba tu conexión e inténtalo de nuevo.");
+        return;
       }
     }
 
-    // 2. Local fallback
+    // 2. Local fallback — only when AUTH_URL is not configured
+    if (AUTH_URL) {
+      setLoading(false);
+      setErr("El servidor no responde. Inténtalo de nuevo.");
+      return;
+    }
     await new Promise(r => setTimeout(r, 280));
     const u = users.find(u => (u.email || "").toLowerCase() === cleanEmail);
 
@@ -3109,12 +3122,10 @@ function NewPanel(){
           onClick={()=>{
             setFormError("");
             if(splitSubmitBlocked){
-              console.log("=== SUBMIT BLOCKED ===", { reason: "split_submit_blocked_button_guard", splitOn, checkedSplitCount, amtSumBad });
               setFormError("Revisa el reparto antes de enviar.");
               return;
             }
             if(!expenseValid){
-              console.log("=== SUBMIT BLOCKED ===", { reason: "expense_valid_guard_failed_button" });
               setSubmitAttempt(true);setFormError("Completa los campos obligatorios marcados con *");return;
             }
             submitExp();
@@ -4242,13 +4253,7 @@ function BillsView(){
   };
 
   const submitBill=()=>{
-    console.log("=== SUBMIT START ===", {
-      formValues: newBill,
-      userId: user.id,
-      authUrl: AUTH_URL,
-      hasToken: !!API.token
-    });
-    if(!billValid){console.log("=== SUBMIT BLOCKED ===", { reason: "required_fields_invalid_bill" });setBillSubmitAttempt(true);setBillFormError("Completa los campos obligatorios marcados con *");return;}
+    if(!billValid){setBillSubmitAttempt(true);setBillFormError("Completa los campos obligatorios marcados con *");return;}
     const billDateRaw=billDueISOFromForm(newBill);
     const billDateObj=new Date(billDateRaw);
     const billNow = new Date();
@@ -4265,7 +4270,7 @@ function BillsView(){
       billPaidBy=buildPaidByFromSplitState(billSplits,billTotal,billSpMode);
       billSplitMode=billPaidBy.length>1?billSpMode:undefined;
     }
-    if(billSplitOn&&billAmtBad){console.log("=== SUBMIT BLOCKED ===", { reason: "bill_split_invalid", billAmtBad });setBillFormError("Revisa el reparto antes de enviar.");return;}
+    if(billSplitOn&&billAmtBad){setBillFormError("Revisa el reparto antes de enviar.");return;}
     const freq=newBill.frequency||"once";
     const rec=isBillRecurringFrequency(freq);
     if(AUTH_URL){
@@ -4302,11 +4307,7 @@ function BillsView(){
             ...(billSplitMode?{splitMode:billSplitMode}:{}),
             ...(!rec&&wantPaid?{alreadyPaid:true,paidAt:payDateStr}:{}),
           };
-          console.log("=== SUBMIT BODY ===", JSON.stringify(postBody, null, 2));
-          console.log("PRE-SUBMIT", { body: postBody, authUrl: AUTH_URL, token: API.token });
           const { response, responseBody, rawText } = await debugApiRequest("POST", "/bills", postBody);
-          console.log("=== SUBMIT RESPONSE ===", { status: response.status, ok: response.ok, body: rawText });
-          console.log("POST-SUBMIT", { status: response.status, responseBody });
           if (!response.ok) throw new Error(responseBody.error || ("HTTP " + response.status));
           const d=responseBody;
           const newId=d.bill.id;
@@ -4318,16 +4319,14 @@ function BillsView(){
             }
           }
           if(rec&&wantPaid){
-            if(!window.confirm(t("bills.confirmMarkPaidRecurring"))){console.log("=== SUBMIT BLOCKED ===", { reason: "bill_mark_paid_recurring_cancelled" });return;}
+            if(!window.confirm(t("bills.confirmMarkPaidRecurring"))){return;}
             await API.post("/bills/"+encodeURIComponent(newId)+"/mark-paid",{paidAt:payDateStr});
           }
           const full=await API.get("/bills");
-          console.log("BILLS GET DEBUG", { bills: (full.bills||[]).length, last: (full.bills||[])[0] || null });
           saveBills((full.bills||[]).map(billFromApi));
           appLog("info","bill_submitted",{name:newBill.name,userId:user.id,paid:!!wantPaid});
           setNewBill({...BB});setNewBillRecPrev(null);setBillSplitOn(false);setBillSplits([]);setBillSpMode("equal");setBillFormError("");setAddBill(false);
         }catch(e){
-          console.log("=== SUBMIT BLOCKED ===", { reason: "submit_bill_catch", error: e?.message });
           if(isOfflineQueuedError(e)){
             const amt=parseMoney(newBill.amount);
             const ob=normalizeItem({
@@ -6249,6 +6248,7 @@ function SolanaExpenses(){
     return d.map(c=>normalizeItem(c,"cat"));
   });
   const [passwords,setPasswords]=useState(()=>ls("sol-pwd",{}));
+  const sessionRestoreAttempted = useRef(false);
   // appReady: small deliberate delay so the root div never flashes empty
   const [appReady,setAppReady]=useState(false);
   useEffect(()=>{
@@ -6257,22 +6257,24 @@ function SolanaExpenses(){
   },[]);
   useEffect(()=>{
     if(!AUTH_URL)return;
-    const stored=(()=>{
-      try{return localStorage.getItem("sol-session-token")||"";}
-      catch(e){return "";}
-    })();
-    if(!stored)return;
+    if(sessionRestoreAttempted.current)return;
+    const stored=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch{return "";}})();
+    if(!stored){sessionRestoreAttempted.current=true;return;}
+    sessionRestoreAttempted.current=true;
     API.token=stored;
     void (async()=>{
       try{
-        // 1. Refresh the token to verify it's still valid
+        // Verify the token is still valid via /auth/refresh
         const refreshRes=await fetch(AUTH_URL+"/auth/refresh",{
           method:"POST",
           headers:{"Content-Type":"application/json","Authorization":"Bearer "+stored}
         });
+        // Only clear token on explicit auth rejection, not server errors
         if(!refreshRes.ok){
-          API.token=null;
-          try{localStorage.removeItem("sol-session-token");}catch(e){}
+          if(refreshRes.status===401||refreshRes.status===403){
+            API.token=null;
+            try{localStorage.removeItem("sol-session-token");}catch(e){}
+          }
           return;
         }
         const refreshData=await refreshRes.json();
@@ -6281,8 +6283,9 @@ function SolanaExpenses(){
           try{localStorage.setItem("sol-session-token",refreshData.sessionToken);}catch(e){}
         }
         const loggedInUserId=refreshData.userId;
+        if(!loggedInUserId)return;
 
-        // 2. Load the team roster to find the current user
+        // Load the team roster
         const teamRes=await fetch(AUTH_URL+"/auth/team",{
           headers:{"Authorization":"Bearer "+API.token}
         });
@@ -6292,24 +6295,23 @@ function SolanaExpenses(){
         const meRaw=teamData.users.find(u=>u.id===loggedInUserId);
         if(!meRaw)return;
         const me=normalizeItem(meRaw,"user");
-
-        // 3. Set the full roster and restore the logged-in user
         setUsers(teamData.users.map(u=>normalizeItem(u,"user")));
         setUser(me);
-        appLog("info","auth:session_restored",{userId:me.id,role:me.role});
+        appLog("info","auth:session_restored",{userId:me.id});
 
-        // 4. Load expenses and bills for the restored session
+        // Load data for the restored session
         try{
-          const [de,db]=await Promise.all([
-            fetch(AUTH_URL+"/expenses",{headers:{"Authorization":"Bearer "+API.token}}).then(r=>r.json()),
-            fetch(AUTH_URL+"/bills",{headers:{"Authorization":"Bearer "+API.token}}).then(r=>r.json())
+          const[de,db]=await Promise.all([
+            fetch(AUTH_URL+"/expenses",{headers:{"Authorization":"Bearer "+API.token}}).then(r=>r.ok?r.json():{expenses:[]}),
+            fetch(AUTH_URL+"/bills",{headers:{"Authorization":"Bearer "+API.token}}).then(r=>r.ok?r.json():{bills:[]})
           ]);
-          if(de.expenses)saveExp((de.expenses||[]).map(expenseFromApi));
-          if(db.bills)saveBills((db.bills||[]).map(billFromApi));
-        }catch(e){/* non-fatal — user is logged in, data loads on nav */}
+          if(de.expenses&&de.expenses.length)saveExp(de.expenses.map(expenseFromApi));
+          if(db.bills&&db.bills.length)saveBills(db.bills.map(billFromApi));
+        }catch(e){/* non-fatal */}
+
       }catch(e){
-        API.token=null;
-        try{localStorage.removeItem("sol-session-token");}catch(err){}
+        // Non-fatal — keep token, user must log in manually
+        appLog("warn","auth:restore_failed",{error:e?.message||"unknown"});
       }
     })();
   },[]);
@@ -6792,15 +6794,8 @@ function SolanaExpenses(){
     const ownerId = (form.ownerId && String(form.ownerId).trim())
       ? String(form.ownerId).trim()
       : (user?.id || "");
-    console.log("=== SUBMIT START ===", {
-      formValues: form,
-      userId: user.id,
-      authUrl: AUTH_URL,
-      hasToken: !!API.token
-    });
     const amount=parseMoney(form.amount);
     if(!amount||amount<=0||!String(form.description||"").trim()||!String(form.category||"").trim()||!String(form.date||"").trim()||!form.departmentId||!ownerId){
-      console.log("=== SUBMIT BLOCKED ===", { reason: "required_fields_invalid_expense" });
       setFormError("Completa los campos obligatorios marcados con *");
       return;
     }
@@ -6816,10 +6811,10 @@ function SolanaExpenses(){
     let splitModeOut=undefined;
     if(splitOn&&splits.filter(s=>s.checked).length>1){
       const sel=splits.filter(s=>s.checked);
-      if(sel.length<2){console.log("=== SUBMIT BLOCKED ===", { reason: "split_min_participants" });setFormError(t("split.minParticipants"));return;}
+      if(sel.length<2){setFormError(t("split.minParticipants"));return;}
       if(spMode==="amount"){
         const sumAmt=sel.reduce((s,x)=>s+(Number(x.value)||0),0);
-        if(Math.abs(sumAmt-amount)>0.01){console.log("=== SUBMIT BLOCKED ===", { reason: "split_amount_sum_invalid", sumAmt, amount });setFormError(t("msg.valueMustMatch")+fmt(amount));return;}
+        if(Math.abs(sumAmt-amount)>0.01){setFormError(t("msg.valueMustMatch")+fmt(amount));return;}
       }
       paidBy=buildPaidByFromSplitState(splits.filter(s=>users.some(u=>u.id===s.userId)),amount,spMode);
       if(paidBy.length>1)splitModeOut=spMode;
@@ -6829,7 +6824,6 @@ function SolanaExpenses(){
       paidBy=[{userId:fallback,amount,pct:100}];
       splitModeOut=undefined;
     }
-    console.log("SPLIT DEBUG",{userId:user.id,userName:user.name,allUserIds:users.map(u=>u.id),paidBy,splitOn});
     const canSubmitterAutoApprove=String(user.id)===String(ownerId);
     if(AUTH_URL){
       const expApproverIdsAuth=effectiveExpenseApproverIds({category:form.category},cats,users);
@@ -6855,11 +6849,7 @@ function SolanaExpenses(){
             ivaAmount:ivaAmountAuth,
             ...(splitModeOut?{splitMode:splitModeOut}:{}),
           };
-          console.log("=== SUBMIT BODY ===", JSON.stringify(body, null, 2));
-          console.log("PRE-SUBMIT", { body, authUrl: AUTH_URL, token: API.token });
           const { response, responseBody, rawText } = await debugApiRequest("POST", "/expenses", body);
-          console.log("=== SUBMIT RESPONSE ===", { status: response.status, ok: response.ok, body: rawText });
-          console.log("POST-SUBMIT", { status: response.status, responseBody });
           if (!response.ok) throw new Error(responseBody.error || ("HTTP " + response.status));
           const d = responseBody;
           let exp=expenseFromApi(d.expense);
@@ -6867,7 +6857,6 @@ function SolanaExpenses(){
             try{
               await API.post("/expenses/"+encodeURIComponent(exp.id)+"/receipt",{b64:receipt.b64,mediaType:receipt.type||"image/jpeg"});
               const full=await API.get("/expenses");
-              console.log("EXPENSES GET DEBUG", { expenses: (full.expenses||[]).length, last: (full.expenses||[])[0] || null });
               const row=(full.expenses||[]).find(x=>x.id===exp.id);
               exp=row?expenseFromApi(row):exp;
               saveExp((full.expenses||[]).map(expenseFromApi));
@@ -6886,14 +6875,12 @@ function SolanaExpenses(){
             saveExp([exp,...expenses]);
             try{
               const full=await API.get("/expenses");
-              console.log("EXPENSES GET DEBUG", { expenses: (full.expenses||[]).length, last: (full.expenses||[])[0] || null });
             }catch(e){}
           }
           try{localStorage.removeItem("sol-exp-draft");}catch(e){}
           resetForm();setPanel("detail");setDetailId(exp.id);
           appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
         }catch(err){
-          console.log("=== SUBMIT BLOCKED ===", { reason: "submit_expense_catch", error: err?.message });
           if(isOfflineQueuedError(err)){
             const baseTrailOff=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
             const{approvals:optAppr,auditTrail:optTrail}=shouldAutoApproveSubmitterAuth
@@ -7262,8 +7249,9 @@ function SolanaExpenses(){
 
   /* ── EARLY RETURN — after all hooks, before derived values that need user ── */
   if(!appReady)return<div style={{minHeight:"100vh",background:"#3C0A37",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{opacity:0.6}}><SolanaLogo theme="light" size="lg"/></div></div>;
-  if(!user)return<LoginScreen users={users} onLogin={u=>{appLog("info","auth:login",{userId:u.id,role:u.role});setUser(u);}} passwords={passwords}/>;
+  if(!user)return<LoginScreen users={users} onLogin={u=>{appLog("info","auth:login",{userId:u.id,role:u.role});setUser(u);}} passwords={passwords} sessionRestoreAttempted={sessionRestoreAttempted}/>;
   // F3: Force password change for users created with a temporary password
+  console.log("[AUTH] mustChangePassword:", user?.mustChangePassword, user?.id);
   if(user.mustChangePassword)return<ForcePasswordChange
     user={user} passwords={passwords} savePasswords={savePasswords}
     saveUsers={saveUsers} users={users}
