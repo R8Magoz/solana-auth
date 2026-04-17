@@ -6387,6 +6387,7 @@ function SolanaExpenses(){
   const [toasts,setToasts]=useState([]);
   const [idleWarning,   setIdleWarning]   =useState(false);
   const idleTimer   =useRef(null);
+  const idleDeadlineRef = useRef(0);
   const warnTimer   =useRef(null);
   const [aNote,   setANote]   =useState({});
   const [addBill, setAddBill] =useState(false);
@@ -6775,22 +6776,33 @@ function SolanaExpenses(){
      Resets on any user interaction. Warns 2 min before expiry.
      Auto-logout clears user state and shows the expired overlay.
   ─────────────────────────────────────────────────────────────────────────── */
+  const MAX_BROWSER_TIMEOUT_MS = 2147483647; // browser setTimeout clamp (~24.8 days)
+  const runIdleExpiry=useCallback(()=>{
+    appLog("warn","session_idle_expired",{userId:user?.id});
+    myExpFilterClearedRef.current=false;
+    resetExpenseFiltersToDefault();
+    API.token=null;
+    try{localStorage.removeItem("sol-session-token");}catch(e){}
+    setUser(null);setView("dashboard");setDetailId(null);setPanel(null);
+    setSessionExpired(true);setIdleWarning(false);
+  },[user,resetExpenseFiltersToDefault]);
+  const scheduleIdleExpiry=useCallback(()=>{
+    clearTimeout(idleTimer.current);
+    const remaining=idleDeadlineRef.current-Date.now();
+    if(remaining<=0){runIdleExpiry();return;}
+    idleTimer.current=setTimeout(()=>{
+      scheduleIdleExpiry();
+    }, Math.min(remaining, MAX_BROWSER_TIMEOUT_MS));
+  },[runIdleExpiry]);
   const resetIdleTimer=useCallback(()=>{
     if(!user)return;
+    idleDeadlineRef.current=Date.now()+IDLE_TIMEOUT_MS;
     clearTimeout(idleTimer.current);
     clearTimeout(warnTimer.current);
     setIdleWarning(false);
     warnTimer.current=setTimeout(()=>setIdleWarning(true),  IDLE_WARNING_MS);
-    idleTimer.current=setTimeout(()=>{
-      appLog("warn","session_idle_expired",{userId:user?.id});
-      myExpFilterClearedRef.current=false;
-      resetExpenseFiltersToDefault();
-      API.token=null;
-      try{localStorage.removeItem("sol-session-token");}catch(e){}
-      setUser(null);setView("dashboard");setDetailId(null);setPanel(null);
-      setSessionExpired(true);setIdleWarning(false);
-    }, IDLE_TIMEOUT_MS);
-  },[user,resetExpenseFiltersToDefault]);
+    scheduleIdleExpiry();
+  },[user,scheduleIdleExpiry]);
 
   useEffect(()=>{
     if(!user){clearTimeout(idleTimer.current);clearTimeout(warnTimer.current);return;}
