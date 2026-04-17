@@ -588,20 +588,23 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const approversRaw = parseJsonArray(exp.approversJson);
 
     if (approversRaw.length === 0) {
-      if (!isAdminRole(req.userRole)) {
-        return res.status(403).json({ error: 'Solo administradores pueden aprobar este gasto.' });
+      const defaultIds = defaultApproverIdsFromDb();
+      if (!defaultIds.includes(req.userId) && !isAdminRole(req.userRole)) {
+        return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
       }
-      db.prepare(`
-        UPDATE expenses SET
-          status = 'approved',
-          approvedBy = ?, approvedAt = ?,
-          rejectedBy = NULL, rejectedAt = NULL, rejectionNote = NULL,
-          updatedAt = ?
-        WHERE id = ?
-      `).run(adminId, now, now, exp.id);
+      const votes = {};
+      votes[req.userId] = 'approved';
+      const allDone = defaultIds.length > 0 && defaultIds.every(id => votes[id] === 'approved');
+      if (allDone) {
+        db.prepare(`UPDATE expenses SET status='approved', approvedBy=?, approvedAt=?,
+          rejectedBy=NULL, rejectedAt=NULL, rejectionNote=NULL, updatedAt=? WHERE id=?`)
+          .run(req.userId, now, now, exp.id);
+      } else {
+        db.prepare(`UPDATE expenses SET approversJson=?, approvalVotesJson=?, updatedAt=? WHERE id=?`)
+          .run(JSON.stringify(defaultIds), JSON.stringify(votes), now, exp.id);
+      }
       const updated = getExpenseById(exp.id);
-      const approveNote = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : undefined;
-      audit('expense_approved', { userId: adminId, targetId: exp.id, note: approveNote });
+      audit('expense_approved', { userId: req.userId, targetId: exp.id });
       return res.json({ ok: true, expense: updated });
     }
 
@@ -649,6 +652,27 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const note = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : null;
     const approversRaw = parseJsonArray(exp.approversJson);
 
+    if (approversRaw.length === 0) {
+      const defaultIds = defaultApproverIdsFromDb();
+      if (!defaultIds.includes(req.userId) && !isAdminRole(req.userRole)) {
+        return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
+      }
+      const votes = {};
+      votes[req.userId] = 'rejected';
+      db.prepare(`
+        UPDATE expenses SET
+          status = 'rejected',
+          approversJson = ?,
+          approvalVotesJson = ?,
+          rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
+          updatedAt = ?
+        WHERE id = ?
+      `).run(JSON.stringify(defaultIds), JSON.stringify(votes), req.userId, now, note, now, exp.id);
+      const updated = getExpenseById(exp.id);
+      audit('expense_rejected', { userId: req.userId, targetId: exp.id, note });
+      return res.json({ ok: true, expense: updated });
+    }
+
     if (approversRaw.length > 0) {
       if (exp.status !== 'submitted') {
         return res.status(400).json({ error: 'El gasto no está pendiente de aprobación.' });
@@ -656,8 +680,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       if (!userIdInRawApproverList(approversRaw, adminId, userStore)) {
         return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
       }
-    } else if (!isAdminRole(req.userRole)) {
-      return res.status(403).json({ error: 'No autorizado.' });
     }
 
     db.prepare(`

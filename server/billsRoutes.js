@@ -131,17 +131,23 @@ function defaultApproverIdsFromDb() {
   ).all().map(r => r.id);
 }
 
+function ensureBillsApprovalColumns() {
+  try { db.prepare("ALTER TABLE bills ADD COLUMN approversJson TEXT").run(); } catch (e) {}
+  try { db.prepare("ALTER TABLE bills ADD COLUMN approvalVotesJson TEXT").run(); } catch (e) {}
+}
+
 const insertBill = db.prepare(`
   INSERT INTO bills (
     id, userId, vendor, amount, currency, amountEUR, category, dueDate, status,
-    recurring, recurrenceRule, paidAt, paidBy, notes, ownerId, paidByJson, splitMode, createdAt, updatedAt, departmentId, receiptPath
+    recurring, recurrenceRule, paidAt, paidBy, notes, ownerId, paidByJson, splitMode, approversJson, approvalVotesJson, createdAt, updatedAt, departmentId, receiptPath
   ) VALUES (
     @id, @userId, @vendor, @amount, @currency, @amountEUR, @category, @dueDate, @status,
-    @recurring, @recurrenceRule, @paidAt, @paidBy, @notes, @ownerId, @paidByJson, @splitMode, @createdAt, @updatedAt, @departmentId, @receiptPath
+    @recurring, @recurrenceRule, @paidAt, @paidBy, @notes, @ownerId, @paidByJson, @splitMode, @approversJson, @approvalVotesJson, @createdAt, @updatedAt, @departmentId, @receiptPath
   )
 `);
 
 function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter }) {
+  ensureBillsApprovalColumns();
   const router = express.Router();
   const receiptLimit = receiptUploadLimiter || ((req, res, next) => next());
   const receiptJson = express.json({ limit: '8mb' });
@@ -220,6 +226,18 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
       paidAtVal = parsePaidAtFromBody(req.body, now);
       paidByVal = req.userId;
     }
+    const requestedApprovers = Array.isArray(req.body?.approvalRequired)
+      ? req.body.approvalRequired.map(id => String(id || '').trim().slice(0, 128)).filter(Boolean)
+      : [];
+    const approverIds = requestedApprovers.length ? requestedApprovers : defaultApproverIdsFromDb();
+    const votes = {};
+    if (approverIds.includes(req.userId)) {
+      votes[req.userId] = 'approved';
+    }
+    const allApproved = approverIds.length > 0 && approverIds.every(id => votes[id] === 'approved');
+    if (allApproved) {
+      billStatus = 'paid';
+    }
 
     insertBill.run({
       id,
@@ -239,22 +257,15 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
       ownerId,
       paidByJson: JSON.stringify(paidNorm.paidBy),
       splitMode: paidNorm.splitMode,
+      approversJson: JSON.stringify(approverIds),
+      approvalVotesJson: JSON.stringify(votes),
       createdAt: now,
       updatedAt: now,
       departmentId: dept.id,
       receiptPath: null,
     });
-
-    // Auto-approve if submitter is an approver
-    const approverIds = defaultApproverIdsFromDb();
-    if (approverIds.includes(req.userId)) {
-      const allApproved = approverIds.every(id => id === req.userId);
-      if (allApproved) {
-        db.prepare(
-          "UPDATE bills SET status = 'paid', updatedAt = ? WHERE id = ?"
-        ).run(Date.now(), id);
-        audit('bill_auto_approved', { userId: req.userId, targetId: id });
-      }
+    if (allApproved) {
+      audit('bill_auto_approved', { userId: req.userId, targetId: id });
     }
 
     const bill = getBillById(id);
@@ -474,7 +485,31 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
     if (!bill) return res.status(404).json({ error: 'Factura no encontrada.' });
     if (!canAccessBill(req, bill)) return res.status(403).json({ error: 'No autorizado.' });
     const now = Date.now();
-    db.prepare('UPDATE bills SET status = ?, updatedAt = ? WHERE id = ?').run('paid', now, bill.id);
+    let approverIds;
+    let votes;
+    try {
+      approverIds = JSON.parse(bill.approversJson || 'null') || defaultApproverIdsFromDb();
+    } catch (e) {
+      approverIds = defaultApproverIdsFromDb();
+    }
+    try {
+      votes = JSON.parse(bill.approvalVotesJson || '{}') || {};
+    } catch (e) {
+      votes = {};
+    }
+    if (!Array.isArray(approverIds) || approverIds.length === 0) approverIds = defaultApproverIdsFromDb();
+    if (!approverIds.includes(req.userId)) {
+      return res.status(403).json({ error: 'No eres aprobador designado para esta factura.' });
+    }
+    votes[req.userId] = 'approved';
+    const allApproved = approverIds.every(id => votes[id] === 'approved');
+    if (allApproved) {
+      db.prepare("UPDATE bills SET approversJson=?, approvalVotesJson=?, status='paid', updatedAt=? WHERE id=?")
+        .run(JSON.stringify(approverIds), JSON.stringify(votes), now, bill.id);
+    } else {
+      db.prepare("UPDATE bills SET approversJson=?, approvalVotesJson=?, updatedAt=? WHERE id=?")
+        .run(JSON.stringify(approverIds), JSON.stringify(votes), now, bill.id);
+    }
     const updated = getBillById(bill.id);
     audit('bill_approved', { userId: req.userId, targetId: bill.id });
     res.json({ ok: true, bill: updated });
@@ -486,7 +521,25 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
     if (!canAccessBill(req, bill)) return res.status(403).json({ error: 'No autorizado.' });
     const note = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : null;
     const now = Date.now();
-    db.prepare('UPDATE bills SET status = ?, updatedAt = ? WHERE id = ?').run('cancelled', now, bill.id);
+    let approverIds;
+    let votes;
+    try {
+      approverIds = JSON.parse(bill.approversJson || 'null') || defaultApproverIdsFromDb();
+    } catch (e) {
+      approverIds = defaultApproverIdsFromDb();
+    }
+    try {
+      votes = JSON.parse(bill.approvalVotesJson || '{}') || {};
+    } catch (e) {
+      votes = {};
+    }
+    if (!Array.isArray(approverIds) || approverIds.length === 0) approverIds = defaultApproverIdsFromDb();
+    if (!approverIds.includes(req.userId)) {
+      return res.status(403).json({ error: 'No eres aprobador designado para esta factura.' });
+    }
+    votes[req.userId] = 'rejected';
+    db.prepare("UPDATE bills SET approversJson=?, approvalVotesJson=?, status='cancelled', updatedAt=? WHERE id=?")
+      .run(JSON.stringify(approverIds), JSON.stringify(votes), now, bill.id);
     const updated = getBillById(bill.id);
     audit('bill_rejected', { userId: req.userId, targetId: bill.id, note });
     res.json({ ok: true, bill: updated });
