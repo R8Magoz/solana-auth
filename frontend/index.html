@@ -2609,6 +2609,37 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
         }
         API.token = tok;
         sessionRestoreAttempted.current = true;
+        try {
+          const verifyRes = await fetch(AUTH_URL + "/auth/refresh", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + tok,
+            },
+          });
+          if (!verifyRes.ok) {
+            setLoading(false);
+            clearTimeout(slowHintTimer);
+            setSlowServerHint(false);
+            try { localStorage.removeItem("sol-session-token"); } catch (_) {}
+            API.token = null;
+            setErr("No se pudo validar la sesión. Inténtalo de nuevo.");
+            return;
+          }
+          const verifyData = await verifyRes.json().catch(() => ({}));
+          if (verifyData && verifyData.sessionToken) {
+            API.token = verifyData.sessionToken;
+            try { localStorage.setItem("sol-session-token", verifyData.sessionToken); } catch (_) {}
+          }
+        } catch (_) {
+          setLoading(false);
+          clearTimeout(slowHintTimer);
+          setSlowServerHint(false);
+          try { localStorage.removeItem("sol-session-token"); } catch (_) {}
+          API.token = null;
+          setErr("No se pudo validar la sesión. Inténtalo de nuevo.");
+          return;
+        }
         void fetchAndApplyServerSettings(AUTH_URL, API.token);
 
         setLoading(false);
