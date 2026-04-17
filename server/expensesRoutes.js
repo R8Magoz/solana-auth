@@ -219,10 +219,7 @@ function listExpenses(req) {
   const parts = ['1=1'];
   const vals = [];
 
-  if (!admin) {
-    parts.push('userId = ?');
-    vals.push(req.userId);
-  } else if (qUser) {
+  if (!admin && qUser) {
     parts.push('userId = ?');
     vals.push(String(qUser).trim().slice(0, 128));
   }
