@@ -7,7 +7,7 @@ const FONT_STYLESHEET =
   'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap';
 
 /** Same-origin API-style paths (if ever co-hosted); always bypass SW cache. */
-const NET_ONLY_PREFIXES = ['/auth', '/expenses', '/bills', '/reports', '/admin', '/ai', '/health'];
+const NET_ONLY_PREFIXES = ['/auth', '/expenses', '/reports', '/admin', '/ai', '/health'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

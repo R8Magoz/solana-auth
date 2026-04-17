@@ -93,7 +93,6 @@ const TR = {
     "nav.dashboard": "Panel",
     "nav.expenses": "Gastos",
     "nav.approvals": "Aprobaciones",
-    "nav.bills": "Facturas",
     "nav.reports": "Informes",
     "nav.settings": "Ajustes",
     "nav.signOut": "Cerrar sesión",
@@ -210,8 +209,6 @@ const TR = {
     "role.admin": "Administrador",
     "role.user": "Usuario",
     "empty.expenses": "No se encontraron gastos",
-    "empty.bills": "Sin facturas todavía",
-    "empty.billsFiltered": "Sin resultados con los filtros aplicados",
     "empty.approvals": "Todo al día sin aprobaciones pendientes",
     "msg.profileUpdated": "Perfil actualizado.",
     "msg.invalidFile": "Archivo no válido.",
@@ -306,6 +303,7 @@ const TR = {
     "msg.dayOfMonthRequired": "Indica el día del mes para facturas recurrentes.",
     "dash.deptBudgetsTitle": "Presupuestos por departamento",
     "settings.accordion.integrations": "Integraciones y exportación",
+    "settings.accordion.backups": "Copias de seguridad",
     "settings.accordion.danger": "Zona de peligro",
     "settings.apiIntegrations": "API e Integraciones",
     "settings.apiIntegrationsDesc": "Conecta los datos de Solana con Power BI, Excel u otras herramientas de análisis.",
@@ -392,45 +390,6 @@ const TR = {
     "reports.filteredData": "Datos filtrados",
     "reports.approvedOnly": "Solo aprobados",
     "reports.pendingOnly": "Solo pendientes",
-    "bills.dueNext30": "Vencimiento en los próximos 30 días",
-    "bills.dueToday": "Vence hoy",
-    "bills.dueTomorrow": "Vence mañana",
-    "bills.inDays": "En {{n}} días",
-    "bills.perMonth": "mes",
-    "bills.perYear": "año",
-    "bills.day": "Día",
-    "bills.summary": "Mensual: {{monthly}} · Anual: {{annual}}",
-    "bills.filterAll": "Todas",
-    "bills.filterPending": "Pendiente",
-    "bills.filterApproved": "Aprobada",
-    "bills.filterRejected": "Rechazada",
-    "bills.searchPlaceholder": "Buscar por nombre o descripción",
-    "bills.approvalNote": "La factura requiere aprobación antes de activarse.",
-    "bills.newBill": "Nueva factura",
-    "bills.detail": "Detalle de factura",
-    "bills.description": "Descripción",
-    "bills.descPlaceholder": "Notas internas o propósito de esta factura",
-    "bills.submittedBy": "Enviado por",
-    "bills.autoApproved": "Autoaprobado por remitente",
-    "bills.attachment": "Adjunto",
-    "bills.noAttachment": "Sin adjunto",
-    "bills.editBill": "Editar factura",
-    "bills.saveChanges": "Guardar cambios",
-    "bills.confirmEdit": "¿Guardar cambios en esta factura?",
-    "bills.reapproval": "Esta factura estaba aprobada. Editar puede requerir reaprobación.",
-    "bills.paymentQuestion": "¿Ya está pagada?",
-    "bills.paymentPaid": "Ya pagada",
-    "bills.paymentPending": "Pendiente de pago",
-    "bills.paymentDate": "Fecha de pago",
-    "bills.badgeOnce": "Pago único",
-    "bills.badgePaid": "Pagada",
-    "bills.freqQuarterly": "Trimestral",
-    "bills.dayMeta": "día",
-    "bills.confirmMarkPaid": "¿Confirmar que esta factura ha sido pagada?",
-    "bills.markPaid": "Marcar como pagada",
-    "bills.confirmMarkPaidRecurring": "¿Confirmas registrar el pago de esta factura recurrente ahora?",
-    "bills.markPaidConfirm": "Confirmar pago",
-    "bills.paidOn": "Pagada el",
     "dash.welcome": "Bienvenido",
     "dash.totalInvested": "Total invertido",
     "dash.thisMonth": "Este mes",
@@ -450,7 +409,8 @@ const TR = {
     "dash.recentEmpty": "Aún no has enviado ningún gasto.",
     "dash.investByPerson": "Inversión por persona",
     "dash.awaitingApproval": "gasto(s) pendiente(s) de tu aprobación",
-    "dash.billsAwaitingApproval": "factura(s) pendiente(s) de tu aprobación",
+    "dash.newInvoice": "Nueva factura",
+    "dash.newInvoiceSub": "Formulario con vencimiento y proveedor",
     "dash.bothMustApprove": "Ambos admins deben aprobar",
     "dash.review": "Revisar",
     "dash.addBill": "Añadir Factura",
@@ -499,17 +459,44 @@ const TR = {
     "expense.unsaved": "Tienes cambios sin guardar. ¿Descartarlos?",
     "person.drillTitle": "Inversión de {name}",
     "person.expenses": "Gastos atribuidos",
-    "person.bills": "Facturas enviadas",
+    "person.invoicesSent": "Facturas enviadas",
     "person.noExpenses": "Sin gastos atribuidos.",
-    "person.noBills": "Sin facturas enviadas.",
+    "person.noInvoices": "Sin facturas enviadas.",
     "filter.showingMyExpenses": "Mostrando: mis gastos",
     "filter.showAllExpenses": "× Ver todos",
     "expenses.summaryApproved": "Total aprobado",
     "expenses.summaryPending": "Pendiente",
+    "expenses.typeExpense": "Gasto",
+    "expenses.typeInvoice": "Factura",
+    "expenses.paymentPending": "Pendiente",
+    "expenses.paymentOverdue": "Vencida",
+    "expenses.paymentPaid": "Pagada",
+    "expenses.markPaid": "Marcar pagada",
+    "expenses.vendor": "Proveedor",
+    "expenses.paymentTerms": "Condiciones de pago",
+    "expenses.dueDate": "Fecha vencimiento",
+    "expenses.cadence": "Cadencia",
+    "expenses.recurringPreview": "Próxima: {{date}}",
+    "expenses.filterAll": "Todos",
+    "expenses.filterExpenses": "Gastos",
+    "expenses.filterInvoices": "Facturas",
+    "expenses.vence": "Vence el:",
+    "expenses.termCash": "Al contado (0 días)",
+    "expenses.termNet15": "NET-15",
+    "expenses.termNet30": "NET-30",
+    "expenses.termNet60": "NET-60",
+    "expenses.termCustom": "Personalizado",
+    "expenses.termCustomDays": "Días",
+    "expenses.cadenceOnce": "Solo esta vez",
+    "expenses.cadenceWeekly": "Cada semana",
+    "expenses.cadenceBiweekly": "Cada 2 semanas",
+    "expenses.cadenceMonthly": "Cada mes",
+    "expenses.cadenceYearly": "Cada año",
+    "expenses.confirmMarkPaid": "¿Registrar pago?",
+    "expenses.paidDateLabel": "Fecha de pago",
+    "expenses.noAttachment": "Sin adjunto",
     "page.expensesDefTitle": "Gastos puntuales",
     "page.expensesDefBody": "Pagos únicos, compras y desembolsos del equipo.",
-    "page.billsDefTitle": "Facturas recurrentes",
-    "page.billsDefBody": "Costes fijos periódicos: suscripciones, alquiler, proveedores.",
     "form.ivaRate": "Tipo de IVA",
     "form.ivaBase": "Base imponible",
     "form.ivaAmountLabel": "Cuota IVA",
@@ -578,8 +565,8 @@ const mkT=()=>(key,vars={})=>{
 
 /* === SEED DATA (local dev / demo only) =======================================
    Used when localStorage keys are empty and AUTH_URL is unset (offline app).
-   When AUTH_URL is set: expenses & bills initial state is [] and are loaded from
-   GET /expenses + GET /bills; the user roster is replaced from GET /auth/team after
+   When AUTH_URL is set: expenses initial state is [] and are loaded from
+   GET /expenses (gastos + facturas como expenseType invoice); the user roster is replaced from GET /auth/team after
    login (see useEffect in SolanaExpenses). Seed user ids below are not used in logic.
    ============================================================================= */
 const DEF_USERS=[
@@ -649,7 +636,7 @@ function shouldQueueWrite(method, path) {
   const m = String(method || "").toUpperCase();
   if (m !== "POST" && m !== "PUT" && m !== "DELETE") return false;
   const p = path || "";
-  if (p.indexOf("/expenses") !== 0 && p.indexOf("/bills") !== 0) return false;
+  if (p.indexOf("/expenses") !== 0) return false;
   return true;
 }
 
@@ -1225,21 +1212,6 @@ const getItemStatus=(item,cats,users)=>{
       return"pending";
     }
   }
-  if(item&&item._apiType==="bill"&&item.apiBillStatus){
-    const s=item.apiBillStatus;
-    if(s==="cancelled")return"rejected";
-    if(s==="paid")return"approved";
-    if(s==="pending"||s==="overdue"){
-      const approverIds=item.approvalRequired||[];
-      if(approverIds.length>0){
-        const a=item.approvals||{};
-        const v=id=>approvalVoteFor(a,id,users);
-        if(approverIds.some(id=>v(id)==="rejected"))return"rejected";
-        if(approverIds.every(id=>v(id)==="approved"))return"approved";
-      }
-      return"pending";
-    }
-  }
   const approverIds=effectiveExpenseApproverIds(item,cats,users);
   const a=item.approvals||{};
   const v=id=>approvalVoteFor(a,id,users);
@@ -1247,12 +1219,13 @@ const getItemStatus=(item,cats,users)=>{
   if(approverIds.every(id=>v(id)==="approved"))return"approved";
   return"pending";
 };
-function billCountsTowardDeptSpend(b,cats,users){
-  if(b&&b._apiType==="bill")return b.apiBillStatus==="paid";
-  return getItemStatus(b,cats,users)==="approved"&&!!b.active;
+/** Gastos aprobados y facturas (invoice) marcadas como pagadas cuentan para el gasto del departamento. */
+function expenseCountsTowardDeptSpend(e,cats,users){
+  if(e&&e.expenseType==="invoice")return e.paymentStatus==="paid";
+  return getItemStatus(e,cats,users)==="approved";
 }
 /** @param useServerTotals when true and rows include spent from GET /departments, keep server figures */
-function enrichDepartmentsForUI(depts,expenses,bills,cats,users,useServerTotals){
+function enrichDepartmentsForUI(depts,expenses,cats,users,useServerTotals){
   return(depts||[]).map(d=>{
     if(useServerTotals&&typeof d.spent==="number"){
       const budget=Number(d.budget)||0;
@@ -1262,9 +1235,7 @@ function enrichDepartmentsForUI(depts,expenses,bills,cats,users,useServerTotals)
       return{...d,budget,spent,remaining,pctUsed};
     }
     const id=d.id;
-    const spentExp=expenses.filter(e=>e.departmentId===id&&getItemStatus(e,cats,users)==="approved").reduce((s,e)=>s+eurForExpense(e),0);
-    const spentBills=bills.filter(b=>b.departmentId===id&&billCountsTowardDeptSpend(b,cats,users)).reduce((s,b)=>s+eurForExpense(b),0);
-    const spentF=spentExp+spentBills;
+    const spentF=expenses.filter(e=>e.departmentId===id&&expenseCountsTowardDeptSpend(e,cats,users)).reduce((s,e)=>s+eurForExpense(e),0);
     const budget=Number(d.budget)||0;
     const remaining=budget-spentF;
     const pctUsed=budget>0?Math.min(100,Math.round((spentF/budget)*1000)/10):(spentF>0?100:0);
@@ -1310,27 +1281,17 @@ const shareEurInExpense=(e,userId)=>{
   if(base<=0)return 0;
   return(Number(p.amount)||0)/base*tot;
 };
-/** EUR attributed to one participant from bill paidBy (same split logic as expenses). */
-const shareEurInBill=(b,userId)=>{
-  const rows=b.paidBy||[];
-  const tot=eurForExpense(b);
-  if(rows.length===0){
-    const owner=b.ownerId||b.submittedBy||b.userId;
-    return owner===userId?tot:0;
-  }
-  const p=rows.find(x=>x&&x.userId===userId);
-  if(!p)return 0;
-  const base=Number(b.amount)||0;
-  if(base<=0)return 0;
-  return(Number(p.amount)||0)/base*tot;
-};
 const fmtExpenseAmt=e=>fmt(Number(e?.amount)||0);
 function guessMimeFromReceiptPath(p){
-  if(!p)return"image/jpeg";
-  const ext=(String(p).split(".").pop()||"").toLowerCase();
-  if(ext==="png")return"image/png";
-  if(ext==="webp")return"image/webp";
-  return"image/jpeg";
+  if(!p) return 'image/jpeg';
+  const ext = (String(p).split('.').pop() || '').toLowerCase();
+  if(ext === 'pdf')  return 'application/pdf';
+  if(ext === 'png')  return 'image/png';
+  if(ext === 'webp') return 'image/webp';
+  if(ext === 'gif')  return 'image/gif';
+  if(ext === 'tiff' || ext === 'tif') return 'image/tiff';
+  if(ext === 'heic' || ext === 'heif') return 'image/heic';
+  return 'image/jpeg';
 }
 function expenseFromApi(row){
   if(!row)return null;
@@ -1403,131 +1364,102 @@ function expenseFromApi(row){
     comments,
     seenBy:[],
     departmentId:row.departmentId||null,
+    expenseType:row.expenseType||"expense",
+    vendor:row.vendor!=null&&row.vendor!==""?String(row.vendor):null,
+    dueDate:row.dueDate||null,
+    paymentStatus:row.paymentStatus||"na",
+    paidAt:row.paidAt!=null?row.paidAt:null,
+    paidConfirmedBy:row.paidConfirmedBy||null,
+    paymentTermDays:row.paymentTermDays!=null?Number(row.paymentTermDays):0,
+    recurring:Number(row.recurring)===1?1:0,
+    recurrenceRule:row.recurrenceRule||null,
   },"expense");
 }
-function billDueISOFromForm(nb){
-  const ts=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  const f=nb&&nb.frequency;
-  if(f===""||f==="once"){
-    const raw=nb.dueDate&&String(nb.dueDate).trim();
-    if(raw&&raw.length>=10)return raw.slice(0,10);
-    return ts(new Date());
-  }
-  const dm=parseInt(nb.dayOfMonth,10)||1;
-  const t=new Date();
-  let y=t.getFullYear(),mo=t.getMonth();
-  const ld=new Date(y,mo+1,0).getDate();
-  let d=new Date(y,mo,Math.min(dm,ld));
-  if(ts(d)<ts(t)){
-    mo++;
-    if(mo>11){mo=0;y++;}
-    const ld2=new Date(y,mo+1,0).getDate();
-    d=new Date(y,mo,Math.min(dm,ld2));
-  }
-  return ts(d);
+/** Map GET /expenses rows to unified client models (gastos + facturas). */
+function mapExpensesFromApi(rows){
+  return(rows||[]).map(r=>expenseFromApi(r)).filter(Boolean);
 }
-function isBillRecurringFrequency(freq){
-  return freq==="monthly"||freq==="annual"||freq==="custom";
+function addDaysToISODate(iso,n){
+  if(!iso||String(iso).length<10)return"";
+  const p=String(iso).slice(0,10).split("-");
+  const d=new Date(Number(p[0]),Number(p[1])-1,Number(p[2]));
+  if(isNaN(d.getTime()))return"";
+  d.setDate(d.getDate()+n);
+  const y=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,"0"),da=String(d.getDate()).padStart(2,"0");
+  return`${y}-${mo}-${da}`;
 }
-const billFreqLabel=(f,t)=>!f||f==="once"?t("label.once"):t("label."+f);
-function billListAmountSuffix(b,t){
-  if(!isBillRecurringFrequency(b.frequency))return null;
-  return b.frequency==="monthly"?"/"+t("bills.perMonth"):"/"+t("bills.perYear");
+function addMonthsToISODate(iso,n){
+  if(!iso||String(iso).length<10)return"";
+  const p=String(iso).slice(0,10).split("-");
+  const d=new Date(Number(p[0]),Number(p[1])-1,Number(p[2]));
+  if(isNaN(d.getTime()))return"";
+  d.setMonth(d.getMonth()+n);
+  const y=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,"0"),da=String(d.getDate()).padStart(2,"0");
+  return`${y}-${mo}-${da}`;
 }
-function billRecurringFreqWord(b,t){
-  const rule=b.recurrenceRule||"monthly";
-  if(rule==="quarterly")return t("bills.freqQuarterly");
-  if(rule==="yearly"||b.frequency==="annual")return t("label.annual");
-  return t("label.monthly");
+function addYearsToISODate(iso,n){
+  if(!iso||String(iso).length<10)return"";
+  const p=String(iso).slice(0,10).split("-");
+  const d=new Date(Number(p[0]),Number(p[1])-1,Number(p[2]));
+  if(isNaN(d.getTime()))return"";
+  d.setFullYear(d.getFullYear()+n);
+  const y=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,"0"),da=String(d.getDate()).padStart(2,"0");
+  return`${y}-${mo}-${da}`;
 }
-function billListMetadataLine(b,t,users){
-  const sub=(users.find(u=>u.id===b.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
-  const cat=tCat(b.category,t);
-  const refD=getBillFilterDateRef(b);
-  if(!isBillRecurringFrequency(b.frequency))
-    return `${fmtDate(refD)} · ${cat} · ${sub}`;
-  const day=b.dayOfMonth||"N/A";
-  return `${billRecurringFreqWord(b,t)} · ${t("bills.dayMeta")} ${day} · ${cat} · ${sub}`;
+function formatDMYFromISO(iso){
+  if(!iso||String(iso).length<10)return"";
+  const p=String(iso).slice(0,10).split("-");
+  if(p.length<3)return"";
+  return`${p[2]}/${p[1]}/${p[0]}`;
 }
-function billStatusBadgeLabel(b,bst,t){
-  if(AUTH_URL&&b._apiType==="bill"&&b.apiBillStatus==="paid")return t("status.approved");
-  return t("status."+bst);
+function paymentTermDaysFromForm(form){
+  const mode=form&&form.paymentTermMode;
+  if(mode==="0"||mode===0)return 0;
+  if(mode==="15")return 15;
+  if(mode==="30")return 30;
+  if(mode==="60")return 60;
+  if(mode==="custom")return Math.max(0,parseInt(String(form.paymentTermCustomDays||"0"),10)||0);
+  return 0;
 }
-function formatBillPaidAtDisplay(b){
-  if(b.paidAt==null||b.paidAt==="")return"";
-  const n=Number(b.paidAt);
-  if(Number.isFinite(n)&&n>0){
-    try{
-      return fmtDate(new Date(n).toISOString().slice(0,10));
-    }catch(e){}
-  }
+function computeInvoiceDueISO(form){
+  const base=(form&&form.date)||"";
+  const days=paymentTermDaysFromForm(form);
+  if(days>0)return addDaysToISODate(base,days);
+  const manual=(form&&form.invoiceDueDateDirect)||"";
+  if(manual&&String(manual).length>=10)return String(manual).slice(0,10);
+  return base.slice(0,10);
+}
+function nextCadencePreviewISO(baseDate,cadenceKey){
+  if(!baseDate||cadenceKey==="once"||!cadenceKey)return"";
+  if(cadenceKey==="weekly")return addDaysToISODate(baseDate,7);
+  if(cadenceKey==="biweekly")return addDaysToISODate(baseDate,14);
+  if(cadenceKey==="monthly")return addMonthsToISODate(baseDate,1);
+  if(cadenceKey==="yearly")return addYearsToISODate(baseDate,1);
   return"";
 }
-function billFromApi(row){
-  if(!row)return null;
-  const recurring=!!row.recurring;
-  const rule=row.recurrenceRule||"monthly";
-  let frequency="monthly";
-  if(!recurring)frequency="once";
-  else if(rule==="yearly")frequency="annual";
-  else if(rule==="quarterly")frequency="custom";
-  const due=row.dueDate||"";
-  let dayOfMonth="1";
-  if(recurring&&due.length>=10)dayOfMonth=String(Math.min(31,parseInt(due.slice(8,10),10)||1));
-  if(!recurring)dayOfMonth="";
-  const amt=Number(row.amount)||0;
-  const eur=row.amountEUR!=null&&!isNaN(Number(row.amountEUR))?Number(row.amountEUR):amt;
-  let paidBy=[];
-  try{
-    const pb=JSON.parse(row.paidByJson||"null");
-    if(Array.isArray(pb)&&pb.length)paidBy=pb;
-  }catch(e){}
-  if(!paidBy.length)paidBy=[{userId:row.ownerId||row.userId,amount:eur,pct:100}];
-  return normalizeItem({
-    id:row.id,
-    _apiType:"bill",
-    name:row.vendor,
-    vendor:row.vendor,
-    amount:eur,
-    category:row.category,
-    dueDate:row.dueDate,
-    dayOfMonth,
-    frequency,
-    intervalMonths:rule==="quarterly"?"3":"",
-    endDate:"",
-    submittedBy:row.userId,
-    ownerId:row.ownerId||row.userId,
-    status:row.status,
-    apiBillStatus:row.status,
-    recurring,
-    recurrenceRule:row.recurrenceRule,
-    active:recurring&&(row.status==="pending"||row.status==="overdue"),
-    notes:row.notes||"",
-    description:"",
-    receipt:null,
-    receiptType:row.receiptPath?guessMimeFromReceiptPath(row.receiptPath):null,
-    receiptPath:row.receiptPath||null,
-    approvals:(()=>{
-      try{
-        const v=JSON.parse(row.approvalVotesJson||"null");
-        return(v&&typeof v==="object"&&!Array.isArray(v))?v:{};
-      }catch{return{};}
-    })(),
-    approvalRequired:(()=>{
-      try{
-        const a=JSON.parse(row.approversJson||"null");
-        return Array.isArray(a)?a:[];
-      }catch{return[];}
-    })(),
-    auditTrail:[],
-    seenBy:[],
-    paidAt:row.paidAt,
-    paidBy,
-    splitMode:(row.splitMode==="equal"||row.splitMode==="percentage"||row.splitMode==="amount")?row.splitMode:undefined,
-    paidByBill:row.paidBy,
-    itemCode:row.id,
-    departmentId:row.departmentId||null,
-  },"bill");
+function cadenceToRecurringPayload(cadenceKey){
+  if(!cadenceKey||cadenceKey==="once")return{recurring:0,recurrenceRule:null};
+  const map={weekly:"weekly",biweekly:"biweekly",monthly:"monthly",yearly:"yearly"};
+  const rule=map[cadenceKey];
+  if(!rule)return{recurring:0,recurrenceRule:null};
+  return{recurring:1,recurrenceRule:rule};
+}
+function invoiceForecastMonthlyEUR(e){
+  const ev=eurForExpense(e);
+  const r=e.recurrenceRule||"monthly";
+  if(r==="weekly")return ev*52/12;
+  if(r==="biweekly")return ev*26/12;
+  if(r==="yearly")return ev/12;
+  return ev;
+}
+function daysUntilISO(iso){
+  if(!iso||String(iso).length<10)return null;
+  const t=new Date();
+  t.setHours(0,0,0,0);
+  const d=new Date(String(iso).slice(0,10)+"T12:00:00");
+  if(isNaN(d.getTime()))return null;
+  d.setHours(0,0,0,0);
+  return Math.ceil((d-t)/86400000);
 }
 const ST={
   approved:{bg:"#D1FAE5",color:"#065F46"},
@@ -1545,50 +1477,6 @@ const ACTIVITY_COLORS={
 };
 /** Translate a category name for display (known names only, preserves unknown) */
 const tCat=(name,t)=>{const k="cat."+name.toLowerCase().replace(/[^a-z]/g,"");const tr=t(k);return tr===k?name:tr;};
-
-/** Fecha YYYY-MM-DD para filtros de facturas: próximo vencimiento (dayOfMonth) o fecha de envío */
-function getBillFilterDateRef(b){
-  if(b._apiType==="bill"&&b.dueDate&&String(b.dueDate).length>=10)return String(b.dueDate).slice(0,10);
-  if(b.frequency==="once"||b.frequency===""||b.frequency===undefined){
-    if(b.dueDate&&String(b.dueDate).length>=10)return String(b.dueDate).slice(0,10);
-    const sub=(b.auditTrail||[]).find(a=>a.action==="submitted");
-    if(sub&&sub.at)return sub.at.slice(0,10);
-    return"1970-01-01";
-  }
-  const dm=parseInt(b.dayOfMonth,10);
-  const today=new Date();
-  const tsLocal=d=>{const y=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,"0"),da=String(d.getDate()).padStart(2,"0");return`${y}-${mo}-${da}`;};
-  const todayStr=tsLocal(today);
-  if(!isNaN(dm)&&dm>=1&&dm<=31&&(b.frequency==="monthly"||b.frequency==="custom")){
-    const y=today.getFullYear(),m=today.getMonth();
-    const lastDay=new Date(y,m+1,0).getDate();
-    const day=Math.min(dm,lastDay);
-    let ref=new Date(y,m,day);
-    if(tsLocal(ref)<todayStr){
-      const nm=m+1,ny=nm>11?y+1:y,nmo=nm>11?0:nm;
-      const ld=new Date(ny,nmo+1,0).getDate();
-      ref=new Date(ny,nmo,Math.min(dm,ld));
-    }
-    return tsLocal(ref);
-  }
-  if(!isNaN(dm)&&dm>=1&&dm<=31&&b.frequency==="annual"){
-    const sub=(b.auditTrail||[]).find(a=>a.action==="submitted");
-    const base=sub?new Date(sub.at):today;
-    const mo=base.getMonth();
-    let y=today.getFullYear();
-    const ld=new Date(y,mo+1,0).getDate();
-    let ref=new Date(y,mo,Math.min(dm,ld));
-    if(tsLocal(ref)<todayStr){
-      y++;
-      const ld2=new Date(y,mo+1,0).getDate();
-      ref=new Date(y,mo,Math.min(dm,ld2));
-    }
-    return tsLocal(ref);
-  }
-  const sub=(b.auditTrail||[]).find(a=>a.action==="submitted");
-  if(sub&&sub.at)return sub.at.slice(0,10);
-  return"1970-01-01";
-}
 
 /** Generate a human-readable immutable item code.
  *  Format: TYPE-YYYYMMDD-XXXX  e.g. EXP-20260319-A3F2 */
@@ -1620,7 +1508,7 @@ function getBillFilterDateRef(b){
 const IDLE_TIMEOUT_MS   = 30 * 24 * 60 * 60 * 1000; // 30 days — effectively never
 const IDLE_WARNING_MS   = 28 * 60 * 1000; // warn 2 min before
 const LAST_ACTIVITY_KEY = "sol-last-activity";
-const VALID_VIEWS = new Set(["dashboard","expenses","approvals","bills","reports","settings"]);
+const VALID_VIEWS = new Set(["dashboard","expenses","approvals","reports","settings"]);
 const COMMON_PASSWORDS  = new Set([
   "password","123456","qwerty","abc123","letmein","monkey","dragon",
   "iloveyou","sunshine","princess","welcome","shadow","master","football",
@@ -1711,18 +1599,15 @@ const mkCode=(type)=>{
 };
 function migrateItemCodes(){
   try{
-    ["sol-exp","sol-bills"].forEach((key,ki)=>{
-      const prefix=ki===0?"EXP":"FAC";
-      const raw=localStorage.getItem(key);if(!raw)return;
-      const arr=JSON.parse(raw);if(!Array.isArray(arr))return;
-      let dirty=false;
-      const out=arr.map(item=>{if(item.itemCode)return item;dirty=true;return{...item,itemCode:mkCode(prefix)};});
-      if(dirty)localStorage.setItem(key,JSON.stringify(out));
-    });
+    const raw=localStorage.getItem("sol-exp");if(!raw)return;
+    const arr=JSON.parse(raw);if(!Array.isArray(arr))return;
+    let dirty=false;
+    const out=arr.map(item=>{if(item.itemCode)return item;dirty=true;return{...item,itemCode:mkCode("EXP")};});
+    if(dirty)localStorage.setItem("sol-exp",JSON.stringify(out));
   }catch(e){}
 }
 
-/** Additive schema fields for expenses, categories, bills — safe on existing data */
+/** Additive schema fields for expenses, categories — safe on existing data */
 function migrateDataModel(){
   try{
     const expRaw=localStorage.getItem("sol-exp");
@@ -1755,21 +1640,6 @@ function migrateDataModel(){
           return x;
         });
         if(dirty)localStorage.setItem("sol-cats",JSON.stringify(out));
-      }
-    }
-    const billRaw=localStorage.getItem("sol-bills");
-    if(billRaw){
-      const arr=JSON.parse(billRaw);
-      if(Array.isArray(arr)){
-        let dirty=false;
-        const out=arr.map(b=>{
-          if(!b||typeof b!=="object")return b;
-          const x={...b};
-          if(!Array.isArray(x.seenBy)){x.seenBy=[];dirty=true;}
-          if(x.departmentId===undefined||x.departmentId===""){x.departmentId="dept_estrategia";dirty=true;}
-          return x;
-        });
-        if(dirty)localStorage.setItem("sol-bills",JSON.stringify(out));
       }
     }
   }catch(e){}
@@ -1890,10 +1760,9 @@ function readLocalDepartments(){
     return SEED_DEPARTMENTS.map(d=>({...d,createdAt:Date.now()}));
   }
 }
-const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:""};
+const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
+  expenseType:"expense",vendor:"",paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once"};
 const DRAFT_KEY="sol-exp-draft";
-const APPROVAL_BILL_FOCUS_KEY="sol-approval-focus-bill-id";
-const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,ivaRate:String(readIvaDefault()),intervalMonths:"",endDate:"",dueDate:new Date().toISOString().slice(0,10),departmentId:"",ownerId:"",paymentChoice:"paid",paymentDate:new Date().toISOString().slice(0,10)};
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
 const Ctx=createContext(null);
@@ -1968,9 +1837,7 @@ function SolanaLogo({theme="light", size="md", variant:_v}){
 const REAPPROVAL_FIELDS = ["amount","description","category","date","paidBy","splitMode","receipt","receiptType","ivaRate","ivaAmount","departmentId"];
 
 /* ── ATTACHMENT VIEWER ─────────────────────────────────────────────────────────
-   Shared component for displaying attachments on both expenses and bills.
-   Handles images (inline preview), PDFs (embed+download), server-backed receipts
-   (apiExpenseId + Bearer fetch), and empty state.
+   Receipt preview: inline image/PDF, server fetch via apiExpenseId + Bearer, empty state.
 ─────────────────────────────────────────────────────────────────────────────── */
 function receiptMimeOkForServerUpload(mediaType){
   const m=String(mediaType||"").toLowerCase();
@@ -1979,7 +1846,7 @@ function receiptMimeOkForServerUpload(mediaType){
     ||m.includes("heic")||m.includes("heif")||m.includes("gif")||m.includes("tiff")||m.includes("tif");
 }
 
-function AttachmentViewer({receipt, receiptType, apiExpenseId, apiBillId, label, onRemove, t}){
+function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, label, onRemove, t}){
   const [blobUrl,setBlobUrl]=useState(null);
   const [blobMime,setBlobMime]=useState(null);
   const [blobLoad,setBlobLoad]=useState(false);
@@ -1990,9 +1857,7 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, apiBillId, label,
   useEffect(()=>{
     const apiEntityPath = apiExpenseId
       ? "/expenses/"+encodeURIComponent(apiExpenseId)+"/receipt"
-      : apiBillId
-        ? "/bills/"+encodeURIComponent(apiBillId)+"/receipt"
-        : null;
+      : null;
 
     if(receipt||!apiEntityPath||!AUTH_URL){
       setBlobUrl(u=>{if(u)URL.revokeObjectURL(u);return null;});
@@ -2010,7 +1875,7 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, apiBillId, label,
         if(cancelled)return;
         objUrl=URL.createObjectURL(blob);
         setBlobUrl(objUrl);
-        setBlobMime(blob.type&&blob.type!=="application/octet-stream"?blob.type:guessMimeFromReceiptPath(null));
+        setBlobMime(blob.type && blob.type !== 'application/octet-stream' ? blob.type : guessMimeFromReceiptPath(receiptPath));
       }catch(e){
         if(!cancelled)setBlobErr(e.message||"Sin recibo");
       }finally{
@@ -2021,7 +1886,7 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, apiBillId, label,
       cancelled=true;
       if(objUrl)URL.revokeObjectURL(objUrl);
     };
-  },[apiExpenseId, apiBillId, receipt]);
+  },[apiExpenseId, receipt, receiptPath]);
 
   useEffect(()=>{
     if(!imgZoom)return;
@@ -2035,7 +1900,7 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, apiBillId, label,
   const isPdf=mime?.includes("pdf");
   const isImg=srcUrl&&!isPdf;
 
-  if(!receipt&&(apiExpenseId||apiBillId)&&AUTH_URL&&blobLoad){
+  if(!receipt&&apiExpenseId&&AUTH_URL&&blobLoad){
     return(
       <div style={{padding:"8px 10px",background:"#FAFAF8",borderRadius:7,border:"1px dashed #DDD6CC",fontSize:11,color:"#6B7B72"}}>
         {t?t("msg.receiptLoading"):"Cargando recibo…"}
@@ -2046,26 +1911,13 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, apiBillId, label,
     return(
       <div style={{padding:"8px 10px",background:"#FAFAF8",borderRadius:7,border:"1px dashed #DDD6CC",
         fontSize:11,color:"#B5C0B8",display:"flex",alignItems:"center",gap:6}}>
-        <span>{blobErr||(t?t("bills.noAttachment"):"Sin adjunto")}</span>
+        <span>{blobErr||(t?t("expenses.noAttachment"):"Sin adjunto")}</span>
       </div>
     );
   }
 
-  const openFile=()=>{
-    if(blobUrl){
-      window.open(blobUrl,"_blank");
-      return;
-    }
-    if((apiExpenseId||apiBillId)&&AUTH_URL){
-      return;
-    }
-    if(srcUrl){
-      const w=window.open("","_blank");
-      if(w){
-        w.document.write(`<html><body style="margin:0;background:#111"><img src="${srcUrl}" style="max-width:100%;display:${isImg?"block":"none"}"/>`+
-          (isPdf?`<embed src="${srcUrl}" type="${mime}" width="100%" height="100%"/>`:"")+`</body></html>`);
-      }
-    }
+  const openDataUrl = () => {
+    if(srcUrl) window.open(srcUrl, '_blank', 'noopener');
   };
   const downloadFile=()=>{
     const ext=isPdf?".pdf":isImg?(mime?.includes("png")?".png":mime?.includes("webp")?".webp":".jpg"):".bin";
@@ -2097,7 +1949,7 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, apiBillId, label,
             document.body
           )}
           <div style={{marginTop:5,display:"flex",gap:5}}>
-            <button type="button" onClick={openFile} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
+            <button type="button" onClick={openDataUrl} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
               {t?t("action.openFile"):"Abrir"}
             </button>
             <button type="button" onClick={downloadFile} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
@@ -2120,7 +1972,7 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, apiBillId, label,
             <button type="button" onClick={()=>setPdfOpen(v=>!v)} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #D4AED0",background:"#fff",color:"#5C1057",cursor:"pointer",fontFamily:"inherit"}}>
               {pdfOpen?"Ocultar":"Ver PDF"}
             </button>
-            <button type="button" onClick={openFile} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
+            <button type="button" onClick={openDataUrl} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
               {t?t("action.openFile"):"Abrir"}
             </button>
             <button type="button" onClick={downloadFile} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
@@ -2987,7 +2839,15 @@ function NewPanel(){
   const expAmt=parseFloat(form.amount)||0;
   const amountNum=parseMoney(form.amount);
   const amountOk=amountNum>0;
-  const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId;
+  const isInv=form.expenseType==="invoice";
+  const termDays=paymentTermDaysFromForm(form);
+  const vendorOk=!isInv||String(form.vendor||"").trim().length>0;
+  const duePickOk=!isInv||termDays>0||String(form.invoiceDueDateDirect||"").trim().length>=10;
+  const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId&&vendorOk&&duePickOk;
+  const duePreviewISO=isInv?computeInvoiceDueISO(form):"";
+  const duePreviewLbl=duePreviewISO?formatDMYFromISO(duePreviewISO):"";
+  const nextPrevISO=nextCadencePreviewISO(form.date,form.cadenceKey);
+  const nextPrevLbl=nextPrevISO?formatDMYFromISO(nextPrevISO):"";
   const [submitAttempt,setSubmitAttempt]=useState(false);
   useEffect(()=>{if(user?.id&&!form.ownerId)setForm(p=>({...p,ownerId:user.id}));},[user?.id,form.ownerId,setForm]);
   useEffect(()=>{if(expenseValid)setSubmitAttempt(false);},[expenseValid]);
@@ -3031,7 +2891,8 @@ function NewPanel(){
     clearTimeout(draftTimer.current);
     draftTimer.current=setTimeout(()=>{
       try{
-        const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate||String(readIvaDefault()),departmentId:form.departmentId||"",ownerId:form.ownerId||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
+        const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate||String(readIvaDefault()),departmentId:form.departmentId||"",ownerId:form.ownerId||"",
+          expenseType:form.expenseType||"expense",vendor:form.vendor||"",paymentTermMode:form.paymentTermMode||"0",paymentTermCustomDays:form.paymentTermCustomDays||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once"},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
         localStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
       }catch(e){}
     },500);
@@ -3064,9 +2925,23 @@ function NewPanel(){
   };
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:13}}>
-        <div style={{fontWeight:700,fontSize:15,color:G}}>{t("form.newExpense")}</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div style={{fontWeight:700,fontSize:15,color:G}}>{isInv?t("dash.newInvoice"):t("form.newExpense")}</div>
         <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:21,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{resetForm();setPanel(null);}}>×</button>
+      </div>
+      <div style={{display:"flex",gap:4,marginBottom:12,background:"#EDE8E0",borderRadius:10,padding:4}}>
+        {[["expense",t("expenses.typeExpense")],["invoice",t("expenses.typeInvoice")]].map(([k,lb])=>(
+          <button key={k} type="button" style={{flex:1,padding:"7px 8px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit",transition:"background 0.15s,color 0.15s",background:(form.expenseType||"expense")===k?G:"transparent",color:(form.expenseType||"expense")===k?"#fff":"#4B5E52"}}
+            onClick={()=>{
+              setForm(p=>{
+                const next={...p,expenseType:k};
+                if(k==="invoice"){
+                  return{...next,vendor:p.vendor||"",paymentTermMode:p.paymentTermMode||"0",invoiceDueDateDirect:p.invoiceDueDateDirect||p.date||"",cadenceKey:p.cadenceKey||"once"};
+                }
+                return next;
+              });
+            }}>{lb}</button>
+        ))}
       </div>
       {draftPrompt&&(
         <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:8,padding:"10px 11px",marginBottom:11,fontSize:11,color:"#92400E",lineHeight:1.45}}>
@@ -3074,7 +2949,8 @@ function NewPanel(){
           <div style={{display:"flex",gap:8}}>
             <button type="button" className="btn-sm" style={{flex:1,fontSize:11}} onClick={()=>{
               const f=draftPrompt.form||{};
-              setForm(p=>({...p,...f,date:f.date!=null?String(f.date):"",ivaRate:f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):String(readIvaDefault()),departmentId:f.departmentId!=null?String(f.departmentId):""}));
+              setForm(p=>({...p,...f,date:f.date!=null?String(f.date):"",ivaRate:f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):String(readIvaDefault()),departmentId:f.departmentId!=null?String(f.departmentId):"",
+                expenseType:f.expenseType||p.expenseType||"expense",vendor:f.vendor!=null?String(f.vendor):"",paymentTermMode:f.paymentTermMode!=null?String(f.paymentTermMode):"0",paymentTermCustomDays:f.paymentTermCustomDays!=null?String(f.paymentTermCustomDays):"30",invoiceDueDateDirect:f.invoiceDueDateDirect!=null?String(f.invoiceDueDateDirect):"",cadenceKey:f.cadenceKey||"once"}));
               if(draftPrompt.splitOn&&draftPrompt.splits?.length){
                 let m=draftPrompt.spMode||"equal";
                 if(m==="value")m="amount";
@@ -3102,6 +2978,35 @@ function NewPanel(){
             {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
           </select>
         </div>
+        {isInv&&(
+          <>
+            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.vendor")} <span style={{color:"#A32D2D"}}>*</span></label>
+              <input className="inp" value={form.vendor||""} style={rs(hi&&!String(form.vendor||"").trim())} onChange={e=>setForm(p=>({...p,vendor:e.target.value}))}/>
+            </div>
+            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.paymentTerms")}</label>
+              <select className="inp" value={String(form.paymentTermMode||"0")} onChange={e=>setForm(p=>({...p,paymentTermMode:e.target.value}))}>
+                <option value="0">{t("expenses.termCash")}</option>
+                <option value="15">{t("expenses.termNet15")}</option>
+                <option value="30">{t("expenses.termNet30")}</option>
+                <option value="60">{t("expenses.termNet60")}</option>
+                <option value="custom">{t("expenses.termCustom")}</option>
+              </select>
+            </div>
+            {(form.paymentTermMode==="custom")&&(
+              <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.termCustomDays")}</label>
+                <input className="inp" type="number" min={0} value={form.paymentTermCustomDays||""} onChange={e=>setForm(p=>({...p,paymentTermCustomDays:e.target.value}))}/>
+              </div>
+            )}
+            <div style={{gridColumn:"1/-1",fontSize:12,color:"#4B5E52"}}>
+              {termDays===0?(
+                <><label className="lbl">{t("expenses.dueDate")}</label>
+                  <input className="inp" type="date" value={String(form.invoiceDueDateDirect||"").slice(0,10)} style={rs(hi&&!duePickOk)} onChange={e=>setForm(p=>({...p,invoiceDueDateDirect:e.target.value}))}/></>
+              ):(
+                <div style={{padding:"6px 0"}}>{t("expenses.vence")} <strong>{duePreviewLbl||"—"}</strong></div>
+              )}
+            </div>
+          </>
+        )}
         <div><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
           <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
         </div>
@@ -3110,6 +3015,18 @@ function NewPanel(){
             <option value="">{departments.length===0?t("msg.deptRequired"):t("label.department")}</option>
             {departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
+        </div>
+        <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.cadence")}</label>
+          <select className="inp" value={form.cadenceKey||"once"} onChange={e=>setForm(p=>({...p,cadenceKey:e.target.value}))}>
+            <option value="once">{t("expenses.cadenceOnce")}</option>
+            <option value="weekly">{t("expenses.cadenceWeekly")}</option>
+            <option value="biweekly">{t("expenses.cadenceBiweekly")}</option>
+            <option value="monthly">{t("expenses.cadenceMonthly")}</option>
+            <option value="yearly">{t("expenses.cadenceYearly")}</option>
+          </select>
+          {(form.cadenceKey&&form.cadenceKey!=="once")&&nextPrevLbl&&(
+            <div style={{fontSize:11,color:"#6B7B72",marginTop:6}}>{t("expenses.recurringPreview",{date:nextPrevLbl})}</div>
+          )}
         </div>
         <div><label className="lbl">Titular del gasto <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={ownerId} style={rs(hi&&!ownerId)} onChange={e=>setForm(p=>({...p,ownerId:e.target.value}))}>
@@ -3369,7 +3286,7 @@ function DetailPanel(){
         <div style={{marginTop:9}}>
           <label className="lbl" style={{marginBottom:3}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
-          <div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved","expense")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected","expense")}>{t("action.reject")}</button></div>
+          <div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button></div>
         </div>
       )}
       {e._apiType==="expense"&&e.status==="rejected"&&e.rejectionNote&&(
@@ -3379,6 +3296,7 @@ function DetailPanel(){
         <AttachmentViewer
           receipt={e.receipt}
           receiptType={e.receiptType}
+          receiptPath={e.receiptPath}
           apiExpenseId={e._apiType==="expense"&&e.receiptPath&&!e.receipt?e.id:null}
           label={t("label.receipt")}
           t={t}
@@ -3470,13 +3388,13 @@ function DetailPanel(){
 
 /* ── PERSON DRILLDOWN MODAL ─────────────────────────────────────────────────── */
 function PersonDrilldown({userId, onClose}){
-  const{t,expenses,bills,cats,users}=useApp();
+  const{t,expenses,cats,users}=useApp();
   const u=users.find(x=>x.id===userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const userExpenses=expenses.filter(e=>
     (e.paidBy||[]).some(p=>p&&p.userId===userId)
     ||(!(e.paidBy||[]).length&&(e.submittedBy===userId||e.userId===userId))
   );
-  const userBills=bills.filter(b=>b.submittedBy===userId);
+  const userInvoices=expenses.filter(e=>e.expenseType==="invoice"&&e.submittedBy===userId);
   const total=userExpenses.reduce((s,e)=>{
     const st=getItemStatus(e,cats,users);
     if(st==="deleted"||st==="rejected")return s;
@@ -3507,8 +3425,8 @@ function PersonDrilldown({userId, onClose}){
               {userExpenses.map(e=>{const st=getItemStatus(e,cats,users);const sub=(users.find(x=>x.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;return(
                 <div key={e.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F5F0EA",alignItems:"flex-start"}}>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.description}</div>
-                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.date)} · {t("filter.submitter")}: {sub} · {e.category}</div>
+                    <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.expenseType==="invoice"?(e.vendor||e.description):e.description}</div>
+                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.expenseType==="invoice"?(e.dueDate||e.date):e.date)} · {t("filter.submitter")}: {sub} · {e.category}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
                     <div style={{fontSize:12,fontWeight:700,color:G}}>{fmt(shareEurInExpense(e,userId))}</div>
@@ -3518,24 +3436,22 @@ function PersonDrilldown({userId, onClose}){
               );})}
             </div>
           }
-          {/* Bills */}
-          <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:7}}>{t("person.bills")} ({userBills.length})</div>
-          {userBills.length===0
-            ?<div style={{fontSize:11,color:"#9CAA9F"}}>{t("person.noBills")}</div>
+          <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:7}}>{t("person.invoicesSent")} ({userInvoices.length})</div>
+          {userInvoices.length===0
+            ?<div style={{fontSize:11,color:"#9CAA9F"}}>{t("person.noInvoices")}</div>
             :<div>
-              {userBills.map(b=>{const bst=getItemStatus(b,cats,users);const amtSuf=billListAmountSuffix(b,t);return(
-                <div key={b.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F5F0EA",alignItems:"flex-start"}}>
+              {userInvoices.map(inv=>{const bst=getItemStatus(inv,cats,users);return(
+                <div key={inv.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F5F0EA",alignItems:"flex-start"}}>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
-                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{b.category} · {billFreqLabel(b.frequency,t)}</div>
+                    <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inv.vendor||inv.description}</div>
+                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(inv.dueDate||inv.date)} · {inv.category}{inv.recurring===1&&inv.recurrenceRule?` · ${inv.recurrenceRule}`:""}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
-                    <div style={{fontSize:12,fontWeight:700,color:G}}>{fmtExpenseAmt(b)}{amtSuf&&<span style={{fontSize:8,color:"#9CAA9F"}}>{amtSuf}</span>}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:G}}>{fmtExpenseAmt(inv)}</div>
                     <div style={{display:"inline-block",padding:"1px 5px",borderRadius:5,fontSize:8,fontWeight:600,background:ST[bst].bg,color:ST[bst].color,marginTop:1}}>{t("status."+bst)}</div>
                   </div>
                 </div>
               );})}
-              <p style={{fontSize:9,color:"#B5C0B8",marginTop:6}}>Las facturas se atribuyen por "enviado por". En futuras versiones se podrán asignar responsables explícitos.</p>
             </div>
           }
         </div>
@@ -3546,15 +3462,14 @@ function PersonDrilldown({userId, onClose}){
 
 /* ── DASHBOARD ─────────────────────────────────────────────────────────────── */
 function DashboardView(){
-  const{t,user,expenses,bills,cats,users,isAdmin,myPending,myPendingBills,
-        totApproved,totFixed,perPerson,go,openNew,setView,setAddBill,setDetailId,setPanel,goToMyRejected,departmentsWithStats}=useApp();
+  const{t,user,expenses,cats,users,isAdmin,myPending,
+        totApproved,totFixed,perPerson,go,openNew,openNewInvoice,setView,setDetailId,setPanel,goToMyRejected,departmentsWithStats}=useApp();
   const today=new Date();
   const m0=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
   const ym=today.toISOString().slice(0,7);
-  const mBillsTotal=bills
-    .filter(b=>billCountsTowardDeptSpend(b,cats,users)&&
-      (b.dueDate||"").slice(0,7)===today.toISOString().slice(0,7))
-    .reduce((s,b)=>s+eurForExpense(b),0);
+  const mBillsTotal=expenses
+    .filter(e=>e.expenseType==="invoice"&&e.paymentStatus==="paid"&&(e.dueDate||e.date||"").slice(0,7)===ym)
+    .reduce((s,e)=>s+eurForExpense(e),0);
   const mTotalAll=expenses.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0)
     .reduce((s,e)=>s+eurForExpense(e),0)+mBillsTotal;
   const pendAll=expenses.filter(e=>getItemStatus(e,cats,users)==="pending").length;
@@ -3566,7 +3481,7 @@ function DashboardView(){
   const pend=isAdmin?pendAll:pendMine;
   const dashTotApproved=totApproved;
   const myActivityExpensesMonth=expenses.filter(e=>e.submittedBy===user.id&&e.date?.slice(0,7)===ym);
-  const myActivityBillsMonth=bills.filter(b=>b.submittedBy===user.id&&(b.dueDate||"").slice(0,7)===ym);
+  const myActivityBillsMonth=expenses.filter(e=>e.submittedBy===user.id&&e.expenseType==="invoice"&&(e.dueDate||e.date||"").slice(0,7)===ym);
   const apprMine=[...myActivityExpensesMonth.filter(e=>getItemStatus(e,cats,users)==="approved"),...myActivityBillsMonth.filter(b=>getItemStatus(b,cats,users)==="approved")];
   const apprSum=apprMine.reduce((s,e)=>s+eurForExpense(e),0);
   const apprCnt=apprMine.length;
@@ -3583,14 +3498,10 @@ function DashboardView(){
   const spentActive=deptBudgetActive.reduce((s,d)=>s+Number(d.spent||0),0);
   const budgetRemainingTotal=budgetTotalActive-spentActive;
   const budgetProgressPct=budgetTotalActive>0 ? (spentActive/budgetTotalActive)*100 : 0;
-  // Upcoming bills in 15 days
   const upcoming15=[];
-  bills.filter(b=>getItemStatus(b,cats,users)==="approved"&&b.active&&b.frequency==="monthly"&&b.dayOfMonth).forEach(b=>{
-    for(let m=0;m<2;m++){
-      const d=new Date(today.getFullYear(),today.getMonth()+m,parseInt(b.dayOfMonth));
-      const diff=Math.ceil((d-today)/86400000);
-      if(diff>=0&&diff<=15)upcoming15.push({...b,dueDate:d,daysUntil:diff});
-    }
+  expenses.filter(e=>e.expenseType==="invoice"&&e.paymentStatus==="unpaid"&&e.dueDate).forEach(e=>{
+    const diff=daysUntilISO(String(e.dueDate).slice(0,10));
+    if(diff!=null&&diff>=0&&diff<=15)upcoming15.push({...e,name:e.vendor||e.description,daysUntil:diff});
   });
   upcoming15.sort((a,b)=>a.daysUntil-b.daysUntil);
   return(
@@ -3598,23 +3509,16 @@ function DashboardView(){
       {drillPerson&&<PersonDrilldown userId={drillPerson} onClose={()=>setDrillPerson(null)}/>}
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.dashboard")}</h1>
       <p style={{fontSize:13,color:"#6B7B72",marginBottom:16}}>{t("dash.welcome")}, {user.name.split(" ")[0]}</p>
-      {(myPending.length>0||myPendingBills.length>0)&&(
+      {myPending.length>0&&(
         <div style={{background:"#F5E8F4",border:"1px solid #D4AED0",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
           <div>
-            <div style={{fontSize:13,fontWeight:600,color:"#5C1057"}}>{myPending.length+myPendingBills.length} pendiente(s) de tu aprobación</div>
-            <div style={{fontSize:11,color:"#8A3D87",marginTop:1}}>
-              {myPending.length>0&&myPendingBills.length>0
-                ? `${myPending.length} gasto(s) · ${myPendingBills.length} factura(s)`
-                : myPending.length>0
-                  ? `${myPending.length} gasto(s)`
-                  : `${myPendingBills.length} factura(s)`}
-            </div>
+            <div style={{fontSize:13,fontWeight:600,color:"#5C1057"}}>{myPending.length} pendiente(s) de tu aprobación</div>
           </div>
           <button className="btn-sm" style={{fontSize:12}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:16}}>
-        {[{bg:G,label:t("dash.addExpense"),sub:t("dash.logCost"),fn:openNew},{bg:T,label:t("dash.addBill"),sub:t("dash.recurringCost"),fn:()=>{setView("bills");setAddBill(true);}}].map((a,i)=>(
+        {[{bg:G,label:t("dash.addExpense"),sub:t("dash.logCost"),fn:openNew},{bg:T,label:t("dash.newInvoice"),sub:t("dash.newInvoiceSub"),fn:openNewInvoice}].map((a,i)=>(
           <div key={i} style={{background:a.bg,borderRadius:11,padding:"12px 13px",cursor:"pointer"}} onClick={a.fn}
             onMouseEnter={e=>e.currentTarget.style.opacity="0.88"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
             <div style={{fontSize:16,color:"rgba(250,247,242,0.4)",lineHeight:1,marginBottom:3}}>+</div>
@@ -3683,10 +3587,7 @@ function DashboardView(){
               {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,"#DC2626",true,28,"#7F1D1D","#991B1B","#FCA5A5",`${budgetProgressPct.toFixed(1)}% usado`,"#7F1D1D")}
               {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetSub,"#059669",true,28,"#064E3B","#065F46","#6EE7B7",`${budgetProgressPct.toFixed(1)}% disponible`,"#064E3B")}
               {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,monthSub,null,false,22,"#78350F","#78350F")}
-              <div style={{cursor:"pointer"}} onClick={()=>{
-                try{localStorage.setItem("sol-bills-kpi-filter","recurring-active");}catch(e){}
-                setView("bills");
-              }}>
+              <div style={{cursor:"pointer"}} onClick={()=>{setView("expenses");}}>
                 {renderKpiCard("k-fixed",fixedKpiLabel,totFixed,fixedKpiBg,fixedKpiText,fixedSub,null,false)}
               </div>
             </>
@@ -3733,17 +3634,19 @@ function DashboardView(){
           </div>
         ))}
       </div>
-      {/* Upcoming bills in 15 days */}
+      {/* Upcoming invoices · 15 days */}
       <div className="card" style={{marginBottom:11}}>
         <div style={{fontWeight:600,fontSize:13,marginBottom:9}}>{t("dash.upcomingBills")}</div>
         {upcoming15.length===0
           ?<div style={{fontSize:11,color:"#9CAA9F",padding:"4px 0"}}>{t("dash.noBillsSoon")}</div>
           :upcoming15.map((b,i)=>{
-            const dueTxt=b.daysUntil===0?t("dash.dueToday"):b.daysUntil===1?t("dash.dueTomorrow"):t("dash.dueIn").replace("{n}",b.daysUntil);
+            const dueTxt=b.daysUntil===0?t("dash.dueToday"):b.daysUntil===1?t("dash.dueTomorrow"):t("dash.dueIn").replace("{n}",String(b.daysUntil));
+            const dueS=String(b.dueDate||"").slice(0,10);
+            const dayBox=dueS.length>=10?parseInt(dueS.slice(8,10),10):"—";
             return(
               <div key={b.id+"-"+i} style={{display:"flex",alignItems:"center",padding:"6px 0",borderBottom:i<upcoming15.length-1?"1px solid #F5F0EA":"none",gap:9}}>
                 <div style={{width:32,height:32,borderRadius:6,background:G,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <div style={{fontSize:13,fontWeight:800,color:"#FAF7F2",lineHeight:1}}>{b.dayOfMonth}</div>
+                  <div style={{fontSize:13,fontWeight:800,color:"#FAF7F2",lineHeight:1}}>{dayBox}</div>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
@@ -3787,7 +3690,10 @@ function DashboardView(){
 function ExpensesView(){
   const{t,expenses,cats,users,byStatus,filtered,expFlt,setExpFlt,expSrc,setExpSrc,
         catFlt,setCatFlt,submFlt,setSubmFlt,dateFrom,setDateFrom,dateTo,setDateTo,activeFilterCount,
-        detailId,setDetailId,panel,setPanel,openNew,resetForm,isAdmin,user,aNote,setANote,approve,clearMyExpenseFilter,totApproved}=useApp();
+        detailId,setDetailId,panel,setPanel,openNew,resetForm,isAdmin,user,aNote,setANote,approve,clearMyExpenseFilter,totApproved,
+        expKindFlt,setExpKindFlt,markExpensePaid}=useApp();
+  const [payOpenId,setPayOpenId]=useState(null);
+  const [payDate,setPayDate]=useState(()=>new Date().toISOString().slice(0,10));
   const pendingTotal=expenses.filter(e=>getItemStatus(e,cats)==="pending").reduce((s,e)=>s+eurForExpense(e),0);
   const naturalFrom = expenses.length
     ? expenses.reduce((min, e) => e.date < min ? e.date : min, expenses[0].date)
@@ -3814,6 +3720,17 @@ function ExpensesView(){
         {["all","pending","approved","rejected"].map(f=>(
           <button key={f} style={{padding:"3px 10px",borderRadius:18,fontSize:11,fontWeight:500,border:"1.5px solid",borderColor:expFlt===f?G:"#DDD6CC",background:expFlt===f?G:"#fff",color:expFlt===f?"#fff":"#4B5E52",cursor:"pointer"}} onClick={()=>setExpFlt(f)}>
             {t("filter."+f)} ({byStatus[f]?.length||0})
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
+        {[
+          ["all",t("expenses.filterAll")],
+          ["expense",t("expenses.filterExpenses")],
+          ["invoice",t("expenses.filterInvoices")],
+        ].map(([k,lb])=>(
+          <button key={k} type="button" style={{padding:"3px 10px",borderRadius:18,fontSize:11,fontWeight:500,border:"1.5px solid",borderColor:expKindFlt===k?T:"#DDD6CC",background:expKindFlt===k?T:"#fff",color:expKindFlt===k?"#fff":"#4B5E52",cursor:"pointer"}} onClick={()=>setExpKindFlt(k)}>
+            {lb}
           </button>
         ))}
       </div>
@@ -3878,7 +3795,7 @@ function ExpensesView(){
           <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
             onClick={()=>{
               try{
-                ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to"].forEach(k=>sessionStorage.removeItem(k));
+                ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind"].forEach(k=>sessionStorage.removeItem(k));
               }catch(e){}
               setExpFlt("all");
               setCatFlt("");
@@ -3886,6 +3803,7 @@ function ExpensesView(){
               setDateFrom("");
               setDateTo("");
               setExpSrc("");
+              setExpKindFlt("all");
               setPendingFrom(naturalFrom);
               setPendingTo(naturalTo);
             }}>
@@ -3899,31 +3817,66 @@ function ExpensesView(){
           const st=getItemStatus(e,cats,users),sel=detailId===e.id&&panel==="detail";
           const approverIds=effectiveExpenseApproverIds(e,cats,users);
           const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
-          const ownerName=(users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
+          const isInvRow=e.expenseType==="invoice";
+          const ps=e.paymentStatus||"na";
+          let payBadge=null;
+          if(isInvRow){
+            if(ps==="paid")payBadge={bg:"#D1FAE5",color:"#065F46",tx:t("expenses.paymentPaid")};
+            else if(ps==="overdue")payBadge={bg:"#FEE2E2",color:"#991B1B",tx:t("expenses.paymentOverdue")};
+            else if(ps==="unpaid"||ps==="pending")payBadge={bg:"#FEF3C7",color:"#92400E",tx:t("expenses.paymentPending")};
+          }
+          const rowTitle=isInvRow?(e.vendor||e.description):e.description;
+          const metaDate=isInvRow&&e.dueDate?`${t("expenses.vence")} ${fmtDate(e.dueDate)} · `:fmtDate(e.date)+" · ";
           return(
-            <div key={e.id} className="row-hover" style={{padding:"9px 13px",borderBottom:idx<filtered.length-1?"1px solid #F5F0EA":"none",cursor:"pointer",background:sel?"#F5F0EA":"#FFFFFF",display:"flex",alignItems:"flex-start",gap:8}}
-              onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}><span style={{fontSize:12,fontWeight:600}}>{e.description}</span><span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:ST[st].bg,color:ST[st].color,flexShrink:0}}>{t("status."+st)}</span>{(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span aria-hidden="true">👥</span><span>{(e.paidBy||[]).length}</span></span>}</div>
-                <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>
-                  {fmtDate(e.date)} · {t("filter.submitter")}: {submitterName} · {e.category}
+            <div key={e.id}>
+              <div className="row-hover" style={{padding:"9px 13px",borderBottom:(payOpenId===e.id||idx<filtered.length-1)?"1px solid #F5F0EA":"none",cursor:"pointer",background:sel?"#F5F0EA":"#FFFFFF",display:"flex",alignItems:"flex-start",gap:8}}
+                onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                    <span style={{fontSize:12,fontWeight:600}}>{rowTitle}</span>
+                    <span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:ST[st].bg,color:ST[st].color,flexShrink:0}}>{t("status."+st)}</span>
+                    {payBadge&&<span style={{padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:payBadge.bg,color:payBadge.color,flexShrink:0}}>{payBadge.tx}</span>}
+                    {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span aria-hidden="true">👥</span><span>{(e.paidBy||[]).length}</span></span>}
+                  </div>
+                  <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>
+                    {metaDate}{t("filter.submitter")}: {submitterName} · {e.category}
+                  </div>
+                  {st==="pending"&&<div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>{approverIds.map(aid=>{const a=approvalVoteFor(e.approvals,aid,users);return<span key={aid} style={{fontSize:9,display:"flex",alignItems:"center",gap:2}}><span style={{width:4,height:4,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",display:"inline-block"}}/><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{(users.find(u=>u.id===aid)||{name:UNKNOWN_USER_NAME}).name}</span></span>})}</div>}
                 </div>
-                {st==="pending"&&<div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>{approverIds.map(aid=>{const a=approvalVoteFor(e.approvals,aid,users);return<span key={aid} style={{fontSize:9,display:"flex",alignItems:"center",gap:2}}><span style={{width:4,height:4,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",display:"inline-block"}}/><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{(users.find(u=>u.id===aid)||{name:UNKNOWN_USER_NAME}).name}</span></span>})}</div>}
-              </div>
-              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:5}}>
-                  {(e.comments||[]).length>0&&<span style={{minWidth:15,minHeight:15,borderRadius:"50%",background:BL,color:"#fff",fontSize:8,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"0 4px"}} aria-hidden="true">{(e.comments||[]).length}</span>}
-                  {(e.receiptPath||(e.receipt&&!e._apiType))&&(
-                    <span style={{
-                      fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,
-                      background:"#EDE8E0",color:"#4B5E52",flexShrink:0
-                    }} title="Tiene adjunto">
-                      {(e.receiptType||e.receiptPath||"").includes("pdf")?"PDF":"IMG"}
-                    </span>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5,flexShrink:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    {(e.comments||[]).length>0&&<span style={{minWidth:15,minHeight:15,borderRadius:"50%",background:BL,color:"#fff",fontSize:8,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"0 4px"}} aria-hidden="true">{(e.comments||[]).length}</span>}
+                    {(e.receiptPath||(e.receipt&&!e._apiType))&&(
+                      <span style={{
+                        fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,
+                        background:"#EDE8E0",color:"#4B5E52",flexShrink:0
+                      }} title="Tiene adjunto">
+                        {(e.receiptType||e.receiptPath||"").includes("pdf")?"PDF":"IMG"}
+                      </span>
+                    )}
+                    <div style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(e)}</div>
+                  </div>
+                  {AUTH_URL&&isInvRow&&ps!=="paid"&&(
+                    <button type="button" className="btn-sm" style={{fontSize:10,padding:"3px 8px",fontWeight:600}}
+                      onClick={ev=>{
+                        ev.stopPropagation();
+                        setPayDate(new Date().toISOString().slice(0,10));
+                        setPayOpenId(payOpenId===e.id?null:e.id);
+                      }}>{t("expenses.markPaid")}</button>
                   )}
-                  <div style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(e)}</div>
                 </div>
               </div>
+              {payOpenId===e.id&&(
+                <div style={{padding:"8px 13px",background:"#FFFBEB",borderBottom:idx<filtered.length-1?"1px solid #F5F0EA":"none",display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,fontSize:11}}
+                  onClick={ev=>ev.stopPropagation()}>
+                  <span style={{color:"#78350F"}}>{t("expenses.confirmMarkPaid")}</span>
+                  <label style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:"#6B7B72"}}>{t("expenses.paidDateLabel")}</span>
+                    <input className="inp" type="date" style={{padding:"4px 8px",fontSize:11,width:"auto"}} value={payDate} onChange={ev=>setPayDate(ev.target.value)}/>
+                  </label>
+                  <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 12px"}} onClick={()=>{markExpensePaid(e.id,payDate);setPayOpenId(null);}}>{t("action.confirm")}</button>
+                  <button type="button" className="btn-secondary" style={{fontSize:11,padding:"5px 12px"}} onClick={()=>setPayOpenId(null)}>{t("action.cancel")}</button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -3934,14 +3887,11 @@ function ExpensesView(){
 }
 
 /* ── RECEIPT THUMB (admin queue) ─────────────────────────────────────────── */
-function ReceiptThumb({expenseId, billId}){
+function ReceiptThumb({expenseId}){
   const [url,setUrl]=useState(null);
   useEffect(()=>{
-    const entityId = expenseId || billId;
-    const path = expenseId
-      ? "/expenses/"+encodeURIComponent(expenseId)+"/receipt"
-      : "/bills/"+encodeURIComponent(billId)+"/receipt";
-    if(!entityId||!AUTH_URL)return;
+    const path="/expenses/"+encodeURIComponent(expenseId)+"/receipt";
+    if(!expenseId||!AUTH_URL)return;
     let dead=false;
     (async()=>{
       try{
@@ -3958,7 +3908,7 @@ function ReceiptThumb({expenseId, billId}){
       dead=true;
       setUrl(u=>{if(u)URL.revokeObjectURL(u);return null;});
     };
-  },[expenseId, billId]);
+  },[expenseId]);
   if(url==="__pdf__") return(
     <div style={{width:52,height:52,borderRadius:8,background:"#F5E8F4",flexShrink:0,
       display:"flex",alignItems:"center",justifyContent:"center",
@@ -3970,8 +3920,7 @@ function ReceiptThumb({expenseId, billId}){
 
 /* ── APPROVALS ─────────────────────────────────────────────────────────────── */
 function ApprovalsView(){
-  const{t,expenses,bills,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel}=useApp();
-  const [tab,setTab]=useState("all");
+  const{t,expenses,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel}=useApp();
   const [expandedId,setExpandedId]=useState(null);
   const canAct=isApprover||isAdmin;
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
@@ -3979,12 +3928,12 @@ function ApprovalsView(){
     const ids=effectiveExpenseApproverIds(item,cats,users);
     const myVote=approvalVoteFor(item.approvals||{},user.id,users);
     const st=getItemStatus(item,cats,users);
-    if(st==="approved")return 3; // fully approved history
-    if(myVote==="approved")return 2; // approved by me, waiting others
+    if(st==="approved")return 3;
+    if(myVote==="approved")return 2;
     const others=ids.filter(id=>id!==user.id);
     const othersApproved=others.length>0&&others.every(id=>approvalVoteFor(item.approvals||{},id,users)==="approved");
-    if(othersApproved)return 0; // only my approval missing
-    return 1; // pending general
+    if(othersApproved)return 0;
+    return 1;
   };
   const sortByPriority=(list)=>[...list].sort((a,b)=>{
     const pa=priorityForItem(a),pb=priorityForItem(b);
@@ -3993,36 +3942,18 @@ function ApprovalsView(){
     const db=String(b.date||b.dueDate||"");
     return db.localeCompare(da);
   });
-  const mySubmittedExpenses=expenses.filter(e=>e.submittedBy===user.id).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
-  const mySubmittedBills=bills.filter(b=>b.submittedBy===user.id).sort((a,b)=>String((b.dueDate||"")).localeCompare(String((a.dueDate||""))));
-  const expenseRows=sortByPriority(
+  const activeRows=sortByPriority(
     canAct
       ? expenses.filter(e=>effectiveExpenseApproverIds(e,cats,users).includes(user.id))
       : expenses
-  ).map(e=>({...e,_approvalType:"expense"}));
-  const billRows=sortByPriority(
-    canAct
-      ? bills.filter(b=>effectiveExpenseApproverIds(b,cats,users).includes(user.id))
-      : bills
-  ).map(b=>({...b,_approvalType:"bill"}));
-  const allRows=sortByPriority([...expenseRows,...billRows]);
-  const activeRows=tab==="all"?allRows:tab==="expenses"?expenseRows:billRows;
-  const approvalTabs=[["all","Todos",allRows.length],["expenses",t("nav.expenses"),expenseRows.length],["bills",t("nav.bills"),billRows.length]];
+  );
   return(
     <div>
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.approvals")}</h1>
       <p style={{fontSize:13,color:"#6B7B72",marginBottom:14}}>{AUTH_URL?"Gastos enviados al servidor pendientes de decisión.":t("dash.bothMustApprove")}</p>
-      <div style={{display:"flex",gap:6,marginBottom:14}}>
-      {approvalTabs.map(([id,lbl,cnt])=>(
-          <button key={id} style={{padding:"5px 14px",borderRadius:18,fontSize:12,fontWeight:500,border:"1.5px solid",borderColor:tab===id?G:"#DDD6CC",background:tab===id?G:"#fff",color:tab===id?"#fff":"#4B5E52",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}
-            onClick={()=>setTab(id)}>
-            {lbl}
-          </button>
-        ))}
-      </div>
       {activeRows.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
         activeRows.map(item=>{
-          const isBill=item._approvalType==="bill";
+          const isInv=item.expenseType==="invoice";
           const itemId=item.id;
           const rowApproverIds=effectiveExpenseApproverIds(item,cats,users);
           const submitterName=(users.find(u=>u.id===item.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
@@ -4033,23 +3964,21 @@ function ApprovalsView(){
                 return `${nm} (${fmt(Number(p.amount)||0)})`;
               }).join(" · ")
             : ownerName;
-          const rowDate=isBill?(item.dueDate||item.date):item.date;
-          const rowTitle=isBill?item.name:item.description;
+          const rowDate=isInv?(item.dueDate||item.date):item.date;
+          const rowTitle=isInv?(item.vendor||item.description):item.description;
           const st=getItemStatus(item,cats,users);
           const stStyle=ST[st]||ST.pending;
           let canActOnRow=canAct&&rowApproverIds.includes(user.id);
           if(isAdmin&&!canActOnRow){canActOnRow=true;}
           const isExpanded=itemId===expandedId;
           return(
-            <div key={`${item._approvalType}-${item.id}`} className="card row-hover" style={{marginBottom:9,background:st==="pending"?"#FFFBEB":st==="approved"?"#F0FDF4":st==="rejected"?"#FFF1F2":"#fff",opacity:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none"}}>
+            <div key={item.id} className="card row-hover" style={{marginBottom:9,background:st==="pending"?"#FFFBEB":st==="approved"?"#F0FDF4":st==="rejected"?"#FFF1F2":"#fff",opacity:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none"}}>
               <div
                 style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7,cursor:canActOnRow?"pointer":"default"}}
                 onClick={canActOnRow?()=>setExpandedId(prev=>prev===itemId?null:itemId):undefined}
               >
                 {AUTH_URL&&item.receiptPath&&(
-                  isBill
-                    ? <ReceiptThumb billId={item.id}/>
-                    : <ReceiptThumb expenseId={item.id}/>
+                  <ReceiptThumb expenseId={item.id}/>
                 )}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
@@ -4063,9 +3992,9 @@ function ApprovalsView(){
                         <span style={{
                           fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:10,
                           textTransform:"uppercase",letterSpacing:"0.05em",
-                          background:isBill?"#FEF0E7":"#EDE8E0",
-                          color:isBill?"#92400E":"#4B5E52"
-                        }}>{isBill?"Factura":"Gasto"}</span>
+                          background:isInv?"#FEF0E7":"#EDE8E0",
+                          color:isInv?"#92400E":"#4B5E52"
+                        }}>{isInv?t("expenses.typeInvoice"):t("expenses.typeExpense")}</span>
                       </div>
                     </div>
                     <div style={{textAlign:"right",flexShrink:0}}>
@@ -4098,8 +4027,8 @@ function ApprovalsView(){
                       <label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label>
                       <textarea className="inp" rows={2} placeholder="" value={aNote[itemId]||""} onChange={ev=>setANote(p=>({...p,[itemId]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
                       <div style={{display:"flex",gap:6}}>
-                        <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"approved",isBill?"bill":"expense");setExpandedId(null);}}>{t("action.approve")}</button>
-                        <button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"rejected",isBill?"bill":"expense");setExpandedId(null);}}>{t("action.reject")}</button>
+                        <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"approved");setExpandedId(null);}}>{t("action.approve")}</button>
+                        <button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"rejected");setExpandedId(null);}}>{t("action.reject")}</button>
                       </div>
                     </div>
                   ):null
@@ -4113,864 +4042,26 @@ function ApprovalsView(){
   );
 }
 
-/* ── BILLS VIEW ────────────────────────────────────────────────────────────── */
-function BillsView(){
-  const{t,user,users,bills,cats,saveBills,isAdmin,totFixed,addBill,setAddBill,newBill,setNewBill,markBillPaid,departments,defaultDeptId,newBillRecPrev,setNewBillRecPrev,startCamForNewBill,ivaRates}=useApp();
-  const [selBillId,setSelBillId]=useState(null);
-  useEffect(()=>{
-    try{
-      const focusId=sessionStorage.getItem(APPROVAL_BILL_FOCUS_KEY);
-      if(!focusId)return;
-      if(bills.some(b=>b.id===focusId)){
-        setSelBillId(focusId);
-        sessionStorage.removeItem(APPROVAL_BILL_FOCUS_KEY);
-      }
-    }catch(e){}
-  },[bills]);
-  const [editBillId,setEditBillId]=useState(null);
-  const [billSearch,setBillSearch]=useState("");
-  const [billCatFlt,setBillCatFlt]=useState("");
-  const [billSubmFlt,setBillSubmFlt]=useState("");
-  const [billDateFrom,setBillDateFrom]=useState("");
-  const [billDateTo,setBillDateTo]=useState("");
-  const [billStatusFlt,setBillStatusFlt]=useState("all");
-  const [billRecurringOnly,setBillRecurringOnly]=useState(false);
-  const [editBillForm,setEditBillForm]=useState({});
-  const [editBillDirty,setEditBillDirty]=useState(false);
-  const [editBillSplitOn,setEditBillSplitOn]=useState(false);
-  const [editBillSplits,setEditBillSplits]=useState([]);
-  const [editBillSpMode,setEditBillSpMode]=useState("equal");
-  const [billPayConfirmId,setBillPayConfirmId]=useState(null);
-  const [billPayDateInput,setBillPayDateInput]=useState("");
-  useEffect(()=>{
-    if(!user?.id)return;
-    setNewBill(p=>p.ownerId===user.id?p:{...p,ownerId:user.id});
-  },[user?.id,setNewBill]);
-  useEffect(()=>{
-    const owner=newBill.ownerId||user?.id;
-    if(!owner||!users.length)return;
-    const n=users.length||1;
-    const pct=parseFloat((100/n).toFixed(2));
-    const amt=parseMoney(newBill.amount)||0;
-    const val=parseFloat((amt/n).toFixed(2));
-    setBillSplits(users.map(u=>({userId:u.id,checked:true,percent:pct,value:val})));
-  },[users,newBill.ownerId,newBill.amount,user?.id]);
-  const [billSplitOn,setBillSplitOn]=useState(false);
-  const [billSplits,setBillSplits]=useState([]);
-  const [billSpMode,setBillSpMode]=useState("equal");
-  const [billFormError,setBillFormError]=useState("");
-  const billFileRef=useRef(null);
-  useEffect(()=>{setBillPayConfirmId(null);},[selBillId]);
-  const billNewFileRef=useRef(null);
-  const activeCats=cats.filter(c=>!c.archived);
-  const freqNb=newBill.frequency||"once";
-  const recNb=isBillRecurringFrequency(freqNb);
-  const billFreqUi=freqNb==="once"||freqNb===""?"once":freqNb;
-  const nextDueUiText=billFreqUi==="once" ? "— (pago único)" : (()=>{try{return fmtDate(billDueISOFromForm({...newBill,frequency:billFreqUi}));}catch(e){return"";}})();
-  const billAmtOk=parseMoney(newBill.amount)>0;
-  const billValid=!!String(newBill.name||"").trim()&&billAmtOk&&!!String(newBill.category||"").trim()&&!!String(newBill.departmentId||"").trim()&&!!String(newBill.ownerId||user.id).trim()&&(!recNb||!!String(newBill.dayOfMonth||"").trim());
-  const [billSubmitAttempt,setBillSubmitAttempt]=useState(false);
-  const billOwner=users.find(u=>u.id===(newBill.ownerId||user.id))||user;
-  const billTotal=parseMoney(newBill.amount)||0;
-  const billAmtBad=billSplitOn&&billSpMode==="amount"&&Math.abs(billSplits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0)-billTotal)>0.01;
-  useEffect(()=>{if(billValid)setBillSubmitAttempt(false);},[billValid]);
-  const bh=billSubmitAttempt&&!billValid;
-  const brs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
-  const today=new Date();
-  const upcoming=[];
-  bills.filter(b=>{
-    if(AUTH_URL&&b._apiType==="bill")return b.recurring&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue")&&b.dayOfMonth;
-    return getItemStatus(b,cats)==="approved"&&b.active;
-  }).forEach(b=>{
-    if(b.frequency==="monthly"&&b.dayOfMonth){
-      for(let m=0;m<3;m++){const d=new Date(today.getFullYear(),today.getMonth()+m,parseInt(b.dayOfMonth));const diff=(d-today)/86400000;if(diff>=0&&diff<=30)upcoming.push({...b,dueDate:d,daysUntil:Math.round(diff)});}
-    }
-  });
-  upcoming.sort((a,b)=>a.dueDate-b.dueDate);
-  const startEditBill=(b)=>{
-    const billOwnerId=b.ownerId||b.submittedBy||user.id;
-    const initialPaidBy=Array.isArray(b.paidBy)&&b.paidBy.length?b.paidBy:[{userId:billOwnerId,amount:Number(b.amount)||0,pct:100}];
-    setEditBillForm({name:b.name,amount:String(b.amount),frequency:b.frequency||"once",
-      category:b.category,dayOfMonth:b.dayOfMonth||"",description:b.description||"",
-      notes:b.notes||"",receipt:b.receipt||null,receiptType:b.receiptType||null,
-      intervalMonths:b.intervalMonths||"",endDate:b.endDate||"",
-      dueDate:(b.dueDate&&String(b.dueDate).slice(0,10))||"",
-      departmentId:b.departmentId||defaultDeptId,
-      ownerId:billOwnerId,
-      paidBy:initialPaidBy,
-      splitMode:b.splitMode||"equal",
-      paymentChoice:(AUTH_URL&&b._apiType==="bill"&&b.apiBillStatus==="paid")?"paid":"pending",
-      paymentDate:(b.dueDate&&String(b.dueDate).slice(0,10))||new Date().toISOString().slice(0,10),
-    });
-    const seed=users.map(u=>{
-      const row=initialPaidBy.find(p=>p&&p.userId===u.id);
-      const amt=Number(row?.amount)||0;
-      const pct=Number(row?.pct)||0;
-      return{userId:u.id,checked:!!row,percent:pct,value:amt};
-    });
-    setEditBillSplitOn(initialPaidBy.length>1);
-    setEditBillSplits(seed);
-    setEditBillSpMode((b.splitMode==="equal"||b.splitMode==="amount")?b.splitMode:"equal");
-    setEditBillId(b.id);setEditBillDirty(false);
-  };
-  const cancelEditBill=()=>{
-    if(editBillDirty&&!confirm(t("expense.unsaved")))return;
-    setEditBillId(null);setEditBillDirty(false);setEditBillSplitOn(false);setEditBillSplits([]);setEditBillSpMode("equal");
-  };
-  const saveBillEdit=(b)=>{
-    if(!editBillForm.departmentId){alert(t("msg.deptRequired"));return;}
-    const editFreq=editBillForm.frequency||"";
-    if(isBillRecurringFrequency(editFreq)&&!editBillForm.dayOfMonth){alert(t("msg.dayOfMonthRequired"));return;}
-    const editTotal=parseMoney(editBillForm.amount)||0;
-    let editPaidBy=[{userId:(editBillForm.ownerId||user.id),amount:editTotal,pct:100}];
-    let editSplitMode;
-    if(editBillSplitOn&&editBillSplits.filter(s=>s.checked).length>1){
-      editPaidBy=buildPaidByFromSplitState(editBillSplits,editTotal,editBillSpMode);
-      editSplitMode=editPaidBy.length>1?editBillSpMode:undefined;
-    }
-    if(!confirm(t("bills.confirmEdit")))return;
-    if(AUTH_URL&&b._apiType==="bill"){
-      if(b._pendingSync){alert("Espera a sincronizar esta factura antes de editarla.");return;}
-      void (async()=>{
-        try{
-          const freq=editBillForm.frequency||"once";
-          const rec=isBillRecurringFrequency(freq);
-          const due=billDueISOFromForm({...editBillForm,frequency:freq});
-          const rule=freq==="annual"?"yearly":freq==="custom"&&String(editBillForm.intervalMonths)==="3"?"quarterly":"monthly";
-          await API.put("/bills/"+encodeURIComponent(b.id),{
-            vendor:editBillForm.name,
-            amount:parseMoney(editBillForm.amount),
-            category:editBillForm.category,
-            dueDate:due,
-            notes:editBillForm.notes||undefined,
-            recurring:rec,
-            recurrenceRule:rule,
-            departmentId:editBillForm.departmentId||defaultDeptId,
-            ownerId:editBillForm.ownerId||user.id,
-            paidBy:editPaidBy,
-            ...(editSplitMode?{splitMode:editSplitMode}:{}),
-          });
-          if(editBillForm.paymentChoice==="paid"&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue")){
-            await API.post("/bills/"+encodeURIComponent(b.id)+"/mark-paid",{paidAt:editBillForm.paymentDate||new Date().toISOString().slice(0,10)});
-          }
-          if(editBillForm.receipt&&typeof editBillForm.receipt==="string"){
-            try{
-              await API.post("/bills/"+encodeURIComponent(b.id)+"/receipt",{b64:editBillForm.receipt,mediaType:editBillForm.receiptType||"image/jpeg"});
-            }catch(e2){
-              console.warn("bill receipt upload failed",e2);
-            }
-          }
-          const d=await API.get("/bills");
-          saveBills((d.bills||[]).map(billFromApi));
-          setEditBillId(null);setEditBillDirty(false);
-        }catch(e){
-          if(isOfflineQueuedError(e)){
-            const updated={...b,...editBillForm,amount:parseMoney(editBillForm.amount)||b.amount,name:editBillForm.name,vendor:editBillForm.name,paidBy:editPaidBy,...(editSplitMode?{splitMode:editSplitMode}:{})};
-            saveBills(bills.map(x=>x.id===b.id?updated:x));
-            setEditBillId(null);setEditBillDirty(false);
-            return;
-          }
-          alert(e.message||"No se pudo guardar.");
-        }
-      })();
-      return;
-    }
-    const BILL_KEY_FIELDS=["name","amount","frequency","category","dayOfMonth","description","receipt","ownerId","paidBy","splitMode","paymentChoice"];
-    const bst=getItemStatus(b,cats);
-    const wasApproved=bst==="approved";
-    const changedFields=Object.keys(editBillForm).filter(k=>{
-      if(k==="receipt")return (editBillForm.receipt||null)!==(b.receipt||null);
-      if(k==="receiptType")return false;
-      return String(editBillForm[k]||"")!==String(b[k]||"");
-    });
-    const relevantChanged=wasApproved&&changedFields.some(f=>BILL_KEY_FIELDS.includes(f));
-    const now=new Date().toISOString();
-    let trail=[...(b.auditTrail||[]),{action:"edited",by:user.id,at:now,meta:{fields:changedFields.length?changedFields:["misc"]}}];
-    let newApprovals=b.approvals||{};
-    if(relevantChanged){newApprovals={};trail=[...trail,{action:"reapproval_required",by:user.id,at:now}];}
-    const updated={...b,...editBillForm,amount:parseMoney(editBillForm.amount)||b.amount,paidBy:editPaidBy,...(editSplitMode?{splitMode:editSplitMode}:{}),approvals:newApprovals,active:relevantChanged?false:b.active,auditTrail:trail};
-    saveBills(bills.map(x=>x.id===b.id?updated:x));
-    appLog("info","bill_edited",{itemCode:b.itemCode,userId:user.id,relevantChanged});
-    setEditBillId(null);setEditBillDirty(false);
-    if(relevantChanged)alert(t("expense.reapprovalDone"));
-  };
-  const handleBillFile=(e,billId)=>{
-    const f=e.target.files?.[0];if(!f)return;
-    const err=validateUpload(f,UPLOAD_RULES.receipt);
-    if(err){alert(err);e.target.value="";return;}
-    const r=new FileReader();
-    r.onload=ev=>{const url=ev.target.result,b64=url.split(",")[1],type=receiptEffectiveMime(f)||f.type||"image/jpeg";
-      setEditBillForm(p=>({...p,receipt:b64,receiptType:type}));setEditBillDirty(true);};
-    r.readAsDataURL(f);e.target.value="";
-  };
-
-  const handleNewBillFile=(e)=>{
-    const f=e.target.files?.[0];if(!f)return;
-    const err=validateUpload(f,UPLOAD_RULES.receipt);
-    if(err){alert(err);e.target.value="";return;}
-    const r=new FileReader();
-    r.onload=ev=>{const url=ev.target.result,b64=url.split(",")[1],type=receiptEffectiveMime(f)||f.type||"image/jpeg";
-      setNewBill(p=>({...p,receipt:b64,receiptType:type}));
-      setNewBillRecPrev(type.includes("pdf")?"PDF":url);};
-    r.readAsDataURL(f);e.target.value="";
-  };
-
-  const submitBill=()=>{
-    if(!billValid){setBillSubmitAttempt(true);setBillFormError("Completa los campos obligatorios marcados con *");return;}
-    const billDateRaw=billDueISOFromForm(newBill);
-    const billDateObj=new Date(billDateRaw);
-    const billNow = new Date();
-    const billMinDate = new Date(billNow.getFullYear() - 5, 0, 1);
-    const billMaxDate = new Date(billNow.getFullYear() + 1, 11, 31);
-    if(!billDateRaw || isNaN(billDateObj.getTime()) || billDateObj < billMinDate || billDateObj > billMaxDate){
-      setBillFormError("La fecha debe estar entre los últimos 5 años y el próximo año.");
-      return;
-    }
-    const billPaidByDefaultOwner=newBill.ownerId||user.id;
-    let billPaidBy=[{userId:billPaidByDefaultOwner,amount:billTotal,pct:100}];
-    let billSplitMode;
-    if(billSplitOn&&billSplits.filter(s=>s.checked).length>1){
-      billPaidBy=buildPaidByFromSplitState(billSplits,billTotal,billSpMode);
-      billSplitMode=billPaidBy.length>1?billSpMode:undefined;
-    }
-    if(billSplitOn&&billAmtBad){setBillFormError("Revisa el reparto antes de enviar.");return;}
-    const freq=newBill.frequency||"once";
-    const rec=isBillRecurringFrequency(freq);
-    if(AUTH_URL){
-      void (async()=>{
-        const clientRef="tmp_bill_"+genUuid();
-        const due=billDueISOFromForm(newBill);
-        const rule=freq==="annual"?"yearly":freq==="custom"&&String(newBill.intervalMonths)==="3"?"quarterly":"monthly";
-        try{
-          const wantPaid=newBill.paymentChoice==="paid";
-          const payDateStr=(newBill.paymentDate&&String(newBill.paymentDate).slice(0,10))
-            ||(newBill.dueDate&&String(newBill.dueDate).slice(0,10))
-            ||new Date().toISOString().slice(0,10);
-          const postBody={
-            vendor:newBill.name,
-            amount:parseMoney(newBill.amount),
-            category:newBill.category,
-            approvalRequired: effectiveExpenseApproverIds(
-              {category: newBill.category}, cats, users
-            ).filter(id => id !== user.id),
-            dueDate:due,
-            notes:newBill.description||undefined,
-            recurring:rec,
-            recurrenceRule:rule,
-            departmentId:newBill.departmentId,
-            ownerId:newBill.ownerId||user.id,
-            paidBy:billPaidBy,
-            ivaRate: newBill.ivaRate ? Number(newBill.ivaRate) : undefined,
-            ivaAmount: (()=>{
-              if(!newBill.ivaRate||!parseMoney(newBill.amount))return undefined;
-              const total=parseMoney(newBill.amount);
-              const rate=Number(newBill.ivaRate)/100;
-              return Math.round((total-(total/(1+rate)))*100)/100;
-            })(),
-            ...(billSplitMode?{splitMode:billSplitMode}:{}),
-            ...(!rec&&wantPaid?{alreadyPaid:true,paidAt:payDateStr}:{}),
-          };
-          const { response, responseBody, rawText } = await debugApiRequest("POST", "/bills", postBody);
-          if (!response.ok) throw new Error(responseBody.error || ("HTTP " + response.status));
-          const d=responseBody;
-          const newId=d.bill.id;
-          if(newBill.receipt){
-            try{
-              await API.post("/bills/"+encodeURIComponent(newId)+"/receipt",{b64:newBill.receipt,mediaType:newBill.receiptType||"image/jpeg"});
-            }catch(e2){
-              console.warn("bill receipt upload failed",e2);
-            }
-          }
-          if(rec&&wantPaid){
-            if(!window.confirm(t("bills.confirmMarkPaidRecurring"))){return;}
-            await API.post("/bills/"+encodeURIComponent(newId)+"/mark-paid",{paidAt:payDateStr});
-          }
-          const full=await API.get("/bills");
-          saveBills((full.bills||[]).map(billFromApi));
-          appLog("info","bill_submitted",{name:newBill.name,userId:user.id,paid:!!wantPaid});
-          setNewBill({...BB,ownerId:user.id});setNewBillRecPrev(null);setBillSplitOn(false);setBillSplits([]);setBillSpMode("equal");setBillFormError("");setAddBill(false);
-        }catch(e){
-          if(isOfflineQueuedError(e)){
-            const amt=parseMoney(newBill.amount);
-            const ob=normalizeItem({
-              id:clientRef,
-              _apiType:"bill",
-              _pendingSync:true,
-              name:newBill.name,
-              vendor:newBill.name,
-              amount:amt,
-              category:newBill.category,
-              dueDate:billDueISOFromForm(newBill),
-              dayOfMonth:rec?(newBill.dayOfMonth||"1"):"",
-              frequency:freq,
-              intervalMonths:newBill.intervalMonths||"",
-              endDate:newBill.endDate||"",
-              submittedBy:user.id,
-              ownerId:newBill.ownerId||user.id,
-              apiBillStatus:"pending",
-              recurring:rec,
-              recurrenceRule:rule,
-              active:rec,
-              notes:"",
-              description:newBill.description||"",
-              receipt:newBill.receipt||null,
-              receiptType:newBill.receiptType||null,
-              approvals:{},
-              auditTrail:[],
-              seenBy:[],
-              itemCode:mkCode("FAC"),
-              departmentId:newBill.departmentId||null,
-              paidBy:billPaidBy,
-              ...(billSplitMode?{splitMode:billSplitMode}:{}),
-            },"bill");
-            saveBills([...bills,ob]);
-            appLog("info","bill_submitted",{name:newBill.name,userId:user.id,pendingSync:true});
-            setNewBill({...BB,ownerId:user.id});setNewBillRecPrev(null);setBillSplitOn(false);setBillSplits([]);setBillSpMode("equal");setBillFormError("");setAddBill(false);
-            return;
-          }
-          setBillFormError(e?.message||"No se pudo crear la factura. Revisa los datos e inténtalo de nuevo.");
-        }
-      })();
-      return;
-    }
-    const approverIds=effectiveExpenseApproverIds({category:newBill.category},cats,users);
-    const baseTrail=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
-    const wantPaidLocal=newBill.paymentChoice==="paid";
-    const canSubmitterAutoApproveBill=String(user.id)===String(newBill.ownerId||user.id);
-    const isPrivilegedSubmitter=user?.role==="admin"||user?.role==="superadmin";
-    const shouldAutoApproveBillSubmitter=isPrivilegedSubmitter&&canSubmitterAutoApproveBill&&approverIds.includes(user.id);
-    const{approvals,auditTrail}=shouldAutoApproveBillSubmitter
-      ? autoApprove(user.id,approverIds,{},baseTrail)
-      : {approvals:{},auditTrail:baseTrail};
-    let allApproved=approverIds.every(id=>approvals[id]==="approved");
-    if(wantPaidLocal)allApproved=true;
-    const payTs=wantPaidLocal?Date.now():null;
-    const attachTrail=newBill.receipt?[...auditTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:newBill.receiptType}}]:auditTrail;
-    const b={id:"b"+Date.now(),itemCode:mkCode("FAC"),...newBill,amount:parseMoney(newBill.amount),
-      submittedBy:user.id,ownerId:newBill.ownerId||user.id,approvals:wantPaidLocal?Object.fromEntries(approverIds.map(id=>[id,"approved"])):approvals,
-      auditTrail:wantPaidLocal?[...attachTrail,{action:"marked_paid",by:user.id,at:new Date().toISOString()}]:attachTrail,
-      active:wantPaidLocal?(rec?false:allApproved):allApproved,
-      paidAt:wantPaidLocal?payTs:undefined,
-      receipt:newBill.receipt||null,receiptType:newBill.receiptType||null,departmentId:newBill.departmentId||DEFAULT_DEPT_ID,paidBy:billPaidBy,...(billSplitMode?{splitMode:billSplitMode}:{})};
-    appLog("info","bill_submitted",{itemCode:b.itemCode,name:b.name,amount:b.amount,userId:user.id,autoApproved:allApproved,hasAttachment:!!newBill.receipt,paid:!!wantPaidLocal});
-    saveBills([...bills,b]);
-    setNewBill({...BB,ownerId:user.id});setNewBillRecPrev(null);setBillSplitOn(false);setBillSplits([]);setBillSpMode("equal");setBillFormError("");setAddBill(false);
-    if(!wantPaidLocal&&!allApproved)alert(t("msg.billApprovalNeeded"));
-  };
-  const byBillStatus=React.useMemo(()=>{
-    const pend=bills.filter(b=>getItemStatus(b,cats)==="pending");
-    const appr=bills.filter(b=>getItemStatus(b,cats)==="approved");
-    const rej=bills.filter(b=>getItemStatus(b,cats)==="rejected");
-    return{all:bills,pending:pend,approved:appr,rejected:rej};
-  },[bills,cats]);
-  const billNaturalFrom = bills.length
-    ? bills.reduce((min,b)=>{const d=getBillFilterDateRef(b);return d&&d<min?d:min;},
-        getBillFilterDateRef(bills[0])||"")
-    : "";
-  const billNaturalTo = bills.length
-    ? bills.reduce((max,b)=>{const d=getBillFilterDateRef(b);return d&&d>max?d:max;},
-        getBillFilterDateRef(bills[0])||"")
-    : "";
-
-  const [billPendingFrom, setBillPendingFrom] = React.useState(billNaturalFrom);
-  const [billPendingTo,   setBillPendingTo]   = React.useState(billNaturalTo);
-  useEffect(()=>{
-    const flag=(()=>{try{return localStorage.getItem("sol-bills-kpi-filter")||"";}catch(e){return"";}})();
-    if(flag==="recurring-active"){
-      setBillRecurringOnly(true);
-      try{localStorage.removeItem("sol-bills-kpi-filter");}catch(e){}
-    }
-  },[]);
-
-  const isBillDefaultRange = billPendingFrom===billNaturalFrom
-    && billPendingTo===billNaturalTo;
-  const billDateFilterActive = billDateFrom!=="" || billDateTo!=="";
-  const billActiveFilterCount = [billCatFlt, billSubmFlt, billRecurringOnly?"recurring":"",
-    billDateFilterActive?"range":""].filter(Boolean).length;
-  return(
-    <div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
-        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:BILL_COLOR}}>{t("nav.bills")}</h1>
-        <button className="btn-primary" style={{fontSize:13,padding:"7px 14px",background:BILL_COLOR}} onClick={()=>setAddBill(v=>{const n=!v;if(n)setBillSubmitAttempt(false);return n;})}>{addBill?t("action.cancel"):t("action.addBill")}</button>
-      </div>
-      <div style={{fontSize:12,color:"#6B7B72",marginBottom:11,background:"transparent",borderRadius:7,padding:"7px 11px"}}>
-        {t("page.billsDefBody")}
-      </div>
-      {/* ── Estado (pills) */}
-      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
-        {["all","pending","approved","rejected"].map(f=>(
-          <button key={f} style={{padding:"3px 10px",borderRadius:18,fontSize:11,fontWeight:500,border:"1.5px solid",borderColor:billStatusFlt===f?G:"#DDD6CC",background:billStatusFlt===f?G:"#fff",color:billStatusFlt===f?"#fff":"#4B5E52",cursor:"pointer"}} onClick={()=>setBillStatusFlt(f)}>
-            {f==="all"?t("bills.filterAll"):f==="pending"?t("bills.filterPending"):f==="approved"?t("bills.filterApproved"):t("bills.filterRejected")} ({byBillStatus[f]?.length||0})
-          </button>
-        ))}
-      </div>
-      {/* ── Search + extended filters (mismo patrón que Gastos) */}
-      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:9}}>
-        <input className="inp" style={{flex:1,minWidth:140,maxWidth:220,padding:"5px 9px",fontSize:12}}
-          placeholder={t("bills.searchPlaceholder")} value={billSearch}
-          onChange={e=>setBillSearch(e.target.value)}/>
-        <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
-          value={billCatFlt} onChange={e=>setBillCatFlt(e.target.value)}>
-          <option value="">{t("filter.category")}: {t("filter.all")}</option>
-          {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
-        </select>
-        <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:120,cursor:"pointer"}}
-          value={billSubmFlt} onChange={e=>setBillSubmFlt(e.target.value)}>
-          <option value="">{t("filter.submitter")}: {t("filter.all")}</option>
-          {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-        </select>
-        <div style={{display:"flex",alignItems:"center",border:"1.5px solid",
-          borderColor:isBillDefaultRange?"#DDD6CC":"#3C0A37",borderRadius:7,
-          overflow:"hidden",background:"#FAFAF9",height:32,flexShrink:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px",
-            borderRight:"1px solid #EDE8E0"}}>
-            <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
-              textTransform:"uppercase",letterSpacing:"0.05em"}}>Desde</span>
-            <input type="date" style={{border:"none",background:"transparent",
-              fontSize:12,color:"#3C0A37",outline:"none",cursor:"pointer",
-              fontFamily:"inherit",width:110}}
-              value={billPendingFrom}
-              onChange={e => setBillPendingFrom(e.target.value)}/>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px"}}>
-            <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
-              textTransform:"uppercase",letterSpacing:"0.05em"}}>Hasta</span>
-            <input type="date" style={{border:"none",background:"transparent",
-              fontSize:12,color:"#3C0A37",outline:"none",cursor:"pointer",
-              fontFamily:"inherit",width:110}}
-              value={billPendingTo}
-              onChange={e => setBillPendingTo(e.target.value)}/>
-          </div>
-        </div>
-        <button
-          disabled={isBillDefaultRange && !billCatFlt && !billSubmFlt && !billSearch}
-          style={{padding:"5px 14px",borderRadius:7,fontSize:12,fontWeight:600,
-            border:"none",cursor:isBillDefaultRange?"default":"pointer",
-            background:isBillDefaultRange?"#EDE8E0":"#3C0A37",
-            color:isBillDefaultRange?"#9CAA9F":"#fff",
-            fontFamily:"inherit",height:32,display:"flex",alignItems:"center",gap:6}}
-          onClick={()=>{
-            setBillDateFrom(isBillDefaultRange ? "" : billPendingFrom);
-            setBillDateTo(isBillDefaultRange ? "" : billPendingTo);
-          }}>
-          Aplicar
-          {!isBillDefaultRange && (
-            <span style={{background:"rgba(255,255,255,0.25)",borderRadius:8,
-              fontSize:10,padding:"1px 5px",fontWeight:700}}>
-              {[billCatFlt,billSubmFlt,!isBillDefaultRange?"range":"",billSearch].filter(Boolean).length}
-            </span>
-          )}
-        </button>
-        {billActiveFilterCount>0&&(
-          <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
-            onClick={()=>{setBillCatFlt("");setBillSubmFlt("");setBillDateFrom("");setBillDateTo("");setBillPendingFrom(billNaturalFrom);setBillPendingTo(billNaturalTo);setBillSearch("");setBillRecurringOnly(false);}}>
-            {t("filter.clearFilters")} ({billActiveFilterCount + (billSearch?1:0)})
-          </button>
-        )}
-      </div>
-      {addBill&&(
-        <div className="card" style={{marginBottom:11,borderLeft:"4px solid #0F6E56"}}>
-          <div style={{padding:"14px 14px 18px"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-              <div style={{fontWeight:700,fontSize:14,color:"#0F6E56"}}>{t("bills.newBill")}</div>
-              <button className="btn-sm" style={{border:"none",background:"none",color:"#9CAA9F",fontSize:22,cursor:"pointer"}} onClick={()=>{setAddBill(false);setBillSubmitAttempt(false);}}>×</button>
-            </div>
-
-            {/* Row 1: [Nombre de factura] [Importe] [IVA] */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
-              <div><label className="lbl">{t("label.billName")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" placeholder={t("label.billName")} value={newBill.name} style={brs(bh&&!String(newBill.name||"").trim())} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
-              <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" type="text" inputMode="decimal" placeholder="0,00" value={newBill.amount} style={brs(bh&&!billAmtOk)} onChange={e=>setNewBill(p=>({...p,amount:e.target.value}))}/></div>
-              <div>
-                <label className="lbl">{t("form.ivaRate")}</label>
-                <select className="inp" value={newBill.ivaRate||String(readIvaDefault())} onChange={e=>setNewBill(p=>({...p,ivaRate:e.target.value}))}>
-                  {ivaRates.map(r=>(
-                    <option key={String(r.value)+"-"+r.name} value={String(r.value)}>
-                      {formatIvaOptionLabel(r)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            {newBill.ivaRate&&Number(newBill.ivaRate)>0&&parseMoney(newBill.amount)>0&&(()=>{
-              const total=parseMoney(newBill.amount);
-              const rate=Number(newBill.ivaRate)/100;
-              const base=Math.round((total/(1+rate))*100)/100;
-              const iva=Math.round((total-base)*100)/100;
-              return(
-                <div style={{display:"flex",gap:16,fontSize:11,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"6px 10px",marginBottom:8}}>
-                  <span>{t("form.ivaBase")}: <strong>{fmt(base)}</strong></span>
-                  <span>{t("form.ivaAmountLabel")}: <strong>{fmt(iva)}</strong></span>
-                </div>
-              );
-            })()}
-
-            {/* Row 2: [Titular] [Categoría] [Departamento] */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
-              <div><label className="lbl">Titular <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.ownerId||user.id} style={brs(bh&&!String(newBill.ownerId||user.id).trim())} onChange={e=>setNewBill(p=>({...p,ownerId:e.target.value}))}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
-              <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.category} style={brs(bh&&!String(newBill.category||"").trim())} onChange={e=>setNewBill(p=>({...p,category:e.target.value}))}><option value="">{t("label.category")}</option>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
-              <div><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label><select className="inp" value={newBill.departmentId||""} style={brs(bh&&!String(newBill.departmentId||"").trim())} onChange={e=>setNewBill(p=>({...p,departmentId:e.target.value}))}><option value="">{t("label.department")}</option>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-            </div>
-
-            {/* Estado de pago */}
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#6B7B72",margin:"4px 0 8px"}}>Estado de pago</div>
-              <div style={{display:"flex",border:"1.5px solid #DDD6CC",borderRadius:10,overflow:"hidden"}}>
-                <button
-                  type="button"
-                  style={{flex:1,padding:"9px 6px",border:"none",background:newBill.paymentChoice==="paid"?G:"#fff",color:newBill.paymentChoice==="paid"?"#fff":"#4B5E52",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
-                  onClick={()=>setNewBill(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}))}
-                >
-                  {t("bills.paymentPaid")}
-                </button>
-                <button
-                  type="button"
-                  style={{flex:1,padding:"9px 6px",border:"none",background:newBill.paymentChoice!=="paid"?G:"#fff",color:newBill.paymentChoice!=="paid"?"#fff":"#4B5E52",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
-                  onClick={()=>setNewBill(p=>({...p,paymentChoice:"pending"}))}
-                >
-                  {t("bills.paymentPending")}
-                </button>
-              </div>
-              {newBill.paymentChoice==="paid"&&(
-                <div style={{marginTop:8}}>
-                  <label className="lbl">{t("bills.paymentDate")}</label>
-                  <input className="inp" type="date" value={newBill.paymentDate||(newBill.dueDate||"").slice(0,10)||new Date().toISOString().slice(0,10)} onChange={e=>setNewBill(p=>({...p,paymentDate:e.target.value}))}/>
-                </div>
-              )}
-            </div>
-
-            {/* Recurrencia (opcional) */}
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#6B7B72",margin:"4px 0 8px"}}>Recurrencia</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                <div><label className="lbl">{t("label.frequency")}</label><select className="inp" value={newBill.frequency===""||newBill.frequency==="once"?"once":newBill.frequency} onChange={e=>{
-                  const v=e.target.value;
-                  setNewBill(p=>{
-                    const next={...p,frequency:v==="once"?"":v};
-                    if(!isBillRecurringFrequency(next.frequency))next.dayOfMonth="";
-                    else if(!next.dayOfMonth)next.dayOfMonth="1";
-                    return next;
-                  });
-                }}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
-                <div>
-                  <label className="lbl">Próximo vencimiento</label>
-                  <input
-                    className="inp"
-                    type="date"
-                    disabled={!isBillRecurringFrequency(newBill.frequency)}
-                    placeholder=""
-                    value={isBillRecurringFrequency(newBill.frequency)?(newBill.dueDate||""):""}
-                    onChange={e=>{
-                      const pickedDate=e.target.value;
-                      const d=new Date(pickedDate);
-                      setNewBill(p=>({...p,dueDate:pickedDate,dayOfMonth:String(d.getDate())}));
-                    }}
-                    style={!isBillRecurringFrequency(newBill.frequency)?{background:"#F5F0EA",color:"#9CAA9F"}:undefined}
-                  />
-                </div>
-              </div>
-
-              {isBillRecurringFrequency(newBill.frequency)&&(
-                <>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:6}}>
-                    {newBill.frequency==="custom"&&(
-                      <div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" type="number" min="2" max="24" placeholder="2" value={newBill.intervalMonths||""} onChange={e=>setNewBill(p=>({...p,intervalMonths:e.target.value}))}/></div>
-                    )}
-                  </div>
-                  {isBillRecurringFrequency(newBill.frequency)&&(
-                    <div style={{gridColumn:"1/-1",marginBottom:6}}>
-                      <label className="lbl">{t("label.endDate")}</label>
-                      <input className="inp" type="date" value={newBill.endDate||""} onChange={e=>setNewBill(p=>({...p,endDate:e.target.value}))}/>
-                      <div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Dividir gasto (opcional) */}
-            <div style={{marginTop:2,marginBottom:12}}>
-              <SplitAllocationEditor
-                t={t}
-                user={billOwner}
-                users={users}
-                totalAmount={billTotal}
-                splitOn={billSplitOn}
-                setSplitOn={setBillSplitOn}
-                splits={billSplits}
-                setSplits={setBillSplits}
-                spMode={billSpMode}
-                setSpMode={setBillSpMode}
-                showSplitError={billSubmitAttempt && billAmtBad}
-              />
-            </div>
-
-            {/* Row 5: [Descripción textarea] [Adjunto file upload] */}
-            <div style={{marginBottom:10}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#6B7B72",margin:"4px 0 8px"}}>Notas y adjunto</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
-                <div>
-                  <label className="lbl">{t("bills.description")}</label>
-                  <textarea className="inp" rows={1} placeholder={t("bills.descPlaceholder")} style={{resize:"vertical",minHeight:"80px",fontSize:"14px"}} value={newBill.description} onChange={e=>setNewBill(p=>({...p,description:e.target.value}))}/>
-                </div>
-                <div>
-                  <label className="lbl">{t("bills.attachment")}</label>
-                  {newBillRecPrev&&newBillRecPrev!=="PDF"&&(
-                    <div style={{position:"relative",marginBottom:6}}>
-                      <img src={newBillRecPrev} alt="" style={{width:"100%",maxHeight:90,objectFit:"contain",borderRadius:7,background:"#F5F0EA"}}/>
-                      <button style={{position:"absolute",top:4,right:4,width:18,height:18,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setNewBill(p=>({...p,receipt:null,receiptType:null}));setNewBillRecPrev(null);}}>×</button>
-                    </div>
-                  )}
-                  {newBillRecPrev==="PDF"&&(
-                    <div style={{background:"#F5E8F4",borderRadius:6,padding:"5px 9px",fontSize:11,color:"#5C1057",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
-                      <span>PDF adjunto</span>
-                      <button style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={()=>{setNewBill(p=>({...p,receipt:null,receiptType:null}));setNewBillRecPrev(null);}}>×</button>
-                    </div>
-                  )}
-                  {!newBillRecPrev&&(
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      <button type="button" style={{width:"100%",padding:"10px 12px",borderRadius:7,border:"1.5px solid #0F6E56",background:"transparent",color:"#0F6E56",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700}} onClick={startCamForNewBill}>{t("action.scanBill")}</button>
-                      <button type="button" style={{width:"100%",padding:"10px 12px",borderRadius:7,border:"1.5px solid #0F6E56",background:"transparent",color:"#0F6E56",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700}} onClick={()=>billNewFileRef.current?.click()}>+ {t("item.attachment")||"Añadir adjunto"}</button>
-                    </div>
-                  )}
-                  <input ref={billNewFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} capture="environment" style={{display:"none"}} onChange={handleNewBillFile}/>
-                </div>
-              </div>
-            </div>
-
-            {billFormError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{billFormError}</div>}
-            <div style={{position:"relative",width:"100%"}}>
-              <button type="button" className="btn-primary" style={{width:"100%",fontSize:13,opacity:billValid?1:0.5,cursor:billValid?"pointer":"not-allowed",background:"#C2622A",color:"#FFFFFF"}} onClick={submitBill}>{t("action.submitBill")}</button>
-              {!billValid&&(
-                <button type="button" aria-label="Completar campos obligatorios" style={{position:"absolute",inset:0,opacity:0.001,width:"100%",height:"100%",cursor:"pointer"}}
-                  onClick={()=>setBillSubmitAttempt(true)}/>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-      <div className="card" style={{padding:0,overflow:"hidden"}}>
-        {(()=>{const pool=(byBillStatus[billStatusFlt]||bills);const visible=pool.filter(b=>{if(billRecurringOnly){const recurringActive=(AUTH_URL&&b._apiType==="bill")?(b.recurring&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue")):(isBillRecurringFrequency(b.frequency)&&!!b.active&&(!b.endDate||new Date(b.endDate)>=new Date()));if(!recurringActive)return false;}if(billCatFlt&&b.category!==billCatFlt)return false;if(billSubmFlt&&b.submittedBy!==billSubmFlt)return false;const refD=getBillFilterDateRef(b);if(billDateFrom&&refD<billDateFrom)return false;if(billDateTo&&refD>billDateTo)return false;if(billSearch&&!b.name.toLowerCase().includes(billSearch.toLowerCase())&&!(b.description||"").toLowerCase().includes(billSearch.toLowerCase()))return false;return true;});if(visible.length===0)return<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{bills.length===0?t("empty.bills"):t("empty.billsFiltered")}</div>;return visible.map((b,i)=>{const bst=getItemStatus(b,cats);const isSelBill=selBillId===b.id;const amtSuf=billListAmountSuffix(b,t);return(
-            <div key={b.id}>
-            <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:1,cursor:"pointer",background:isSelBill?"#F5F0EA":bst==="pending"?"#FFFBEB":bst==="approved"?"#F0FDF4":bst==="rejected"?"#FFF1F2":"#FFFFFF"}}>
-              {AUTH_URL&&b._apiType==="bill"&&b.receiptPath&&(
-                <ReceiptThumb billId={b.id}/>
-              )}
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                  <span style={{fontWeight:600,fontSize:12}}>{b.name}</span>
-                  <span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:ST[bst].bg,color:ST[bst].color}}>{billStatusBadgeLabel(b,bst,t)}</span>
-                  {!isBillRecurringFrequency(b.frequency)&&<span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:"#EDE8E0",color:"#4B5E52"}}>{t("bills.badgeOnce")}</span>}
-                </div>
-                <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{billListMetadataLine(b,t,users)}</div>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:5}}>
-                  {(b.receiptPath||(b.receipt&&!b._apiType))&&(
-                    <span style={{
-                      fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,
-                      background:"#FEF0E7",color:"#92400E",flexShrink:0
-                    }} title="Tiene adjunto">
-                      {(b.receiptType||b.receiptPath||"").includes("pdf")?"PDF":"IMG"}
-                    </span>
-                  )}
-                  <div style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(b)}{amtSuf&&<span style={{fontSize:8,fontWeight:400,color:"#9CAA9F"}}>{amtSuf}</span>}</div>
-                </div>
-              </div>
-              {isAdmin&&<div style={{display:"flex",gap:3}} onClick={e=>e.stopPropagation()}>
-                <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer"}} onClick={()=>{setSelBillId(b.id);startEditBill(b);}}>{t("action.editItem")}</button>
-                <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>{
-  const bst2=getItemStatus(b,cats);
-  if(!isAdmin&&user.id!==b.submittedBy){alert(t("action.deleteOwnOnly"));return;}
-  if(bst2==="approved"&&!isAdmin){alert(t("action.deleteApproved"));return;}
-  if(!confirm(t("action.deleteConfirm")))return;
-  if(AUTH_URL&&b._apiType==="bill"){
-    if(b._pendingSync){alert("Espera a sincronizar esta factura antes de eliminarla.");return;}
-    void (async()=>{
-      try{
-        await API.delete("/bills/"+encodeURIComponent(b.id));
-        saveBills(bills.filter(x=>x.id!==b.id));
-        if(isSelBill)setSelBillId(null);
-        appLog("info","bill_deleted",{itemCode:b.itemCode,userId:user.id,wasApproved:bst2==="approved"});
-      }catch(e){
-        if(isOfflineQueuedError(e)){
-          saveBills(bills.filter(x=>x.id!==b.id));
-          if(isSelBill)setSelBillId(null);
-          appLog("info","bill_deleted",{itemCode:b.itemCode,userId:user.id,wasApproved:bst2==="approved"});
-          return;
-        }
-        alert(e.message||"No se pudo eliminar.");
-      }
-    })();
-    return;
-  }
-  const trail=[...(b.auditTrail||[]),{action:"deleted",by:user.id,at:new Date().toISOString()}];
-  appLog("info","bill_deleted",{itemCode:b.itemCode,userId:user.id,wasApproved:bst2==="approved"});
-  saveBills(bills.filter(x=>x.id!==b.id));
-  if(isSelBill)setSelBillId(null);
-}}>{t("action.remove")}</button>
-              </div>}
-            </div>
-            {isSelBill&&(
-              <div className="expand-down" style={{padding:"12px 14px",background:"#FAFAF8",borderBottom:i<visible.length-1?"1px solid #F5F0EA":"none"}} ref={el=>{if(el&&window.innerWidth<768)setTimeout(()=>el.scrollIntoView({behavior:"smooth",block:"nearest"}),60);}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <div style={{fontWeight:600,fontSize:12,color:G}}>{editBillId===b.id?t("bills.editBill"):t("bills.detail")}</div>
-                  <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                    {b.itemCode&&<ItemCodeBadge code={b.itemCode} inline/>}
-                  </div>
-                </div>
-                {/* EDIT MODE */}
-                {editBillId===b.id&&(
-                  <div>
-                    {getItemStatus(b,cats)==="approved"&&<div style={{padding:"6px 9px",background:"#FEF3C7",borderRadius:6,fontSize:10,color:"#92400E",marginBottom:9}}>{t("bills.reapproval")}</div>}
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:9}}>
-                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.billName")}</label><input className="inp" style={{fontSize:14}} value={editBillForm.name||""} onChange={e=>{setEditBillForm(p=>({...p,name:e.target.value}));setEditBillDirty(true);}}/></div>
-                      <div><label className="lbl">{t("label.amount")}</label><input className="inp" type="text" inputMode="decimal" style={{fontSize:12}} value={editBillForm.amount||""} onChange={e=>{setEditBillForm(p=>({...p,amount:e.target.value}));setEditBillDirty(true);}}/></div>
-                      <div style={{gridColumn:"1/-1"}}><label className="lbl">Titular</label><select className="inp" style={{fontSize:14}} value={editBillForm.ownerId||user.id} onChange={e=>{const oid=e.target.value;setEditBillForm(p=>({...p,ownerId:oid}));setEditBillSplits(prev=>prev.map(s=>s.userId===oid?{...s,checked:true}:s));setEditBillDirty(true);}}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
-                      <div style={{gridColumn:"1/-1"}}>
-                        <div style={{fontSize:9,fontWeight:700,color:G,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,opacity:0.6}}>{t("bills.paymentQuestion")}</div>
-                        <div style={{display:"flex",border:"1.5px solid #DDD6CC",borderRadius:10,overflow:"hidden"}}>
-                          <button
-                            type="button"
-                            style={{flex:1,padding:"9px 6px",border:"none",background:(editBillForm.paymentChoice||"pending")!=="paid"?G:"#fff",color:(editBillForm.paymentChoice||"pending")!=="paid"?"#fff":"#4B5E52",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
-                            onClick={()=>{setEditBillForm(p=>({...p,paymentChoice:"pending"}));setEditBillDirty(true);}}
-                          >
-                            {t("bills.paymentPending")}
-                          </button>
-                          <button
-                            type="button"
-                            style={{flex:1,padding:"9px 6px",border:"none",background:editBillForm.paymentChoice==="paid"?G:"#fff",color:editBillForm.paymentChoice==="paid"?"#fff":"#4B5E52",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
-                            onClick={()=>{setEditBillForm(p=>({...p,paymentChoice:"paid",paymentDate:p.paymentDate||(p.dueDate&&String(p.dueDate).slice(0,10))||new Date().toISOString().slice(0,10)}));setEditBillDirty(true);}}
-                          >
-                            {t("bills.paymentPaid")}
-                          </button>
-                        </div>
-                        {editBillForm.paymentChoice==="paid"&&(
-                          <div style={{marginTop:8}}>
-                            <label className="lbl">{t("bills.paymentDate")}</label>
-                            <input className="inp" type="date" value={editBillForm.paymentDate||(editBillForm.dueDate||"").slice(0,10)||new Date().toISOString().slice(0,10)} onChange={e=>{setEditBillForm(p=>({...p,paymentDate:e.target.value}));setEditBillDirty(true);}}/>
-                          </div>
-                        )}
-                      </div>
-                      <div><label className="lbl">{t("label.frequency")}</label><select className="inp" style={{fontSize:14}} value={editBillForm.frequency===""||editBillForm.frequency==="once"?"once":editBillForm.frequency||"once"} onChange={e=>{const v=e.target.value;setEditBillDirty(true);setEditBillForm(p=>{const next={...p,frequency:v==="once"?"":v};if(!isBillRecurringFrequency(next.frequency))next.dayOfMonth="";else if(!next.dayOfMonth)next.dayOfMonth="1";return next;});}}><option value="once">{t("label.once")}</option><option value="monthly">{t("label.monthly")}</option><option value="annual">{t("label.annual")}</option><option value="custom">{t("label.everyXMonths")}</option></select></div>
-                      {!isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">{t("label.date")}</label><input className="inp" style={{fontSize:14}} type="date" value={editBillForm.dueDate||""} onChange={e=>{setEditBillForm(p=>({...p,dueDate:e.target.value}));setEditBillDirty(true);}}/></div>}
-                      {isBillRecurringFrequency(editBillForm.frequency)&&<div><label className="lbl">Próximo vencimiento</label><input className="inp" style={{fontSize:14}} type="date" value={editBillForm.dueDate||""} onChange={e=>{const pickedDate=e.target.value;const d=new Date(pickedDate);setEditBillForm(p=>({...p,dueDate:pickedDate,dayOfMonth:String(d.getDate())}));setEditBillDirty(true);}}/></div>}
-                      {editBillForm.frequency==="custom"&&<div><label className="lbl">{t("label.intervalMonths")}</label><input className="inp" style={{fontSize:14}} type="number" min="1" max="24" value={editBillForm.intervalMonths||""} onChange={e=>{setEditBillForm(p=>({...p,intervalMonths:e.target.value}));setEditBillDirty(true);}}/></div>}
-                      {isBillRecurringFrequency(editBillForm.frequency)&&<div style={{gridColumn:editBillForm.frequency==="monthly"?"1/-1":undefined}}><label className="lbl">{t("label.endDate")}</label><input className="inp" style={{fontSize:14}} type="date" value={editBillForm.endDate||""} onChange={e=>{setEditBillForm(p=>({...p,endDate:e.target.value}));setEditBillDirty(true);}}/><div style={{fontSize:11,color:"#9CAA9F",marginTop:2}}>{t("label.endDateHint")}</div></div>}
-                      <div><label className="lbl">{t("label.category")}</label><select className="inp" style={{fontSize:14}} value={editBillForm.category||"Otro"} onChange={e=>{setEditBillForm(p=>({...p,category:e.target.value}));setEditBillDirty(true);}}>{activeCats.map(c=><option key={c.id}>{c.name}</option>)}</select></div>
-                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.department")}</label><select className="inp" style={{fontSize:14}} value={editBillForm.departmentId||""} onChange={e=>{setEditBillForm(p=>({...p,departmentId:e.target.value}));setEditBillDirty(true);}}>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-                      <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("bills.description")}</label><textarea className="inp" rows={2} style={{resize:"vertical",fontSize:12}} value={editBillForm.description||""} onChange={e=>{setEditBillForm(p=>({...p,description:e.target.value}));setEditBillDirty(true);}}/></div>
-                    </div>
-                    <div style={{marginBottom:10}}>
-                      <SplitAllocationEditor t={t} user={(users.find(u=>u.id===(editBillForm.ownerId||user.id))||user)} users={users} totalAmount={parseMoney(editBillForm.amount)||0} splitOn={editBillSplitOn} setSplitOn={v=>{setEditBillSplitOn(v);setEditBillDirty(true);}} splits={editBillSplits} setSplits={v=>{setEditBillSplits(v);setEditBillDirty(true);}} spMode={editBillSpMode} setSpMode={v=>{setEditBillSpMode(v);setEditBillDirty(true);}}/>
-                    </div>
-                    {/* Attachment edit */}
-                    <div style={{marginBottom:9}}>
-                      <label className="lbl">{t("bills.attachment")}</label>
-                      {editBillForm.receipt
-                        ? <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
-                            <span style={{fontSize:10,color:"#4B5E52"}}>{editBillForm.receiptType?.includes("pdf")?"PDF":"Imagen"} adjunto</span>
-                            <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>{if(confirm("¿Eliminar adjunto?"))setEditBillForm(p=>({...p,receipt:null,receiptType:null}));setEditBillDirty(true);}}>✕ Eliminar</button>
-                          </div>
-                        : <button style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>billFileRef.current?.click()}>+ Añadir adjunto</button>
-                      }
-                      <input ref={billFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} style={{display:"none"}} onChange={e=>handleBillFile(e,b.id)}/>
-                    </div>
-                    <div style={{display:"flex",gap:6}}>
-                      <button className="btn-primary" style={{flex:1,fontSize:12,padding:"6px"}} onClick={()=>saveBillEdit(b)}>{t("bills.saveChanges")}</button>
-                      <button className="btn-secondary" style={{flex:1,fontSize:12,padding:"6px"}} onClick={cancelEditBill}>{t("action.cancel")}</button>
-                    </div>
-                  </div>
-                )}
-                {/* READ MODE */}
-                {editBillId!==b.id&&<div>
-                {[
-                  {l:t("label.category"),v:b.category},
-                  {l:t("label.department"),v:(b.departmentId&&(departments.find(d=>d.id===b.departmentId)||{}).name)||t("detail.noDepartment")},
-                  {l:t("label.frequency"),v:billFreqLabel(b.frequency,t)},
-                  ...(isBillRecurringFrequency(b.frequency)?[{l:t("bills.day"),v:b.dayOfMonth||"N/A"}]:[]),
-                  ...(!isBillRecurringFrequency(b.frequency)?[{l:t("label.date"),v:fmtDate((b.dueDate&&String(b.dueDate).slice(0,10))||getBillFilterDateRef(b))}]:[]),
-                  {l:"Titular",v:(users.find(u=>u.id===(b.ownerId||b.submittedBy))||{name:UNKNOWN_USER_NAME}).name},
-                  {l:t("bills.submittedBy"),v:(users.find(u=>u.id===b.submittedBy)||{name:UNKNOWN_USER_NAME}).name},
-                  {l:t("label.status"),v:billStatusBadgeLabel(b,bst,t)},
-                ].map(({l,v})=>(
-                  <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #F5F0EA",fontSize:11}}><span style={{color:"#9CAA9F"}}>{l}</span><span style={{fontWeight:500}}>{v}</span></div>
-                ))}
-                {AUTH_URL&&b._apiType==="bill"&&b.apiBillStatus==="paid"&&formatBillPaidAtDisplay(b)&&(
-                  <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                    <span style={{padding:"2px 8px",borderRadius:11,fontSize:9,fontWeight:700,background:ST.approved.bg,color:ST.approved.color}}>{t("bills.badgePaid")}</span>
-                    <span style={{fontSize:11,color:"#4B5E52"}}>{t("bills.paidOn")}: {formatBillPaidAtDisplay(b)}</span>
-                  </div>
-                )}
-                {!(AUTH_URL&&b._apiType==="bill")&&<div style={{marginTop:8}}>
-                  <div style={{fontSize:9,color:"#9CAA9F",marginBottom:5}}>{t("label.approval")}</div>
-                  {(()=>{const approverIds=effectiveExpenseApproverIds(b,cats,users);return approverIds.map(aid=>{const a=(b.approvals||{})[aid];return(<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",flexShrink:0}}/><span>{(users.find(u=>u.id===aid)||{name:UNKNOWN_USER_NAME}).name}</span><span style={{marginLeft:"auto",fontWeight:500,color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>);})})()}
-                </div>}
-                {AUTH_URL&&b._apiType==="bill"&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue")&&(
-                  billPayConfirmId===b.id?(
-                    <div style={{marginTop:10,padding:"10px 11px",background:"#F5F0EA",borderRadius:8}}>
-                      <div style={{fontSize:11,color:"#4B5E52",marginBottom:8}}>{t("bills.confirmMarkPaid")}</div>
-                      <label className="lbl">{t("bills.paymentDate")}</label>
-                      <input className="inp" type="date" value={billPayDateInput} onChange={e=>setBillPayDateInput(e.target.value)} style={{marginBottom:8}}/>
-                      <div style={{display:"flex",gap:6}}>
-                        <button type="button" className="btn-primary" style={{flex:1,fontSize:12,padding:"7px"}} onClick={()=>{markBillPaid(b.id,billPayDateInput);setBillPayConfirmId(null);}}>{t("bills.markPaidConfirm")}</button>
-                        <button type="button" className="btn-secondary" style={{flex:1,fontSize:12,padding:"7px"}} onClick={()=>setBillPayConfirmId(null)}>{t("action.cancel")}</button>
-                      </div>
-                    </div>
-                  ):(
-                    <button type="button" className="btn-primary" style={{width:"100%",marginTop:10,fontSize:12,padding:"8px"}} onClick={()=>{setBillPayConfirmId(b.id);setBillPayDateInput((b.dueDate&&String(b.dueDate).slice(0,10))||new Date().toISOString().slice(0,10));}}>{t("bills.markPaid")}</button>
-                  )
-                )}
-                {b.description&&<div style={{marginTop:7,padding:"5px 8px",background:"#F5E8F4",borderRadius:6,fontSize:11,color:"#5C1057"}}><span style={{fontWeight:600}}>{t("bills.description")}: </span>{b.description}</div>}
-                {b.notes&&<div style={{marginTop:4,padding:"5px 8px",background:"#F5F0EA",borderRadius:6,fontSize:11,color:"#4B5E52"}}>{b.notes}</div>}
-                {/* Attachment */}
-                <div style={{marginTop:9}}>
-                  <AttachmentViewer
-                    receipt={b.receipt||null}
-                    receiptType={b.receiptType||null}
-                    apiBillId={AUTH_URL&&b._apiType==="bill"&&b.receiptPath&&!b.receipt ? b.id : null}
-                    label={t("bills.attachment")}
-                    t={t}
-                    onRemove={null}
-                  />
-                </div>
-                </div>}
-              </div>
-            )}
-            </div>
-          );
-        });})()}
-      </div>
-    </div>
-  );
-}
 
 /* ── PAYMENT CALENDAR ──────────────────────────────────────────────────────── */
 function PaymentCalendar(){
-  const{bills,expenses,cats,t,go,setDetailId,setPanel}=useApp();
+  const{expenses,cats,t,go,setDetailId,setPanel}=useApp();
   const [cur,setCur]=useState(()=>new Date());
   const year=cur.getFullYear(),mon=cur.getMonth();
   const firstDay=(new Date(year,mon,1).getDay()+6)%7; // Monday-first
   const daysInMonth=new Date(year,mon+1,0).getDate();
   const events={};
-  bills.forEach(b=>{
-    if(AUTH_URL&&b._apiType==="bill"&&b.dueDate&&b.recurring&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue")){
-      try{
-        const dt=new Date(b.dueDate+"T12:00:00");
-        if(dt.getFullYear()===year&&dt.getMonth()===mon){
-          const day=dt.getDate();
-          if(!events[day])events[day]=[];
-          events[day].push({type:"bill",id:b.id,label:b.name,amount:eurForExpense(b)});
-        }
-      }catch(e){}
-      return;
-    }
-    if(getItemStatus(b,cats)==="approved"&&b.active&&b.dayOfMonth){
-      const d=parseInt(b.dayOfMonth);
-      if(!events[d])events[d]=[];
-      events[d].push({type:"bill",id:b.id,label:b.name,amount:eurForExpense(b)});
-    }
+  expenses.filter(e=>e.expenseType==="invoice"&&e.dueDate).forEach(inv=>{
+    try{
+      const dt=new Date(String(inv.dueDate).slice(0,10)+"T12:00:00");
+      if(dt.getFullYear()===year&&dt.getMonth()===mon){
+        const day=dt.getDate();
+        if(!events[day])events[day]=[];
+        events[day].push({type:"bill",id:inv.id,label:inv.vendor||inv.description,amount:eurForExpense(inv)});
+      }
+    }catch(e){}
   });
-  expenses.forEach(e=>{
+  expenses.filter(e=>e.expenseType!=="invoice").forEach(e=>{
     try{const d=new Date(e.date);if(d.getFullYear()===year&&d.getMonth()===mon){const day=d.getDate();if(!events[day])events[day]=[];events[day].push({type:"expense",id:e.id,label:e.description,amount:eurForExpense(e)});}}catch{}
   });
   const cells=[];
@@ -5005,13 +4096,13 @@ function PaymentCalendar(){
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,marginBottom:3,gap:6}}>
               <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="bill"?T:G,display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
               <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(ev.amount)}</span>
-              <button style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{if(ev.type==="expense"){go("expenses");setTimeout(()=>{setDetailId(ev.id);setPanel("detail");},50);}else{go("bills");}}}>{t("action.viewAll")}</button>
+              <button style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{go("expenses");setTimeout(()=>{setDetailId(ev.id);setPanel("detail");},50);}}>{t("action.viewAll")}</button>
             </div>
           ))}
         </div>
       )}
       <div style={{display:"flex",gap:12,marginTop:8,fontSize:9}}>
-        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:T,display:"inline-block"}}/>{t("nav.bills")}</span>
+        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:T,display:"inline-block"}}/>{t("expenses.typeInvoice")}</span>
         <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:G,display:"inline-block"}}/>{t("nav.expenses")}</span>
       </div>
     </div>
@@ -5020,49 +4111,32 @@ function PaymentCalendar(){
 
 /* ── REPORTS VIEW ──────────────────────────────────────────────────────────── */
 function ReportsView(){
-  const{t,expenses,bills,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel}=useApp();
+  const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel}=useApp();
   const [expFilter,setExpFilter]=useState("all");
   const filteredExpenses = expFilter === "all"
     ? expenses.filter(e => getItemStatus(e, cats, users) !== "deleted")
     : expenses.filter(e => getItemStatus(e, cats, users) === expFilter);
-  const filteredApprovedBills = expFilter==="pending"
-    ? []
-    : bills.filter(b=>{
-      const st=getItemStatus(b,cats,users);
-      return st==="approved";
-    });
   const filterLabel = expFilter==="all" ? ""
     : expFilter==="approved" ? ` — ${t("reports.approvedOnly")}`
     : ` — ${t("reports.pendingOnly")}`;
   const [openPersonLog,setOpenPersonLog]=useState({});
   const personInvestmentRows=useMemo(()=>users.map(u=>{
-    const filteredTotal=
-      filteredExpenses.reduce((s,e)=>s+shareEurInExpense(e,u.id),0)
-      +filteredApprovedBills.reduce((s,b)=>s+shareEurInBill(b,u.id),0);
-    const submittedCount=
-      expenses.filter(e=>e.submittedBy===u.id&&getItemStatus(e,cats,users)!=="deleted").length
-      +bills.filter(b=>b.submittedBy===u.id).length;
-    const logExpenses=filteredExpenses.filter(e=>{
+    const filteredTotal=filteredExpenses.reduce((s,e)=>s+shareEurInExpense(e,u.id),0);
+    const submittedCount=expenses.filter(e=>e.submittedBy===u.id&&getItemStatus(e,cats,users)!=="deleted").length;
+    const logItems=filteredExpenses.filter(e=>{
       const st=getItemStatus(e,cats,users);
       if(st==="deleted"||st==="rejected")return false;
       if(st!=="approved"&&st!=="pending")return false;
-      return(e.paidBy||[]).some(p=>p&&p.userId===u.id);
-    }).map(e=>({...e,__kind:"expense",__sortDate:e.date||""}));
-    const logBills=filteredApprovedBills.filter(b=>{
-      const ownerId=b.ownerId||b.submittedBy;
-      const inPaidBy=(b.paidBy||[]).some(p=>p&&p.userId===u.id);
+      const ownerId=e.ownerId||e.submittedBy;
+      const inPaidBy=(e.paidBy||[]).some(p=>p&&p.userId===u.id);
       return ownerId===u.id||inPaidBy;
-    }).map(b=>({...b,__kind:"bill",__sortDate:b.dueDate||b.date||""}));
-    const logItems=[...logExpenses,...logBills].sort((a,b)=>String(b.__sortDate||"").localeCompare(String(a.__sortDate||"")));
+    }).map(e=>({...e,__kind:e.expenseType==="invoice"?"invoice":"expense",__sortDate:(e.expenseType==="invoice"?(e.dueDate||e.date):e.date)||""}))
+      .sort((a,b)=>String(b.__sortDate||"").localeCompare(String(a.__sortDate||"")));
     return{...u,filteredTotal,submittedCount,logItems};
-  }).sort((a,b)=>b.filteredTotal-a.filteredTotal),[users,expenses,bills,cats,filteredExpenses,filteredApprovedBills]);
+  }).sort((a,b)=>b.filteredTotal-a.filteredTotal),[users,expenses,cats,filteredExpenses]);
   const catTotals=cats.filter(c=>!c.archived).map(c=>({
     cat:c.name,
-    total:
-      expenses.filter(e=>e.category===c.name&&getItemStatus(e,cats,users)==="approved")
-        .reduce((s,e)=>s+eurForExpense(e),0)
-      +bills.filter(b=>b.category===c.name&&billCountsTowardDeptSpend(b,cats,users))
-        .reduce((s,b)=>s+eurForExpense(b),0)
+    total:expenses.filter(e=>e.category===c.name&&expenseCountsTowardDeptSpend(e,cats,users)).reduce((s,e)=>s+eurForExpense(e),0),
   })).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const maxC=catTotals[0]?.total||1;
   const monthlyTrend=(()=>{
@@ -5207,19 +4281,19 @@ function ReportsView(){
                     {u.logItems.length===0
                       ?<div style={{fontSize:11,color:"#9CAA9F",padding:"10px 0"}}>{t("reports.personNoSplitExpenses")}</div>
                       :u.logItems.map(item=>{
-                        const isBill=item.__kind==="bill";
-                        const st=isBill?"approved":getItemStatus(item,cats,users);
-                        const share=isBill?shareEurInBill(item,u.id):shareEurInExpense(item,u.id);
+                        const isInv=item.__kind==="invoice";
+                        const st=getItemStatus(item,cats,users);
+                        const share=shareEurInExpense(item,u.id);
                         const pend=st==="pending";
                         const subN=(users.find(x=>x.id===item.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
                         return(
-                          <div key={`${item.__kind}-${item.id}`} className="row-hover" role="button" tabIndex={0} onKeyDown={ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();if(isBill){go("bills");}else{setView("expenses");setDetailId(item.id);setPanel("detail");}}}} onClick={()=>{if(isBill){go("bills");}else{setView("expenses");setDetailId(item.id);setPanel("detail");}}} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 0",borderBottom:"1px solid #F0EBE3",cursor:"pointer"}}>
+                          <div key={`${item.__kind}-${item.id}`} className="row-hover" role="button" tabIndex={0} onKeyDown={ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();setView("expenses");setDetailId(item.id);setPanel("detail");}}} onClick={()=>{setView("expenses");setDetailId(item.id);setPanel("detail");}} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 0",borderBottom:"1px solid #F0EBE3",cursor:"pointer"}}>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                <span style={{fontWeight:600,fontSize:12,lineHeight:1.35}}>{isBill?(item.name||"Sin descripción"):(item.description||"Sin descripción")}</span>
-                                <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:isBill?"#FEF0E7":"#EDE8E0",color:isBill?"#92400E":"#4B5E52"}}>{isBill?"FACTURA":"GASTO"}</span>
+                                <span style={{fontWeight:600,fontSize:12,lineHeight:1.35}}>{isInv?(item.vendor||item.description||"Sin descripción"):(item.description||"Sin descripción")}</span>
+                                <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:isInv?"#FEF0E7":"#EDE8E0",color:isInv?"#92400E":"#4B5E52"}}>{isInv?"FACTURA":"GASTO"}</span>
                               </div>
-                              <div style={{fontSize:10,color:"#9CAA9F",marginTop:3}}>{fmtDate(isBill?(item.dueDate||item.date):item.date)} · {t("filter.submitter")}: {subN} · {item.category}</div>
+                              <div style={{fontSize:10,color:"#9CAA9F",marginTop:3}}>{fmtDate(isInv?(item.dueDate||item.date):item.date)} · {t("filter.submitter")}: {subN} · {item.category}</div>
                             </div>
                             <div style={{textAlign:"right",flexShrink:0}}>
                               <div style={{fontWeight:700,fontSize:12,fontVariantNumeric:"tabular-nums",color:G}}>{fmt(share)}</div>
@@ -5235,9 +4309,7 @@ function ReportsView(){
           })}
         </div>
         {(() => {
-          const filteredTotal =
-            filteredExpenses.reduce((s,e) => s + eurForExpense(e), 0)
-            +filteredApprovedBills.reduce((s,b)=>s+eurForExpense(b),0);
+          const filteredTotal=filteredExpenses.reduce((s,e)=>s+eurForExpense(e),0);
           return(
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14,paddingTop:12,borderTop:"2px solid #EDE8E0"}}>
           <span style={{fontWeight:700,fontSize:12}}>{t("reports.total")}</span>
@@ -5246,14 +4318,25 @@ function ReportsView(){
           );
         })()}
       </div>
-      {/* Forecast — based on approved active bills only */}
       <div className="card" style={{marginBottom:11}}>
         <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>{t("reports.forecast")}</div>
-        {(()=>{const ab=bills.filter(b=>{
-          if(AUTH_URL&&b._apiType==="bill")return b.recurring&&(b.apiBillStatus==="pending"||b.apiBillStatus==="overdue");
-          return getItemStatus(b,cats)==="approved"&&b.active;
-        });const mf=ab.reduce((s,b)=>{const ev=eurForExpense(b);if(b.frequency==="monthly")return s+ev;if(b.frequency==="annual")return s+ev/12;if(b.frequency==="custom"&&b.intervalMonths)return s+ev/(parseFloat(b.intervalMonths)||1);return s;},0);const af=ab.reduce((s,b)=>{const ev=eurForExpense(b);if(b.frequency==="monthly")return s+ev*12;if(b.frequency==="annual")return s+ev;if(b.frequency==="custom"&&b.intervalMonths)return s+ev*(12/(parseFloat(b.intervalMonths)||1));return s;},0);return(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{[{l:t("reports.monthlyFixed"),v:mf,freq:"monthly"},{l:t("reports.annualFixed"),v:af,freq:"annual"}].map((m,i)=>(<div key={i} className="row-hover" style={{background:"#F5F0EA",borderRadius:8,padding:"10px 12px",cursor:"pointer"}} onClick={()=>go("bills")}><div style={{fontSize:9,color:"#6B7B72",fontWeight:500,marginBottom:2}}>{m.l}</div><div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(m.v)}</div><div style={{fontSize:8,color:"#9CAA9F",marginTop:3}}>→ {t("nav.bills")}</div></div>))}</div>);})()}
-        <p style={{fontSize:9,color:"#9CAA9F",marginTop:8}}>Solo facturas activas y aprobadas</p>
+        {(()=>{
+          const ab=expenses.filter(e=>e.expenseType==="invoice"&&e.recurring===1&&(e.paymentStatus==="unpaid"||e.paymentStatus==="overdue"));
+          const mf=ab.reduce((s,e)=>s+invoiceForecastMonthlyEUR(e),0);
+          const af=ab.reduce((s,e)=>s+invoiceForecastMonthlyEUR(e)*12,0);
+          return(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {[{l:t("reports.monthlyFixed"),v:mf},{l:t("reports.annualFixed"),v:af}].map((m,i)=>(
+                <div key={i} className="row-hover" style={{background:"#F5F0EA",borderRadius:8,padding:"10px 12px",cursor:"pointer"}} onClick={()=>go("expenses")}>
+                  <div style={{fontSize:9,color:"#6B7B72",fontWeight:500,marginBottom:2}}>{m.l}</div>
+                  <div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(m.v)}</div>
+                  <div style={{fontSize:8,color:"#9CAA9F",marginTop:3}}>→ {t("nav.expenses")}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+        <p style={{fontSize:9,color:"#9CAA9F",marginTop:8}}>Facturas recurrentes pendientes u vencidas (equiv. mensual)</p>
       </div>
       {/* Calendar */}
       <div className="card" style={{marginBottom:11}}>
@@ -5266,16 +4349,14 @@ function ReportsView(){
 
 /* ── API INTEGRATIONS CARD ─────────────────────────────────────────────────── */
 function ApiIntegrationsCard({ inline = false }) {
-  const { t, expenses, bills } = useApp();
+  const { t, expenses } = useApp();
   const [open, setOpen] = useState(false);
   const apiData = {
     schema: {
-      expenses: { fields: ["id","amount","description","category","date","submittedBy","paidBy","approvals","status","notes","receipt"] },
-      bills: { fields: ["id","name","amount","frequency","category","dayOfMonth","submittedBy","approvals","status","active"] },
+      expenses: { fields: ["id","amount","description","category","date","expenseType","vendor","dueDate","paymentStatus","paymentTermDays","recurring","recurrenceRule","submittedBy","paidBy","approvals","status","notes","receipt"] },
       categories: { fields: ["id","name","approverIds","archived"] }
     },
     totalExpenses: expenses.length,
-    totalBills: bills.length,
     exportedAt: new Date().toISOString()
   };
 
@@ -5381,7 +4462,7 @@ function AdminReadme(){
 
           <div style={S.heading}>LOCALSTORE: CLAVES</div>
           <div style={S.body}>
-            <span style={S.code}>sol-users</span> usuarios · <span style={S.code}>sol-exp</span> gastos · <span style={S.code}>sol-bills</span> facturas · <span style={S.code}>sol-cats</span> categorías<br/>
+            <span style={S.code}>sol-users</span> usuarios · <span style={S.code}>sol-exp</span> gastos y facturas (campo <span style={S.code}>expenseType</span>) · <span style={S.code}>sol-cats</span> categorías<br/>
             <span style={S.code}>sol-pwd</span> contraseñas (plaintext, solo modo local)<br/>
             <span style={S.code}>sol-app-log</span> log de la app (máx {LOG_MAX} entradas) · <span style={S.code}>sol-lang</span> reservado (es)
           </div>
@@ -5784,7 +4865,7 @@ function DepartmentsSettingsBlock({t}){
 
 /* ── SETTINGS VIEW ─────────────────────────────────────────────────────────── */
 function SettingsView(){
-  const{t,user,users,expenses,bills,cats,saveCats,saveUsers,saveExp,saveBills,
+  const{t,user,users,expenses,cats,saveCats,saveUsers,saveExp,
         onSignOut,passwords,savePasswords,ivaRates,saveIvaRates,setUser}=useApp();
   const isSA=user?.role==="superadmin";
   const isAdmin=user?.role==="admin"||user?.role==="superadmin";
@@ -5833,32 +4914,38 @@ function SettingsView(){
   const loadBackups=useCallback(async()=>{
     if(!isSA||!AUTH_URL)return;
     setBackupsLoading(true);setBackupsError("");
-    const tok=appSettingsToken()||(API.token?String(API.token):"");
-    if(!tok){setBackupsError(t("msg.sessionExpired"));setBackupsLoading(false);return;}
     try{
-      const r=await fetch(AUTH_URL+"/admin/backups",{headers:{Authorization:"Bearer "+tok}});
-      const d=await r.json().catch(()=>({}));
-      if(!r.ok){setBackupsError(d.error||t("msg.genericShort"));setBackupsLoading(false);return;}
+      API.ensureSessionToken();
+      if(!API.token){setBackupsError(t("msg.sessionExpired"));setBackupsLoading(false);return;}
+      const d=await API.get("/admin/backups");
       setBackups(Array.isArray(d.backups)?d.backups:[]);
-    }catch(e){setBackupsError(t("signup.serverDown"));}
+    }catch(e){setBackupsError(e.message||t("signup.serverDown"));}
     finally{setBackupsLoading(false);}
-  },[isSA]);
+  },[isSA,t]);
   useEffect(()=>{if(isSA&&AUTH_URL)void loadBackups();},[isSA,AUTH_URL,loadBackups]);
   const runBackupNow=async()=>{
     setBackupsError("");setBackupsMsg("");
-    const tok=appSettingsToken()||(API.token?String(API.token):"");
-    if(!tok){setBackupsError(t("msg.sessionExpired"));return;}
     try{
-      const r=await fetch(AUTH_URL+"/admin/backups/run",{method:"POST",headers:{Authorization:"Bearer "+tok}});
-      const d=await r.json().catch(()=>({}));
-      if(!r.ok){setBackupsError(d.error||t("msg.genericShort"));return;}
-      setBackupsMsg("Copia creada: "+(d.filename||"ok"));
+      API.ensureSessionToken();
+      if(!API.token){setBackupsError(t("msg.sessionExpired"));return;}
+      const d=await API.post("/admin/backups/run",{});
+      setBackupsMsg("✓ Copia creada: "+(d.filename||""));
       await loadBackups();
-    }catch(e){setBackupsError(t("signup.serverDown"));}
+    }catch(e){setBackupsError(e.message||t("signup.serverDown"));}
   };
-  const openBackupDownload=filename=>{
+  const openBackupDownload=async filename=>{
     if(!filename)return;
-    window.open(AUTH_URL+"/admin/backups/download/"+encodeURIComponent(filename),"_blank");
+    setBackupsError("");
+    try{
+      API.ensureSessionToken();
+      const blob=await API.fetchBinary("/admin/backups/download/"+encodeURIComponent(filename));
+      const a=Object.assign(document.createElement("a"),{
+        href:URL.createObjectURL(blob),
+        download:filename,
+      });
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    }catch(e){setBackupsError(e.message||t("signup.serverDown"));}
   };
   const saveAppIvaSettings=async(nextRates,nextDefault)=>{
     setAppSetErr("");setAppSetMsg("");
@@ -6261,9 +5348,18 @@ function SettingsView(){
         <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void saveAppCurrency()}>Guardar moneda</button>
       </AccordionSection>}
 
-      {isSA&&<AccordionSection title="Copias de seguridad">
+      {isSA&&AUTH_URL&&<PendingUsersPanel/>}
+
+      {isSA&&<AccordionSection title={t("settings.accordion.appLog")}>
+        <AppLogPanelBody/>
+      </AccordionSection>}
+
+      {isSA&&<AccordionSection title={t("settings.accordion.backups")}>
         {backupsMsg&&<div style={{padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",fontSize:11,marginBottom:8}}>{backupsMsg}</div>}
         {backupsError&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{backupsError}</div>}
+        <div style={{padding:"8px 10px",borderRadius:8,background:"#FFFBEB",border:"1px solid #FDE68A",fontSize:11,color:"#92400E",lineHeight:1.45,marginBottom:10}}>
+          ⚠ Las copias se guardan en el mismo disco. Descarga semanalmente a Google Drive como copia externa.
+        </div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
           <div style={{fontSize:11,color:"#6B7B72"}}>{backupsLoading?"Cargando copias...":"Copias disponibles: "+backups.length}</div>
           <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void runBackupNow()}>Crear copia ahora</button>
@@ -6278,18 +5374,12 @@ function SettingsView(){
                   <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.filename}</div>
                   <div style={{fontSize:10,color:"#9CAA9F"}}>{sizeKb} KB{dt?" · "+dt:""}</div>
                 </div>
-                <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>openBackupDownload(b.filename)}>Descargar</button>
+                <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>void openBackupDownload(b.filename)}>Descargar</button>
               </div>
             );
           })}
           {!backupsLoading&&backups.length===0&&<div style={{fontSize:11,color:"#9CAA9F"}}>No hay copias de seguridad.</div>}
         </div>
-      </AccordionSection>}
-
-      {isSA&&AUTH_URL&&<PendingUsersPanel/>}
-
-      {isSA&&<AccordionSection title={t("settings.accordion.appLog")}>
-        <AppLogPanelBody/>
       </AccordionSection>}
 
       {/* ── Danger zone (superadmin only) ── */}
@@ -6328,11 +5418,6 @@ function SolanaExpenses(){
     if(AUTH_URL)return[];
     const d=ls("sol-exp",[]);
     return d.map(e=>normalizeItem(e,"expense"));
-  });
-  const [bills,   setBills]   =useState(()=>{
-    if(AUTH_URL)return[];
-    const d=ls("sol-bills",[]);
-    return d.map(b=>normalizeItem(b,"bill"));
   });
   const [ledgerLoading,setLedgerLoading]=useState(false);
   const [cats,    setCats]    =useState(()=>{
@@ -6395,12 +5480,10 @@ function SolanaExpenses(){
 
         // Load data for the restored session
         try{
-          const[de,db]=await Promise.all([
-            fetch(AUTH_URL+"/expenses",{headers:{"Authorization":"Bearer "+API.token}}).then(r=>r.ok?r.json():{expenses:[]}),
-            fetch(AUTH_URL+"/bills",{headers:{"Authorization":"Bearer "+API.token}}).then(r=>r.ok?r.json():{bills:[]})
-          ]);
-          if(de.expenses&&de.expenses.length)saveExp(de.expenses.map(expenseFromApi));
-          if(db.bills&&db.bills.length)saveBills(db.bills.map(billFromApi));
+          const de=await fetch(AUTH_URL+"/expenses",{headers:{"Authorization":"Bearer "+API.token}}).then(r=>r.ok?r.json():{expenses:[]});
+          if(de.expenses&&de.expenses.length){
+            saveExp(mapExpensesFromApi(de.expenses));
+          }
         }catch(e){/* non-fatal */}
 
       }catch(e){
@@ -6444,10 +5527,11 @@ function SolanaExpenses(){
   const [submFlt, setSubmFlt] =useSessionState("sol-flt-subm","");   // userId or ""
   const [dateFrom,setDateFrom]=useSessionState("sol-flt-from","");   // YYYY-MM-DD or ""
   const [dateTo,  setDateTo]  =useSessionState("sol-flt-to","");   // YYYY-MM-DD or ""
+  const [expKindFlt,setExpKindFlt]=useSessionState("sol-flt-kind","all");
   const myExpFilterClearedRef=useRef(false);
   const resetExpenseFiltersToDefault=useCallback(()=>{
     try{
-      ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to"].forEach(k=>sessionStorage.removeItem(k));
+      ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind"].forEach(k=>sessionStorage.removeItem(k));
     }catch(e){}
     setExpFlt("all");
     setCatFlt("");
@@ -6455,7 +5539,8 @@ function SolanaExpenses(){
     setDateFrom("");
     setDateTo("");
     setExpSrc("");
-  },[setExpFlt,setCatFlt,setSubmFlt,setDateFrom,setDateTo,setExpSrc]);
+    setExpKindFlt("all");
+  },[setExpFlt,setCatFlt,setSubmFlt,setDateFrom,setDateTo,setExpSrc,setExpKindFlt]);
 
   const [form,    setForm]    =useState(()=>({...BF,ivaRate:String(readIvaDefault())}));
   const [splitOn, setSplitOn] =useState(false);
@@ -6473,10 +5558,6 @@ function SolanaExpenses(){
   const idleDeadlineRef = useRef(0);
   const warnTimer   =useRef(null);
   const [aNote,   setANote]   =useState({});
-  const [addBill, setAddBill] =useState(false);
-  const [newBill, setNewBill] =useState(()=>({...BB,ownerId:user?.id||""}));
-  const [newBillRecPrev,setNewBillRecPrev]=useState(null);
-  const camCaptureForBillRef=useRef(false);
   const [departments,setDepartments]=useState([]);
   const refreshDepartments=useCallback(async()=>{
     if(AUTH_URL){
@@ -6495,8 +5576,8 @@ function SolanaExpenses(){
     void refreshDepartments();
   },[user?.id,refreshDepartments]);
   const departmentsWithStats=React.useMemo(
-    ()=>enrichDepartmentsForUI(departments,expenses,bills,cats,users,false),
-    [departments,expenses,bills,cats,users],
+    ()=>enrichDepartmentsForUI(departments,expenses,cats,users,false),
+    [departments,expenses,cats,users],
   );
   const defaultDeptId=React.useMemo(()=>{
     const active=departments.filter(d=>!d.archived);
@@ -6531,7 +5612,7 @@ function SolanaExpenses(){
     }
     setDetailId(null);
     setPanel(null);
-    if(AUTH_URL){setExpenses([]);setBills([]);}
+    if(AUTH_URL){setExpenses([]);}
     setDepartments([]);
   },[resetExpenseFiltersToDefault,setView]);
 
@@ -6566,7 +5647,6 @@ function SolanaExpenses(){
     });
   };
   const saveExp     =d=>{const n=d.map(e=>normalizeItem(e,"expense"));setExpenses(n);if(!AUTH_URL)lsSet("sol-exp",n);};
-  const saveBills   =d=>{const n=d.map(b=>normalizeItem(b,"bill"));setBills(n);if(!AUTH_URL)lsSet("sol-bills",n);};
   const saveCats    =d=>{const n=d.map(c=>normalizeItem(c,"cat"));setCats(n);lsSet("sol-cats",n);};
   const savePasswords=d=>{setPasswords(d);if(!AUTH_URL)lsSet("sol-pwd",d);};
 
@@ -6636,37 +5716,28 @@ function SolanaExpenses(){
       if(!op||!response)return;
       if(op.method==="POST"&&op.path==="/expenses"&&op.meta&&op.meta.clientRef&&response.expense){
         const cr=op.meta.clientRef;
-        const row=expenseFromApi(response.expense);
-        setExpenses(prev=>prev.map(e=>e.id===cr?row:e));
-        setDetailId(did=>did===cr?row.id:did);
-        return;
-      }
-      if(op.method==="POST"&&op.path==="/bills"&&op.meta&&op.meta.clientRef&&response.bill){
-        const cr=op.meta.clientRef;
-        const row=billFromApi(response.bill);
-        setBills(prev=>prev.map(b=>b.id===cr?row:b));
+        const raw=response.expense;
+        const row=expenseFromApi(raw);
+        if(row)setExpenses(prev=>prev.map(e=>e.id===cr?row:e));
+        setDetailId(did=>did===cr?raw.id:did);
         return;
       }
       if(response.expense){
+        const raw=response.expense;
         if(op.method==="PUT"&&op.path.indexOf("/expenses/")===0){
-          const row=expenseFromApi(response.expense);
-          setExpenses(prev=>prev.map(e=>e.id===row.id?row:e));
+          const row=expenseFromApi(raw);
+          if(row)setExpenses(prev=>prev.map(e=>e.id===row.id?row:e));
           return;
         }
         if(op.method==="POST"&&(op.path.indexOf("/approve")>=0||op.path.indexOf("/reject")>=0)){
-          const row=expenseFromApi(response.expense);
-          setExpenses(prev=>prev.map(e=>e.id===row.id?row:e));
+          const row=expenseFromApi(raw);
+          if(row)setExpenses(prev=>prev.map(e=>e.id===row.id?row:e));
           return;
         }
-      }
-      if(response.bill&&op.method==="PUT"&&op.path.indexOf("/bills/")===0){
-        const row=billFromApi(response.bill);
-        setBills(prev=>prev.map(b=>b.id===row.id?row:b));
-        return;
-      }
-      if(op.method==="POST"&&op.path.indexOf("/bills/")>=0&&op.path.indexOf("/mark-paid")>=0&&response.bill){
-        const row=billFromApi(response.bill);
-        setBills(prev=>prev.map(b=>b.id===row.id?row:b));
+        if(op.method==="POST"&&op.path.indexOf("/expenses/")===0&&op.path.indexOf("/mark-paid")>=0){
+          const row=expenseFromApi(raw);
+          if(row)setExpenses(prev=>prev.map(e=>e.id===row.id?row:e));
+        }
       }
     };
     window.addEventListener("solana-offline-sync",h);
@@ -6705,10 +5776,9 @@ function SolanaExpenses(){
     setLedgerLoading(true);
     (async()=>{
       try{
-        const[de,db_]=await Promise.all([API.get("/expenses"),API.get("/bills")]);
+        const de=await API.get("/expenses");
         if(cancelled)return;
-        setExpenses((de.expenses||[]).map(expenseFromApi));
-        setBills((db_.bills||[]).map(billFromApi));
+        setExpenses(mapExpensesFromApi(de.expenses||[]));
       }catch(e){
         if(!cancelled)alert(e.message||"Error al cargar gastos y facturas.");
       }finally{
@@ -6720,8 +5790,8 @@ function SolanaExpenses(){
 
   useEffect(()=>{
     if(!AUTH_URL||!user||ledgerLoading||migrAttemptRef.current)return;
-    if(expenses.length>0||bills.length>0)return;
-    let localExp=[],localBills=[];
+    if(expenses.length>0)return;
+    let localExp=[];
     try{
       const r1=localStorage.getItem("sol-exp");
       const r2=localStorage.getItem("solana_expenses");
@@ -6729,14 +5799,7 @@ function SolanaExpenses(){
       const b=r2?JSON.parse(r2):null;
       localExp=Array.isArray(a)&&a.length?a:Array.isArray(b)&&b.length?b:[];
     }catch(e){}
-    try{
-      const r1=localStorage.getItem("sol-bills");
-      const r2=localStorage.getItem("solana_bills");
-      const a=r1?JSON.parse(r1):null;
-      const b=r2?JSON.parse(r2):null;
-      localBills=Array.isArray(a)&&a.length?a:Array.isArray(b)&&b.length?b:[];
-    }catch(e){}
-    if(localExp.length===0&&localBills.length===0)return;
+    if(localExp.length===0)return;
     migrAttemptRef.current=true;
     let cancelled=false;
     (async()=>{
@@ -6764,40 +5827,20 @@ function SolanaExpenses(){
             ...(ex.splitMode?{splitMode:ex.splitMode}:{}),
           },{skipOfflineQueue:true});
         }
-        for(const bi of localBills){
-          if(cancelled)return;
-          const freq=bi.frequency||"monthly";
-          const rec=isBillRecurringFrequency(freq);
-          const due=(getBillFilterDateRef(bi)||billDueISOFromForm({...BB,dayOfMonth:bi.dayOfMonth||"1",frequency:freq})).toString().slice(0,10);
-          const rule=freq==="annual"?"yearly":freq==="custom"&&String(bi.intervalMonths)==="3"?"quarterly":"monthly";
-          await API.post("/bills",{
-            vendor:bi.name||"Factura",
-            amount:Number(bi.amount)||0,
-            category:bi.category||"Otro",
-            dueDate:due,
-            notes:[bi.notes,bi.description].filter(Boolean).join("\n")||undefined,
-            recurring:rec,
-            recurrenceRule:rule,
-            departmentId:bi.departmentId||DEFAULT_DEPT_ID,
-          },{skipOfflineQueue:true});
-        }
         try{
           localStorage.removeItem("sol-exp");
           localStorage.removeItem("solana_expenses");
-          localStorage.removeItem("sol-bills");
-          localStorage.removeItem("solana_bills");
         }catch(e){}
         if(cancelled)return;
-        const[de,db_]=await Promise.all([API.get("/expenses"),API.get("/bills")]);
-        setExpenses((de.expenses||[]).map(expenseFromApi));
-        setBills((db_.bills||[]).map(billFromApi));
+        const de=await API.get("/expenses");
+        setExpenses(mapExpensesFromApi(de.expenses||[]));
       }catch(e){
         migrAttemptRef.current=false;
         alert(e.message||"No se pudo migrar datos locales.");
       }
     })();
     return()=>{cancelled=true;};
-  },[user?.id,ledgerLoading,expenses.length,bills.length,cats,users]);
+  },[user?.id,ledgerLoading,expenses.length,cats,users]);
 
   const handleReceiptFile=e=>{
     const f=e.target.files?.[0];if(!f)return;
@@ -6820,16 +5863,10 @@ function SolanaExpenses(){
       setCamStr(s);
       setCamOn(true);
     }catch(e){
-      camCaptureForBillRef.current=false;
       alert(t("msg.cameraUnavailable")+(e&&e.message?" "+e.message:""));
     }
   };
   const startCam=async()=>{
-    camCaptureForBillRef.current=false;
-    await openCamStream();
-  };
-  const startCamForNewBill=async()=>{
-    camCaptureForBillRef.current=true;
     await openCamStream();
   };
   useEffect(()=>{
@@ -6849,7 +5886,6 @@ function SolanaExpenses(){
     }
   },[user]);
   const stopCam=()=>{
-    camCaptureForBillRef.current=false;
     camStr?.getTracks().forEach(tr=>tr.stop());
     setCamStr(null);
     setCamOn(false);
@@ -6861,14 +5897,7 @@ function SolanaExpenses(){
     c.height=v.videoHeight||720;
     c.getContext("2d").drawImage(v,0,0);
     const url=c.toDataURL("image/jpeg",0.85);
-    const forBill=camCaptureForBillRef.current;
     stopCam();
-    if(forBill){
-      setNewBill(p=>({...p,receipt:url.split(",")[1],receiptType:"image/jpeg"}));
-      setNewBillRecPrev(url);
-      appLog("info","bill_receipt_captured",{source:"camera"});
-      return;
-    }
     setRecPrev(url);
     setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
     appLog("info","receipt_captured",{source:"camera"});
@@ -6947,6 +5976,26 @@ function SolanaExpenses(){
       setFormError("La fecha debe estar entre los últimos 5 años y el próximo año.");
       return;
     }
+    const isInvSubmit=form.expenseType==="invoice";
+    if(isInvSubmit){
+      if(!String(form.vendor||"").trim()){setFormError("Indica el proveedor.");return;}
+      const ptdS=paymentTermDaysFromForm(form);
+      if(ptdS===0&&!String(form.invoiceDueDateDirect||"").trim().slice(0,10)){setFormError("Indica la fecha de vencimiento.");return;}
+    }
+    const cadSubmit=cadenceToRecurringPayload(form.cadenceKey);
+    const ptdSubmit=paymentTermDaysFromForm(form);
+    const computedDueIso=computeInvoiceDueISO(form);
+    const invExtras=isInvSubmit?{
+      expenseType:"invoice",
+      vendor:String(form.vendor||"").trim(),
+      paymentTermDays:ptdSubmit,
+      paymentStatus:"unpaid",
+      dueDate:computedDueIso||null,
+    }:{
+      expenseType:"expense",
+      paymentStatus:"na",
+    };
+    const recExtras=cadSubmit.recurring?{recurring:1,recurrenceRule:cadSubmit.recurrenceRule}:{recurring:0,recurrenceRule:null};
     let paidBy=[{userId:ownerId,amount,pct:100}];
     let splitModeOut=undefined;
     if(splitOn&&splits.filter(s=>s.checked).length>1){
@@ -6988,6 +6037,13 @@ function SolanaExpenses(){
             ivaRate:ivaRateAuth,
             ivaAmount:ivaAmountAuth,
             ...(splitModeOut?{splitMode:splitModeOut}:{}),
+            ...(isInvSubmit?{
+              expenseType:"invoice",
+              vendor:String(form.vendor||"").trim(),
+              paymentTermDays:ptdSubmit,
+              ...(ptdSubmit===0&&form.invoiceDueDateDirect?{dueDate:String(form.invoiceDueDateDirect).slice(0,10)}:{}),
+            }:{expenseType:"expense"}),
+            ...(recExtras.recurring?{recurring:1,recurrenceRule:recExtras.recurrenceRule}:{recurring:0}),
           };
           const { response, responseBody, rawText } = await debugApiRequest("POST", "/expenses", body);
           if (!response.ok) throw new Error(responseBody.error || ("HTTP " + response.status));
@@ -7054,6 +6110,8 @@ function SolanaExpenses(){
               receiptPath:null,
               departmentId:form.departmentId||null,
               ownerId,
+              ...invExtras,
+              ...recExtras,
             },"expense");
             saveExp([optimistic,...expenses]);
             try{localStorage.removeItem("sol-exp-draft");}catch(e){}
@@ -7077,7 +6135,10 @@ function SolanaExpenses(){
     const rp=parseFloat(form.ivaRate);
     const ivaRate=isNaN(rp)?readIvaDefault():rp;
     const ivaAmount=calcIvaParts(amount,ivaRate).iva;
-    const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID};
+    const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID,
+      ...invExtras,
+      ...recExtras,
+    };
     appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
     saveExp([exp,...expenses]);resetForm();setPanel("detail");setDetailId(exp.id);
@@ -7096,6 +6157,25 @@ function SolanaExpenses(){
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
   },[user?.id,defaultDeptId,departments]);
   const openNew  =()=>{resetForm();setDetailId(null);setPanel("new");setView("expenses");};
+  const openNewInvoice=useCallback(()=>{
+    const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
+    setForm({
+      ...BF,
+      ivaRate:String(readIvaDefault()),
+      ownerId:user?.id||"",
+      departmentId:firstActiveDeptId,
+      date:new Date().toISOString().slice(0,10),
+      expenseType:"invoice",
+      vendor:"",
+      paymentTermMode:"0",
+      paymentTermCustomDays:"30",
+      invoiceDueDateDirect:new Date().toISOString().slice(0,10),
+      cadenceKey:"once",
+    });
+    setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
+    try{localStorage.removeItem("sol-exp-draft");}catch(e){}
+    setDetailId(null);setPanel("new");setView("expenses");
+  },[user?.id,defaultDeptId,departments]);
 
   /* deleteExp — removes expense with permission check and audit trail */
   const deleteExp=(expId)=>{
@@ -7298,20 +6378,20 @@ function SolanaExpenses(){
     saveExp(expenses.map(e=>e.id!==expId?e:{...e,seenBy:[...new Set([...(e.seenBy||[]),user.id])]}));
   };
 
-  const markBillPaid=(billId,paidAtIso)=>{
+  const markExpensePaid=(expId,paidAtIso)=>{
     if(!AUTH_URL)return;
-    const b=bills.find(x=>x.id===billId);
-    if(b&&b._pendingSync){alert("Espera a sincronizar esta factura.");return;}
+    const ex=expenses.find(x=>x.id===expId);
+    if(ex&&ex._pendingSync){alert("Espera a sincronizar este movimiento.");return;}
     const pay=(paidAtIso&&String(paidAtIso).slice(0,10))||new Date().toISOString().slice(0,10);
     void (async()=>{
       try{
-        await API.post("/bills/"+encodeURIComponent(billId)+"/mark-paid",{paidAt:pay});
-        const d=await API.get("/bills");
-        saveBills((d.bills||[]).map(billFromApi));
+        await API.post("/expenses/"+encodeURIComponent(expId)+"/mark-paid",{paidAt:pay});
+        const d=await API.get("/expenses");
+        saveExp(mapExpensesFromApi(d.expenses||[]));
       }catch(e){
         if(isOfflineQueuedError(e)){
           const ts=Date.parse(pay+"T12:00:00");
-          saveBills(bills.map(x=>x.id!==billId?x:{...x,apiBillStatus:"paid",paidAt:Number.isFinite(ts)?ts:Date.now()}));
+          saveExp(expenses.map(x=>x.id!==expId?x:{...x,paymentStatus:"paid",paidAt:Number.isFinite(ts)?ts:Date.now()}));
           return;
         }
         alert(e.message||"No se pudo marcar como pagada.");
@@ -7320,18 +6400,21 @@ function SolanaExpenses(){
   };
 
   /* ── APPROVE ────────────────────────────────────────────────────────────── */
-  const approve=(itemId,action,type)=>{
+  const approve=(itemId,action)=>{
     const note=aNote[itemId]||"";
-    const item=(type==="expense"?expenses:bills).find(x=>x.id===itemId);
-    appLog("info","item_"+action,{itemId,itemCode:item?.itemCode,type,userId:user.id,note:note||undefined});
-    if(type==="expense"&&AUTH_URL){
-      if(item&&item._pendingSync){alert("Este gasto aún no está en el servidor; sincroniza antes de aprobar.");return;}
+    const item=expenses.find(x=>x.id===itemId);
+    appLog("info","item_"+action,{itemId,itemCode:item?.itemCode,userId:user.id,note:note||undefined});
+    if(AUTH_URL){
+      if(item&&item._pendingSync){
+        alert("Este ítem aún no está en el servidor; sincroniza antes de aprobar.");
+        return;
+      }
       void (async()=>{
         try{
           if(action==="approved")await API.post("/expenses/"+encodeURIComponent(itemId)+"/approve",{note:note||undefined});
           else await API.post("/expenses/"+encodeURIComponent(itemId)+"/reject",{note:note||undefined});
           const full=await API.get("/expenses");
-          saveExp((full.expenses||[]).map(expenseFromApi));
+          saveExp(mapExpensesFromApi(full.expenses||[]));
         }catch(e){
           if(isOfflineQueuedError(e)){
             saveExp(expenses.map(x=>{
@@ -7357,33 +6440,7 @@ function SolanaExpenses(){
       })();
       return;
     }
-    if(type==="bill"&&AUTH_URL){
-      if(item&&item._pendingSync){alert("Esta factura aún no está en el servidor; sincroniza antes de aprobar.");return;}
-      void (async()=>{
-        try{
-          if(action==="approved")await API.post("/bills/"+encodeURIComponent(itemId)+"/approve",{note:note||undefined});
-          else await API.post("/bills/"+encodeURIComponent(itemId)+"/reject",{note:note||undefined});
-          const full=await API.get("/bills");
-          saveBills((full.bills||[]).map(billFromApi));
-        }catch(e){
-          alert(e.message||"Error al procesar.");
-        }
-        setANote(p=>({...p,[itemId]:""}));
-      })();
-      return;
-    }
-    if(type==="expense"){
-      saveExp(expenses.map(e=>e.id!==itemId?e:{...e,approvals:{...e.approvals,[user.id]:action},auditTrail:[...e.auditTrail,{action,by:user.id,at:new Date().toISOString(),note}],seenBy:seenByAfterActor(user.id)}));
-    } else {
-      const updated=bills.map(b=>{
-        if(b.id!==itemId)return b;
-        const newApprovals={...b.approvals,[user.id]:action};
-        const approverIds=effectiveExpenseApproverIds(b,cats,users);
-        const allApproved=approverIds.every(id=>newApprovals[id]==="approved");
-        return{...b,approvals:newApprovals,active:allApproved,auditTrail:[...(b.auditTrail||[]),{action,by:user.id,at:new Date().toISOString(),note}],seenBy:seenByAfterActor(user.id)};
-      });
-      saveBills(updated);
-    }
+    saveExp(expenses.map(e=>e.id!==itemId?e:{...e,approvals:{...e.approvals,[user.id]:action},auditTrail:[...e.auditTrail,{action,by:user.id,at:new Date().toISOString(),note}],seenBy:seenByAfterActor(user.id)}));
     setANote(p=>({...p,[itemId]:""}));
   };
 
@@ -7420,16 +6477,19 @@ function SolanaExpenses(){
     if(src){
       const matchDesc=e.description.toLowerCase().includes(src);
       const matchCode=(e.itemCode||"").toLowerCase().includes(src);
-      if(!matchDesc&&!matchCode)return false;
+      const matchVendor=e.expenseType==="invoice"&&String(e.vendor||"").toLowerCase().includes(src);
+      if(!matchDesc&&!matchCode&&!matchVendor)return false;
     }
     if(catFlt&&e.category!==catFlt)return false;
     if(submFlt&&e.submittedBy!==submFlt)return false;
     if(dateFrom&&e.date<dateFrom)return false;
     if(dateTo&&e.date>dateTo)return false;
+    if(expKindFlt==="invoice"&&e.expenseType!=="invoice")return false;
+    if(expKindFlt==="expense"&&e.expenseType==="invoice")return false;
     return true;
   });
   const dateFilterActive = dateFrom !== "" || dateTo !== "";
-  const activeFilterCount = [catFlt, submFlt, dateFilterActive?"range":""]
+  const activeFilterCount = [catFlt, submFlt, dateFilterActive?"range":"", expKindFlt!=="all"?"kind":""]
     .filter(Boolean).length;
   const isApprover = isAdmin || cats.some(c=>{
     if(c.archived)return false;
@@ -7446,48 +6506,22 @@ function SolanaExpenses(){
       const ids=effectiveExpenseApproverIds(e,cats,users);
       return ids.includes(user.id)&&getItemStatus(e,cats,users)==="pending"&&approvalVoteFor(e.approvals,user.id,users)!=="approved";
     });
-  const myPendingBills=bills.filter(b=>{
-    if(AUTH_URL&&(b._apiType!=="bill"||b._pendingSync))return false;
-    const ids=effectiveExpenseApproverIds(b,cats,users);
-    return ids.includes(user.id)&&getItemStatus(b,cats,users)==="pending"&&approvalVoteFor(b.approvals,user.id,users)!=="approved";
-  });
-  /* Approved expenses: totApproved = sum of EUR once per expense (splits do not duplicate). Per-person = sum of paidBy-weighted EUR shares. */
-  const approvedExpenses=expenses.filter(e=>getItemStatus(e,cats,users)==="approved");
-  const approvedBills=bills.filter(b=>{
-    if(AUTH_URL&&b._apiType==="bill")return b.apiBillStatus==="approved";
-    return getItemStatus(b,cats,users)==="approved";
-  });
-  const approvedBillsTotal=approvedBills.reduce((s,b)=>s+eurForExpense(b),0);
-  const totApproved=approvedExpenses.reduce((s,e)=>s+eurForExpense(e),0)+approvedBillsTotal;
+  /* Approved: totApproved = sum EUR per ítem aprobado; per-person = reparto paidBy */
+  const approvedForTot=expenses.filter(e=>getItemStatus(e,cats,users)==="approved");
+  const totApproved=approvedForTot.reduce((s,e)=>s+eurForExpense(e),0);
   const perPerson=users.map(u=>({
     ...u,
-    total:approvedExpenses.reduce((sum,e)=>sum+shareEurInExpense(e,u.id),0)
-      + approvedBills.reduce((sum,b)=>sum+shareEurInBill(b,u.id),0),
+    total:approvedForTot.reduce((sum,e)=>sum+shareEurInExpense(e,u.id),0),
   })).sort((a,b)=>b.total-a.total);
-  const totFixed=bills.reduce((s,b)=>{
-    if(AUTH_URL&&b._apiType==="bill"){
-      if(!b.recurring)return s;
-      if(b.apiBillStatus!=="pending"&&b.apiBillStatus!=="overdue")return s;
-      const ev=eurForExpense(b);
-      const rule=b.recurrenceRule||"monthly";
-      if(rule==="yearly"||b.frequency==="annual")return s+ev/12;
-      if(rule==="quarterly")return s+ev/3;
-      if((rule==="custom"||b.frequency==="custom")&&b.intervalMonths)return s+(ev/(parseFloat(b.intervalMonths)||1));
-      return s+ev;
-    }
-    if(getItemStatus(b,cats,users)==="approved"&&b.active){
-      if(b.frequency==="once"||b.frequency==="")return s;
-      if(b.endDate&&new Date(b.endDate)<new Date())return s;
-      if(b.frequency==="monthly")return s+eurForExpense(b);
-      if(b.frequency==="annual")return s+(eurForExpense(b)/12);
-      if(b.frequency==="custom"&&b.intervalMonths)return s+(eurForExpense(b)/(parseFloat(b.intervalMonths)||1));
-    }
-    return s;
+  const totFixed=expenses.reduce((s,e)=>{
+    if(e.expenseType!=="invoice"||e.recurring!==1)return s;
+    if(e.paymentStatus!=="unpaid"&&e.paymentStatus!=="overdue")return s;
+    return s+invoiceForecastMonthlyEUR(e);
   },0);
 
   const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
   const rpOpen=view==="expenses"&&(panel==="new"||(panel==="detail"&&detailId));
-  const totalBadge=(myPending.length+myPendingBills.length);
+  const totalBadge=myPending.length;
   const expenseNavBadge=expenses.filter(e=>{
     if((e.seenBy||[]).includes(user.id))return false;
     const seenKey="sol-seen-"+user.id;
@@ -7513,7 +6547,6 @@ function SolanaExpenses(){
     {id:"dashboard",label:t("nav.dashboard")},
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
-    {id:"bills",    label:t("nav.bills")},
     {id:"reports",  label:t("nav.reports")},
     // Settings removed from nav — accessed via profile avatar
   ];
@@ -7521,29 +6554,27 @@ function SolanaExpenses(){
     {id:"dashboard",label:t("nav.dashboard"),badge:0},
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
-    {id:"bills",    label:t("nav.bills"),badge:0},
     {id:"reports",  label:t("nav.reports"),badge:0},
     // Settings accessed via mobile header avatar
   ];
 
   /* ── CONTEXT VALUE ──────────────────────────────────────────────────────── */
   const ctxVal={
-    t,user,users,expenses,bills,cats,passwords,ivaRates,saveIvaRates,
-    saveUsers,saveExp,saveBills,saveCats,savePasswords,
+    t,user,users,expenses,cats,passwords,ivaRates,saveIvaRates,
+    saveUsers,saveExp,saveCats,savePasswords,
     departments,departmentsWithStats,refreshDepartments,defaultDeptId,
-    isAdmin,isApprover,isSA,getUser,ledgerLoading,markBillPaid,
-    view,setView,go,panel,setPanel,openNew,
+    isAdmin,isApprover,isSA,getUser,ledgerLoading,markExpensePaid,
+    view,setView,go,panel,setPanel,openNew,openNewInvoice,
     detailId,setDetailId,
     form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
     receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,
-    handleReceiptFile,calcEqual,fileRef,startCam,startCamForNewBill,capturePhoto,stopCam,
-    newBillRecPrev,setNewBillRecPrev,
+    handleReceiptFile,calcEqual,fileRef,startCam,capturePhoto,stopCam,
     submitExp,resetForm,
     aNote,setANote,approve,
-    addBill,setAddBill,newBill,setNewBill,
-    myPending,myPendingBills,byStatus,filtered,
+    myPending,byStatus,filtered,
     totApproved,totFixed,perPerson,
     expFlt,setExpFlt,expSrc,setExpSrc,activeFilterCount,
+    expKindFlt,setExpKindFlt,
     catFlt,setCatFlt,submFlt,setSubmFlt,dateFrom,setDateFrom,dateTo,setDateTo,
     clearMyExpenseFilter,
     importRef,
@@ -7700,7 +6731,6 @@ function SolanaExpenses(){
               {view==="dashboard"&&<DashboardView/>}
               {view==="expenses" &&<ExpensesView/>}
               {view==="approvals"&&<ApprovalsView/>}
-              {view==="bills"    &&<BillsView/>}
               {view==="reports"  &&<ReportsView/>}
               {view==="settings" &&<SettingsView/>}
             </div>
@@ -7729,7 +6759,7 @@ function SolanaExpenses(){
           <div className="mob-only" style={{position:"fixed",inset:0,background:"#F5F0EA",zIndex:100,display:"flex",flexDirection:"column"}}>
             <div style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
               <button style={{border:"none",background:"none",color:"#FAF7F2",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>{resetForm();setPanel(null);}}>&#8592;</button>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#FAF7F2"}}>{t("form.newExpense")}</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#FAF7F2"}}>{form.expenseType==="invoice"?t("dash.newInvoice"):t("form.newExpense")}</div>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:18}}><NewPanel/></div>
           </div>
@@ -7746,13 +6776,11 @@ function SolanaExpenses(){
               const d=JSON.parse(ev.target.result);
               const errs=[];
               if(d.expenses!==undefined&&!Array.isArray(d.expenses))errs.push("expenses must be array");
-              if(d.bills!==undefined&&!Array.isArray(d.bills))errs.push("bills must be array");
-              if(!d.expenses&&!d.bills&&!d.users&&!d.cats)errs.push("no valid keys found");
+              if(!d.expenses&&!d.users&&!d.cats)errs.push("no valid keys found");
               if(Array.isArray(d.expenses)&&d.expenses.length>0&&(typeof d.expenses[0].amount!=="number"))errs.push("expenses malformed");
               if(errs.length>0){alert("Import rejected: "+errs.join(", "));return;}
               const counts={};
               if(d.expenses){saveExp(d.expenses);counts.expenses=d.expenses.length;}
-              if(d.bills){saveBills(d.bills);counts.bills=d.bills.length;}
               if(d.users){saveUsers(d.users);counts.users=d.users.length;}
               if(d.cats){saveCats(d.cats);counts.cats=d.cats.length;}
               appLog("info","json_imported",{file:f.name,userId:user?.id,...counts});

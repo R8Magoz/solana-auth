@@ -11,7 +11,6 @@ type User = {
 };
 
 type ExpenseRow = Record<string, any>;
-type BillRow = Record<string, any>;
 
 function makeUsers(): User[] {
   return [
@@ -47,12 +46,11 @@ function safeJson(body: string | null): any {
 
 async function setupMockApi(
   page: Page,
-  seed?: { expenses?: ExpenseRow[]; bills?: BillRow[]; users?: User[] },
+  seed?: { expenses?: ExpenseRow[]; users?: User[] },
 ) {
   const state = {
     users: seed?.users ?? makeUsers(),
     expenses: seed?.expenses ?? [],
-    bills: seed?.bills ?? [],
     departments: [
       { id: 'dept_ops', name: 'Operaciones', budget: 3000, archived: false, createdAt: Date.now() },
       { id: 'dept_fin', name: 'Finanzas', budget: 5000, archived: false, createdAt: Date.now() },
@@ -116,29 +114,74 @@ async function setupMockApi(
       const body = safeJson(req.postData());
       const id = `exp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const approvers = [state.users.find((u) => u.role === 'admin')?.id || 'admin-1'];
-      const row: ExpenseRow = {
-        id,
-        userId: session.userId,
-        date: body.date || new Date().toISOString().slice(0, 10),
-        description: body.description || 'Gasto',
-        amount: Number(body.amount || 0),
-        currency: 'EUR',
-        amountEUR: Number(body.amount || 0),
-        category: body.category || 'Equipment',
-        notes: body.notes || '',
-        status: 'pending',
-        approversJson: JSON.stringify(approvers),
-        approvalVotesJson: '{}',
-        ownerId: body.ownerId || session.userId,
-        paidByJson: JSON.stringify(body.paidBy || [{ userId: body.ownerId || session.userId, amount: Number(body.amount || 0), pct: 100 }]),
-        splitMode: body.splitMode || null,
-        departmentId: body.departmentId || 'dept_ops',
-        receiptPath: null,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
+      const isInvoice = String(body.expenseType || '').toLowerCase() === 'invoice';
+      const due = (body.dueDate || body.date || new Date().toISOString().slice(0, 10)).toString().slice(0, 10);
+      const row: ExpenseRow = isInvoice
+        ? {
+            id,
+            expenseType: 'invoice',
+            userId: session.userId,
+            date: (body.date || due).toString().slice(0, 10),
+            description: body.description || body.vendor || 'Factura',
+            vendor: body.vendor || body.description || 'Factura',
+            amount: Number(body.amount || 0),
+            currency: 'EUR',
+            amountEUR: Number(body.amount || 0),
+            category: body.category || 'Software',
+            notes: body.notes || '',
+            dueDate: due,
+            paymentStatus: 'unpaid',
+            paymentTermDays: body.paymentTermDays ?? 0,
+            recurring: body.recurring ? 1 : 0,
+            recurrenceRule: body.recurrenceRule || null,
+            status: 'submitted',
+            approversJson: JSON.stringify(approvers),
+            approvalVotesJson: '{}',
+            ownerId: body.ownerId || session.userId,
+            paidByJson: JSON.stringify(
+              body.paidBy || [{ userId: body.ownerId || session.userId, amount: Number(body.amount || 0), pct: 100 }],
+            ),
+            splitMode: body.splitMode || null,
+            departmentId: body.departmentId || 'dept_ops',
+            receiptPath: null,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          }
+        : {
+            id,
+            userId: session.userId,
+            date: body.date || new Date().toISOString().slice(0, 10),
+            description: body.description || 'Gasto',
+            amount: Number(body.amount || 0),
+            currency: 'EUR',
+            amountEUR: Number(body.amount || 0),
+            category: body.category || 'Equipment',
+            notes: body.notes || '',
+            status: 'pending',
+            approversJson: JSON.stringify(approvers),
+            approvalVotesJson: '{}',
+            ownerId: body.ownerId || session.userId,
+            paidByJson: JSON.stringify(body.paidBy || [{ userId: body.ownerId || session.userId, amount: Number(body.amount || 0), pct: 100 }]),
+            splitMode: body.splitMode || null,
+            departmentId: body.departmentId || 'dept_ops',
+            receiptPath: null,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
       state.expenses.unshift(row);
       return json(200, { ok: true, expense: row });
+    }
+
+    if (/^\/expenses\/[^/]+\/receipt$/.test(path) && method === 'POST') {
+      if (!session) return json(401, { error: 'No autorizado.' });
+      const id = path.split('/')[2];
+      const e = state.expenses.find((x) => x.id === id);
+      if (!e) return json(404, { error: 'Gasto no encontrado.' });
+      const body = safeJson(req.postData());
+      const isPdf = String(body.mediaType || '').includes('pdf');
+      e.receiptPath = `https://mock-cloudinary.test/${id}${isPdf ? '.pdf' : '.jpg'}`;
+      e.updatedAt = Date.now();
+      return json(200, { ok: true, receiptPath: e.receiptPath });
     }
 
     if (/^\/expenses\/[^/]+\/approve$/.test(path) && method === 'POST') {
@@ -152,68 +195,6 @@ async function setupMockApi(
       e.status = 'approved';
       e.updatedAt = Date.now();
       return json(200, { ok: true, expense: e });
-    }
-
-    if (path === '/bills' && method === 'GET') {
-      if (!session) return json(401, { error: 'No autorizado.' });
-      return json(200, { bills: state.bills });
-    }
-
-    if (path === '/bills' && method === 'POST') {
-      if (!session) return json(401, { error: 'No autorizado.' });
-      const body = safeJson(req.postData());
-      const id = `bill_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      const approvers = [state.users.find((u) => u.role === 'admin')?.id || 'admin-1'];
-      const row: BillRow = {
-        id,
-        userId: session.userId,
-        vendor: body.vendor || 'Factura',
-        amount: Number(body.amount || 0),
-        amountEUR: Number(body.amount || 0),
-        currency: 'EUR',
-        category: body.category || 'Software',
-        dueDate: body.dueDate || new Date().toISOString().slice(0, 10),
-        status: 'pending',
-        recurring: !!body.recurring,
-        recurrenceRule: body.recurrenceRule || null,
-        ownerId: body.ownerId || session.userId,
-        paidByJson: JSON.stringify(body.paidBy || [{ userId: body.ownerId || session.userId, amount: Number(body.amount || 0), pct: 100 }]),
-        splitMode: body.splitMode || null,
-        notes: body.notes || '',
-        approversJson: JSON.stringify(approvers),
-        approvalVotesJson: '{}',
-        receiptPath: null,
-        departmentId: body.departmentId || 'dept_ops',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      state.bills.unshift(row);
-      return json(200, { ok: true, bill: row });
-    }
-
-    if (/^\/bills\/[^/]+\/receipt$/.test(path) && method === 'POST') {
-      if (!session) return json(401, { error: 'No autorizado.' });
-      const id = path.split('/')[2];
-      const b = state.bills.find((x) => x.id === id);
-      if (!b) return json(404, { error: 'Factura no encontrada.' });
-      const body = safeJson(req.postData());
-      const isPdf = String(body.mediaType || '').includes('pdf');
-      b.receiptPath = `https://mock-cloudinary.test/${id}${isPdf ? '.pdf' : '.jpg'}`;
-      b.updatedAt = Date.now();
-      return json(200, { ok: true, receiptPath: b.receiptPath });
-    }
-
-    if (/^\/bills\/[^/]+\/approve$/.test(path) && method === 'POST') {
-      if (!session) return json(401, { error: 'No autorizado.' });
-      const id = path.split('/')[2];
-      const b = state.bills.find((x) => x.id === id);
-      if (!b) return json(404, { error: 'Factura no encontrada.' });
-      const votes = safeJson(b.approvalVotesJson || '{}');
-      votes[session.userId] = 'approved';
-      b.approvalVotesJson = JSON.stringify(votes);
-      b.status = 'paid';
-      b.updatedAt = Date.now();
-      return json(200, { ok: true, bill: b });
     }
 
     return json(200, { ok: true });
