@@ -378,7 +378,7 @@ const TR = {
     "cat.other": "Otros",
     "reports.title": "Informes",
     "reports.monthlyTrend": "Tendencia mensual",
-    "reports.byCategory": "Gasto por categoría",
+    "reports.byCategory": "Gasto total por categoría (gastos + facturas)",
     "reports.perPerson": "Inversión por persona",
     "reports.personLogHint": "Total aprobado según tu parte en el reparto. La lista incluye gastos aprobados y pendientes.",
     "reports.submittedCount": "{{count}} gastos subidos",
@@ -690,6 +690,7 @@ const API = {
     return AUTH_URL || "";
   },
   token: null,
+  _userId: null,
   _flushBusy: false,
 
   /** Bearer for requests: memory token, or sync from sessionStorage (login / refresh). */
@@ -795,6 +796,7 @@ const API = {
         const data = await res.json();
         if (data.sessionToken) {
           this.token = data.sessionToken;
+          this._userId = data.userId || (data.user && data.user.id) || null;
           try {
             localStorage.setItem("sol-session-token", data.sessionToken);
           } catch (e) {}
@@ -1600,7 +1602,7 @@ function getBillFilterDateRef(b){
 
 /* ── UPLOAD RULES ──────────────────────────────────────────────────────────── */
 /* Session idle timeout — 30 minutes of inactivity signs the user out */
-const IDLE_TIMEOUT_MS   = 8 * 60 * 60 * 1000; // 8 hours
+const IDLE_TIMEOUT_MS   = 30 * 24 * 60 * 60 * 1000; // 30 days — effectively never
 const IDLE_WARNING_MS   = 28 * 60 * 1000; // warn 2 min before
 const COMMON_PASSWORDS  = new Set([
   "password","123456","qwerty","abc123","letmein","monkey","dragon",
@@ -1961,7 +1963,7 @@ function receiptMimeOkForServerUpload(mediaType){
     ||m.includes("heic")||m.includes("heif")||m.includes("gif")||m.includes("tiff")||m.includes("tif");
 }
 
-function AttachmentViewer({receipt, receiptType, apiExpenseId, label, onRemove, t}){
+function AttachmentViewer({receipt, receiptType, apiExpenseId, apiBillId, label, onRemove, t}){
   const [blobUrl,setBlobUrl]=useState(null);
   const [blobMime,setBlobMime]=useState(null);
   const [blobLoad,setBlobLoad]=useState(false);
@@ -1970,7 +1972,13 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, label, onRemove, 
   const [imgZoom,setImgZoom]=useState(false);
 
   useEffect(()=>{
-    if(receipt||!apiExpenseId||!AUTH_URL){
+    const apiEntityPath = apiExpenseId
+      ? "/expenses/"+encodeURIComponent(apiExpenseId)+"/receipt"
+      : apiBillId
+        ? "/bills/"+encodeURIComponent(apiBillId)+"/receipt"
+        : null;
+
+    if(receipt||!apiEntityPath||!AUTH_URL){
       setBlobUrl(u=>{if(u)URL.revokeObjectURL(u);return null;});
       setBlobMime(null);
       setBlobErr(null);
@@ -1982,7 +1990,7 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, label, onRemove, 
     setBlobErr(null);
     (async()=>{
       try{
-        const blob=await API.fetchBinary("/expenses/"+encodeURIComponent(apiExpenseId)+"/receipt");
+        const blob=await API.fetchBinary(apiEntityPath);
         if(cancelled)return;
         objUrl=URL.createObjectURL(blob);
         setBlobUrl(objUrl);
@@ -1997,7 +2005,7 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, label, onRemove, 
       cancelled=true;
       if(objUrl)URL.revokeObjectURL(objUrl);
     };
-  },[apiExpenseId,receipt]);
+  },[apiExpenseId, apiBillId, receipt]);
 
   useEffect(()=>{
     if(!imgZoom)return;
@@ -2027,11 +2035,17 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, label, onRemove, 
     );
   }
 
-  const openDataUrl=()=>{
-    const w=window.open("","_blank");
-    if(w){
-      w.document.write(`<html><body style="margin:0;background:#111"><img src="${srcUrl}" style="max-width:100%;display:${isImg?"block":"none"}"/>`+
-        (isPdf?`<embed src="${srcUrl}" type="application/pdf" width="100%" height="100%"/>`:"")+`</body></html>`);
+  const openFile=()=>{
+    if(blobUrl){
+      window.open(blobUrl,"_blank");
+      return;
+    }
+    if(srcUrl){
+      const w=window.open("","_blank");
+      if(w){
+        w.document.write(`<html><body style="margin:0;background:#111"><img src="${srcUrl}" style="max-width:100%;display:${isImg?"block":"none"}"/>`+
+          (isPdf?`<embed src="${srcUrl}" type="${mime}" width="100%" height="100%"/>`:"")+`</body></html>`);
+      }
     }
   };
   const downloadFile=()=>{
@@ -2064,7 +2078,7 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, label, onRemove, 
             document.body
           )}
           <div style={{marginTop:5,display:"flex",gap:5}}>
-            <button type="button" onClick={openDataUrl} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
+            <button type="button" onClick={openFile} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
               {t?t("action.openFile"):"Abrir"}
             </button>
             <button type="button" onClick={downloadFile} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
@@ -2087,7 +2101,7 @@ function AttachmentViewer({receipt, receiptType, apiExpenseId, label, onRemove, 
             <button type="button" onClick={()=>setPdfOpen(v=>!v)} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #D4AED0",background:"#fff",color:"#5C1057",cursor:"pointer",fontFamily:"inherit"}}>
               {pdfOpen?"Ocultar":"Ver PDF"}
             </button>
-            <button type="button" onClick={openDataUrl} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
+            <button type="button" onClick={openFile} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
               {t?t("action.openFile"):"Abrir"}
             </button>
             <button type="button" onClick={downloadFile} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
@@ -2597,6 +2611,7 @@ function LoginScreen({ users, onLogin, passwords }) {
 
         setLoading(false);
         const srv = d.user;
+        API._userId = srv?.id || null;
         const loc = users.find(u => (u.email || "").toLowerCase() === (srv.email || "").toLowerCase());
         const mergedUser = loc ? { ...loc, ...srv, id: srv.id != null ? srv.id : loc.id } : srv;
         if (typeof ReactDOM !== "undefined" && ReactDOM.flushSync) {
@@ -3483,7 +3498,12 @@ function DashboardView(){
   const today=new Date();
   const m0=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
   const ym=today.toISOString().slice(0,7);
-  const mTotalAll=expenses.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0).reduce((s,e)=>s+eurForExpense(e),0);
+  const mBillsTotal=bills
+    .filter(b=>billCountsTowardDeptSpend(b,cats,users)&&
+      (b.dueDate||"").slice(0,7)===today.toISOString().slice(0,7))
+    .reduce((s,b)=>s+eurForExpense(b),0);
+  const mTotalAll=expenses.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0)
+    .reduce((s,e)=>s+eurForExpense(e),0)+mBillsTotal;
   const pendAll=expenses.filter(e=>getItemStatus(e,cats,users)==="pending").length;
   const mine=expenses.filter(e=>(e.ownerId||e.submittedBy)===user.id);
   const mTotalMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0).reduce((s,e)=>s+eurForExpense(e),0);
@@ -3715,12 +3735,8 @@ function ExpensesView(){
         <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G}}>{t("nav.expenses")}</h1>
         <button className="btn-primary" style={{fontSize:13,padding:"7px 14px"}} onClick={openNew}>{t("action.newExpense")}</button>
       </div>
-      <div style={{marginBottom:11,fontSize:11,lineHeight:1.5,color:"#9CAA9F"}}>
-        {t("expenses.summaryApproved")}: {fmt(totApproved)} · {t("expenses.summaryPending")}: {fmt(pendingTotal)}
-      </div>
-      <div style={{marginBottom:11,fontSize:11,lineHeight:1.5,maxWidth:"100%"}}>
-        <div style={{fontWeight:700,color:"#4B5E52"}}>{t("page.expensesDefTitle")}</div>
-        <div style={{color:"#9CAA9F"}}>{t("page.expensesDefBody")}</div>
+      <div style={{fontSize:12,color:"#6B7B72",marginBottom:11,background:"#F5F0EA",borderRadius:7,padding:"7px 11px"}}>
+        {t("page.expensesDefBody")}
       </div>
       {/* ── Status pills */}
       <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
@@ -3819,7 +3835,6 @@ function ExpensesView(){
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}><span style={{fontSize:12,fontWeight:600}}>{e.description}</span><span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:ST[st].bg,color:ST[st].color,flexShrink:0}}>{t("status."+st)}</span>{(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span aria-hidden="true">👥</span><span>{(e.paidBy||[]).length}</span></span>}</div>
                 <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>
-                  {e.itemCode&&<span style={{fontFamily:"monospace",fontSize:9,marginRight:5,opacity:0.7}}>{e.itemCode}</span>}
                   {fmtDate(e.date)} · {t("filter.submitter")}: {submitterName} · {e.category}
                 </div>
                 {st==="pending"&&<div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>{approverIds.map(aid=>{const a=approvalVoteFor(e.approvals,aid,users);return<span key={aid} style={{fontSize:9,display:"flex",alignItems:"center",gap:2}}><span style={{width:4,height:4,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",display:"inline-block"}}/><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{(users.find(u=>u.id===aid)||{name:UNKNOWN_USER_NAME}).name}</span></span>})}</div>}
@@ -3827,6 +3842,14 @@ function ExpensesView(){
               <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:5}}>
                   {(e.comments||[]).length>0&&<span style={{minWidth:15,minHeight:15,borderRadius:"50%",background:BL,color:"#fff",fontSize:8,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"0 4px"}} aria-hidden="true">{(e.comments||[]).length}</span>}
+                  {(e.receiptPath||(e.receipt&&!e._apiType))&&(
+                    <span style={{
+                      fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,
+                      background:"#EDE8E0",color:"#4B5E52",flexShrink:0
+                    }} title="Tiene adjunto">
+                      {(e.receiptType||e.receiptPath||"").includes("pdf")?"PDF":"IMG"}
+                    </span>
+                  )}
                   <div style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(e)}</div>
                 </div>
               </div>
@@ -3840,16 +3863,23 @@ function ExpensesView(){
 }
 
 /* ── RECEIPT THUMB (admin queue) ─────────────────────────────────────────── */
-function ReceiptThumb({expenseId}){
+function ReceiptThumb({expenseId, billId}){
   const [url,setUrl]=useState(null);
   useEffect(()=>{
-    if(!expenseId||!AUTH_URL)return;
+    const entityId = expenseId || billId;
+    const path = expenseId
+      ? "/expenses/"+encodeURIComponent(expenseId)+"/receipt"
+      : "/bills/"+encodeURIComponent(billId)+"/receipt";
+    if(!entityId||!AUTH_URL)return;
     let dead=false;
     (async()=>{
       try{
-        const blob=await API.fetchBinary("/expenses/"+encodeURIComponent(expenseId)+"/receipt");
+        const blob=await API.fetchBinary(path);
         if(dead)return;
-        if(blob.type&&blob.type.includes("pdf"))return;
+        if(blob.type&&blob.type.includes("pdf")){
+          setUrl("__pdf__");
+          return;
+        }
         setUrl(URL.createObjectURL(blob));
       }catch(e){}
     })();
@@ -3857,7 +3887,12 @@ function ReceiptThumb({expenseId}){
       dead=true;
       setUrl(u=>{if(u)URL.revokeObjectURL(u);return null;});
     };
-  },[expenseId]);
+  },[expenseId, billId]);
+  if(url==="__pdf__") return(
+    <div style={{width:52,height:52,borderRadius:8,background:"#F5E8F4",flexShrink:0,
+      display:"flex",alignItems:"center",justifyContent:"center",
+      fontSize:9,fontWeight:700,color:"#5C1057"}}>PDF</div>
+  );
   if(!url)return<div style={{width:52,height:52,borderRadius:8,background:"#EDE8E0",flexShrink:0}} title="Recibo"/>;
   return<img src={url} alt="" style={{width:52,height:52,objectFit:"cover",borderRadius:8,flexShrink:0}}/>;
 }
@@ -3931,12 +3966,17 @@ function ApprovalsView(){
           const rowTitle=isBill?item.name:item.description;
           const st=getItemStatus(item,cats,users);
           const stStyle=ST[st]||ST.pending;
-          const canActOnRow=canAct&&rowApproverIds.includes(user.id);
+          let canActOnRow=canAct&&rowApproverIds.includes(user.id);
+          if(isAdmin&&!canActOnRow){canActOnRow=true;}
           const isExpanded=itemId===expandedId;
           return(
             <div key={`${item._approvalType}-${item.id}`} className="card row-hover" style={{marginBottom:9,background:st==="pending"?"#FFFBEB":st==="approved"?"#F0FDF4":st==="rejected"?"#FFF1F2":"#fff",opacity:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none"}}>
               <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7,cursor:"pointer"}} onClick={()=>setExpandedId(prev=>prev===itemId?null:itemId)}>
-                {!isBill&&AUTH_URL&&item.receiptPath&&<ReceiptThumb expenseId={item.id}/>}
+                {AUTH_URL&&item.receiptPath&&(
+                  isBill
+                    ? <ReceiptThumb billId={item.id}/>
+                    : <ReceiptThumb expenseId={item.id}/>
+                )}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                     <div style={{flex:1,minWidth:0}}>
@@ -3960,7 +4000,7 @@ function ApprovalsView(){
                         <span style={{padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,background:stStyle.bg,color:stStyle.color}}>
                           {t("status."+st)}
                         </span>
-                        {!isExpanded&&(
+                        {!isExpanded&&canActOnRow&&(
                           <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px"}} onClick={ev=>{ev.stopPropagation();setExpandedId(itemId);}}>
                             Revisar
                           </button>
@@ -4379,10 +4419,8 @@ function BillsView(){
         <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:BILL_COLOR}}>{t("nav.bills")}</h1>
         <button className="btn-primary" style={{fontSize:13,padding:"7px 14px",background:BILL_COLOR}} onClick={()=>setAddBill(v=>{const n=!v;if(n)setBillSubmitAttempt(false);return n;})}>{addBill?t("action.cancel"):t("action.addBill")}</button>
       </div>
-      <div style={{marginBottom:11,fontSize:11,lineHeight:1.5,color:"#9CAA9F"}}>{t("bills.summary",{monthly:fmt(totFixed),annual:fmt(totFixed*12)})}</div>
-      <div style={{marginBottom:11,fontSize:11,lineHeight:1.5,maxWidth:"100%"}}>
-        <div style={{fontWeight:700,color:"#4B5E52"}}>{t("page.billsDefTitle")}</div>
-        <div style={{color:"#9CAA9F"}}>{t("page.billsDefBody")}</div>
+      <div style={{fontSize:12,color:"#6B7B72",marginBottom:11,background:"#FEF0E7",borderRadius:7,padding:"7px 11px"}}>
+        {t("page.billsDefBody")}
       </div>
       {/* ── Estado (pills) */}
       <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
@@ -4473,7 +4511,9 @@ function BillsView(){
                 <select className="inp" value={newBill.ivaRate||""} onChange={e=>setNewBill(p=>({...p,ivaRate:e.target.value}))}>
                   <option value="">Sin IVA</option>
                   {ivaRates.map(r=>(
-                    <option key={r.pct} value={String(r.pct)}>{r.label||r.pct+"%"}</option>
+                    <option key={String(r.value)+"-"+r.name} value={String(r.value)}>
+                      {formatIvaOptionLabel(r)}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -4639,6 +4679,9 @@ function BillsView(){
         {(()=>{const pool=(byBillStatus[billStatusFlt]||bills);const visible=pool.filter(b=>{if(billCatFlt&&b.category!==billCatFlt)return false;if(billSubmFlt&&b.submittedBy!==billSubmFlt)return false;const refD=getBillFilterDateRef(b);if(billDateFrom&&refD<billDateFrom)return false;if(billDateTo&&refD>billDateTo)return false;if(billSearch&&!b.name.toLowerCase().includes(billSearch.toLowerCase())&&!(b.description||"").toLowerCase().includes(billSearch.toLowerCase()))return false;return true;});if(visible.length===0)return<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{bills.length===0?t("empty.bills"):t("empty.billsFiltered")}</div>;return visible.map((b,i)=>{const bst=getItemStatus(b,cats);const isSelBill=selBillId===b.id;const amtSuf=billListAmountSuffix(b,t);return(
             <div key={b.id}>
             <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:1,cursor:"pointer",background:isSelBill?"#F5F0EA":bst==="pending"?"#FFFBEB":bst==="approved"?"#F0FDF4":bst==="rejected"?"#FFF1F2":"#FFFFFF"}}>
+              {AUTH_URL&&b._apiType==="bill"&&b.receiptPath&&(
+                <ReceiptThumb billId={b.id}/>
+              )}
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                   <span style={{fontWeight:600,fontSize:12}}>{b.name}</span>
@@ -4648,7 +4691,17 @@ function BillsView(){
                 <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{billListMetadataLine(b,t,users)}</div>
               </div>
               <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
-                <div style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(b)}{amtSuf&&<span style={{fontSize:8,fontWeight:400,color:"#9CAA9F"}}>{amtSuf}</span>}</div>
+                <div style={{display:"flex",alignItems:"center",gap:5}}>
+                  {(b.receiptPath||(b.receipt&&!b._apiType))&&(
+                    <span style={{
+                      fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,
+                      background:"#FEF0E7",color:"#92400E",flexShrink:0
+                    }} title="Tiene adjunto">
+                      {(b.receiptType||b.receiptPath||"").includes("pdf")?"PDF":"IMG"}
+                    </span>
+                  )}
+                  <div style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(b)}{amtSuf&&<span style={{fontSize:8,fontWeight:400,color:"#9CAA9F"}}>{amtSuf}</span>}</div>
+                </div>
               </div>
               {isAdmin&&<div style={{display:"flex",gap:3}} onClick={e=>e.stopPropagation()}>
                 <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer"}} onClick={()=>{setSelBillId(b.id);startEditBill(b);}}>{t("action.editItem")}</button>
@@ -4801,6 +4854,7 @@ function BillsView(){
                   <AttachmentViewer
                     receipt={b.receipt||null}
                     receiptType={b.receiptType||null}
+                    apiBillId={AUTH_URL&&b._apiType==="bill"&&b.receiptPath&&!b.receipt ? b.id : null}
                     label={t("bills.attachment")}
                     t={t}
                     onRemove={null}
@@ -4913,7 +4967,14 @@ function ReportsView(){
     }).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
     return{...u,filteredTotal,submittedCount,logExpenses};
   }).sort((a,b)=>b.filteredTotal-a.filteredTotal),[users,expenses,cats,filteredExpenses]);
-  const catTotals=cats.filter(c=>!c.archived).map(c=>({cat:c.name,total:filteredExpenses.filter(e=>e.category===c.name).reduce((s,e)=>s+eurForExpense(e),0)})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+  const catTotals=cats.filter(c=>!c.archived).map(c=>({
+    cat:c.name,
+    total:
+      expenses.filter(e=>e.category===c.name&&getItemStatus(e,cats,users)==="approved")
+        .reduce((s,e)=>s+eurForExpense(e),0)
+      +bills.filter(b=>b.category===c.name&&billCountsTowardDeptSpend(b,cats,users))
+        .reduce((s,b)=>s+eurForExpense(b),0)
+  })).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const maxC=catTotals[0]?.total||1;
   const monthlyTrend=(()=>{
     const now=new Date();
@@ -6194,6 +6255,64 @@ function SolanaExpenses(){
     appLog("info","auth:boot",{ts:new Date().toISOString()});
     setAppReady(true);
   },[]);
+  useEffect(()=>{
+    if(!AUTH_URL)return;
+    const stored=(()=>{
+      try{return localStorage.getItem("sol-session-token")||"";}
+      catch(e){return "";}
+    })();
+    if(!stored)return;
+    API.token=stored;
+    void (async()=>{
+      try{
+        // 1. Refresh the token to verify it's still valid
+        const refreshRes=await fetch(AUTH_URL+"/auth/refresh",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","Authorization":"Bearer "+stored}
+        });
+        if(!refreshRes.ok){
+          API.token=null;
+          try{localStorage.removeItem("sol-session-token");}catch(e){}
+          return;
+        }
+        const refreshData=await refreshRes.json();
+        if(refreshData.sessionToken){
+          API.token=refreshData.sessionToken;
+          try{localStorage.setItem("sol-session-token",refreshData.sessionToken);}catch(e){}
+        }
+        const loggedInUserId=refreshData.userId;
+
+        // 2. Load the team roster to find the current user
+        const teamRes=await fetch(AUTH_URL+"/auth/team",{
+          headers:{"Authorization":"Bearer "+API.token}
+        });
+        if(!teamRes.ok)return;
+        const teamData=await teamRes.json();
+        if(!teamData.users||!Array.isArray(teamData.users))return;
+        const meRaw=teamData.users.find(u=>u.id===loggedInUserId);
+        if(!meRaw)return;
+        const me=normalizeItem(meRaw,"user");
+
+        // 3. Set the full roster and restore the logged-in user
+        setUsers(teamData.users.map(u=>normalizeItem(u,"user")));
+        setUser(me);
+        appLog("info","auth:session_restored",{userId:me.id,role:me.role});
+
+        // 4. Load expenses and bills for the restored session
+        try{
+          const [de,db]=await Promise.all([
+            fetch(AUTH_URL+"/expenses",{headers:{"Authorization":"Bearer "+API.token}}).then(r=>r.json()),
+            fetch(AUTH_URL+"/bills",{headers:{"Authorization":"Bearer "+API.token}}).then(r=>r.json())
+          ]);
+          if(de.expenses)saveExp((de.expenses||[]).map(expenseFromApi));
+          if(db.bills)saveBills((db.bills||[]).map(billFromApi));
+        }catch(e){/* non-fatal — user is logged in, data loads on nav */}
+      }catch(e){
+        API.token=null;
+        try{localStorage.removeItem("sol-session-token");}catch(err){}
+      }
+    })();
+  },[]);
   useEffect(()=>{try{if(localStorage.getItem("sol-lang")==null)localStorage.setItem("sol-lang","es");}catch(e){}},[]);
   const t=React.useMemo(()=>mkT(),[]);
   const [ivaRates,setIvaRates]=useState(()=>readIvaRates());
@@ -7200,7 +7319,10 @@ function SolanaExpenses(){
   });
   /* Approved expenses: totApproved = sum of EUR once per expense (splits do not duplicate). Per-person = sum of paidBy-weighted EUR shares. */
   const approvedExpenses=expenses.filter(e=>getItemStatus(e,cats,users)==="approved");
-  const totApproved=approvedExpenses.reduce((s,e)=>s+eurForExpense(e),0);
+  const approvedBillsTotal=bills
+    .filter(b=>billCountsTowardDeptSpend(b,cats,users))
+    .reduce((s,b)=>s+eurForExpense(b),0);
+  const totApproved=approvedExpenses.reduce((s,e)=>s+eurForExpense(e),0)+approvedBillsTotal;
   const perPerson=users.map(u=>({
     ...u,
     total:approvedExpenses.reduce((sum,e)=>sum+shareEurInExpense(e,u.id),0),
@@ -7228,11 +7350,17 @@ function SolanaExpenses(){
   const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
   const rpOpen=view==="expenses"&&(panel==="new"||(panel==="detail"&&detailId));
   const totalBadge=(myPending.length+myPendingBills.length);
-  const seenKey="sol-seen-"+user.id;
-  const localSeen=(()=>{try{return JSON.parse(localStorage.getItem(seenKey)||"[]");}catch{return[];}})();
-  const expenseNavBadge=expenses.filter(e=>
-    !(e.seenBy||[]).includes(user.id) && !localSeen.includes(e.id)
-  ).length;
+  const expenseNavBadge=expenses.filter(e=>{
+    if((e.seenBy||[]).includes(user.id))return false;
+    const seenKey="sol-seen-"+user.id;
+    const localSeen=(()=>{try{return JSON.parse(localStorage.getItem(seenKey)||"[]");}catch(e){return[];}})();
+    if(localSeen.includes(e.id))return false;
+    const isSubmitter=e.submittedBy===user.id;
+    const isCommenter=(e.comments||[]).some(c=>c.by===user.id);
+    const isPaidBy=(e.paidBy||[]).some(p=>p.userId===user.id);
+    if(!isSubmitter&&!isCommenter&&!isPaidBy)return false;
+    return(e.comments||[]).length>0;
+  }).length;
   const goToMyRejected=()=>{
     myExpFilterClearedRef.current=true;
     setExpFlt("rejected");
@@ -7380,19 +7508,6 @@ function SolanaExpenses(){
                 {t("login.signIn")}
               </button>
             </div>
-          </div>
-        )}
-        {/* Idle warning banner */}
-        {idleWarning&&!sessionExpired&&(
-          <div style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",
-            zIndex:9000,background:"#fff",border:"1px solid #D4AED0",
-            borderRadius:10,padding:"10px 16px",display:"flex",alignItems:"center",gap:12,
-            boxShadow:"0 4px 20px rgba(60,10,55,0.14)",fontSize:12,fontWeight:500,
-            whiteSpace:"nowrap",color:"#3C0A37"}}>
-            <span>{t("session.warningMsg").replace("{n}","2")}</span>
-            <button style={{background:"#3C0A37",border:"none",color:"#FAF7F2",borderRadius:6,
-              padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
-              onClick={resetIdleTimer}>{t("session.stayLoggedIn")}</button>
           </div>
         )}
         {/* Desktop sidebar */}

@@ -55,7 +55,7 @@ const BCRYPT_ROUNDS = 12;
 // ── SESSION TOKEN HELPERS ────────────────────────────────────────────────────
 // Lightweight signed session token: base64(payload).HMAC
 // Used to authorize admin actions via signed Bearer session tokens.
-const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 /** POST /auth/refresh may re-issue a token this long after exp (sliding grace). */
 const SESSION_REFRESH_GRACE_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -73,11 +73,11 @@ function verifySessionToken(token, allowGrace = false) {
   if (sig !== expected) return null;
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
-    if (Date.now() > data.exp) {
-      if (allowGrace && Date.now() < data.exp + SESSION_REFRESH_GRACE_MS) {
-        return { ...data, expired: true };
-      }
-      return null;
+    const GRACE_MS = 30 * 60 * 1000; // 30 minutes
+    if (allowGrace) {
+      if (Date.now() > data.exp + GRACE_MS) return null;
+    } else {
+      if (Date.now() > data.exp) return null;
     }
     return data;
   } catch { return null; }
@@ -524,6 +524,101 @@ app.post('/auth/login', loginLimiter, async (req, res) => {
   const { passwordHash: _, ...safeUser } = user;
   const sessionToken = signSessionToken(user.id, user.role);
   res.json({ ok: true, user: safeUser, sessionToken });
+});
+
+app.post('/auth/refresh', async (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'No autorizado.' });
+  const session = verifySessionToken(token, true); // true = allow grace period
+  if (!session) return res.status(401).json({ error: 'Sesión expirada.' });
+  const users = userStore.getAllUsers();
+  const user = users.find(u => u.id === session.userId);
+  if (!user || user.accountStatus !== 'active') {
+    return res.status(403).json({ error: 'Cuenta no activa.' });
+  }
+  const newToken = signSessionToken(user.id, user.role);
+  try { globalThis.localStorage?.setItem?.('sol-session-token', newToken); } catch (e) {}
+  audit('session_refreshed', { userId: user.id });
+  res.json({ ok: true, sessionToken: newToken, userId: user.id, role: user.role });
+});
+
+app.post('/auth/logout', (req, res) => {
+  // Stateless tokens — nothing to invalidate server-side.
+  // Client removes the stored token.
+  res.json({ ok: true });
+});
+
+app.get('/auth/team', requireAuth, (req, res) => {
+  const users = userStore.getAllUsers()
+    .filter(u => u.accountStatus === 'active')
+    .map(({ passwordHash: _, ...u }) => u);
+  res.json({ ok: true, users });
+});
+
+app.put('/admin/users/:id', requireAdminSession, async (req, res) => {
+  const id = String(req.params.id || '').trim();
+  const { name, email, phone, title, role, color } = req.body || {};
+  const users = userStore.getAllUsers();
+  const user = users.find(u => u.id === id);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  // Prevent role escalation to superadmin unless caller is superadmin
+  if (role && role === 'superadmin' && req.userRole !== 'superadmin') {
+    return res.status(403).json({ error: 'Solo superadmin puede asignar ese rol.' });
+  }
+  if (name) user.name = String(name).trim().slice(0, 100);
+  if (email) user.email = String(email).trim().toLowerCase().slice(0, 254);
+  if (phone !== undefined) user.phone = String(phone || '').trim().slice(0, 30);
+  if (title !== undefined) user.title = String(title || '').trim().slice(0, 100);
+  if (role && ['user', 'admin', 'superadmin'].includes(role)) user.role = role;
+  if (color) user.color = String(color).trim().slice(0, 20);
+  userStore.replaceUserById(user);
+  audit('admin_user_updated', { targetId: id, by: req.userId });
+  const { passwordHash: _, ...safeUser } = user;
+  res.json({ ok: true, user: safeUser });
+});
+
+app.delete('/admin/users/:id', requireAdminSession, (req, res) => {
+  if (req.userRole !== 'superadmin') {
+    return res.status(403).json({ error: 'Solo superadmin puede eliminar usuarios.' });
+  }
+  const id = String(req.params.id || '').trim();
+  const users = userStore.getAllUsers();
+  const idx = users.findIndex(u => u.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  if (users[idx].id === req.userId) {
+    return res.status(400).json({ error: 'No puedes eliminarte a ti mismo.' });
+  }
+  const [removed] = users.splice(idx, 1);
+  const del = userStore.deleteUserByIdHard(removed.id);
+  if (!del.ok) {
+    if (del.reason === 'references') {
+      return res.status(409).json({ error: 'No se puede eliminar: el usuario tiene gastos o facturas asociados.' });
+    }
+    return res.status(500).json({ error: 'No se pudo eliminar.' });
+  }
+  audit('admin_user_deleted', { targetId: id, by: req.userId });
+  res.json({ ok: true });
+});
+
+app.post('/admin/users/:id/reset-password', requireAdminSession, async (req, res) => {
+  const id = String(req.params.id || '').trim();
+  const { tempPassword } = req.body || {};
+  if (!tempPassword || tempPassword.length < 8) {
+    return res.status(400).json({ error: 'Contraseña temporal: mínimo 8 caracteres.' });
+  }
+  const users = userStore.getAllUsers();
+  const user = users.find(u => u.id === id);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  if (user.id === req.userId) {
+    return res.status(400).json({ error: 'Usa el formulario de cambio de contraseña.' });
+  }
+  user.passwordHash = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS || 12);
+  user.mustChangePassword = true;
+  userStore.replaceUserById(user);
+  audit('admin_reset_user_password', { targetId: id, by: req.userId });
+  const { passwordHash: _, ...safeUser } = user;
+  res.json({ ok: true, user: safeUser });
 });
 
 /**
