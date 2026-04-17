@@ -3677,6 +3677,17 @@ function ExpensesView(){
         catFlt,setCatFlt,submFlt,setSubmFlt,dateFrom,setDateFrom,dateTo,setDateTo,activeFilterCount,
         detailId,setDetailId,panel,setPanel,openNew,resetForm,isAdmin,user,aNote,setANote,approve,clearMyExpenseFilter,totApproved}=useApp();
   const pendingTotal=expenses.filter(e=>getItemStatus(e,cats)==="pending").reduce((s,e)=>s+eurForExpense(e),0);
+  const naturalFrom = expenses.length
+    ? expenses.reduce((min, e) => e.date < min ? e.date : min, expenses[0].date)
+    : "";
+  const naturalTo = expenses.length
+    ? expenses.reduce((max, e) => e.date > max ? e.date : max, expenses[0].date)
+    : "";
+
+  const [pendingFrom, setPendingFrom] = React.useState(naturalFrom);
+  const [pendingTo,   setPendingTo]   = React.useState(naturalTo);
+
+  const isDefaultRange = pendingFrom === naturalFrom && pendingTo === naturalTo;
   return(
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
@@ -3719,8 +3730,48 @@ function ExpensesView(){
           <option value="">{t("filter.submitter")}: {t("filter.all")}</option>
           {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
-        <input className="inp" type="date" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
-          value={dateFrom} onChange={e=>setDateFrom(e.target.value)} title={t("filter.dateFrom")}/>
+        <div style={{display:"flex",alignItems:"center",border:"1.5px solid",
+          borderColor:isDefaultRange?"#DDD6CC":"#3C0A37",borderRadius:7,
+          overflow:"hidden",background:"#FAFAF9",height:32,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px",
+            borderRight:"1px solid #EDE8E0"}}>
+            <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
+              textTransform:"uppercase",letterSpacing:"0.05em"}}>Desde</span>
+            <input type="date" style={{border:"none",background:"transparent",
+              fontSize:12,color:"#3C0A37",outline:"none",cursor:"pointer",
+              fontFamily:"inherit",width:110}}
+              value={pendingFrom}
+              onChange={e => setPendingFrom(e.target.value)}/>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px"}}>
+            <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
+              textTransform:"uppercase",letterSpacing:"0.05em"}}>Hasta</span>
+            <input type="date" style={{border:"none",background:"transparent",
+              fontSize:12,color:"#3C0A37",outline:"none",cursor:"pointer",
+              fontFamily:"inherit",width:110}}
+              value={pendingTo}
+              onChange={e => setPendingTo(e.target.value)}/>
+          </div>
+        </div>
+        <button
+          disabled={isDefaultRange && !catFlt && !submFlt && !expSrc}
+          style={{padding:"5px 14px",borderRadius:7,fontSize:12,fontWeight:600,
+            border:"none",cursor:isDefaultRange?"default":"pointer",
+            background:isDefaultRange?"#EDE8E0":"#3C0A37",
+            color:isDefaultRange?"#9CAA9F":"#fff",
+            fontFamily:"inherit",height:32,display:"flex",alignItems:"center",gap:6}}
+          onClick={()=>{
+            setDateFrom(isDefaultRange ? "" : pendingFrom);
+            setDateTo(isDefaultRange ? "" : pendingTo);
+          }}>
+          Aplicar
+          {!isDefaultRange && (
+            <span style={{background:"rgba(255,255,255,0.25)",borderRadius:8,
+              fontSize:10,padding:"1px 5px",fontWeight:700}}>
+              {[catFlt,submFlt,!isDefaultRange?"range":"",expSrc].filter(Boolean).length}
+            </span>
+          )}
+        </button>
         {activeFilterCount>0&&(
           <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
             onClick={()=>{
@@ -3731,7 +3782,10 @@ function ExpensesView(){
               setCatFlt("");
               setSubmFlt("");
               setDateFrom("");
+              setDateTo("");
               setExpSrc("");
+              setPendingFrom(naturalFrom);
+              setPendingTo(naturalTo);
             }}>
             {t("filter.clearFilters")} ({activeFilterCount + (expSrc?1:0)})
           </button>
@@ -4264,7 +4318,23 @@ function BillsView(){
     const rej=bills.filter(b=>getItemStatus(b,cats)==="rejected");
     return{all:bills,pending:pend,approved:appr,rejected:rej};
   },[bills,cats]);
-  const billActiveFilterCount=[billCatFlt,billSubmFlt,billDateFrom].filter(Boolean).length;
+  const billNaturalFrom = bills.length
+    ? bills.reduce((min,b)=>{const d=getBillFilterDateRef(b);return d&&d<min?d:min;},
+        getBillFilterDateRef(bills[0])||"")
+    : "";
+  const billNaturalTo = bills.length
+    ? bills.reduce((max,b)=>{const d=getBillFilterDateRef(b);return d&&d>max?d:max;},
+        getBillFilterDateRef(bills[0])||"")
+    : "";
+
+  const [billPendingFrom, setBillPendingFrom] = React.useState(billNaturalFrom);
+  const [billPendingTo,   setBillPendingTo]   = React.useState(billNaturalTo);
+
+  const isBillDefaultRange = billPendingFrom===billNaturalFrom
+    && billPendingTo===billNaturalTo;
+  const billDateFilterActive = billDateFrom!=="" || billDateTo!=="";
+  const billActiveFilterCount = [billCatFlt, billSubmFlt,
+    billDateFilterActive?"range":""].filter(Boolean).length;
   return(
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
@@ -4299,11 +4369,51 @@ function BillsView(){
           <option value="">{t("filter.submitter")}: {t("filter.all")}</option>
           {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
-        <input className="inp" type="date" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
-          value={billDateFrom} onChange={e=>setBillDateFrom(e.target.value)} title={t("filter.dateFrom")}/>
+        <div style={{display:"flex",alignItems:"center",border:"1.5px solid",
+          borderColor:isBillDefaultRange?"#DDD6CC":"#3C0A37",borderRadius:7,
+          overflow:"hidden",background:"#FAFAF9",height:32,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px",
+            borderRight:"1px solid #EDE8E0"}}>
+            <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
+              textTransform:"uppercase",letterSpacing:"0.05em"}}>Desde</span>
+            <input type="date" style={{border:"none",background:"transparent",
+              fontSize:12,color:"#3C0A37",outline:"none",cursor:"pointer",
+              fontFamily:"inherit",width:110}}
+              value={billPendingFrom}
+              onChange={e => setBillPendingFrom(e.target.value)}/>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px"}}>
+            <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
+              textTransform:"uppercase",letterSpacing:"0.05em"}}>Hasta</span>
+            <input type="date" style={{border:"none",background:"transparent",
+              fontSize:12,color:"#3C0A37",outline:"none",cursor:"pointer",
+              fontFamily:"inherit",width:110}}
+              value={billPendingTo}
+              onChange={e => setBillPendingTo(e.target.value)}/>
+          </div>
+        </div>
+        <button
+          disabled={isBillDefaultRange && !billCatFlt && !billSubmFlt && !billSearch}
+          style={{padding:"5px 14px",borderRadius:7,fontSize:12,fontWeight:600,
+            border:"none",cursor:isBillDefaultRange?"default":"pointer",
+            background:isBillDefaultRange?"#EDE8E0":"#3C0A37",
+            color:isBillDefaultRange?"#9CAA9F":"#fff",
+            fontFamily:"inherit",height:32,display:"flex",alignItems:"center",gap:6}}
+          onClick={()=>{
+            setBillDateFrom(isBillDefaultRange ? "" : billPendingFrom);
+            setBillDateTo(isBillDefaultRange ? "" : billPendingTo);
+          }}>
+          Aplicar
+          {!isBillDefaultRange && (
+            <span style={{background:"rgba(255,255,255,0.25)",borderRadius:8,
+              fontSize:10,padding:"1px 5px",fontWeight:700}}>
+              {[billCatFlt,billSubmFlt,!isBillDefaultRange?"range":"",billSearch].filter(Boolean).length}
+            </span>
+          )}
+        </button>
         {billActiveFilterCount>0&&(
           <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
-            onClick={()=>{setBillCatFlt("");setBillSubmFlt("");setBillDateFrom("");setBillSearch("");}}>
+            onClick={()=>{setBillCatFlt("");setBillSubmFlt("");setBillDateFrom("");setBillDateTo("");setBillPendingFrom(billNaturalFrom);setBillPendingTo(billNaturalTo);setBillSearch("");}}>
             {t("filter.clearFilters")} ({billActiveFilterCount + (billSearch?1:0)})
           </button>
         )}
@@ -6977,7 +7087,9 @@ function SolanaExpenses(){
     if(dateTo&&e.date>dateTo)return false;
     return true;
   });
-  const activeFilterCount=[catFlt,submFlt,dateFrom].filter(Boolean).length;
+  const dateFilterActive = dateFrom !== "" || dateTo !== "";
+  const activeFilterCount = [catFlt, submFlt, dateFilterActive?"range":""]
+    .filter(Boolean).length;
   const isApprover=cats.some(c=>{
     if(c.archived)return false;
     return effectiveExpenseApproverIds({category:c.name},cats,users).includes(user.id);
