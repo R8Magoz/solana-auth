@@ -6,13 +6,33 @@ services:
     rootDir: server
     buildCommand: npm install
     startCommand: node server.js
+    healthCheckPath: /health
     disk:
       name: solana-data
       mountPath: /opt/render/project/src/data
       sizeGB: 1
     envVars:
-      - key: DATA_DIR
-        value: /opt/render/project/src/data
+      - key: PORT
+        sync: false
+        description: HTTP port for the auth server.
+      - key: TOKEN_SECRET
+        sync: false
+        description: 32-byte hex secret used to sign session tokens.
+      - key: RESEND_API_KEY
+        sync: false
+        description: API key for sending transactional emails via Resend.
+      - key: FROM_EMAIL
+        sync: false
+        description: Verified sender address used for app emails.
+      - key: ADMIN_EMAIL
+        sync: false
+        description: Admin recipient for signup and support notifications.
+      - key: APP_URL
+        sync: false
+        description: Public frontend URL used in links and email templates.
+      - key: CORS_ORIGIN
+        sync: false
+        description: Allowed frontend origin for cross-origin requests.
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
