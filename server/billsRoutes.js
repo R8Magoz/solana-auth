@@ -377,9 +377,7 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
     }
     const bill = getBillById(req.params.id);
     if (!bill) return res.status(404).json({ error: 'Factura no encontrada.' });
-    if (!canAccessBill(req, bill)) {
-      return res.status(403).json({ error: 'No autorizado.' });
-    }
+    if (!req.userId) return res.status(403).json({ error: 'No autorizado.' });
     const { b64, mediaType } = req.body || {};
     try {
       await receiptStorage.removeReceiptAsset(bill.receiptPath, DATA_DIR);
@@ -409,9 +407,7 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
     }
     const bill = getBillById(req.params.id);
     if (!bill) return res.status(404).json({ error: 'Factura no encontrada.' });
-    if (!canAccessBill(req, bill)) {
-      return res.status(403).json({ error: 'No autorizado.' });
-    }
+    if (!req.userId) return res.status(403).json({ error: 'No autorizado.' });
     if (!bill.receiptPath) {
       return res.status(404).json({ error: 'Sin recibo.' });
     }
