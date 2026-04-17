@@ -489,9 +489,15 @@ app.post('/auth/login', loginLimiter, async (req, res) => {
   const user  = userStore.findUserByEmail(normalEmail);
 
   // Always do a bcrypt compare to prevent timing attacks
-  const dummyHash = '$2b$12$invalidhashfortimingprotectiononly000000000000000000000';
+  const dummyHash = '$2b$10$CwTycUXWue0Thq9StjUM0uJ8I6e9vDOMkMt2rt7NmBGG99nmHn7uG';
   const hash = user?.passwordHash || dummyHash;
-  const match = await bcrypt.compare(password, hash);
+  let match = false;
+  try {
+    match = await bcrypt.compare(password, hash);
+  } catch (err) {
+    audit('login_failed', { email: normalEmail, ip: req.ip, reason: 'hash_compare_error' });
+    return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
+  }
 
   if (!user || !match) {
     audit('login_failed', { email: normalEmail, ip: req.ip, reason: 'invalid_credentials' });
