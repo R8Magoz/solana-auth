@@ -1016,6 +1016,36 @@ app.post('/admin/users/:id/deny', requireAdminSession, async (req, res) => {
   res.json({ ok: true, message: `Usuario ${user.email} denegado.` });
 });
 
+app.post('/admin/users/:id/suspend', requireAdminSession, async (req, res) => {
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'ID requerido.' });
+  const user = userStore.findUserById(id);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  if (user.id === req.userId) {
+    return res.status(400).json({ error: 'No puedes suspenderte a ti mismo.' });
+  }
+  user.accountStatus = 'denied';
+  user.suspendedAt = Date.now();
+  user.suspendedBy = req.userId;
+  userStore.replaceUserById(user);
+  audit('admin_suspended', { userId: user.id, email: user.email, by: req.userId });
+  res.json({ ok: true, message: `Acceso de ${user.email} revocado.` });
+});
+
+app.post('/admin/users/:id/restore', requireAdminSession, async (req, res) => {
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'ID requerido.' });
+  const user = userStore.findUserById(id);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  user.accountStatus = 'active';
+  user.approvalStatus = 'approved';
+  delete user.suspendedAt;
+  delete user.suspendedBy;
+  userStore.replaceUserById(user);
+  audit('admin_restored', { userId: user.id, email: user.email, by: req.userId });
+  res.json({ ok: true });
+});
+
 /**
  * GET /admin/audit
  * Paginated audit log from SQLite: ?limit=50&offset=0&event=&userId=

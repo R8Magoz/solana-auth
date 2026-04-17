@@ -82,6 +82,7 @@ const G  = "#3C0A37"; // brand primary — deep aubergine
 const GH = "#52114B"; // primary hover
 const GL = "rgba(60,10,55,0.07)"; // primary light tint (hover backgrounds)
 const T  = "#C4622D"; // terracotta accent — earthy complement, in palette grid
+const BILL_COLOR = "#C2622A"; // orange for facturas
 const BL = "#7A4F9A"; // muted violet for notification badges
 /** Shown when a user id is not in the local users list (e.g. server sync lag). */
 const UNKNOWN_USER_NAME="Usuario";
@@ -1225,7 +1226,16 @@ const getItemStatus=(item,cats,users)=>{
     const s=item.apiBillStatus;
     if(s==="cancelled")return"rejected";
     if(s==="paid")return"approved";
-    if(s==="pending"||s==="overdue")return"pending";
+    if(s==="pending"||s==="overdue"){
+      const approverIds=item.approvalRequired||[];
+      if(approverIds.length>0){
+        const a=item.approvals||{};
+        const v=id=>approvalVoteFor(a,id,users);
+        if(approverIds.some(id=>v(id)==="rejected"))return"rejected";
+        if(approverIds.every(id=>v(id)==="approved"))return"approved";
+      }
+      return"pending";
+    }
   }
   const approverIds=effectiveExpenseApproverIds(item,cats,users);
   const a=item.approvals||{};
@@ -1423,7 +1433,7 @@ function billListMetadataLine(b,t,users){
   return `${billRecurringFreqWord(b,t)} · ${t("bills.dayMeta")} ${day} · ${cat} · ${sub}`;
 }
 function billStatusBadgeLabel(b,bst,t){
-  if(AUTH_URL&&b._apiType==="bill"&&b.apiBillStatus==="paid")return t("bills.badgePaid");
+  if(AUTH_URL&&b._apiType==="bill"&&b.apiBillStatus==="paid")return t("status.approved");
   return t("status."+bst);
 }
 function formatBillPaidAtDisplay(b){
@@ -1480,7 +1490,18 @@ function billFromApi(row){
     receipt:null,
     receiptType:row.receiptPath?guessMimeFromReceiptPath(row.receiptPath):null,
     receiptPath:row.receiptPath||null,
-    approvals:{},
+    approvals:(()=>{
+      try{
+        const v=JSON.parse(row.approvalVotesJson||"null");
+        return(v&&typeof v==="object"&&!Array.isArray(v))?v:{};
+      }catch{return{};}
+    })(),
+    approvalRequired:(()=>{
+      try{
+        const a=JSON.parse(row.approversJson||"null");
+        return Array.isArray(a)?a:[];
+      }catch{return[];}
+    })(),
     auditTrail:[],
     seenBy:[],
     paidAt:row.paidAt,
@@ -1854,7 +1875,7 @@ function readLocalDepartments(){
 const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:""};
 const DRAFT_KEY="sol-exp-draft";
 const APPROVAL_BILL_FOCUS_KEY="sol-approval-focus-bill-id";
-const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,intervalMonths:"",endDate:"",dueDate:new Date().toISOString().slice(0,10),departmentId:"",ownerId:"",paymentChoice:"paid",paymentDate:new Date().toISOString().slice(0,10)};
+const BB={name:"",amount:"",frequency:"",category:"",dayOfMonth:"",description:"",receipt:null,receiptType:null,ivaRate:"",intervalMonths:"",endDate:"",dueDate:new Date().toISOString().slice(0,10),departmentId:"",ownerId:"",paymentChoice:"paid",paymentDate:new Date().toISOString().slice(0,10)};
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
 const Ctx=createContext(null);
@@ -3468,9 +3489,9 @@ function DashboardView(){
   const mTotalMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0).reduce((s,e)=>s+eurForExpense(e),0);
   const pendMine=mine.filter(e=>getItemStatus(e,cats,users)==="pending").length;
   const totApprovedMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved").reduce((s,e)=>s+eurForExpense(e),0);
-  const mTotal=isAdmin?mTotalAll:mTotalMine;
+  const mTotal=mTotalAll;
   const pend=isAdmin?pendAll:pendMine;
-  const dashTotApproved=isAdmin?totApproved:totApprovedMine;
+  const dashTotApproved=totApproved;
   const apprMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date?.slice(0,7)===ym);
   const apprSum=apprMine.reduce((s,e)=>s+eurForExpense(e),0);
   const apprCnt=apprMine.length;
@@ -3900,34 +3921,38 @@ function ApprovalsView(){
           const rowApproverIds=effectiveExpenseApproverIds(item,cats,users);
           const submitterName=(users.find(u=>u.id===item.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
           const ownerName=(users.find(u=>u.id===(item.ownerId||item.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
+          const titularNames=(item.paidBy||[]).length>1
+            ? (item.paidBy||[]).map(p=>{
+                const nm=(users.find(u=>u.id===p.userId)||{name:p.userId}).name;
+                return `${nm} (${fmt(Number(p.amount)||0)})`;
+              }).join(" · ")
+            : ownerName;
           const rowDate=isBill?(item.dueDate||item.date):item.date;
           const rowTitle=isBill?item.name:item.description;
           const st=getItemStatus(item,cats,users);
           const stStyle=ST[st]||ST.pending;
-          const myVote=approvalVoteFor(item.approvals||{},user.id,users);
           const canActOnRow=canAct&&rowApproverIds.includes(user.id);
           const isExpanded=itemId===expandedId;
           return(
-            <div key={`${item._approvalType}-${item.id}`} className="card row-hover" style={{marginBottom:9,background:"#fff",opacity:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none"}}>
+            <div key={`${item._approvalType}-${item.id}`} className="card row-hover" style={{marginBottom:9,background:st==="pending"?"#FFFBEB":st==="approved"?"#F0FDF4":st==="rejected"?"#FFF1F2":"#fff",opacity:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none"}}>
               <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7,cursor:"pointer"}} onClick={()=>setExpandedId(prev=>prev===itemId?null:itemId)}>
                 {!isBill&&AUTH_URL&&item.receiptPath&&<ReceiptThumb expenseId={item.id}/>}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-                        <span style={{
-                          fontSize:9, fontWeight:700, padding:"2px 7px", borderRadius:10,
-                          textTransform:"uppercase", letterSpacing:"0.05em",
-                          background: isBill ? "#E0F2FE" : "#EDE8E0",
-                          color:       isBill ? "#0369A1" : "#4B5E52",
-                          flexShrink:0
-                        }}>
-                          {isBill ? "Factura" : "Gasto"}
-                        </span>
                         <span style={{fontWeight:600,fontSize:16,color:"#4B5E52"}}>{rowTitle}</span>
                       </div>
-                      <div style={{fontSize:13,fontWeight:700,color:"#4B5E52",marginTop:2}}>Titular: {ownerName}</div>
-                      <div style={{fontSize:12,color:"#9CAA9F",marginTop:2}}>{item.category} · {fmtDate(rowDate)} · Enviado por: {submitterName}</div>
+                      <div style={{fontSize:13,fontWeight:700,color:"#4B5E52",marginTop:2}}>Titular: {titularNames}</div>
+                      <div style={{fontSize:12,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        <span>{item.category} · {fmtDate(rowDate)} · Enviado por: {submitterName}</span>
+                        <span style={{
+                          fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:10,
+                          textTransform:"uppercase",letterSpacing:"0.05em",
+                          background:isBill?"#FEF0E7":"#EDE8E0",
+                          color:isBill?"#92400E":"#4B5E52"
+                        }}>{isBill?"Factura":"Gasto"}</span>
+                      </div>
                     </div>
                     <div style={{textAlign:"right",flexShrink:0}}>
                       <div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
@@ -3963,14 +3988,7 @@ function ApprovalsView(){
                         <button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"rejected",isBill?"bill":"expense");setExpandedId(null);}}>{t("action.reject")}</button>
                       </div>
                     </div>
-                  ):(
-                    myVote?(
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>
-                        <div style={{fontSize:11,color:"#4B5E52"}}>{t("status."+myVote)}</div>
-                        <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setExpandedId(itemId)}>Cambiar</button>
-                      </div>
-                    ):null
-                  )
+                  ):null
                 ):(
                   <div style={{fontSize:11,color:"#4B5E52",background:"#F5F0EA",padding:"6px 9px",borderRadius:6}}>Solo lectura</div>
                 )
@@ -3987,7 +4005,7 @@ function ApprovalsView(){
 
 /* ── BILLS VIEW ────────────────────────────────────────────────────────────── */
 function BillsView(){
-  const{t,user,users,bills,cats,saveBills,isAdmin,totFixed,addBill,setAddBill,newBill,setNewBill,markBillPaid,departments,defaultDeptId,newBillRecPrev,setNewBillRecPrev,startCamForNewBill}=useApp();
+  const{t,user,users,bills,cats,saveBills,isAdmin,totFixed,addBill,setAddBill,newBill,setNewBill,markBillPaid,departments,defaultDeptId,newBillRecPrev,setNewBillRecPrev,startCamForNewBill,ivaRates}=useApp();
   const [selBillId,setSelBillId]=useState(null);
   useEffect(()=>{
     try{
@@ -4234,6 +4252,13 @@ function BillsView(){
             departmentId:newBill.departmentId,
             ownerId:newBill.ownerId||user.id,
             paidBy:billPaidBy,
+            ivaRate: newBill.ivaRate ? Number(newBill.ivaRate) : undefined,
+            ivaAmount: (()=>{
+              if(!newBill.ivaRate||!parseMoney(newBill.amount))return undefined;
+              const total=parseMoney(newBill.amount);
+              const rate=Number(newBill.ivaRate)/100;
+              return Math.round((total-(total/(1+rate)))*100)/100;
+            })(),
             ...(billSplitMode?{splitMode:billSplitMode}:{}),
             ...(!rec&&wantPaid?{alreadyPaid:true,paidAt:payDateStr}:{}),
           };
@@ -4351,8 +4376,8 @@ function BillsView(){
   return(
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
-        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G}}>{t("nav.bills")}</h1>
-        <button className="btn-primary" style={{fontSize:13,padding:"7px 14px"}} onClick={()=>setAddBill(v=>{const n=!v;if(n)setBillSubmitAttempt(false);return n;})}>{addBill?t("action.cancel"):t("action.addBill")}</button>
+        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:BILL_COLOR}}>{t("nav.bills")}</h1>
+        <button className="btn-primary" style={{fontSize:13,padding:"7px 14px",background:BILL_COLOR}} onClick={()=>setAddBill(v=>{const n=!v;if(n)setBillSubmitAttempt(false);return n;})}>{addBill?t("action.cancel"):t("action.addBill")}</button>
       </div>
       <div style={{marginBottom:11,fontSize:11,lineHeight:1.5,color:"#9CAA9F"}}>{t("bills.summary",{monthly:fmt(totFixed),annual:fmt(totFixed*12)})}</div>
       <div style={{marginBottom:11,fontSize:11,lineHeight:1.5,maxWidth:"100%"}}>
@@ -4439,11 +4464,32 @@ function BillsView(){
               <button className="btn-sm" style={{border:"none",background:"none",color:"#9CAA9F",fontSize:22,cursor:"pointer"}} onClick={()=>{setAddBill(false);setBillSubmitAttempt(false);}}>×</button>
             </div>
 
-            {/* Row 1: [Nombre de factura] [Importe] */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+            {/* Row 1: [Nombre de factura] [Importe] [IVA] */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
               <div><label className="lbl">{t("label.billName")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" placeholder={t("label.billName")} value={newBill.name} style={brs(bh&&!String(newBill.name||"").trim())} onChange={e=>setNewBill(p=>({...p,name:e.target.value}))}/></div>
               <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label><input className="inp" type="text" inputMode="decimal" placeholder="0,00" value={newBill.amount} style={brs(bh&&!billAmtOk)} onChange={e=>setNewBill(p=>({...p,amount:e.target.value}))}/></div>
+              <div>
+                <label className="lbl">{t("form.ivaRate")}</label>
+                <select className="inp" value={newBill.ivaRate||""} onChange={e=>setNewBill(p=>({...p,ivaRate:e.target.value}))}>
+                  <option value="">Sin IVA</option>
+                  {ivaRates.map(r=>(
+                    <option key={r.pct} value={String(r.pct)}>{r.label||r.pct+"%"}</option>
+                  ))}
+                </select>
+              </div>
             </div>
+            {newBill.ivaRate&&Number(newBill.ivaRate)>0&&parseMoney(newBill.amount)>0&&(()=>{
+              const total=parseMoney(newBill.amount);
+              const rate=Number(newBill.ivaRate)/100;
+              const base=Math.round((total/(1+rate))*100)/100;
+              const iva=Math.round((total-base)*100)/100;
+              return(
+                <div style={{display:"flex",gap:16,fontSize:11,color:"#6B7B72",background:"#F5F0EA",borderRadius:6,padding:"6px 10px",marginBottom:8}}>
+                  <span>{t("form.ivaBase")}: <strong>{fmt(base)}</strong></span>
+                  <span>{t("form.ivaAmountLabel")}: <strong>{fmt(iva)}</strong></span>
+                </div>
+              );
+            })()}
 
             {/* Row 2: [Titular] [Categoría] [Departamento] */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
@@ -4592,7 +4638,7 @@ function BillsView(){
       <div className="card" style={{padding:0,overflow:"hidden"}}>
         {(()=>{const pool=(byBillStatus[billStatusFlt]||bills);const visible=pool.filter(b=>{if(billCatFlt&&b.category!==billCatFlt)return false;if(billSubmFlt&&b.submittedBy!==billSubmFlt)return false;const refD=getBillFilterDateRef(b);if(billDateFrom&&refD<billDateFrom)return false;if(billDateTo&&refD>billDateTo)return false;if(billSearch&&!b.name.toLowerCase().includes(billSearch.toLowerCase())&&!(b.description||"").toLowerCase().includes(billSearch.toLowerCase()))return false;return true;});if(visible.length===0)return<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{bills.length===0?t("empty.bills"):t("empty.billsFiltered")}</div>;return visible.map((b,i)=>{const bst=getItemStatus(b,cats);const isSelBill=selBillId===b.id;const amtSuf=billListAmountSuffix(b,t);return(
             <div key={b.id}>
-            <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:1,cursor:"pointer",background:isSelBill?"#F5F0EA":"#FFFFFF"}}>
+            <div onClick={()=>setSelBillId(isSelBill?null:b.id)} className="row-hover" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 13px",borderBottom:(!isSelBill&&i<visible.length-1)?"1px solid #F5F0EA":"none",opacity:1,cursor:"pointer",background:isSelBill?"#F5F0EA":bst==="pending"?"#FFFBEB":bst==="approved"?"#F0FDF4":bst==="rejected"?"#FFF1F2":"#FFFFFF"}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                   <span style={{fontWeight:600,fontSize:12}}>{b.name}</span>
@@ -5418,7 +5464,7 @@ function DepartmentBudgetBars({t,rows,title}){
 
 /* ── DEPARTMENTS CRUD (superadmin, settings) ───────────────────────────────── */
 function DepartmentsSettingsBlock({t}){
-  const{departments,refreshDepartments,isSA}=useApp();
+  const{departments,refreshDepartments,isSA,isAdmin}=useApp();
   const [name,setName]=useState("");
   const [bud,setBud]=useState("");
   const [editId,setEditId]=useState(null);
@@ -5427,7 +5473,7 @@ function DepartmentsSettingsBlock({t}){
   const [err,setErr]=useState("");
   const [delId,setDelId]=useState(null);
   const [showArchived,setShowArchived]=useState(false);
-  if(!isSA)return null;
+  if(!isSA&&!isAdmin)return null;
   const sessionTok=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
   const saveLocal=(next)=>{
     lsSet(DEPTS_LS_KEY,next.map(x=>({id:x.id,name:x.name,budget:Number(x.budget)||0,archived:!!x.archived,createdAt:x.createdAt||Date.now()})));
@@ -5539,7 +5585,7 @@ function DepartmentsSettingsBlock({t}){
               </div>
               <div style={{display:"flex",gap:4}}>
                 <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(d.id);setEf({name:d.name,budget:String(d.budget!=null?d.budget:"")});setDelId(null);}}>{t("action.edit")}</button>
-                <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>{if(window.confirm("¿Archivar este departamento? No aparecerá en el panel ni en nuevos gastos, pero los gastos existentes se mantienen."))void setArchived(d,true);}}>Archivar</button>
+                {isSA&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>{if(window.confirm("¿Archivar este departamento? No aparecerá en el panel ni en nuevos gastos, pero los gastos existentes se mantienen."))void setArchived(d,true);}}>Archivar</button>}
               </div>
             </div>
           )}
@@ -5560,8 +5606,8 @@ function DepartmentsSettingsBlock({t}){
                     <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)} EUR</div>
                   </div>
                   <div style={{display:"flex",gap:4}}>
-                    <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>void setArchived(d,false)}>Restaurar</button>
-                    <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelId(d.id)}>{t("action.delete")}</button>
+                    {isSA&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>void setArchived(d,false)}>Restaurar</button>}
+                    {isSA&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelId(d.id)}>{t("action.delete")}</button>}
                   </div>
                 </div>
                 {delId===d.id&&(
@@ -5871,6 +5917,33 @@ function SettingsView(){
                 <div style={{display:"flex",gap:3,flexShrink:0,flexWrap:"wrap"}}>
                   <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(u.id);setEf({name:u.name,title:u.title||"",email:u.email||"",phone:u.phone||"",role:u.role,color:u.color});}}>{t("action.edit")}</button>
                   {AUTH_URL&&u.id!==user.id&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #C4B5FD",background:"transparent",color:"#5B21B6",cursor:"pointer"}} onClick={()=>{setResetFor(resetFor===u.id?null:u.id);setResetPwInput("");}}>{t("team.resetPassword")}</button>}
+                  {AUTH_URL&&u.id!==user.id&&(
+                    u.accountStatus==="active"
+                      ? <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #FCA5A5",background:"transparent",color:"#DC2626",cursor:"pointer"}}
+                          onClick={async()=>{
+                            if(!window.confirm(`¿Revocar acceso a ${u.name}? Podras restaurarlo despues.`))return;
+                            const tok=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
+                            const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(u.id)+"/suspend",{method:"POST",headers:{Authorization:"Bearer "+tok}});
+                            if(r.ok){
+                              saveUsers(users.map(x=>x.id===u.id?{...x,accountStatus:"denied"}:x));
+                            }else{
+                              const d=await r.json().catch(()=>({}));
+                              alert(d.error||"Error.");
+                            }
+                          }}>Revocar</button>
+                      : <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #86EFAC",background:"transparent",color:"#15803D",cursor:"pointer"}}
+                          onClick={async()=>{
+                            if(!window.confirm(`¿Restaurar acceso a ${u.name}?`))return;
+                            const tok=(()=>{try{return localStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
+                            const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(u.id)+"/restore",{method:"POST",headers:{Authorization:"Bearer "+tok}});
+                            if(r.ok){
+                              saveUsers(users.map(x=>x.id===u.id?{...x,accountStatus:"active",approvalStatus:"approved"}:x));
+                            }else{
+                              const d=await r.json().catch(()=>({}));
+                              alert(d.error||"Error.");
+                            }
+                          }}>Restaurar</button>
+                  )}
                   {u.id!==user.id&&<button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelC(u.id)}>{t("action.delete")}</button>}
                 </div>
               </div>
@@ -5994,7 +6067,7 @@ function SettingsView(){
         <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={pwSaving} onClick={()=>void savePw()}>{pwSaving?"…":(passwords?.[user.id]?t("action.changePassword"):t("action.setPassword"))}</button>
       </AccordionSection>
 
-      <DepartmentsSettingsBlock t={t}/>
+      {(isSA||isAdmin)&&<DepartmentsSettingsBlock t={t}/>}
 
       {isSA&&<AccordionSection title="Ajustes de aplicación">
         {appSetMsg&&<div style={{padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",fontSize:11,marginBottom:8}}>{appSetMsg}</div>}
@@ -6967,6 +7040,15 @@ function SolanaExpenses(){
   const markExpenseRead=(expId)=>{
     const exp=expenses.find(e=>e.id===expId);
     if(!exp||(exp.seenBy||[]).includes(user.id))return;
+    // Persist to localStorage keyed by user
+    try{
+      const key="sol-seen-"+user.id;
+      const seen=JSON.parse(localStorage.getItem(key)||"[]");
+      if(!seen.includes(expId)){
+        seen.push(expId);
+        localStorage.setItem(key,JSON.stringify(seen));
+      }
+    }catch(e){}
     saveExp(expenses.map(e=>e.id!==expId?e:{...e,seenBy:[...new Set([...(e.seenBy||[]),user.id])]}));
   };
 
@@ -7096,7 +7178,7 @@ function SolanaExpenses(){
   const dateFilterActive = dateFrom !== "" || dateTo !== "";
   const activeFilterCount = [catFlt, submFlt, dateFilterActive?"range":""]
     .filter(Boolean).length;
-  const isApprover=cats.some(c=>{
+  const isApprover = isAdmin || cats.some(c=>{
     if(c.archived)return false;
     return effectiveExpenseApproverIds({category:c.name},cats,users).includes(user.id);
   });
@@ -7146,7 +7228,11 @@ function SolanaExpenses(){
   const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
   const rpOpen=view==="expenses"&&(panel==="new"||(panel==="detail"&&detailId));
   const totalBadge=(myPending.length+myPendingBills.length);
-  const expenseNavBadge=expenses.filter(e=>e.submittedBy===user.id&&!(e.seenBy||[]).includes(user.id)).length;
+  const seenKey="sol-seen-"+user.id;
+  const localSeen=(()=>{try{return JSON.parse(localStorage.getItem(seenKey)||"[]");}catch{return[];}})();
+  const expenseNavBadge=expenses.filter(e=>
+    !(e.seenBy||[]).includes(user.id) && !localSeen.includes(e.id)
+  ).length;
   const goToMyRejected=()=>{
     myExpFilterClearedRef.current=true;
     setExpFlt("rejected");
@@ -7160,7 +7246,7 @@ function SolanaExpenses(){
   const navItems=[
     {id:"dashboard",label:t("nav.dashboard")},
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
-    ...((isApprover||isAdmin)?[{id:"approvals",label:t("nav.approvals"),badge:totalBadge}]:[]),
+    {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
     {id:"bills",    label:t("nav.bills")},
     {id:"reports",  label:t("nav.reports")},
     // Settings removed from nav — accessed via profile avatar
@@ -7168,7 +7254,7 @@ function SolanaExpenses(){
   const mobNav=[
     {id:"dashboard",label:t("nav.dashboard"),badge:0},
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
-    ...((isApprover||isAdmin)?[{id:"approvals",label:t("nav.approvals"),badge:totalBadge}]:[]),
+    {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
     {id:"bills",    label:t("nav.bills"),badge:0},
     {id:"reports",  label:t("nav.reports"),badge:0},
     // Settings accessed via mobile header avatar
