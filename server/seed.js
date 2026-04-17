@@ -35,6 +35,10 @@
 
 'use strict';
 
+const db = require('./db');
+const userStore = require('./userStore');
+void db;
+
 // ── SAFETY GATE — must be the very first check ───────────────────────────────
 if (process.env.ALLOW_SEED !== 'true') {
   console.error(
@@ -46,37 +50,27 @@ if (process.env.ALLOW_SEED !== 'true') {
 }
 
 const bcrypt = require('bcrypt');
-const fs     = require('fs');
-const path   = require('path');
-
 const BCRYPT_ROUNDS = 12;
-const DATA_DIR      = process.env.DATA_DIR
-  ? path.resolve(process.env.DATA_DIR)
-  : path.join(__dirname, 'data');
-
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const auditLog = require('./auditLog');
-auditLog.migrateLegacyFile(path.join(DATA_DIR, 'audit.log'));
 
 function seedAudit(event, data = {}) {
   auditLog.write(event, { ...data, source: 'seed' });
   console.log('[SEED-AUDIT]', event, data);
 }
 
-const { runUsersJsonMigration } = require('./migrate');
-runUsersJsonMigration({ dataDir: DATA_DIR, audit: seedAudit });
-
-const userStore = require('./userStore');
-
 // ── ENV ───────────────────────────────────────────────────────────────────────
-const ADMIN_EMAIL    = process.env.SEED_ADMIN_EMAIL    || 'r8magoz@gmail.com';
+const ADMIN_EMAIL    = process.env.SEED_ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
 const USER_EMAIL     = process.env.SEED_USER_EMAIL     || `testuser+${Date.now()}@solana-dev.local`;
 const USER_PASSWORD  = process.env.SEED_USER_PASSWORD  || 'SolanaTestUser99!';
 const PEND_EMAIL     = process.env.SEED_PENDING_EMAIL  || `pending+${Date.now()}@solana-dev.local`;
 const PEND_PASSWORD  = process.env.SEED_PENDING_PASSWORD || 'SolanaPending99!';
 
+if (!ADMIN_EMAIL) {
+  console.error('[SEED] SEED_ADMIN_EMAIL is required');
+  process.exit(1);
+}
 if (!ADMIN_PASSWORD) {
   console.error(
     '[SEED] Error: SEED_ADMIN_PASSWORD is required.\n' +
@@ -155,11 +149,10 @@ async function buildSeedUsers() {
 
 // ── UPSERT LOGIC ──────────────────────────────────────────────────────────────
 async function runSeed() {
-  const isReset = process.env.SEED_RESET === 'true';
   const seedUsers = await buildSeedUsers();
   const existingCount = userStore.getAllUsers().length;
 
-  console.log(`\n[SEED] Mode: ${isReset ? 'RESET (overwrite seed accounts)' : 'UPSERT (create or update)'}`);
+  console.log(`\n[SEED] Mode: ${process.env.SEED_RESET === 'true' ? 'RESET (overwrite seed accounts)' : 'UPSERT (create or update)'}`);
   console.log(`[SEED] Bootstrap admin email: ${ADMIN_EMAIL}`);
   console.log(`[SEED] Approved test user:    ${USER_EMAIL}`);
   console.log(`[SEED] Pending test user:     ${PEND_EMAIL}`);
@@ -169,10 +162,9 @@ async function runSeed() {
 
   for (const seedUser of seedUsers) {
     const { _seedRole, ...userRecord } = seedUser;
-    const existing = userStore.findUserByEmailOrId(userRecord.email, userRecord.id);
+    const result = userStore.upsertSeedUser(userRecord, SEED_TAG);
 
-    if (!existing) {
-      userStore.insertUser(userRecord);
+    if (result?.ok && result.action === 'created') {
       created++;
       seedAudit('seed_created', {
         userId: userRecord.id, email: userRecord.email,
@@ -180,19 +172,12 @@ async function runSeed() {
         seedRole: _seedRole,
       });
       console.log(`  ✓ Created: ${userRecord.email} (${_seedRole})`);
-    } else if (isReset || existing.seedTag === SEED_TAG) {
-      const merged = {
-        ...userRecord,
-        id: existing.id,
-        createdAt: existing.createdAt || userRecord.createdAt,
-        passwordHash: userRecord.passwordHash,
-      };
-      userStore.replaceUserById(merged);
+    } else if (result?.ok && result.action === 'updated') {
       updated++;
       seedAudit('seed_updated', {
         userId: userRecord.id, email: userRecord.email,
         role: userRecord.role, accountStatus: userRecord.accountStatus,
-        seedRole: _seedRole, reset: isReset,
+        seedRole: _seedRole, reset: process.env.SEED_RESET === 'true',
       });
       console.log(`  ↺ Updated: ${userRecord.email} (${_seedRole})`);
     } else {

@@ -103,6 +103,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS app_settings (
     key       TEXT PRIMARY KEY,
     value     TEXT NOT NULL,
+    description TEXT,
     updatedBy TEXT,
     updatedAt INTEGER
   );
@@ -137,6 +138,7 @@ addColumnIfMissing('bills', 'rejectedAt', 'INTEGER');
 addColumnIfMissing('bills', 'rejectionNote', 'TEXT');
 addColumnIfMissing('users', 'avatar', 'TEXT');
 addColumnIfMissing('departments', 'archived', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('app_settings', 'description', 'TEXT');
 
 function seedAppSettings() {
   const count = db.prepare(
@@ -146,7 +148,7 @@ function seedAppSettings() {
 
   const now = Date.now();
   const insert = db.prepare(
-    'INSERT INTO app_settings (key, value, updatedBy, updatedAt) VALUES (?, ?, ?, ?)'
+    'INSERT INTO app_settings (key, value, description, updatedBy, updatedAt) VALUES (?, ?, ?, ?, ?)'
   );
 
   insert.run('categories', JSON.stringify([
@@ -159,17 +161,17 @@ function seedAppSettings() {
     { id: 'c7', name: 'Food & Beverage', archived: false, approverIds: [] },
     { id: 'c8', name: 'Travel',          archived: false, approverIds: [] },
     { id: 'c9', name: 'Otro',            archived: false, approverIds: [] },
-  ]), 'system', now);
+  ]), 'Expense categories available for selection', 'system', now);
 
   insert.run('iva_rates', JSON.stringify([
     { value: 0,  name: 'exento'        },
     { value: 4,  name: 'superreducido' },
     { value: 10, name: 'reducido'      },
     { value: 21, name: 'general'       },
-  ]), 'system', now);
+  ]), 'Available IVA/VAT rates', 'system', now);
 
-  insert.run('iva_default', '21', 'system', now);
-  insert.run('currency',    '"EUR"', 'system', now);
+  insert.run('iva_default', '21', 'Default IVA rate applied to new expenses', 'system', now);
+  insert.run('currency',    '"EUR"', 'Default currency for the app', 'system', now);
 }
 seedAppSettings();
 

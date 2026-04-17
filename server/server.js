@@ -47,8 +47,12 @@ const RESEND_KEY   = process.env.RESEND_API_KEY;
 const FROM_EMAIL   = process.env.FROM_EMAIL   || 'noreply@solana.app';
 const ADMIN_EMAIL  = process.env.ADMIN_EMAIL  || '';
 const APP_URL      = process.env.APP_URL      || 'http://localhost:3001';
-const CORS_ORIGIN  = process.env.CORS_ORIGIN  || '*';
-const TOKEN_SECRET = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
+const CORS_ORIGIN  = process.env.CORS_ORIGIN  || null;
+const TOKEN_SECRET = process.env.TOKEN_SECRET;
+if (!process.env.TOKEN_SECRET) {
+  console.error('[SOLANA-AUTH] FATAL: TOKEN_SECRET env var must be set. Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  process.exit(1);
+}
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || null;
 const BCRYPT_ROUNDS = 12;
 
@@ -114,7 +118,6 @@ function audit(event, data = {}) {
   console.log('[AUDIT]', event, data);
 }
 
-// Token helpers removed — email verification flow not used in this version.
 
 // ── PASSWORD STRENGTH ─────────────────────────────────────────────────────────
 const COMMON_PASSWORDS = new Set([
@@ -172,7 +175,6 @@ const emailBase = (content) => `
   </div>
 </div></body></html>`;
 
-// verificationEmailHtml removed — no email verification in this version.
 
 const adminNotificationHtml = (user) => emailBase(`
   <p style="font-size:15px;font-weight:600;margin-bottom:8px">Nueva solicitud de acceso</p>
@@ -240,41 +242,6 @@ const app = express();
 let httpServer;
 global.__SOLANA_RESTORE_PENDING = false;
 
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(self), microphone=()');
-  next();
-});
-
-// Trust proxy for rate-limit IP detection (Render, Railway, etc.)
-app.set('trust proxy', 1);
-
-app.use((req, res, next) => {
-  if (global.__SOLANA_RESTORE_PENDING) {
-    return res.status(503).json({ error: 'Servidor en mantenimiento (restauración de base de datos).' });
-  }
-  next();
-});
-
-app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
-app.use(express.json({ limit: '6mb' }));
-app.use('/expenses', createExpensesRouter({
-  audit,
-  requireAuth: requireAuth,
-  DATA_DIR,
-  userStore: {
-    findUserById: userStore.findUserById,
-    findUserByEmail: userStore.findUserByEmail,
-  },
-}));
-app.use('/bills', createBillsRouter({
-  audit,
-  requireAuth: requireAuth,
-  DATA_DIR,
-}));
-
 // ── RATE LIMITERS ─────────────────────────────────────────────────────────────
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, max: 5,
@@ -288,7 +255,6 @@ const loginLimiter = rateLimit({
   standardHeaders: true, legacyHeaders: false,
 });
 
-// verifyLimiter removed — /auth/verify not used in this version.
 
 const forgotPasswordLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, max: 5,
@@ -387,6 +353,41 @@ function requireSuperAdmin(req, res, next) {
   next();
 }
 
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=()');
+  next();
+});
+
+// Trust proxy for rate-limit IP detection (Render, Railway, etc.)
+app.set('trust proxy', 1);
+
+app.use((req, res, next) => {
+  if (global.__SOLANA_RESTORE_PENDING) {
+    return res.status(503).json({ error: 'Servidor en mantenimiento (restauración de base de datos).' });
+  }
+  next();
+});
+
+app.use(cors({ origin: CORS_ORIGIN || false, credentials: true }));
+app.use(express.json({ limit: '6mb' }));
+app.use('/expenses', expensesApiLimiter, createExpensesRouter({
+  audit,
+  requireAuth: requireAuth,
+  DATA_DIR,
+  userStore: {
+    findUserById: userStore.findUserById,
+    findUserByEmail: userStore.findUserByEmail,
+  },
+}));
+app.use('/bills', billsApiLimiter, createBillsRouter({
+  audit,
+  requireAuth: requireAuth,
+  DATA_DIR,
+}));
+
 const { createDepartmentsRouter } = require('./departmentsRoutes');
 const { createReportsRouter } = require('./reportsRoutes');
 const { runBillMaintenance } = require('./billJobs');
@@ -469,7 +470,6 @@ app.post('/auth/signup', signupLimiter, async (req, res) => {
   res.json({ ok: true, message: 'Solicitud recibida. Un administrador aprobará tu acceso en breve.' });
 });
 
-// /auth/verify route removed — email verification not used in this version.
 // If a stale link is clicked, return 410 Gone.
 app.get('/auth/verify', (req, res) => {
   res.status(410).send('<html><body style="font-family:sans-serif;padding:40px;text-align:center"><h2>Enlace no válido</h2><p>Este enlace ya no está activo. El acceso se gestiona directamente por el administrador.</p></body></html>');
@@ -814,7 +814,7 @@ app.post('/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
       const newAdmin = {
         id:               newAdminId,
         email:            adminEmail,
-        name:             'Marc',
+        name:             adminEmail.split('@')[0] || 'Administrator',
         passwordHash:     tempHash,
         tempPasswordExp:  tempExpiry,
         role:             'superadmin',
@@ -1551,7 +1551,10 @@ app.post('/ai/scan-receipt', scanLimiter, async (req, res) => {
     console.warn('[scan] Could not load categories from DB:', e.message);
   }
 
+  let timeoutId;
   try {
+    const controller = new AbortController();
+    timeoutId = setTimeout(() => controller.abort(), 30000);
     const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -1559,6 +1562,7 @@ app.post('/ai/scan-receipt', scanLimiter, async (req, res) => {
         'x-api-key':         ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
       },
+      signal: controller.signal,
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 400,
@@ -1583,19 +1587,20 @@ app.post('/ai/scan-receipt', scanLimiter, async (req, res) => {
     audit('scan_success', { userId: session.userId });
     res.json({ ok: true, result: parsed });
   } catch (err) {
+    if (err && err.name === 'AbortError') {
+      audit('scan_timeout', { userId: session.userId });
+      return res.status(504).json({ error: 'Tiempo de espera agotado al procesar el escaneo.' });
+    }
     audit('scan_error', { userId: session.userId, error: err.message });
     res.status(500).json({ error: 'Error al procesar el escaneo.' });
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 });
 
 // GET /settings — returns all app_settings as { key: parsedValue }
 app.get('/settings', requireAdminSession, (req, res) => {
-  const session = (() => {
-    const auth = req.headers['authorization'] || '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-    return verifySessionToken(token);
-  })();
-  if (!session || session.role !== 'superadmin') {
+  if (req.userRole !== 'superadmin') {
     return res.status(403).json({ error: 'Solo el superadmin puede modificar ajustes.' });
   }
   const rows = db.prepare('SELECT key, value FROM app_settings').all();
@@ -1609,12 +1614,7 @@ app.get('/settings', requireAdminSession, (req, res) => {
 
 // PUT /settings/:key — upserts a single setting (superadmin only)
 app.put('/settings/:key', requireAdminSession, (req, res) => {
-  const session = (() => {
-    const auth = req.headers['authorization'] || '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-    return verifySessionToken(token);
-  })();
-  if (!session || session.role !== 'superadmin') {
+  if (req.userRole !== 'superadmin') {
     return res.status(403).json({ error: 'Solo el superadmin puede modificar ajustes.' });
   }
 
@@ -1641,9 +1641,9 @@ app.put('/settings/:key', requireAdminSession, (req, res) => {
       value     = excluded.value,
       updatedBy = excluded.updatedBy,
       updatedAt = excluded.updatedAt
-  `).run(key, serialized, session.userId, now);
+  `).run(key, serialized, req.userId, now);
 
-  audit('setting_updated', { key, userId: session.userId });
+  audit('setting_updated', { key, userId: req.userId });
   res.json({ ok: true, key, value });
 });
 
@@ -1664,7 +1664,6 @@ app.get('/health', (req, res) => {
 });
 
 // ── VERIFY PAGE HTML ──────────────────────────────────────────────────────────
-// verifyPageHtml removed — email verification not used in this version.
 
 // ── START ─────────────────────────────────────────────────────────────────────
 runUsersJsonMigration({ dataDir: DATA_DIR, audit });

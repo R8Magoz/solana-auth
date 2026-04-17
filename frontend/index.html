@@ -124,7 +124,6 @@ const TR = {
     "action.archive": "Archivar",
     "action.upload": "Subir foto",
     "action.changePhoto": "Cambiar foto",
-    "action.resetDemo": "Restaurar demo",
     "action.confirm": "Confirmar",
     "action.saveChanges": "Guardar cambios",
     "action.changePassword": "Cambiar contraseña",
@@ -225,7 +224,6 @@ const TR = {
     "split.minParticipants": "Selecciona al menos dos participantes en el reparto.",
     "split.submitterLocked": "Quien envía el gasto siempre participa en el reparto.",
     "msg.valueMustMatch": "Los valores deben sumar ",
-    "msg.resetConfirm": "¿Restablecer todos los datos al demo?",
     "msg.removeAccount": "¿Eliminar tu cuenta de este dispositivo?",
     "msg.pdfUploaded": "PDF subido",
     "msg.receiptLoading": "Cargando recibo…",
@@ -267,7 +265,6 @@ const TR = {
     "settings.dataSync": "Sincronización",
     "settings.dataSyncDesc": "Datos almacenados localmente. Exporta JSON y comparte con el equipo.",
     "settings.dangerZone": "Zona de peligro",
-    "settings.resetDesc": "Restablecer todos los datos al demo.",
     "settings.categories": "Categorías y Reglas de Aprobación",
     "settings.password": "Contraseña",
     "settings.passwordDesc": "Protege tu cuenta con una contraseña.",
@@ -602,17 +599,21 @@ const DEF_CATS=[
   {id:"c8",name:"Travel",          archived:false,approverIds:[]},
   {id:"c9",name:"Otro",           archived:false,approverIds:[]},
 ];
-const SEED_EXP = [];
-const SEED_BILLS = [];
 /* === END SEED DATA ========================================================== */
 
 /* ── VERSION & SCHEMA ──────────────────────────────────────────────────────── */
 const DATA_VERSION=6; // increment when schema changes; triggers normalize()
 /** Backend auth server URL. Set to empty string to use local-only mode (no signup/server login). */
 const AUTH_URL = (typeof window !== "undefined" && window.__SOLANA_AUTH_URL__) || "";
-/** Staging: allow sign-in without password (local users only). Email match if filled; otherwise first user. Set false for production. */
-const STAGING_OPEN_LOGIN = false;
-
+function keepServerWarm() {
+  if (!AUTH_URL) return;
+  const ping = () => {
+    fetch(AUTH_URL + "/health", { method: "GET" }).catch(() => {});
+  };
+  ping();
+  setInterval(ping, 10 * 60 * 1000);
+}
+keepServerWarm();
 /** HTTP API (same origin as AUTH_URL). Bearer token + refresh on 401. Offline write queue. */
 const OFFLINE_QUEUE_KEY = "solana_offline_queue";
 
@@ -2535,23 +2536,6 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
   const doLogin = async () => {
     const cleanEmail = email.trim().toLowerCase();
 
-    /* Open login only when there is no API — if AUTH_URL is set, we must hit /auth/login for Bearer token */
-    if (STAGING_OPEN_LOGIN && !AUTH_URL) {
-      setLoading(true);
-      clearMessages();
-      await new Promise(r => setTimeout(r, 200));
-      let u = cleanEmail
-        ? users.find(x => (x.email || "").toLowerCase() === cleanEmail)
-        : (users[0] || null);
-      setLoading(false);
-      if (u) {
-        onLogin(u);
-        return;
-      }
-      setErr(tl("login.invalidCreds"));
-      return;
-    }
-
     if (!cleanEmail || !pw) {
       setErr(tl("login.invalidCreds"));
       return;
@@ -2562,16 +2546,22 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
 
     // 1. Try Remote Auth (Render backend)
     if (typeof AUTH_URL !== "undefined" && AUTH_URL) {
+      let timeoutId;
       try {
+        setErr("Conectando con el servidor…");
+        const controller = new AbortController();
+        timeoutId = setTimeout(() => controller.abort(), 8000);
         console.log("[LOGIN] AUTH_URL:", AUTH_URL, "email:", cleanEmail);
         const r = await fetch(AUTH_URL + "/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             email: cleanEmail,
             password: pw
           })
         });
+        clearTimeout(timeoutId);
 
         const d = await r.json();
         console.log("[LOGIN] server response:", r.status, d);
@@ -2628,38 +2618,18 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
         console.log("[LOGIN] onLogin called with user:", mergedUser?.id, mergedUser?.role);
         return;
       } catch (e) {
+        try { clearTimeout(timeoutId); } catch (_) {}
         console.error("[LOGIN] fetch threw:", e);
         appLog("warn", "auth_server_unreachable", { error: e?.message });
         setLoading(false);
-        setErr("El servidor no responde. Comprueba tu conexión e inténtalo de nuevo.");
+        setErr("No se puede conectar con el servidor. Comprueba tu conexión.");
         return;
       }
     }
 
-    // 2. Local fallback — only when AUTH_URL is not configured
-    if (AUTH_URL) {
-      setLoading(false);
-      setErr("El servidor no responde. Inténtalo de nuevo.");
-      return;
-    }
-    await new Promise(r => setTimeout(r, 280));
-    const u = users.find(u => (u.email || "").toLowerCase() === cleanEmail);
-
-    if (!u) {
-      setLoading(false);
-      setErr(tl("login.invalidCreds"));
-      return;
-    }
-
-    const stored = passwords?.[u.id];
-    if (stored && pw !== stored) {
-      setLoading(false);
-      setErr(tl("login.invalidCreds"));
-      return;
-    }
-
     setLoading(false);
-    onLogin(u);
+    setErr(tl("login.invalidCreds"));
+    return;
   };
 
   /* ── Forgot password ── */
@@ -5294,7 +5264,7 @@ function AdminReadme(){
 
           <div style={S.heading}>RESOLUCIÓN DE PROBLEMAS COMUNES</div>
           <div style={S.body}>
-            <b>"Storage full"</b> → Ve a Zona peligrosa → Exporta JSON → luego elimina recibos grandes o usa "Restablecer datos demo".<br/>
+            <b>"Storage full"</b> → Ve a Zona peligrosa → Exporta JSON y elimina recibos grandes.<br/>
             <b>Usuario no puede aprobar</b> → Comprueba que su ID aparezca en <span style={S.code}>approverIds</span> de la categoría.<br/>
             <b>Ítem sin código</b> → Ítems migrados de v1/v2 pueden carecer de código; se asigna al primer guardado (normalizeItem).<br/>
             <b>Login con servidor de auth</b> → Verifica que <span style={S.code}>AUTH_URL</span> apunte al servidor activo y que CORS_ORIGIN esté configurado.<br/>
@@ -6200,8 +6170,6 @@ function SettingsView(){
 
       {/* ── Danger zone (superadmin only) ── */}
       {isSA&&<AccordionSection title={t("settings.accordion.danger")} accent={"#991B1B"}>
-        <p style={{fontSize:11,color:"#6B7B72",marginBottom:8}}>{t("settings.resetDesc")}</p>
-        <button className="btn-danger" style={{fontSize:11,padding:"5px 11px"}} onClick={()=>{if(window.confirm(t("msg.resetConfirm"))){if(AUTH_URL){alert("No disponible cuando la app usa el servidor.");return;}saveExp(SEED_EXP);saveBills(SEED_BILLS);}}}>{t("action.resetDemo")}</button>
         <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #EDE8E0"}}>
           <div style={{fontWeight:600,fontSize:12,color:"#991B1B",marginBottom:4}}>{t("settings.deleteAccount")}</div>
           {!dSelf?<button className="btn-danger" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setDSelf(true)}>{t("settings.requestDeletion")}</button>:(
@@ -6234,12 +6202,12 @@ function SolanaExpenses(){
   const [user,    setUser]    =useState(null);
   const [expenses,setExpenses]=useState(()=>{
     if(AUTH_URL)return[];
-    const d=ls("sol-exp",SEED_EXP);
+    const d=ls("sol-exp",[]);
     return d.map(e=>normalizeItem(e,"expense"));
   });
   const [bills,   setBills]   =useState(()=>{
     if(AUTH_URL)return[];
-    const d=ls("sol-bills",SEED_BILLS);
+    const d=ls("sol-bills",[]);
     return d.map(b=>normalizeItem(b,"bill"));
   });
   const [ledgerLoading,setLedgerLoading]=useState(false);
