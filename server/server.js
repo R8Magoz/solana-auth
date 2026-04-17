@@ -562,15 +562,19 @@ app.put('/admin/users/:id', requireAdminSession, async (req, res) => {
   const users = userStore.getAllUsers();
   const user = users.find(u => u.id === id);
   if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
-  // Prevent role escalation to superadmin unless caller is superadmin
-  if (role && role === 'superadmin' && req.userRole !== 'superadmin') {
-    return res.status(403).json({ error: 'Solo superadmin puede asignar ese rol.' });
+  if (role) {
+    // Only superadmin can change roles at all
+    if (req.userRole !== 'superadmin') {
+      return res.status(403).json({ error: 'Solo superadmin puede cambiar roles.' });
+    }
+    if (['user', 'admin', 'superadmin'].includes(role)) {
+      user.role = role;
+    }
   }
   if (name) user.name = String(name).trim().slice(0, 100);
   if (email) user.email = String(email).trim().toLowerCase().slice(0, 254);
   if (phone !== undefined) user.phone = String(phone || '').trim().slice(0, 30);
   if (title !== undefined) user.title = String(title || '').trim().slice(0, 100);
-  if (role && ['user', 'admin', 'superadmin'].includes(role)) user.role = role;
   if (color) user.color = String(color).trim().slice(0, 20);
   userStore.replaceUserById(user);
   audit('admin_user_updated', { targetId: id, by: req.userId });
