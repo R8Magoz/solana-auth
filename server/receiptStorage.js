@@ -67,7 +67,7 @@ function uploadReceiptToCloudinary(buf, mime, entityId) {
         folder,
         public_id: publicId,
         overwrite: true,
-        resource_type: 'image',
+        resource_type: 'auto',
         unique_filename: false,
         use_filename: false,
       },
