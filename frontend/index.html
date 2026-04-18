@@ -373,7 +373,7 @@ const TR = {
     "cat.other": "Otros",
     "reports.title": "Informes",
     "reports.monthlyTrend": "Tendencia mensual",
-    "reports.byCategory": "Gasto total por categoría (gastos + facturas)",
+    "reports.byCategory": "Gasto total por categoría",
     "reports.perPerson": "Inversión por persona",
     "reports.personLogHint": "Total aprobado según tu parte en el reparto. La lista incluye gastos aprobados y pendientes.",
     "reports.submittedCount": "{{count}} movimientos",
@@ -487,11 +487,12 @@ const TR = {
     "expenses.termNet60": "NET-60",
     "expenses.termCustom": "Personalizado",
     "expenses.termCustomDays": "Días",
-    "expenses.cadenceOnce": "Solo esta vez",
-    "expenses.cadenceWeekly": "Cada semana",
-    "expenses.cadenceBiweekly": "Cada 2 semanas",
-    "expenses.cadenceMonthly": "Cada mes",
-    "expenses.cadenceYearly": "Cada año",
+    "expenses.cadenceOnce": "Una vez",
+    "expenses.cadenceMonthly": "Mensual",
+    "expenses.cadenceQuarterly": "Trimestral",
+    "expenses.cadenceYearly": "Anual",
+    "expenses.cadenceCustom": "Personalizado",
+    "expenses.cadenceEveryXMonths": "Cada X meses",
     "expenses.confirmMarkPaid": "¿Registrar pago?",
     "expenses.paidDateLabel": "Fecha de pago",
     "expenses.noAttachment": "Sin adjunto",
@@ -1429,17 +1430,39 @@ function computeInvoiceDueISO(form){
   if(manual&&String(manual).length>=10)return String(manual).slice(0,10);
   return base.slice(0,10);
 }
-function nextCadencePreviewISO(baseDate,cadenceKey){
+function normalizeCadenceCustomMonths(v){
+  const n=parseInt(String(v??"").trim(),10);
+  if(Number.isNaN(n))return 1;
+  return Math.max(1,Math.min(60,n));
+}
+function recurrenceRuleLabel(rule,t){
+  const r=String(rule||"").toLowerCase();
+  if(r==="monthly")return t("expenses.cadenceMonthly");
+  if(r==="quarterly")return t("expenses.cadenceQuarterly");
+  if(r==="yearly")return t("expenses.cadenceYearly");
+  if(r.startsWith("custom:")){
+    const n=normalizeCadenceCustomMonths(r.slice(7));
+    return `${t("expenses.cadenceCustom")} (${n}m)`;
+  }
+  if(r==="weekly")return "Semanal";
+  if(r==="biweekly")return "Quincenal";
+  return r||"";
+}
+function nextCadencePreviewISO(baseDate,cadenceKey,customMonths){
   if(!baseDate||cadenceKey==="once"||!cadenceKey)return"";
-  if(cadenceKey==="weekly")return addDaysToISODate(baseDate,7);
-  if(cadenceKey==="biweekly")return addDaysToISODate(baseDate,14);
   if(cadenceKey==="monthly")return addMonthsToISODate(baseDate,1);
+  if(cadenceKey==="quarterly")return addMonthsToISODate(baseDate,3);
+  if(cadenceKey==="custom")return addMonthsToISODate(baseDate,normalizeCadenceCustomMonths(customMonths));
   if(cadenceKey==="yearly")return addYearsToISODate(baseDate,1);
   return"";
 }
-function cadenceToRecurringPayload(cadenceKey){
+function cadenceToRecurringPayload(cadenceKey,customMonths){
   if(!cadenceKey||cadenceKey==="once")return{recurring:0,recurrenceRule:null};
-  const map={weekly:"weekly",biweekly:"biweekly",monthly:"monthly",yearly:"yearly"};
+  const map={monthly:"monthly",quarterly:"quarterly",yearly:"yearly"};
+  if(cadenceKey==="custom"){
+    const n=normalizeCadenceCustomMonths(customMonths);
+    return{recurring:1,recurrenceRule:`custom:${n}`};
+  }
   const rule=map[cadenceKey];
   if(!rule)return{recurring:0,recurrenceRule:null};
   return{recurring:1,recurrenceRule:rule};
@@ -1447,9 +1470,14 @@ function cadenceToRecurringPayload(cadenceKey){
 function invoiceForecastMonthlyEUR(e){
   const ev=eurForExpense(e);
   const r=e.recurrenceRule||"monthly";
+  if(r==="quarterly")return ev/3;
+  if(r==="yearly")return ev/12;
+  if(String(r).startsWith("custom:")){
+    const n=normalizeCadenceCustomMonths(String(r).slice(7));
+    return ev/n;
+  }
   if(r==="weekly")return ev*52/12;
   if(r==="biweekly")return ev*26/12;
-  if(r==="yearly")return ev/12;
   return ev;
 }
 function daysUntilISO(iso){
@@ -1644,6 +1672,53 @@ function migrateDataModel(){
     }
   }catch(e){}
 }
+function mapBillCondicionesPago(bill){
+  const mode=String(bill?.paymentTermMode??"").toLowerCase().trim();
+  const daysRaw=bill?.paymentTermDays;
+  const days=Number(daysRaw);
+  if(mode==="0"||mode==="cash"||mode==="contado")return"Al contado";
+  if(mode==="15"||days===15)return"A 15 días";
+  if(mode==="30"||days===30)return"A 30 días";
+  if(mode==="60"||days===60)return"A 60 días";
+  if(mode==="custom")return"Personalizado";
+  if(days===0)return"Al contado";
+  return"Al contado";
+}
+function migrateBillsToExpensesOnce(){
+  try{
+    if(AUTH_URL)return;
+    if(localStorage.getItem("_billsMigrated")==="1")return;
+    const expRaw=localStorage.getItem("sol-exp");
+    const billRaw=localStorage.getItem("sol-bills");
+    const expArr=expRaw?JSON.parse(expRaw):[];
+    const billArr=billRaw?JSON.parse(billRaw):[];
+    const expenses=Array.isArray(expArr)?expArr:[];
+    const bills=Array.isArray(billArr)?billArr:[];
+    const existingIds=new Set(expenses.map(x=>String(x?.id||"")).filter(Boolean));
+    const migrated=[];
+    for(const b of bills){
+      if(!b||typeof b!=="object")continue;
+      const id=String(b.id||"");
+      if(!id||existingIds.has(id))continue;
+      migrated.push({
+        ...b,
+        isFactura:true,
+        proveedor:String(b.vendor||b.name||"").trim(),
+        condicionesPago:mapBillCondicionesPago(b),
+        _migratedFromBill:true,
+      });
+      existingIds.add(id);
+    }
+    if(migrated.length){
+      localStorage.setItem("sol-exp",JSON.stringify([...expenses,...migrated]));
+    }
+    localStorage.removeItem("sol-bills");
+    localStorage.setItem("_billsMigrated","1");
+    console.log("[MIGRATION] Bills to expenses migration executed.",{migrated:migrated.length});
+  }catch(e){
+    console.warn("[MIGRATION] Bills to expenses migration failed:",e?.message||e);
+  }
+}
 
 const genUuid=()=>{try{if(typeof crypto!=="undefined"&&crypto.randomUUID)return crypto.randomUUID();}catch(e){}return"c"+Date.now()+"-"+Math.random().toString(36).slice(2,11);};
 /** ratePercent: 0–100 */
@@ -1761,7 +1836,7 @@ function readLocalDepartments(){
   }
 }
 const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
-  expenseType:"expense",vendor:"",paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once"};
+  expenseType:"expense",vendor:"",paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",isFactura:false,proveedor:""};
 const DRAFT_KEY="sol-exp-draft";
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
@@ -2840,13 +2915,17 @@ function NewPanel(){
   const amountNum=parseMoney(form.amount);
   const amountOk=amountNum>0;
   const isInv=form.expenseType==="invoice";
+  const isFactura=!!form.isFactura;
+  const facturaColor="#C4622D";
+  const actionColor=isFactura?facturaColor:G;
   const termDays=paymentTermDaysFromForm(form);
   const vendorOk=!isInv||String(form.vendor||"").trim().length>0;
+  const proveedorOk=!isFactura||String(form.proveedor||"").trim().length>0;
   const duePickOk=!isInv||termDays>0||String(form.invoiceDueDateDirect||"").trim().length>=10;
-  const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId&&vendorOk&&duePickOk;
+  const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId&&vendorOk&&proveedorOk&&duePickOk;
   const duePreviewISO=isInv?computeInvoiceDueISO(form):"";
   const duePreviewLbl=duePreviewISO?formatDMYFromISO(duePreviewISO):"";
-  const nextPrevISO=nextCadencePreviewISO(form.date,form.cadenceKey);
+  const nextPrevISO=nextCadencePreviewISO(form.date,form.cadenceKey,form.cadenceCustomMonths);
   const nextPrevLbl=nextPrevISO?formatDMYFromISO(nextPrevISO):"";
   const [submitAttempt,setSubmitAttempt]=useState(false);
   useEffect(()=>{if(user?.id&&!form.ownerId)setForm(p=>({...p,ownerId:user.id}));},[user?.id,form.ownerId,setForm]);
@@ -2892,7 +2971,7 @@ function NewPanel(){
     draftTimer.current=setTimeout(()=>{
       try{
         const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate||String(readIvaDefault()),departmentId:form.departmentId||"",ownerId:form.ownerId||"",
-          expenseType:form.expenseType||"expense",vendor:form.vendor||"",paymentTermMode:form.paymentTermMode||"0",paymentTermCustomDays:form.paymentTermCustomDays||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once"},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
+          expenseType:form.expenseType||"expense",vendor:form.vendor||"",paymentTermMode:form.paymentTermMode||"0",paymentTermCustomDays:form.paymentTermCustomDays||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once",cadenceCustomMonths:form.cadenceCustomMonths||"1",isFactura:!!form.isFactura,proveedor:form.proveedor||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
         localStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
       }catch(e){}
     },500);
@@ -2924,19 +3003,19 @@ function NewPanel(){
     setSplits(next.map(s=>s.checked?{...s,percent:eqPct,value:eqAmt}:{...s,percent:0,value:0}));
   };
   return(
-    <div>
+    <div style={isFactura?{borderTop:`3px solid ${facturaColor}`,paddingTop:8,borderRadius:8}:null}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <div style={{fontWeight:700,fontSize:15,color:G}}>{isInv?t("dash.newInvoice"):t("form.newExpense")}</div>
+        <div style={{fontWeight:700,fontSize:15,color:isFactura?facturaColor:G}}>{isInv?t("dash.newInvoice"):t("form.newExpense")}</div>
         <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:21,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{resetForm();setPanel(null);}}>×</button>
       </div>
       <div style={{display:"flex",gap:4,marginBottom:12,background:"#EDE8E0",borderRadius:10,padding:4}}>
         {[["expense",t("expenses.typeExpense")],["invoice",t("expenses.typeInvoice")]].map(([k,lb])=>(
-          <button key={k} type="button" style={{flex:1,padding:"7px 8px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit",transition:"background 0.15s,color 0.15s",background:(form.expenseType||"expense")===k?G:"transparent",color:(form.expenseType||"expense")===k?"#fff":"#4B5E52"}}
+          <button key={k} type="button" style={{flex:1,padding:"7px 8px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit",transition:"background 0.15s,color 0.15s",background:(form.expenseType||"expense")===k?actionColor:"transparent",color:(form.expenseType||"expense")===k?"#fff":"#4B5E52"}}
             onClick={()=>{
               setForm(p=>{
                 const next={...p,expenseType:k};
                 if(k==="invoice"){
-                  return{...next,vendor:p.vendor||"",paymentTermMode:p.paymentTermMode||"0",invoiceDueDateDirect:p.invoiceDueDateDirect||p.date||"",cadenceKey:p.cadenceKey||"once"};
+                  return{...next,vendor:p.vendor||"",paymentTermMode:p.paymentTermMode||"0",invoiceDueDateDirect:p.invoiceDueDateDirect||p.date||"",cadenceKey:p.cadenceKey||"once",cadenceCustomMonths:p.cadenceCustomMonths||"1"};
                 }
                 return next;
               });
@@ -2947,10 +3026,10 @@ function NewPanel(){
         <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:8,padding:"10px 11px",marginBottom:11,fontSize:11,color:"#92400E",lineHeight:1.45}}>
           <div style={{marginBottom:8}}>{t("draft.banner").replace("{date}",new Date(draftPrompt.savedAt).toLocaleString())}</div>
           <div style={{display:"flex",gap:8}}>
-            <button type="button" className="btn-sm" style={{flex:1,fontSize:11}} onClick={()=>{
+            <button type="button" className="btn-sm" style={{flex:1,fontSize:11,background:actionColor}} onClick={()=>{
               const f=draftPrompt.form||{};
               setForm(p=>({...p,...f,date:f.date!=null?String(f.date):"",ivaRate:f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):String(readIvaDefault()),departmentId:f.departmentId!=null?String(f.departmentId):"",
-                expenseType:f.expenseType||p.expenseType||"expense",vendor:f.vendor!=null?String(f.vendor):"",paymentTermMode:f.paymentTermMode!=null?String(f.paymentTermMode):"0",paymentTermCustomDays:f.paymentTermCustomDays!=null?String(f.paymentTermCustomDays):"30",invoiceDueDateDirect:f.invoiceDueDateDirect!=null?String(f.invoiceDueDateDirect):"",cadenceKey:f.cadenceKey||"once"}));
+                expenseType:f.expenseType||p.expenseType||"expense",vendor:f.vendor!=null?String(f.vendor):"",paymentTermMode:f.paymentTermMode!=null?String(f.paymentTermMode):"0",paymentTermCustomDays:f.paymentTermCustomDays!=null?String(f.paymentTermCustomDays):"30",invoiceDueDateDirect:f.invoiceDueDateDirect!=null?String(f.invoiceDueDateDirect):"",cadenceKey:f.cadenceKey||"once",cadenceCustomMonths:f.cadenceCustomMonths!=null?String(f.cadenceCustomMonths):"1",isFactura:!!f.isFactura,proveedor:f.proveedor!=null?String(f.proveedor):""}));
               if(draftPrompt.splitOn&&draftPrompt.splits?.length){
                 let m=draftPrompt.spMode||"equal";
                 if(m==="value")m="amount";
@@ -2959,7 +3038,7 @@ function NewPanel(){
               }
               setDraftPrompt(null);
             }}>{t("draft.restore")}</button>
-            <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>{try{localStorage.removeItem(DRAFT_KEY);}catch(e){}setDraftPrompt(null);}}>{t("draft.discard")}</button>
+            <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px",borderColor:actionColor,color:actionColor}} onClick={()=>{try{localStorage.removeItem(DRAFT_KEY);}catch(e){}setDraftPrompt(null);}}>{t("draft.discard")}</button>
           </div>
         </div>
       )}
@@ -2968,9 +3047,23 @@ function NewPanel(){
         <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.description")} <span style={{color:"#A32D2D"}}>*</span></label>
           <input className="inp" placeholder={t("label.description")} value={form.description} style={rs(hi&&!String(form.description||"").trim())} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
         </div>
+        <div style={{gridColumn:"1/-1"}}>
+          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,fontWeight:600,color:"#6B7B72",cursor:"pointer"}}>
+            <input type="checkbox" checked={!!form.isFactura} onChange={e=>setForm(p=>({...p,isFactura:e.target.checked}))}/>
+            <span>Factura de proveedor</span>
+          </label>
+        </div>
+        {isFactura&&(
+          <div style={{gridColumn:"1/-1"}}><label className="lbl">Proveedor <span style={{color:"#A32D2D"}}>*</span></label>
+            <input className="inp" value={form.proveedor||""} style={rs(hi&&!String(form.proveedor||"").trim())} onChange={e=>setForm(p=>({...p,proveedor:e.target.value}))}/>
+          </div>
+        )}
         <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label>
           <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount} style={rs(hi&&!amountOk)}
             onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amount:v}));}}/>
+        </div>
+        <div><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
+          <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
         </div>
         <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={form.category} style={rs(hi&&!String(form.category||"").trim())} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
@@ -2978,55 +3071,11 @@ function NewPanel(){
             {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
           </select>
         </div>
-        {isInv&&(
-          <>
-            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.vendor")} <span style={{color:"#A32D2D"}}>*</span></label>
-              <input className="inp" value={form.vendor||""} style={rs(hi&&!String(form.vendor||"").trim())} onChange={e=>setForm(p=>({...p,vendor:e.target.value}))}/>
-            </div>
-            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.paymentTerms")}</label>
-              <select className="inp" value={String(form.paymentTermMode||"0")} onChange={e=>setForm(p=>({...p,paymentTermMode:e.target.value}))}>
-                <option value="0">{t("expenses.termCash")}</option>
-                <option value="15">{t("expenses.termNet15")}</option>
-                <option value="30">{t("expenses.termNet30")}</option>
-                <option value="60">{t("expenses.termNet60")}</option>
-                <option value="custom">{t("expenses.termCustom")}</option>
-              </select>
-            </div>
-            {(form.paymentTermMode==="custom")&&(
-              <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.termCustomDays")}</label>
-                <input className="inp" type="number" min={0} value={form.paymentTermCustomDays||""} onChange={e=>setForm(p=>({...p,paymentTermCustomDays:e.target.value}))}/>
-              </div>
-            )}
-            <div style={{gridColumn:"1/-1",fontSize:12,color:"#4B5E52"}}>
-              {termDays===0?(
-                <><label className="lbl">{t("expenses.dueDate")}</label>
-                  <input className="inp" type="date" value={String(form.invoiceDueDateDirect||"").slice(0,10)} style={rs(hi&&!duePickOk)} onChange={e=>setForm(p=>({...p,invoiceDueDateDirect:e.target.value}))}/></>
-              ):(
-                <div style={{padding:"6px 0"}}>{t("expenses.vence")} <strong>{duePreviewLbl||"—"}</strong></div>
-              )}
-            </div>
-          </>
-        )}
-        <div><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
-          <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
-        </div>
         <div><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={form.departmentId||""} style={rs(hi&&!String(form.departmentId||"").trim())} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))}>
             <option value="">{departments.length===0?t("msg.deptRequired"):t("label.department")}</option>
             {departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
-        </div>
-        <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.cadence")}</label>
-          <select className="inp" value={form.cadenceKey||"once"} onChange={e=>setForm(p=>({...p,cadenceKey:e.target.value}))}>
-            <option value="once">{t("expenses.cadenceOnce")}</option>
-            <option value="weekly">{t("expenses.cadenceWeekly")}</option>
-            <option value="biweekly">{t("expenses.cadenceBiweekly")}</option>
-            <option value="monthly">{t("expenses.cadenceMonthly")}</option>
-            <option value="yearly">{t("expenses.cadenceYearly")}</option>
-          </select>
-          {(form.cadenceKey&&form.cadenceKey!=="once")&&nextPrevLbl&&(
-            <div style={{fontSize:11,color:"#6B7B72",marginTop:6}}>{t("expenses.recurringPreview",{date:nextPrevLbl})}</div>
-          )}
         </div>
         <div><label className="lbl">Titular del gasto <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={ownerId} style={rs(hi&&!ownerId)} onChange={e=>setForm(p=>({...p,ownerId:e.target.value}))}>
@@ -3038,15 +3087,53 @@ function NewPanel(){
             {ivaRates.map(r=><option key={String(r.value)+"-"+r.name} value={r.value}>{formatIvaOptionLabel(r)}</option>)}
           </select>
         </div>
-      </div>
-      <div style={{marginBottom:10}}>
-        <label className="lbl">{t("form.receiptOptional")}</label>
-        {recPrev&&recPrev!=="PDF"&&<div style={{marginBottom:6,position:"relative"}}><img src={recPrev} alt="" style={{width:"100%",maxHeight:130,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button type="button" style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setReceipt(null);setRecPrev(null);ivaScanB64Ref.current=null;}}>×</button></div>}
-        {recPrev==="PDF"&&<div style={{background:"#F5F0EA",borderRadius:7,padding:"6px 9px",marginBottom:6,display:"flex",justifyContent:"space-between",fontSize:11,color:"#4B5E52"}}><span>{t("msg.pdfUploaded")}</span><button type="button" style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={()=>{setReceipt(null);setRecPrev(null);ivaScanB64Ref.current=null;}}>{t("action.remove")}</button></div>}
-        <div style={{display:"flex",gap:6}}>
-          <button type="button" className="btn-sm" style={{flex:1,fontSize:11,padding:"5px 7px"}} onClick={startCam}>{t("action.scanCamera")}</button>
-          <button type="button" style={{flex:1,padding:"5px 7px",borderRadius:6,border:`1.5px solid ${G}`,background:"transparent",color:G,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>fileRef.current?.click()}>{t("action.uploadFile")}</button>
+        <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.cadence")}</label>
+          <select className="inp" value={form.cadenceKey||"once"} onChange={e=>setForm(p=>({...p,cadenceKey:e.target.value}))}>
+            <option value="once">{t("expenses.cadenceOnce")}</option>
+            <option value="monthly">{t("expenses.cadenceMonthly")}</option>
+            <option value="quarterly">{t("expenses.cadenceQuarterly")}</option>
+            <option value="yearly">{t("expenses.cadenceYearly")}</option>
+            <option value="custom">{t("expenses.cadenceCustom")}</option>
+          </select>
+          {form.cadenceKey==="custom"&&(
+            <div style={{marginTop:6}}>
+              <label className="lbl">{t("expenses.cadenceEveryXMonths")}</label>
+              <input className="inp" type="number" min={1} max={60} value={form.cadenceCustomMonths||"1"} onChange={e=>setForm(p=>({...p,cadenceCustomMonths:e.target.value}))}/>
+            </div>
+          )}
+          {(form.cadenceKey&&form.cadenceKey!=="once")&&nextPrevLbl&&(
+            <div style={{fontSize:11,color:"#6B7B72",marginTop:6}}>{t("expenses.recurringPreview",{date:nextPrevLbl})}</div>
+          )}
         </div>
+        {isFactura&&(
+          <>
+            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.paymentTerms")}</label>
+              <select className="inp" value={String(form.paymentTermMode||"0")} onChange={e=>setForm(p=>({...p,paymentTermMode:e.target.value}))}>
+                <option value="0">Al contado</option>
+                <option value="15">A 15 días</option>
+                <option value="30">A 30 días</option>
+                <option value="60">A 60 días</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+            <div style={{gridColumn:"1/-1",fontSize:12,color:"#4B5E52"}}>
+              <label className="lbl">{t("expenses.dueDate")}</label>
+              <input
+                className="inp"
+                type="date"
+                readOnly={form.paymentTermMode!=="custom"}
+                value={form.paymentTermMode==="custom"
+                  ? String(form.invoiceDueDateDirect||"").slice(0,10)
+                  : addDaysToISODate(form.date, Number(form.paymentTermMode)||0)}
+                style={rs(hi&&!duePickOk)}
+                onChange={e=>{
+                  if(form.paymentTermMode!=="custom")return;
+                  setForm(p=>({...p,invoiceDueDateDirect:e.target.value}));
+                }}
+              />
+            </div>
+          </>
+        )}
       </div>
       <div style={{marginBottom:12}}>
       <div style={{marginBottom:12,background:GL,borderRadius:8,padding:10}}>
@@ -3060,6 +3147,15 @@ function NewPanel(){
       <div style={{marginBottom:12}}><label className="lbl">{t("label.notes")}</label>
         <textarea className="inp" rows={2} value={form.notes}
           onChange={e=>setForm(p=>({...p,notes:e.target.value}))} style={{resize:"vertical"}}/>
+      </div>
+      <div style={{marginBottom:10}}>
+        <label className="lbl">{t("form.receiptOptional")}</label>
+        {recPrev&&recPrev!=="PDF"&&<div style={{marginBottom:6,position:"relative"}}><img src={recPrev} alt="" style={{width:"100%",maxHeight:130,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button type="button" style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setReceipt(null);setRecPrev(null);ivaScanB64Ref.current=null;}}>×</button></div>}
+        {recPrev==="PDF"&&<div style={{background:"#F5F0EA",borderRadius:7,padding:"6px 9px",marginBottom:6,display:"flex",justifyContent:"space-between",fontSize:11,color:"#4B5E52"}}><span>{t("msg.pdfUploaded")}</span><button type="button" style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={()=>{setReceipt(null);setRecPrev(null);ivaScanB64Ref.current=null;}}>{t("action.remove")}</button></div>}
+        <div style={{display:"flex",gap:6}}>
+          <button type="button" className="btn-sm" style={{flex:1,fontSize:11,padding:"5px 7px",background:actionColor}} onClick={startCam}>{t("action.scanCamera")}</button>
+          <button type="button" style={{flex:1,padding:"5px 7px",borderRadius:6,border:`1.5px solid ${actionColor}`,background:"transparent",color:actionColor,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>fileRef.current?.click()}>{t("action.uploadFile")}</button>
+        </div>
       </div>
       <SplitAllocationEditor
         t={t}
@@ -3077,7 +3173,7 @@ function NewPanel(){
       </div>
       {formError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{formError}</div>}
       <div style={{position:"relative",width:"100%"}}>
-        <button type="button" className="btn-primary" style={{width:"100%",padding:11,opacity:(!expenseValid||splitSubmitBlocked)?0.5:1,cursor:(!expenseValid||splitSubmitBlocked)?"not-allowed":"pointer"}}
+        <button type="button" className="btn-primary" style={{width:"100%",padding:11,background:actionColor,opacity:(!expenseValid||splitSubmitBlocked)?0.5:1,cursor:(!expenseValid||splitSubmitBlocked)?"not-allowed":"pointer"}}
           onClick={()=>{
             setFormError("");
             if(splitSubmitBlocked){
@@ -3121,15 +3217,28 @@ function DetailPanel(){
   const canEdit=user.id===e.submittedBy||isAdmin;
   const ivaMatch=e.ivaRate!=null&&e.ivaRate!==undefined?ivaRates.find(r=>r.value===e.ivaRate):null;
   const ivaRowLabel=e.ivaRate!=null&&e.ivaRate!==undefined?(ivaMatch?formatIvaOptionLabel(ivaMatch):`${e.ivaRate}%`):t("expense.ivaNotTracked");
+  const recurrenceToCadenceState=rule=>{
+    const r=String(rule||"").toLowerCase();
+    if(r==="monthly")return{cadenceKey:"monthly",cadenceCustomMonths:"1"};
+    if(r==="quarterly")return{cadenceKey:"quarterly",cadenceCustomMonths:"3"};
+    if(r==="yearly")return{cadenceKey:"yearly",cadenceCustomMonths:"12"};
+    if(r.startsWith("custom:"))return{cadenceKey:"custom",cadenceCustomMonths:String(normalizeCadenceCustomMonths(r.slice(7)))};
+    if(r==="weekly")return{cadenceKey:"custom",cadenceCustomMonths:"1"};
+    if(r==="biweekly")return{cadenceKey:"custom",cadenceCustomMonths:"1"};
+    return{cadenceKey:"once",cadenceCustomMonths:"1"};
+  };
 
   const startEdit=()=>{
     const defIva=e.ivaRate!==null&&e.ivaRate!==undefined?String(e.ivaRate):String(readIvaDefault());
+    const cadenceInit=recurrenceToCadenceState(e.recurrenceRule);
     setEf({description:e.description,amount:String(e.amount),category:e.category,
       date:e.date,notes:e.notes||"",receipt:e.receipt||null,receiptType:e.receiptType||null,
       paidBy:e.paidBy,
       ownerId:e.ownerId||e.submittedBy,
       ivaRate:defIva,
-      departmentId:e.departmentId||defaultDeptId});
+      departmentId:e.departmentId||defaultDeptId,
+      cadenceKey:e.recurring===1?cadenceInit.cadenceKey:"once",
+      cadenceCustomMonths:cadenceInit.cadenceCustomMonths});
     const ownerNow=e.ownerId||e.submittedBy||user.id;
     const amtNow=parseMoney(String(e.amount))||0;
     const baseSplits=users.map(u=>{
@@ -3172,6 +3281,7 @@ function DetailPanel(){
     const rp=parseFloat(ef.ivaRate);
     const ivaRate=isNaN(rp)?21:rp;
     const ivaAmount=calcIvaParts(amt,ivaRate).iva;
+    const recEdit=cadenceToRecurringPayload(ef.cadenceKey,ef.cadenceCustomMonths);
     editExp(e.id,{
       description:ef.description,
       amount:amt,
@@ -3183,6 +3293,8 @@ function DetailPanel(){
       splitMode:efSplitMode,
       ivaRate,ivaAmount,
       departmentId:ef.departmentId||defaultDeptId,
+      recurring:recEdit.recurring,
+      recurrenceRule:recEdit.recurrenceRule,
     },e);
     setEditMode(false);setEfDirty(false);
   };
@@ -3221,6 +3333,21 @@ function DetailPanel(){
           <div style={{marginBottom:8}}><label className="lbl">{t("label.category")}</label><select className="inp" value={ef.category||"Otro"} onChange={ev=>{setEf(p=>({...p,category:ev.target.value}));setEfDirty(true);}}>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
           <div style={{marginBottom:8}}><label className="lbl">{t("label.department")} *</label><select className="inp" value={ef.departmentId||""} onChange={ev=>{setEf(p=>({...p,departmentId:ev.target.value}));setEfDirty(true);}}>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
           <div style={{marginBottom:8}}><label className="lbl">Titular del gasto *</label><select className="inp" value={ef.ownerId||e.ownerId||e.submittedBy||user.id} onChange={ev=>{const oid=ev.target.value;setEf(p=>({...p,ownerId:oid}));setEfSplits(prev=>prev.map(s=>s.userId===oid?{...s,checked:true}:s));setEfDirty(true);}}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
+          <div style={{marginBottom:8}}><label className="lbl">{t("expenses.cadence")}</label>
+            <select className="inp" value={ef.cadenceKey||"once"} onChange={ev=>{setEf(p=>({...p,cadenceKey:ev.target.value}));setEfDirty(true);}}>
+              <option value="once">{t("expenses.cadenceOnce")}</option>
+              <option value="monthly">{t("expenses.cadenceMonthly")}</option>
+              <option value="quarterly">{t("expenses.cadenceQuarterly")}</option>
+              <option value="yearly">{t("expenses.cadenceYearly")}</option>
+              <option value="custom">{t("expenses.cadenceCustom")}</option>
+            </select>
+            {ef.cadenceKey==="custom"&&(
+              <div style={{marginTop:6}}>
+                <label className="lbl">{t("expenses.cadenceEveryXMonths")}</label>
+                <input className="inp" type="number" min={1} max={60} value={ef.cadenceCustomMonths||"1"} onChange={ev=>{setEf(p=>({...p,cadenceCustomMonths:ev.target.value}));setEfDirty(true);}}/>
+              </div>
+            )}
+          </div>
           <div style={{marginBottom:10,background:GL,borderRadius:8,padding:10}}>
             <label className="lbl">{t("form.ivaRate")}</label>
             <select className="inp" value={ef.ivaRate||String(readIvaDefault())} onChange={ev=>{setEf(p=>({...p,ivaRate:ev.target.value}));setEfDirty(true);}}>
@@ -3444,7 +3571,7 @@ function PersonDrilldown({userId, onClose}){
                 <div key={inv.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F5F0EA",alignItems:"flex-start"}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inv.vendor||inv.description}</div>
-                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(inv.dueDate||inv.date)} · {inv.category}{inv.recurring===1&&inv.recurrenceRule?` · ${inv.recurrenceRule}`:""}</div>
+                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(inv.dueDate||inv.date)} · {inv.category}{inv.recurring===1&&inv.recurrenceRule?` · ${recurrenceRuleLabel(inv.recurrenceRule,t)}`:""}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
                     <div style={{fontSize:12,fontWeight:700,color:G}}>{fmtExpenseAmt(inv)}</div>
@@ -3493,6 +3620,11 @@ function DashboardView(){
   const rejCnt=rejList.length;
   const watchCats=cats.filter(c=>!c.archived&&c.budget!=null&&c.budget>0&&effectiveExpenseApproverIds({category:c.name},cats,users)[0]===user.id);
   const [drillPerson,setDrillPerson]=useState(null);
+  const [fixedTipOpen,setFixedTipOpen]=useState(false);
+  const [fixedTipHover,setFixedTipHover]=useState(false);
+  const [fixedTipPos,setFixedTipPos]=useState({top:0,left:0});
+  const fixedTipIconRef=useRef(null);
+  const fixedTipRef=useRef(null);
   const deptBudgetActive=(departmentsWithStats||[]).filter(d=>!d.archived&&Number(d.budget)>0);
   const budgetTotalActive=deptBudgetActive.reduce((s,d)=>s+Number(d.budget||0),0);
   const spentActive=deptBudgetActive.reduce((s,d)=>s+Number(d.spent||0),0);
@@ -3504,6 +3636,24 @@ function DashboardView(){
     if(diff!=null&&diff>=0&&diff<=15)upcoming15.push({...e,name:e.vendor||e.description,daysUntil:diff});
   });
   upcoming15.sort((a,b)=>a.daysUntil-b.daysUntil);
+  const fixedTipActive=fixedTipOpen||fixedTipHover;
+  useEffect(()=>{
+    if(!fixedTipActive||!fixedTipIconRef.current)return;
+    const r=fixedTipIconRef.current.getBoundingClientRect();
+    setFixedTipPos({top:r.top-8,left:r.left+r.width/2});
+  },[fixedTipActive]);
+  useEffect(()=>{
+    if(!fixedTipActive)return;
+    const onDocClick=e=>{
+      const n=e.target;
+      if(fixedTipIconRef.current&&fixedTipIconRef.current.contains(n))return;
+      if(fixedTipRef.current&&fixedTipRef.current.contains(n))return;
+      setFixedTipOpen(false);
+      setFixedTipHover(false);
+    };
+    document.addEventListener("click",onDocClick);
+    return()=>document.removeEventListener("click",onDocClick);
+  },[fixedTipActive]);
   return(
     <div>
       {drillPerson&&<PersonDrilldown userId={drillPerson} onClose={()=>setDrillPerson(null)}/>}
@@ -3537,11 +3687,14 @@ function DashboardView(){
           const fixedKpiLabel=(
             <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
               <span>Coste fijo mensual</span>
-              <span className="kpi-fixed-info-wrap" style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
-                <span style={{fontSize:11,color:"#9CAA9F",lineHeight:1,cursor:"help"}}>ⓘ</span>
-                <span className="kpi-fixed-info-tip" style={{position:"absolute",bottom:"calc(100% + 8px)",left:"50%",transform:"translateX(-50%)",background:"#1F2937",color:"#fff",fontSize:10,lineHeight:1.3,padding:"6px 8px",borderRadius:999,whiteSpace:"nowrap",opacity:0,pointerEvents:"none",transition:"opacity 120ms ease",zIndex:100}}>
-                  Suma mensual de facturas recurrentes activas. Las anuales se dividen entre 12, las trimestrales entre 3, las personalizadas según su intervalo.
-                </span>
+              <span style={{display:"inline-flex",alignItems:"center"}}>
+                <span
+                  ref={fixedTipIconRef}
+                  style={{fontSize:11,color:"#9CAA9F",lineHeight:1,cursor:"pointer"}}
+                  onMouseEnter={()=>setFixedTipHover(true)}
+                  onMouseLeave={()=>setFixedTipHover(false)}
+                  onClick={e=>{e.stopPropagation();setFixedTipOpen(v=>!v);}}
+                >ⓘ</span>
               </span>
             </span>
           );
@@ -3583,7 +3736,15 @@ function DashboardView(){
 
           return(
             <>
-              <style>{`.kpi-fixed-info-wrap:hover .kpi-fixed-info-tip{opacity:1;}`}</style>
+              {fixedTipActive&&(
+                <div
+                  ref={fixedTipRef}
+                  onClick={e=>e.stopPropagation()}
+                  style={{position:"fixed",top:fixedTipPos.top,left:fixedTipPos.left,transform:"translate(-50%,-100%)",background:"#1F2937",color:"#fff",fontSize:10,lineHeight:1.3,padding:"6px 8px",borderRadius:999,whiteSpace:"nowrap",zIndex:99999,pointerEvents:"auto"}}
+                >
+                  Suma mensual de facturas recurrentes activas. Las anuales se dividen entre 12, las trimestrales entre 3, las personalizadas según su intervalo.
+                </div>
+              )}
               {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,"#DC2626",true,28,"#7F1D1D","#991B1B","#FCA5A5",`${budgetProgressPct.toFixed(1)}% usado`,"#7F1D1D")}
               {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetSub,"#059669",true,28,"#064E3B","#065F46","#6EE7B7",`${budgetProgressPct.toFixed(1)}% disponible`,"#064E3B")}
               {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,monthSub,null,false,22,"#78350F","#78350F")}
@@ -4044,14 +4205,15 @@ function ApprovalsView(){
 
 
 /* ── PAYMENT CALENDAR ──────────────────────────────────────────────────────── */
-function PaymentCalendar(){
+function PaymentCalendar({reportExpenses}){
   const{expenses,cats,t,go,setDetailId,setPanel}=useApp();
+  const srcExpenses=Array.isArray(reportExpenses)?reportExpenses:expenses;
   const [cur,setCur]=useState(()=>new Date());
   const year=cur.getFullYear(),mon=cur.getMonth();
   const firstDay=(new Date(year,mon,1).getDay()+6)%7; // Monday-first
   const daysInMonth=new Date(year,mon+1,0).getDate();
   const events={};
-  expenses.filter(e=>e.expenseType==="invoice"&&e.dueDate).forEach(inv=>{
+  srcExpenses.filter(e=>e.expenseType==="invoice"&&e.dueDate).forEach(inv=>{
     try{
       const dt=new Date(String(inv.dueDate).slice(0,10)+"T12:00:00");
       if(dt.getFullYear()===year&&dt.getMonth()===mon){
@@ -4061,7 +4223,7 @@ function PaymentCalendar(){
       }
     }catch(e){}
   });
-  expenses.filter(e=>e.expenseType!=="invoice").forEach(e=>{
+  srcExpenses.filter(e=>e.expenseType!=="invoice").forEach(e=>{
     try{const d=new Date(e.date);if(d.getFullYear()===year&&d.getMonth()===mon){const day=d.getDate();if(!events[day])events[day]=[];events[day].push({type:"expense",id:e.id,label:e.description,amount:eurForExpense(e)});}}catch{}
   });
   const cells=[];
@@ -4113,16 +4275,36 @@ function PaymentCalendar(){
 function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel}=useApp();
   const [expFilter,setExpFilter]=useState("all");
+  const [dateRange,setDateRange]=useState("thisMonth");
+  const rangeFilteredExpenses=useMemo(()=>{
+    const now=new Date();
+    const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+    const startOf3Months=new Date(now.getFullYear(),now.getMonth()-2,1);
+    const startOfYear=new Date(now.getFullYear(),0,1);
+    const getRefDate=e=>{
+      const raw=(e.expenseType==="invoice"?(e.dueDate||e.date):e.date)||"";
+      const d=new Date(String(raw).slice(0,10)+"T12:00:00");
+      return Number.isNaN(d.getTime())?null:d;
+    };
+    return expenses.filter(e=>{
+      const d=getRefDate(e);
+      if(!d)return false;
+      if(dateRange==="thisMonth")return d>=startOfMonth;
+      if(dateRange==="last3Months")return d>=startOf3Months;
+      if(dateRange==="thisYear")return d>=startOfYear;
+      return true;
+    });
+  },[expenses,dateRange]);
   const filteredExpenses = expFilter === "all"
-    ? expenses.filter(e => getItemStatus(e, cats, users) !== "deleted")
-    : expenses.filter(e => getItemStatus(e, cats, users) === expFilter);
+    ? rangeFilteredExpenses.filter(e => getItemStatus(e, cats, users) !== "deleted")
+    : rangeFilteredExpenses.filter(e => getItemStatus(e, cats, users) === expFilter);
   const filterLabel = expFilter==="all" ? ""
     : expFilter==="approved" ? ` — ${t("reports.approvedOnly")}`
     : ` — ${t("reports.pendingOnly")}`;
   const [openPersonLog,setOpenPersonLog]=useState({});
   const personInvestmentRows=useMemo(()=>users.map(u=>{
     const filteredTotal=filteredExpenses.reduce((s,e)=>s+shareEurInExpense(e,u.id),0);
-    const submittedCount=expenses.filter(e=>e.submittedBy===u.id&&getItemStatus(e,cats,users)!=="deleted").length;
+    const submittedCount=rangeFilteredExpenses.filter(e=>e.submittedBy===u.id&&getItemStatus(e,cats,users)!=="deleted").length;
     const logItems=filteredExpenses.filter(e=>{
       const st=getItemStatus(e,cats,users);
       if(st==="deleted"||st==="rejected")return false;
@@ -4133,10 +4315,10 @@ function ReportsView(){
     }).map(e=>({...e,__kind:e.expenseType==="invoice"?"invoice":"expense",__sortDate:(e.expenseType==="invoice"?(e.dueDate||e.date):e.date)||""}))
       .sort((a,b)=>String(b.__sortDate||"").localeCompare(String(a.__sortDate||"")));
     return{...u,filteredTotal,submittedCount,logItems};
-  }).sort((a,b)=>b.filteredTotal-a.filteredTotal),[users,expenses,cats,filteredExpenses]);
+  }).sort((a,b)=>b.filteredTotal-a.filteredTotal),[users,rangeFilteredExpenses,cats,filteredExpenses]);
   const catTotals=cats.filter(c=>!c.archived).map(c=>({
     cat:c.name,
-    total:expenses.filter(e=>e.category===c.name&&expenseCountsTowardDeptSpend(e,cats,users)).reduce((s,e)=>s+eurForExpense(e),0),
+    total:rangeFilteredExpenses.filter(e=>e.category===c.name&&expenseCountsTowardDeptSpend(e,cats,users)).reduce((s,e)=>s+eurForExpense(e),0),
   })).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const maxC=catTotals[0]?.total||1;
   const monthlyTrend=(()=>{
@@ -4158,7 +4340,7 @@ function ReportsView(){
   const trendBarTrackPx=76;
   const exportCSV=(all)=>{
     const data=all?"all":expFilter;
-    const src=data==="all"?expenses:(expenses.filter(e=>getItemStatus(e,cats)===data));
+    const src=data==="all"?rangeFilteredExpenses:(rangeFilteredExpenses.filter(e=>getItemStatus(e,cats)===data));
     const now=new Date().toISOString();
     const exportedUser=user;
     if(!AUTH_URL){
@@ -4189,12 +4371,21 @@ function ReportsView(){
             <option value="approved">{t("reports.approvedOnly")}</option>
             <option value="pending">{t("reports.pendingOnly")}</option>
           </select>
-          <button className="btn-secondary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportCSV(expFilter==="all")}>{t("action.exportCSV")} ({expFilter==="all"?t("reports.allData"):expFilter==="approved"?t("reports.approvedOnly"):t("reports.pendingOnly")})</button>
+          <button className="btn-secondary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportCSV(expFilter==="all")}>{t("action.exportCSV")}</button>
+        </div>
+      </div>
+      <div className="card" style={{marginBottom:11,padding:"10px 12px"}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {[{id:"thisMonth",label:"Este mes"},{id:"last3Months",label:"Últimos 3 meses"},{id:"thisYear",label:"Este año"},{id:"all",label:"Todo"}].map(r=>(
+            <button key={r.id} type="button" onClick={()=>setDateRange(r.id)} style={{fontSize:12,padding:"6px 14px",borderRadius:20,border:"1px solid #E5E0D8",background:dateRange===r.id?"#3C0A37":"transparent",color:dateRange===r.id?"#fff":"#6B7B72",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>
+              {r.label}
+            </button>
+          ))}
         </div>
       </div>
       {hasTrendData&&(
       <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>{t("reports.monthlyTrend")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
+        <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:12}}>{t("reports.monthlyTrend")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
         <div style={{display:"flex",alignItems:"flex-end",gap:6,minHeight:120}}>
           {monthlyTrend.map(m=>{
             const barH=Math.max(4,Math.round((m.total/maxMonth)*trendBarTrackPx));
@@ -4222,41 +4413,20 @@ function ReportsView(){
       )}
       {/* By category */}
       <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:11}}>{t("reports.byCategory")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
-        {catTotals.length===0&&<div style={{color:"#9CAA9F",fontSize:12}}>Sin datos para el filtro seleccionado</div>}
-        {catTotals.map(({cat,total})=>(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt(cat);setExpFlt("all");go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{tCat(cat,t)}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:4,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:T,width:`${total/maxC*100}%`,transition:"width 0.4s"}}/></div></div>))}
+        <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:12}}>{t("reports.calendar")}</div>
+        <PaymentCalendar reportExpenses={rangeFilteredExpenses}/>
       </div>
-      {/* Budget vs actual */}
-      {(()=>{
-        const ym=new Date().toISOString().slice(0,7);
-        const budgeted=cats.filter(c=>!c.archived&&c.budget!=null&&c.budget>0);
-        if(budgeted.length===0)return null;
-        const rowsB=budgeted.map(c=>{
-          const spent=filteredExpenses.filter(e=>e.category===c.name&&e.date?.slice(0,7)===ym).reduce((s,e)=>s+eurForExpense(e),0);
-          const pct=c.budget>0?spent/c.budget*100:0;
-          const barColor=pct<75?"#16A34A":pct<=100?"#D97706":"#DC2626";
-          return{...c,spent,pct,barColor};
-        });
-        const totalB=budgeted.reduce((s,c)=>s+c.budget,0);
-        const totalS=rowsB.reduce((s,r)=>s+r.spent,0);
-        const aggPct=totalB>0?totalS/totalB*100:(totalS>0?100:0);
-        const barT=aggPct<75?"#16A34A":aggPct<=100?"#D97706":"#DC2626";
-        return(
-          <div className="card" style={{marginBottom:11}}>
-            <div style={{fontWeight:600,fontSize:13,marginBottom:11}}>{t("reports.budgetVsActual")}</div>
-            {rowsB.map(r=>(
-              <BudgetVsActualRow key={r.id||r.name} t={t} name={r.name} spent={r.spent} budget={r.budget} remaining={r.budget-r.spent} barColor={r.barColor}/>
-            ))}
-            <div style={{marginTop:4,paddingTop:12,borderTop:"1px solid #EDE8E0"}}>
-              <div style={{fontSize:10,color:"#9CAA9F",marginBottom:6}}>{t("reports.budgetTotal")}</div>
-              <BudgetVsActualRow t={t} name={t("reports.total")} spent={totalS} budget={totalB} remaining={totalB-totalS} barColor={barT} noBottomMargin/>
-            </div>
-          </div>
-        );
-      })()}
+      <div style={{borderTop:"1px solid #F0EBE3",margin:"2px 0 12px"}}/>
+      {/* By category */}
+      <div className="card" style={{marginBottom:11}}>
+        <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:12}}>{t("reports.byCategory")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
+        {catTotals.length===0&&<div style={{color:"#9CAA9F",fontSize:12}}>Sin datos para el filtro seleccionado</div>}
+        {catTotals.map(({cat,total})=>(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt(cat);setExpFlt("all");go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{tCat(cat,t)}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:"#3C0A37",width:`${total/maxC*100}%`,transition:"width 0.4s"}}/></div></div>))}
+      </div>
+      <div style={{borderTop:"1px solid #F0EBE3",margin:"2px 0 12px"}}/>
       {/* Per person — approved share + submitted count + expandable log */}
       <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>{t("reports.perPerson")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
+        <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:12}}>{t("reports.perPerson")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
         <p style={{fontSize:10,color:"#9CAA9F",marginBottom:12,lineHeight:1.45}}>{t("reports.personLogHint")}</p>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {personInvestmentRows.map(u=>{
@@ -4268,7 +4438,7 @@ function ReportsView(){
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:13,color:G}}>{u.name}</div>
                     <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{u.role}{u.title?` · ${u.title}`:""}</div>
-                    <div style={{fontSize:10,color:"#6B7B72",marginTop:4}}>{t("reports.submittedCount",{count:String(u.submittedCount)})}</div>
+                    <div style={{fontSize:10,color:"#9CAA9F",marginTop:4}}>{t("reports.submittedCount",{count:String(u.submittedCount)})}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontWeight:800,fontSize:14,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(u.filteredTotal)}</div>
@@ -4317,31 +4487,6 @@ function ReportsView(){
         </div>
           );
         })()}
-      </div>
-      <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>{t("reports.forecast")}</div>
-        {(()=>{
-          const ab=expenses.filter(e=>e.expenseType==="invoice"&&e.recurring===1&&(e.paymentStatus==="unpaid"||e.paymentStatus==="overdue"));
-          const mf=ab.reduce((s,e)=>s+invoiceForecastMonthlyEUR(e),0);
-          const af=ab.reduce((s,e)=>s+invoiceForecastMonthlyEUR(e)*12,0);
-          return(
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              {[{l:t("reports.monthlyFixed"),v:mf},{l:t("reports.annualFixed"),v:af}].map((m,i)=>(
-                <div key={i} className="row-hover" style={{background:"#F5F0EA",borderRadius:8,padding:"10px 12px",cursor:"pointer"}} onClick={()=>go("expenses")}>
-                  <div style={{fontSize:9,color:"#6B7B72",fontWeight:500,marginBottom:2}}>{m.l}</div>
-                  <div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(m.v)}</div>
-                  <div style={{fontSize:8,color:"#9CAA9F",marginTop:3}}>→ {t("nav.expenses")}</div>
-                </div>
-              ))}
-            </div>
-          );
-        })()}
-        <p style={{fontSize:9,color:"#9CAA9F",marginTop:8}}>Facturas recurrentes pendientes u vencidas (equiv. mensual)</p>
-      </div>
-      {/* Calendar */}
-      <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:11}}>{t("reports.calendar")}</div>
-        <PaymentCalendar/>
       </div>
     </div>
   );
@@ -5078,6 +5223,11 @@ function SettingsView(){
   return(
     <div style={{maxWidth:540}}>
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:12}}>{t("settings.title")}</h1>
+      {AUTH_URL&&(isAdmin||isSA)&&(
+        <div style={{padding:"8px 10px",borderRadius:8,background:"#FFFBEB",border:"1px solid #FDE68A",fontSize:11,color:"#92400E",lineHeight:1.45,marginBottom:10}}>
+          Migración de facturas pendiente — contacta con el administrador.
+        </div>
+      )}
 
 
 
@@ -5408,6 +5558,7 @@ function SolanaExpenses(){
   const [users,   setUsers]   =useState(()=>{
     migrateItemCodes();
     migrateDataModel();
+    migrateBillsToExpensesOnce();
     const d=ls("sol-users",DEF_USERS);
     const n=d.map(u=>normalizeItem(u,"user"));
     appLog("info","auth:init",{userIds:n.map(u=>u.id),count:n.length});
@@ -5416,6 +5567,7 @@ function SolanaExpenses(){
   const [user,    setUser]    =useState(null);
   const [expenses,setExpenses]=useState(()=>{
     if(AUTH_URL)return[];
+    migrateBillsToExpensesOnce();
     const d=ls("sol-exp",[]);
     return d.map(e=>normalizeItem(e,"expense"));
   });
@@ -5977,12 +6129,20 @@ function SolanaExpenses(){
       return;
     }
     const isInvSubmit=form.expenseType==="invoice";
+    const isFacturaSubmit=!!form.isFactura;
+    const proveedorSubmit=String(form.proveedor||"").trim();
+    if(isFacturaSubmit&&!proveedorSubmit){setFormError("Indica el proveedor.");return;}
+    const condicionesPagoSubmit=String(form.paymentTermMode||"0");
+    const fechaVencimientoSubmit=condicionesPagoSubmit==="custom"
+      ? String(form.invoiceDueDateDirect||"").slice(0,10)
+      : addDaysToISODate(form.date, Number(condicionesPagoSubmit)||0);
+    if(isFacturaSubmit&&condicionesPagoSubmit==="custom"&&!fechaVencimientoSubmit){setFormError("Indica la fecha de vencimiento.");return;}
     if(isInvSubmit){
       if(!String(form.vendor||"").trim()){setFormError("Indica el proveedor.");return;}
       const ptdS=paymentTermDaysFromForm(form);
       if(ptdS===0&&!String(form.invoiceDueDateDirect||"").trim().slice(0,10)){setFormError("Indica la fecha de vencimiento.");return;}
     }
-    const cadSubmit=cadenceToRecurringPayload(form.cadenceKey);
+    const cadSubmit=cadenceToRecurringPayload(form.cadenceKey,form.cadenceCustomMonths);
     const ptdSubmit=paymentTermDaysFromForm(form);
     const computedDueIso=computeInvoiceDueISO(form);
     const invExtras=isInvSubmit?{
@@ -5994,6 +6154,12 @@ function SolanaExpenses(){
     }:{
       expenseType:"expense",
       paymentStatus:"na",
+    };
+    const facturaExtras={
+      isFactura:isFacturaSubmit,
+      proveedor:proveedorSubmit,
+      condicionesPago:condicionesPagoSubmit,
+      fechaVencimiento:fechaVencimientoSubmit||null,
     };
     const recExtras=cadSubmit.recurring?{recurring:1,recurrenceRule:cadSubmit.recurrenceRule}:{recurring:0,recurrenceRule:null};
     let paidBy=[{userId:ownerId,amount,pct:100}];
@@ -6036,6 +6202,7 @@ function SolanaExpenses(){
             paidBy,
             ivaRate:ivaRateAuth,
             ivaAmount:ivaAmountAuth,
+            ...facturaExtras,
             ...(splitModeOut?{splitMode:splitModeOut}:{}),
             ...(isInvSubmit?{
               expenseType:"invoice",
@@ -6110,6 +6277,7 @@ function SolanaExpenses(){
               receiptPath:null,
               departmentId:form.departmentId||null,
               ownerId,
+              ...facturaExtras,
               ...invExtras,
               ...recExtras,
             },"expense");
@@ -6136,6 +6304,7 @@ function SolanaExpenses(){
     const ivaRate=isNaN(rp)?readIvaDefault():rp;
     const ivaAmount=calcIvaParts(amount,ivaRate).iva;
     const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID,
+      ...facturaExtras,
       ...invExtras,
       ...recExtras,
     };
@@ -6171,6 +6340,7 @@ function SolanaExpenses(){
       paymentTermCustomDays:"30",
       invoiceDueDateDirect:new Date().toISOString().slice(0,10),
       cadenceKey:"once",
+      cadenceCustomMonths:"1",
     });
     setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
@@ -6224,6 +6394,8 @@ function SolanaExpenses(){
             departmentId:updates.departmentId,
             ivaRate:updates.ivaRate,
             ivaAmount:updates.ivaAmount,
+            recurring:updates.recurring,
+            recurrenceRule:updates.recurrenceRule,
           };
           if(oldExp.status==="rejected"){
             body.status="submitted";
@@ -6514,9 +6686,19 @@ function SolanaExpenses(){
     total:approvedForTot.reduce((sum,e)=>sum+shareEurInExpense(e,u.id),0),
   })).sort((a,b)=>b.total-a.total);
   const totFixed=expenses.reduce((s,e)=>{
-    if(e.expenseType!=="invoice"||e.recurring!==1)return s;
-    if(e.paymentStatus!=="unpaid"&&e.paymentStatus!=="overdue")return s;
-    return s+invoiceForecastMonthlyEUR(e);
+    const st=getItemStatus(e,cats,users);
+    if(st!=="approved"&&st!=="pending")return s;
+    const rule=String(e.recurrenceRule||"").toLowerCase().trim();
+    if(!rule||rule==="once")return s;
+    const amt=eurForExpense(e);
+    if(rule==="monthly")return s+amt;
+    if(rule==="quarterly"||rule==="trimestral")return s+amt/3;
+    if(rule==="yearly"||rule==="anual")return s+amt/12;
+    if(rule==="custom"||rule==="personalizado"||rule.startsWith("custom:")){
+      const intervalMonths=Number(e.intervalMonths)||Number((rule.split(":")[1]||"").trim())||1;
+      return s+amt/Math.max(1,intervalMonths);
+    }
+    return s;
   },0);
 
   const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
