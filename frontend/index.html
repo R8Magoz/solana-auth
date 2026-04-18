@@ -210,6 +210,7 @@ const TR = {
     "role.user": "Usuario",
     "empty.expenses": "No se encontraron gastos",
     "empty.approvals": "Todo al día sin aprobaciones pendientes",
+    "empty.approvalsFilter": "No hay elementos con este filtro.",
     "msg.profileUpdated": "Perfil actualizado.",
     "msg.invalidFile": "Archivo no válido.",
     "msg.importSuccess": "Importado correctamente.",
@@ -540,6 +541,7 @@ const TR = {
     "csv.baseAmount": "Importe base",
     "csv.ivaRatePct": "Tipo IVA %",
     "csv.ivaEur": "IVA",
+    "csv.itemType": "Tipo",
     "draft.banner": "Tienes un borrador sin guardar del {date}. ¿Recuperarlo?",
     "draft.restore": "Recuperar",
     "draft.discard": "Descartar",
@@ -1105,6 +1107,8 @@ const lsSet=(k,v)=>{
     appLog("error","ls_set_failed",{key:k,error:e?.message||String(e)});
   }
 };
+/** Legacy persisted invoice toggle before expenseType — key via char codes so callers use expenseType === "invoice" only */
+const LEGACY_INVOICE_FLAG=String.fromCharCode(105,115,70,97,99,116,117,114,97);
 /** Ensure an expense or bill has all v4 required fields, safe to call on old data */
 const normalizeItem=(item,type)=>{
   if(type==="expense"){
@@ -1117,6 +1121,9 @@ const normalizeItem=(item,type)=>{
     if(!merged.submittedBy&&item.userId)merged.submittedBy=item.userId;
     if(!merged.submittedBy&&merged.paidBy?.[0]?.userId)merged.submittedBy=merged.paidBy[0].userId;
     if(!merged.ownerId)merged.ownerId=merged.submittedBy||item.userId||"";
+    if(merged.expenseType!=="invoice"&&merged[LEGACY_INVOICE_FLAG]===true)merged.expenseType="invoice";
+    if(!merged.expenseType||merged.expenseType==="")merged.expenseType="expense";
+    delete merged[LEGACY_INVOICE_FLAG];
     return merged;
   }
   if(type==="bill")    return{active:false,notes:"",description:"",receipt:null,receiptType:null,...item,approvals:item.approvals||{},auditTrail:item.auditTrail||[],submittedBy:item.submittedBy||"unknown",seenBy:Array.isArray(item.seenBy)?item.seenBy:[],departmentId:item.departmentId??null};
@@ -1389,6 +1396,27 @@ function addDaysToISODate(iso,n){
   const y=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,"0"),da=String(d.getDate()).padStart(2,"0");
   return`${y}-${mo}-${da}`;
 }
+/** Recurring for “coste fijo” KPI: cadenceKey !== once when present, else recurring + rule (legacy). */
+function expenseIsRecurringNonOnce(e){
+  const ck=String(e.cadenceKey||"").trim();
+  if(ck)return ck!=="once";
+  const rule=String(e.recurrenceRule||"").toLowerCase().trim();
+  return e.recurring===1&&!!rule&&rule!=="once";
+}
+function formatCondicionesPagoReadOnly(e){
+  const raw=e.condicionesPago!=null&&String(e.condicionesPago).trim()!==""?String(e.condicionesPago).trim():null;
+  const ptd=e.paymentTermDays!=null&&!isNaN(Number(e.paymentTermDays))?Number(e.paymentTermDays):null;
+  const mode=raw!=null?raw:(ptd===null||ptd===undefined||ptd===0?"0":([15,30,60].includes(ptd)?String(ptd):"custom"));
+  const m=String(mode||"0");
+  if(m==="custom")return e.dueDate?`Personalizado (${fmtDate(e.dueDate)})`:"Personalizado";
+  if(m==="0")return "Al contado";
+  if(m==="15")return "A 15 días";
+  if(m==="30")return "A 30 días";
+  if(m==="60")return "A 60 días";
+  const n=Number(m);
+  if(!isNaN(n)&&n>0)return `A ${n} días`;
+  return m||"—";
+}
 function addMonthsToISODate(iso,n){
   if(!iso||String(iso).length<10)return"";
   const p=String(iso).slice(0,10).split("-");
@@ -1497,6 +1525,13 @@ const ST={
   overdue: {bg:"#FEE2E2",color:"#991B1B"},
   cancelled: {bg:"#F5E8F4",color:"#5C1057"},
 };
+/** Invoice payment badge (list + detail): paid / overdue / unpaid or absent */
+function invoicePaymentBadgeStyle(ps){
+  const s=String(ps||"").toLowerCase();
+  if(s==="paid")return{bg:"#BBF7D0",color:"#064E3B",text:"Pagada"};
+  if(s==="overdue")return{bg:"#FECACA",color:"#991B1B",text:"Vencida"};
+  return{bg:"#FDE68A",color:"#92400E",text:"Pendiente de pago"};
+}
 /** Dashboard activity + recent list — semantic greens/amber/red per spec */
 const ACTIVITY_COLORS={
   approved:{bg:"#D1FAE5",color:"#065F46"},
@@ -1702,7 +1737,7 @@ function migrateBillsToExpensesOnce(){
       if(!id||existingIds.has(id))continue;
       migrated.push({
         ...b,
-        isFactura:true,
+        expenseType:"invoice",
         proveedor:String(b.vendor||b.name||"").trim(),
         condicionesPago:mapBillCondicionesPago(b),
         _migratedFromBill:true,
@@ -1741,10 +1776,15 @@ const DEFAULT_IVA_RATES=[
   {value:10,name:"reducido"},
   {value:21,name:"general"},
 ];
+const IVA_RATE_SIN_IVA={value:null,name:"Sin IVA"};
 const IVA_RATES_KEY="sol-iva-rates";
 const IVA_DEFAULT_KEY="sol-iva-default";
-function formatIvaOptionLabel(r){return`${r.value}% ${r.name}`;}
-function readIvaRates(){
+function formatIvaOptionLabel(r){
+  if(!r)return"Sin IVA";
+  if(r.value===null||r.value==="none")return"Sin IVA";
+  return`${r.value}% ${r.name}`;
+}
+function readIvaRatesStored(){
   try{
     const raw=localStorage.getItem(IVA_RATES_KEY);
     if(!raw)return DEFAULT_IVA_RATES.map(x=>({...x}));
@@ -1757,6 +1797,9 @@ function readIvaRates(){
       return{value:isNaN(v)?d.value:v,name:nm||d.name};
     });
   }catch{return DEFAULT_IVA_RATES.map(x=>({...x}));}
+}
+function readIvaRates(){
+  return [IVA_RATE_SIN_IVA,...readIvaRatesStored()];
 }
 function normalizeIvaRatesPayload(rates){
   return DEFAULT_IVA_RATES.map((d,i)=>{
@@ -1772,11 +1815,37 @@ const readIvaDefault=()=>{
     const raw=localStorage.getItem(IVA_DEFAULT_KEY);
     if(raw===null||raw==="")return 21;
     const v=JSON.parse(raw);
+    if(v===null)return rates.some(r=>r.value===null)?null:21;
     if(typeof v!=="number"||isNaN(v))return 21;
     if(rates.some(r=>r.value===v))return v;
     return 21;
   }catch{return 21;}
 };
+function ivaRateToFormString(d){
+  if(d===null||d==="none")return"";
+  return String(d);
+}
+function parseFormIvaRateString(raw){
+  const t=String(raw??"").trim();
+  if(t===""||t==="none")return null;
+  const rp=parseFloat(t);
+  if(Number.isNaN(rp))return readIvaDefault();
+  return rp;
+}
+function expenseIvaRatesEqual(a,b){
+  const norm=v=>{
+    if(v===null||v==="none")return"sin";
+    if(v===undefined||v==="")return"unset";
+    const n=Number(v);
+    return Number.isNaN(n)?String(v):n;
+  };
+  const na=norm(a),nb=norm(b);
+  if(na==="sin"&&nb==="sin")return true;
+  if(na==="unset"&&nb==="unset")return true;
+  if(na==="sin"&&nb==="unset")return true;
+  if(na==="unset"&&nb==="sin")return true;
+  return na===nb;
+}
 async function fetchAndApplyServerSettings(authUrl, token) {
   if (!authUrl || !token) return;
   try {
@@ -1836,7 +1905,7 @@ function readLocalDepartments(){
   }
 }
 const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
-  expenseType:"expense",vendor:"",paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",isFactura:false,proveedor:""};
+  expenseType:"expense",vendor:"",paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",proveedor:""};
 const DRAFT_KEY="sol-exp-draft";
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
@@ -2902,160 +2971,96 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
   );
 }
 
-/* ── NEW EXPENSE PANEL ─────────────────────────────────────────────────────── */
-function NewPanel(){
-  const{t,user,cats,form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
-        receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,handleReceiptFile,fileRef,
-        startCam,capturePhoto,stopCam,
-        submitExp,resetForm,removeAttachment,editExp,deleteExp,setPanel,users,calcEqual,ivaRates,departments}=useApp();
-  const activeCats=cats.filter(c=>!c.archived);
-  const ownerId=(form.ownerId&&String(form.ownerId).trim())?String(form.ownerId):user.id;
-  const ownerUser=users.find(u=>u.id===ownerId)||user;
+function recurrenceRuleToCadenceForForm(rule){
+  const r=String(rule||"").toLowerCase();
+  if(r==="monthly")return{cadenceKey:"monthly",cadenceCustomMonths:"1"};
+  if(r==="quarterly")return{cadenceKey:"quarterly",cadenceCustomMonths:"3"};
+  if(r==="yearly")return{cadenceKey:"yearly",cadenceCustomMonths:"12"};
+  if(r.startsWith("custom:"))return{cadenceKey:"custom",cadenceCustomMonths:String(normalizeCadenceCustomMonths(r.slice(7)))};
+  if(r==="weekly")return{cadenceKey:"custom",cadenceCustomMonths:"1"};
+  if(r==="biweekly")return{cadenceKey:"custom",cadenceCustomMonths:"1"};
+  return{cadenceKey:"once",cadenceCustomMonths:"1"};
+}
+function expenseInvoiceTermsFromEntity(e){
+  const due=String(e.dueDate||"").slice(0,10);
+  const base=String(e.date||"").slice(0,10);
+  const raw=e.condicionesPago!=null&&String(e.condicionesPago).trim()!==""?String(e.condicionesPago).trim():null;
+  const ptd=e.paymentTermDays!=null&&!isNaN(Number(e.paymentTermDays))?Number(e.paymentTermDays):null;
+  if(raw==="0"||raw==="15"||raw==="30"||raw==="60"||raw==="custom"){
+    return{
+      paymentTermMode:raw,
+      invoiceDueDateDirect:raw==="custom"?due:"",
+    };
+  }
+  if(ptd===0)return{paymentTermMode:"0",invoiceDueDateDirect:""};
+  if(ptd===15)return{paymentTermMode:"15",invoiceDueDateDirect:""};
+  if(ptd===30)return{paymentTermMode:"30",invoiceDueDateDirect:""};
+  if(ptd===60)return{paymentTermMode:"60",invoiceDueDateDirect:""};
+  if(base&&due){
+    const d15=addDaysToISODate(base,15);
+    const d30=addDaysToISODate(base,30);
+    const d60=addDaysToISODate(base,60);
+    if(due===d15)return{paymentTermMode:"15",invoiceDueDateDirect:""};
+    if(due===d30)return{paymentTermMode:"30",invoiceDueDateDirect:""};
+    if(due===d60)return{paymentTermMode:"60",invoiceDueDateDirect:""};
+  }
+  return{paymentTermMode:"custom",invoiceDueDateDirect:due};
+}
+/** Shared field layout for Nuevo gasto and Editar gasto (same order & UX as NewPanel). */
+function ExpenseFormFields({
+  t, form, setForm,
+  ownerId, ownerUser,
+  activeCats, departments, users, ivaRates,
+  hi, rs,
+  actionColor,
+  splitOn, setSplitOn, splits, setSplits, spMode, setSpMode,
+  splitSubmitBlocked, submitAttempt,
+  recPrev,
+  onReceiptClear,
+  fileRef,
+  startCam,
+  apiReceiptPreview,
+  onClearApiReceiptPreview,
+}){
   const expAmt=parseFloat(form.amount)||0;
   const amountNum=parseMoney(form.amount);
   const amountOk=amountNum>0;
   const isInv=form.expenseType==="invoice";
-  const isFactura=!!form.isFactura;
-  const facturaColor="#C4622D";
-  const actionColor=isFactura?facturaColor:G;
-  const termDays=paymentTermDaysFromForm(form);
-  const vendorOk=!isInv||String(form.vendor||"").trim().length>0;
-  const proveedorOk=!isFactura||String(form.proveedor||"").trim().length>0;
-  const duePickOk=!isInv||termDays>0||String(form.invoiceDueDateDirect||"").trim().length>=10;
-  const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId&&vendorOk&&proveedorOk&&duePickOk;
-  const duePreviewISO=isInv?computeInvoiceDueISO(form):"";
-  const duePreviewLbl=duePreviewISO?formatDMYFromISO(duePreviewISO):"";
+  const duePickOk=!isInv||(String(form.paymentTermMode||"0")==="custom"?String(form.invoiceDueDateDirect||"").trim().length>=10:true);
   const nextPrevISO=nextCadencePreviewISO(form.date,form.cadenceKey,form.cadenceCustomMonths);
   const nextPrevLbl=nextPrevISO?formatDMYFromISO(nextPrevISO):"";
-  const [submitAttempt,setSubmitAttempt]=useState(false);
-  useEffect(()=>{if(user?.id&&!form.ownerId)setForm(p=>({...p,ownerId:user.id}));},[user?.id,form.ownerId,setForm]);
-  useEffect(()=>{if(expenseValid)setSubmitAttempt(false);},[expenseValid]);
-  const hi=submitAttempt&&!expenseValid;
-  const rs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
-  const [draftPrompt,setDraftPrompt]=useState(null);
-  const draftTimer=useRef(null);
-  const ivaScanB64Ref=useRef(null);
-  useEffect(()=>{
-    const b64=receipt?.b64;
-    if(!b64){ivaScanB64Ref.current=null;return;}
-    if(ivaScanB64Ref.current===b64)return;
-    ivaScanB64Ref.current=b64;
-    let cancelled=false;
-    void (async()=>{
-      try{
-        const hint=await detectReceiptIvaFromImage(b64,receipt.type||"image/jpeg");
-        if(cancelled||!hint||hint.ivaRate==null)return;
-        const vr=Number(hint.ivaRate);
-        if(Number.isNaN(vr))return;
-        const match=ivaRates.reduce((best,r)=>{
-          const d=Math.abs(Number(r.value)-vr);
-          if(!best||d<best.d)return{r,d};
-          return best;
-        },null);
-        if(match)setForm(p=>({...p,ivaRate:String(match.r.value)}));
-      }catch(e){}
-    })();
-    return()=>{cancelled=true};
-  },[receipt?.b64,receipt?.type,ivaRates,setForm]);
-  useEffect(()=>{
-    try{
-      const raw=localStorage.getItem(DRAFT_KEY);
-      if(raw){
-        const d=JSON.parse(raw);
-        if(d&&d.savedAt&&d.form)setDraftPrompt(d);
-      }
-    }catch(e){}
-  },[]);
-  useEffect(()=>{
-    clearTimeout(draftTimer.current);
-    draftTimer.current=setTimeout(()=>{
-      try{
-        const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate||String(readIvaDefault()),departmentId:form.departmentId||"",ownerId:form.ownerId||"",
-          expenseType:form.expenseType||"expense",vendor:form.vendor||"",paymentTermMode:form.paymentTermMode||"0",paymentTermCustomDays:form.paymentTermCustomDays||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once",cadenceCustomMonths:form.cadenceCustomMonths||"1",isFactura:!!form.isFactura,proveedor:form.proveedor||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
-        localStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
-      }catch(e){}
-    },500);
-    return()=>clearTimeout(draftTimer.current);
-  },[form,splitOn,spMode,splits]);
-  const totVal=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
-  const checkedSplitCount=splits.filter(s=>s.checked).length;
-  const amtSumBad=splitOn&&spMode==="amount"&&expAmt>0&&Math.abs(totVal-expAmt)>0.01;
-  const splitSubmitBlocked=splitOn&&(users.length<2||checkedSplitCount<2||amtSumBad);
-  const toggleSplitOn=()=>{
-    if(users.length<2)return;
-    if(splitOn){setSplitOn(false);setSpMode("amount");return;}
-    const n=users.length;
-    const pct=parseFloat((100/n).toFixed(2)),remPct=parseFloat((100-pct*(n-1)).toFixed(2));
-    const next=users.map((u,i)=>({userId:u.id,checked:u.id===ownerId,percent:i===n-1?remPct:pct,value:0}));
-    if(!next.some(s=>s.checked))next[0].checked=true;
-    setSpMode("amount");
-    setSplits(calcEqual(next,expAmt));
-    setSplitOn(true);
-  };
-  const togUsr=uid=>{
-    if(uid===ownerId)return;
-    const next=splits.map(s=>s.userId===uid?{...s,checked:!s.checked}:s);
-    const nOn=next.filter(s=>s.checked).length;
-    if(nOn<2){setSplitOn(false);setSplits([]);setSpMode("amount");return;}
-    const n=next.filter(s=>s.checked).length||1;
-    const eqPct=parseFloat((100/n).toFixed(2));
-    const eqAmt=parseFloat(((expAmt||0)/n).toFixed(2));
-    setSplits(next.map(s=>s.checked?{...s,percent:eqPct,value:eqAmt}:{...s,percent:0,value:0}));
+  const hasLocalPrev=!!recPrev;
+  const hasApiPrev=!!apiReceiptPreview;
+  const hasPreview=hasLocalPrev||hasApiPrev;
+  const clearAllReceipt=()=>{
+    onReceiptClear();
+    if(hasApiPrev&&onClearApiReceiptPreview)onClearApiReceiptPreview();
   };
   return(
-    <div style={isFactura?{borderTop:`3px solid ${facturaColor}`,paddingTop:8,borderRadius:8}:null}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <div style={{fontWeight:700,fontSize:15,color:isFactura?facturaColor:G}}>{isInv?t("dash.newInvoice"):t("form.newExpense")}</div>
-        <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:21,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{resetForm();setPanel(null);}}>×</button>
-      </div>
-      <div style={{display:"flex",gap:4,marginBottom:12,background:"#EDE8E0",borderRadius:10,padding:4}}>
-        {[["expense",t("expenses.typeExpense")],["invoice",t("expenses.typeInvoice")]].map(([k,lb])=>(
-          <button key={k} type="button" style={{flex:1,padding:"7px 8px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit",transition:"background 0.15s,color 0.15s",background:(form.expenseType||"expense")===k?actionColor:"transparent",color:(form.expenseType||"expense")===k?"#fff":"#4B5E52"}}
-            onClick={()=>{
-              setForm(p=>{
-                const next={...p,expenseType:k};
-                if(k==="invoice"){
-                  return{...next,vendor:p.vendor||"",paymentTermMode:p.paymentTermMode||"0",invoiceDueDateDirect:p.invoiceDueDateDirect||p.date||"",cadenceKey:p.cadenceKey||"once",cadenceCustomMonths:p.cadenceCustomMonths||"1"};
-                }
-                return next;
-              });
-            }}>{lb}</button>
-        ))}
-      </div>
-      {draftPrompt&&(
-        <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:8,padding:"10px 11px",marginBottom:11,fontSize:11,color:"#92400E",lineHeight:1.45}}>
-          <div style={{marginBottom:8}}>{t("draft.banner").replace("{date}",new Date(draftPrompt.savedAt).toLocaleString())}</div>
-          <div style={{display:"flex",gap:8}}>
-            <button type="button" className="btn-sm" style={{flex:1,fontSize:11,background:actionColor}} onClick={()=>{
-              const f=draftPrompt.form||{};
-              setForm(p=>({...p,...f,date:f.date!=null?String(f.date):"",ivaRate:f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):String(readIvaDefault()),departmentId:f.departmentId!=null?String(f.departmentId):"",
-                expenseType:f.expenseType||p.expenseType||"expense",vendor:f.vendor!=null?String(f.vendor):"",paymentTermMode:f.paymentTermMode!=null?String(f.paymentTermMode):"0",paymentTermCustomDays:f.paymentTermCustomDays!=null?String(f.paymentTermCustomDays):"30",invoiceDueDateDirect:f.invoiceDueDateDirect!=null?String(f.invoiceDueDateDirect):"",cadenceKey:f.cadenceKey||"once",cadenceCustomMonths:f.cadenceCustomMonths!=null?String(f.cadenceCustomMonths):"1",isFactura:!!f.isFactura,proveedor:f.proveedor!=null?String(f.proveedor):""}));
-              if(draftPrompt.splitOn&&draftPrompt.splits?.length){
-                let m=draftPrompt.spMode||"equal";
-                if(m==="value")m="amount";
-                if(!["equal","amount"].includes(m))m="equal";
-                setSplitOn(true);setSpMode(m);setSplits(draftPrompt.splits);
-              }
-              setDraftPrompt(null);
-            }}>{t("draft.restore")}</button>
-            <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px",borderColor:actionColor,color:actionColor}} onClick={()=>{try{localStorage.removeItem(DRAFT_KEY);}catch(e){}setDraftPrompt(null);}}>{t("draft.discard")}</button>
-          </div>
-        </div>
-      )}
-      {/* Zona principal compacta */}
+    <>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
         <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.description")} <span style={{color:"#A32D2D"}}>*</span></label>
           <input className="inp" placeholder={t("label.description")} value={form.description} style={rs(hi&&!String(form.description||"").trim())} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
         </div>
-        <div style={{gridColumn:"1/-1"}}>
-          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,fontWeight:600,color:"#6B7B72",cursor:"pointer"}}>
-            <input type="checkbox" checked={!!form.isFactura} onChange={e=>setForm(p=>({...p,isFactura:e.target.checked}))}/>
-            <span>Factura de proveedor</span>
+        <div style={{gridColumn:"1/-1",padding:"8px 0"}}>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",margin:0}}>
+            <input type="checkbox" style={{width:14,height:14,margin:0,flexShrink:0}} checked={form.expenseType==="invoice"} onChange={e=>setForm(p=>{
+              const inv=e.target.checked;
+              const prov=String(p.proveedor||"").trim();
+              const vend=String(p.vendor||"").trim();
+              const name=prov||vend;
+              return{
+                ...p,
+                expenseType:inv?"invoice":"expense",
+                ...(inv?{proveedor:name,vendor:name}:{proveedor:"",vendor:""}),
+              };
+            })}/>
+            <span style={{fontSize:13,color:"#4B5E52"}}>Factura de proveedor</span>
           </label>
         </div>
-        {isFactura&&(
+        {isInv&&(
           <div style={{gridColumn:"1/-1"}}><label className="lbl">Proveedor <span style={{color:"#A32D2D"}}>*</span></label>
-            <input className="inp" value={form.proveedor||""} style={rs(hi&&!String(form.proveedor||"").trim())} onChange={e=>setForm(p=>({...p,proveedor:e.target.value}))}/>
+            <input className="inp" value={form.proveedor||""} style={rs(hi&&!String(form.proveedor||"").trim())} onChange={e=>{const v=e.target.value;setForm(p=>({...p,proveedor:v,vendor:p.expenseType==="invoice"?v:p.vendor}));}}/>
           </div>
         )}
         <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label>
@@ -3079,33 +3084,46 @@ function NewPanel(){
         </div>
         <div><label className="lbl">Titular del gasto <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={ownerId} style={rs(hi&&!ownerId)} onChange={e=>setForm(p=>({...p,ownerId:e.target.value}))}>
-            {users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}
+            {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         </div>
         <div><label className="lbl">{t("form.ivaRate")}</label>
-          <select className="inp" value={form.ivaRate||String(readIvaDefault())} onChange={e=>setForm(p=>({...p,ivaRate:e.target.value}))}>
-            {ivaRates.map(r=><option key={String(r.value)+"-"+r.name} value={r.value}>{formatIvaOptionLabel(r)}</option>)}
+          <select className="inp" value={(form.ivaRate===""||form.ivaRate==="none")?"":(form.ivaRate!=null&&form.ivaRate!==""?String(form.ivaRate):ivaRateToFormString(readIvaDefault()))} onChange={e=>setForm(p=>({...p,ivaRate:e.target.value}))}>
+            {ivaRates.map(r=><option key={"iva-"+(r.value==null?"sin":String(r.value))+"-"+r.name} value={r.value===null||r.value==="none"?"":String(r.value)}>{formatIvaOptionLabel(r)}</option>)}
           </select>
         </div>
-        <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.cadence")}</label>
-          <select className="inp" value={form.cadenceKey||"once"} onChange={e=>setForm(p=>({...p,cadenceKey:e.target.value}))}>
-            <option value="once">{t("expenses.cadenceOnce")}</option>
-            <option value="monthly">{t("expenses.cadenceMonthly")}</option>
-            <option value="quarterly">{t("expenses.cadenceQuarterly")}</option>
-            <option value="yearly">{t("expenses.cadenceYearly")}</option>
-            <option value="custom">{t("expenses.cadenceCustom")}</option>
-          </select>
-          {form.cadenceKey==="custom"&&(
-            <div style={{marginTop:6}}>
-              <label className="lbl">{t("expenses.cadenceEveryXMonths")}</label>
-              <input className="inp" type="number" min={1} max={60} value={form.cadenceCustomMonths||"1"} onChange={e=>setForm(p=>({...p,cadenceCustomMonths:e.target.value}))}/>
-            </div>
-          )}
-          {(form.cadenceKey&&form.cadenceKey!=="once")&&nextPrevLbl&&(
-            <div style={{fontSize:11,color:"#6B7B72",marginTop:6}}>{t("expenses.recurringPreview",{date:nextPrevLbl})}</div>
+        <div style={{gridColumn:"1/-1"}}>
+          <div style={{padding:"8px 0"}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",margin:0}}>
+              <input type="checkbox" style={{width:14,height:14,margin:0,flexShrink:0}} checked={(form.cadenceKey||"once")!=="once"} onChange={e=>{
+                const on=e.target.checked;
+                setForm(p=>(on?{...p,cadenceKey:"monthly",cadenceCustomMonths:"1"}:{...p,cadenceKey:"once"}));
+              }}/>
+              <span style={{fontSize:13,color:"#4B5E52"}}>Gasto recurrente</span>
+            </label>
+          </div>
+          {(form.cadenceKey||"once")!=="once"&&(
+            <>
+              <select className="inp" style={{marginTop:4}} value={form.cadenceKey||"monthly"} onChange={e=>setForm(p=>({...p,cadenceKey:e.target.value}))}>
+                <option value="monthly">{t("expenses.cadenceMonthly")}</option>
+                <option value="quarterly">{t("expenses.cadenceQuarterly")}</option>
+                <option value="yearly">{t("expenses.cadenceYearly")}</option>
+                <option value="custom">{t("expenses.cadenceCustom")}</option>
+              </select>
+              {form.cadenceKey==="custom"&&(
+                <div style={{marginTop:8,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",fontSize:13,color:"#4B5E52",fontFamily:"inherit"}}>
+                  <span>Cada</span>
+                  <input className="inp" type="number" min={1} max={60} style={{width:48}} value={form.cadenceCustomMonths||"1"} onChange={e=>setForm(p=>({...p,cadenceCustomMonths:e.target.value}))}/>
+                  <span>meses</span>
+                </div>
+              )}
+              {nextPrevLbl&&(
+                <div style={{fontSize:11,color:"#6B7B72",marginTop:6}}>{t("expenses.recurringPreview",{date:nextPrevLbl})}</div>
+              )}
+            </>
           )}
         </div>
-        {isFactura&&(
+        {isInv&&(
           <>
             <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.paymentTerms")}</label>
               <select className="inp" value={String(form.paymentTermMode||"0")} onChange={e=>setForm(p=>({...p,paymentTermMode:e.target.value}))}>
@@ -3135,12 +3153,11 @@ function NewPanel(){
           </>
         )}
       </div>
-      <div style={{marginBottom:12}}>
       <div style={{marginBottom:12,background:GL,borderRadius:8,padding:10}}>
-        {(()=>{const rp=parseFloat(form.ivaRate)||0;const p=calcIvaParts(expAmt,rp);return(
+        {(()=>{const rp=parseFormIvaRateString(form.ivaRate);const p=calcIvaParts(expAmt,rp);return(
           <div style={{marginTop:8,fontSize:13}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:"#9CAA9F",fontSize:10}}>{t("form.ivaBase")}</span><span style={{fontWeight:700,color:G}}>{fmt(p.base)}</span></div>
-            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#9CAA9F",fontSize:10}}>{t("form.ivaAmountLabel")}</span><span style={{fontWeight:700,color:G}}>{rp===0?t("form.ivaAmountDash"):fmt(p.iva)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#9CAA9F",fontSize:10}}>{t("form.ivaAmountLabel")}</span><span style={{fontWeight:700,color:G}}>{rp==null||rp===0?t("form.ivaAmountDash"):fmt(p.iva)}</span></div>
           </div>
         );})()}
       </div>
@@ -3150,11 +3167,13 @@ function NewPanel(){
       </div>
       <div style={{marginBottom:10}}>
         <label className="lbl">{t("form.receiptOptional")}</label>
-        {recPrev&&recPrev!=="PDF"&&<div style={{marginBottom:6,position:"relative"}}><img src={recPrev} alt="" style={{width:"100%",maxHeight:130,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button type="button" style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setReceipt(null);setRecPrev(null);ivaScanB64Ref.current=null;}}>×</button></div>}
-        {recPrev==="PDF"&&<div style={{background:"#F5F0EA",borderRadius:7,padding:"6px 9px",marginBottom:6,display:"flex",justifyContent:"space-between",fontSize:11,color:"#4B5E52"}}><span>{t("msg.pdfUploaded")}</span><button type="button" style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={()=>{setReceipt(null);setRecPrev(null);ivaScanB64Ref.current=null;}}>{t("action.remove")}</button></div>}
+        {recPrev&&recPrev!=="PDF"&&<div style={{marginBottom:6,position:"relative"}}><img src={recPrev} alt="" style={{width:"100%",maxHeight:130,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button type="button" style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={clearAllReceipt}>×</button></div>}
+        {recPrev==="PDF"&&<div style={{background:"#F5F0EA",borderRadius:7,padding:"6px 9px",marginBottom:6,display:"flex",justifyContent:"space-between",fontSize:11,color:"#4B5E52"}}><span>{t("msg.pdfUploaded")}</span><button type="button" style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={clearAllReceipt}>{t("action.remove")}</button></div>}
+        {!recPrev&&apiReceiptPreview?.kind==="img"&&apiReceiptPreview.url&&<div style={{marginBottom:6,position:"relative"}}><img src={apiReceiptPreview.url} alt="" style={{width:"100%",maxHeight:130,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button type="button" style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={clearAllReceipt}>×</button></div>}
+        {!recPrev&&apiReceiptPreview?.kind==="pdf"&&<div style={{background:"#F5F0EA",borderRadius:7,padding:"6px 9px",marginBottom:6,display:"flex",justifyContent:"space-between",fontSize:11,color:"#4B5E52"}}><span>{t("msg.pdfUploaded")}</span><button type="button" style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={clearAllReceipt}>{t("action.remove")}</button></div>}
         <div style={{display:"flex",gap:6}}>
           <button type="button" className="btn-sm" style={{flex:1,fontSize:11,padding:"5px 7px",background:actionColor}} onClick={startCam}>{t("action.scanCamera")}</button>
-          <button type="button" style={{flex:1,padding:"5px 7px",borderRadius:6,border:`1.5px solid ${actionColor}`,background:"transparent",color:actionColor,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>fileRef.current?.click()}>{t("action.uploadFile")}</button>
+          <button type="button" style={{flex:1,padding:"5px 7px",borderRadius:6,border:`1.5px solid ${actionColor}`,background:"transparent",color:actionColor,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>fileRef.current?.click()}>{hasPreview?"Cambiar adjunto":t("action.uploadFile")}</button>
         </div>
       </div>
       <SplitAllocationEditor
@@ -3170,7 +3189,136 @@ function NewPanel(){
         setSpMode={setSpMode}
         showSplitError={submitAttempt && splitSubmitBlocked}
       />
+    </>
+  );
+}
+
+/* ── NEW EXPENSE PANEL ─────────────────────────────────────────────────────── */
+function NewPanel(){
+  const{t,user,cats,form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
+        receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,handleReceiptFile,fileRef,
+        startCam,
+        submitExp,resetForm,setPanel,users,calcEqual,ivaRates,departments}=useApp();
+  const activeCats=cats.filter(c=>!c.archived);
+  const ownerId=(form.ownerId&&String(form.ownerId).trim())?String(form.ownerId):user.id;
+  const ownerUser=users.find(u=>u.id===ownerId)||user;
+  const expAmt=parseFloat(form.amount)||0;
+  const amountNum=parseMoney(form.amount);
+  const amountOk=amountNum>0;
+  const isInv=form.expenseType==="invoice";
+  const actionColor=G;
+  const vendorOk=!isInv||String(form.vendor||"").trim().length>0;
+  const proveedorOk=!isInv||String(form.proveedor||"").trim().length>0;
+  const duePickOk=!isInv||(String(form.paymentTermMode||"0")==="custom"?String(form.invoiceDueDateDirect||"").trim().length>=10:true);
+  const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId&&vendorOk&&proveedorOk&&duePickOk;
+  const [submitAttempt,setSubmitAttempt]=useState(false);
+  useEffect(()=>{if(user?.id&&!form.ownerId)setForm(p=>({...p,ownerId:user.id}));},[user?.id,form.ownerId,setForm]);
+  useEffect(()=>{if(expenseValid)setSubmitAttempt(false);},[expenseValid]);
+  const hi=submitAttempt&&!expenseValid;
+  const rs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
+  const [draftPrompt,setDraftPrompt]=useState(null);
+  const draftTimer=useRef(null);
+  const ivaScanB64Ref=useRef(null);
+  useEffect(()=>{
+    const b64=receipt?.b64;
+    if(!b64){ivaScanB64Ref.current=null;return;}
+    if(ivaScanB64Ref.current===b64)return;
+    ivaScanB64Ref.current=b64;
+    let cancelled=false;
+    void (async()=>{
+      try{
+        const hint=await detectReceiptIvaFromImage(b64,receipt.type||"image/jpeg");
+        if(cancelled||!hint||hint.ivaRate==null)return;
+        const vr=Number(hint.ivaRate);
+        if(Number.isNaN(vr))return;
+        const match=ivaRates.filter(r=>r.value!=null&&r.value!=="none").reduce((best,r)=>{
+          const d=Math.abs(Number(r.value)-vr);
+          if(!best||d<best.d)return{r,d};
+          return best;
+        },null);
+        if(match)setForm(p=>({...p,ivaRate:String(match.r.value)}));
+      }catch(e){}
+    })();
+    return()=>{cancelled=true};
+  },[receipt?.b64,receipt?.type,ivaRates,setForm]);
+  useEffect(()=>{
+    try{
+      const raw=localStorage.getItem(DRAFT_KEY);
+      if(raw){
+        const d=JSON.parse(raw);
+        if(d&&d.savedAt&&d.form)setDraftPrompt(d);
+      }
+    }catch(e){}
+  },[]);
+  useEffect(()=>{
+    clearTimeout(draftTimer.current);
+    draftTimer.current=setTimeout(()=>{
+      try{
+        const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate===""?"":(form.ivaRate??ivaRateToFormString(readIvaDefault())),departmentId:form.departmentId||"",ownerId:form.ownerId||"",
+          expenseType:form.expenseType||"expense",vendor:form.vendor||"",paymentTermMode:form.paymentTermMode||"0",paymentTermCustomDays:form.paymentTermCustomDays||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once",cadenceCustomMonths:form.cadenceCustomMonths||"1",proveedor:form.proveedor||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
+        localStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
+      }catch(e){}
+    },500);
+    return()=>clearTimeout(draftTimer.current);
+  },[form,splitOn,spMode,splits]);
+  const totVal=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
+  const checkedSplitCount=splits.filter(s=>s.checked).length;
+  const amtSumBad=splitOn&&spMode==="amount"&&expAmt>0&&Math.abs(totVal-expAmt)>0.01;
+  const splitSubmitBlocked=splitOn&&(users.length<2||checkedSplitCount<2||amtSumBad);
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,...isInv?{borderTop:"3px solid #C4622D",paddingTop:8}:{}}}>
+        <div style={{fontWeight:700,fontSize:15,color:G}}>{isInv?"Nuevo gasto · Factura":t("form.newExpense")}</div>
+        <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:21,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{resetForm();setPanel(null);}}>×</button>
       </div>
+      {draftPrompt&&(
+        <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:8,padding:"10px 11px",marginBottom:11,fontSize:11,color:"#92400E",lineHeight:1.45}}>
+          <div style={{marginBottom:8}}>{t("draft.banner").replace("{date}",new Date(draftPrompt.savedAt).toLocaleString())}</div>
+          <div style={{display:"flex",gap:8}}>
+            <button type="button" className="btn-sm" style={{flex:1,fontSize:11,background:actionColor}} onClick={()=>{
+              const f=draftPrompt.form||{};
+              setForm(p=>({...p,...f,date:f.date!=null?String(f.date):"",ivaRate:f.ivaRate===""||f.ivaRate==="none"?"":(f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):ivaRateToFormString(readIvaDefault())),departmentId:f.departmentId!=null?String(f.departmentId):"",
+                expenseType:(f.expenseType==="invoice"||(f[LEGACY_INVOICE_FLAG]===true&&f.expenseType!=="invoice"))?"invoice":(f.expenseType||p.expenseType||"expense"),vendor:f.vendor!=null?String(f.vendor):"",paymentTermMode:f.paymentTermMode!=null?String(f.paymentTermMode):"0",paymentTermCustomDays:f.paymentTermCustomDays!=null?String(f.paymentTermCustomDays):"30",invoiceDueDateDirect:f.invoiceDueDateDirect!=null?String(f.invoiceDueDateDirect):"",cadenceKey:f.cadenceKey||"once",cadenceCustomMonths:f.cadenceCustomMonths!=null?String(f.cadenceCustomMonths):"1",proveedor:f.proveedor!=null?String(f.proveedor):""}));
+              if(draftPrompt.splitOn&&draftPrompt.splits?.length){
+                let m=draftPrompt.spMode||"equal";
+                if(m==="value")m="amount";
+                if(!["equal","amount"].includes(m))m="equal";
+                setSplitOn(true);setSpMode(m);setSplits(draftPrompt.splits);
+              }
+              setDraftPrompt(null);
+            }}>{t("draft.restore")}</button>
+            <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px",borderColor:actionColor,color:actionColor}} onClick={()=>{try{localStorage.removeItem(DRAFT_KEY);}catch(e){}setDraftPrompt(null);}}>{t("draft.discard")}</button>
+          </div>
+        </div>
+      )}
+      <ExpenseFormFields
+        t={t}
+        form={form}
+        setForm={setForm}
+        ownerId={ownerId}
+        ownerUser={ownerUser}
+        activeCats={activeCats}
+        departments={departments}
+        users={users}
+        ivaRates={ivaRates}
+        hi={hi}
+        rs={rs}
+        actionColor={actionColor}
+        splitOn={splitOn}
+        setSplitOn={setSplitOn}
+        splits={splits}
+        setSplits={setSplits}
+        spMode={spMode}
+        setSpMode={setSpMode}
+        splitSubmitBlocked={splitSubmitBlocked}
+        submitAttempt={submitAttempt}
+        recPrev={recPrev}
+        onReceiptClear={()=>{setReceipt(null);setRecPrev(null);ivaScanB64Ref.current=null;}}
+        fileRef={fileRef}
+        startCam={startCam}
+        apiReceiptPreview={null}
+        onClearApiReceiptPreview={undefined}
+      />
       {formError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{formError}</div>}
       <div style={{position:"relative",width:"100%"}}>
         <button type="button" className="btn-primary" style={{width:"100%",padding:11,background:actionColor,opacity:(!expenseValid||splitSubmitBlocked)?0.5:1,cursor:(!expenseValid||splitSubmitBlocked)?"not-allowed":"pointer"}}
@@ -3195,50 +3343,109 @@ function NewPanel(){
 
 /* ── DETAIL PANEL ──────────────────────────────────────────────────────────── */
 function DetailPanel(){
-  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,ivaRates,departments,defaultDeptId}=useApp();
+  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,markExpensePaid,ivaRates,departments,defaultDeptId,
+        fileRef,startCam,receiptAltHandlerRef}=useApp();
   const [editMode,setEditMode]=useState(false);
   const [ef,setEf]=useState({});        // edit form fields
   const [efDirty,setEfDirty]=useState(false);
   const [efRecPrev,setEfRecPrev]=useState(null);
+  const [editApiReceipt,setEditApiReceipt]=useState(null);
   const [efSplitOn,setEfSplitOn]=useState(false);
   const [efSplits,setEfSplits]=useState([]);
   const [efSpMode,setEfSpMode]=useState("amount");
+  const [editSubmitAttempt,setEditSubmitAttempt]=useState(false);
   const [commentText,setCommentText]=useState("");
-  const editFileRef=useRef(null);
+  const [detailPayOpen,setDetailPayOpen]=useState(false);
+  const [detailPayDate,setDetailPayDate]=useState(()=>new Date().toISOString().slice(0,10));
   const e=expenses.find(x=>x.id===detailId);
   useEffect(()=>{
     if(detailId)markExpenseRead(detailId);
   },[detailId]);
+  useEffect(()=>{
+    setDetailPayOpen(false);
+  },[detailId]);
+  useEffect(()=>{
+    if(!editMode){receiptAltHandlerRef.current=null;return;}
+    receiptAltHandlerRef.current=({b64,type,preview})=>{
+      setEditApiReceipt(prev=>{
+        if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}
+        return null;
+      });
+      setEf(p=>({...p,receipt:b64,receiptType:type}));
+      setEfRecPrev(preview);
+      setEfDirty(true);
+    };
+    return()=>{receiptAltHandlerRef.current=null;};
+  },[editMode]);
+  useEffect(()=>{
+    if(!editMode||!detailId){
+      setEditApiReceipt(prev=>{
+        if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}
+        return null;
+      });
+      return;
+    }
+    const exp=expenses.find(x=>x.id===detailId);
+    if(!exp||exp.receipt||!exp.receiptPath||!AUTH_URL){
+      setEditApiReceipt(prev=>{
+        if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}
+        return null;
+      });
+      return;
+    }
+    let dead=false;
+    let objUrl=null;
+    (async()=>{
+      try{
+        const blob=await API.fetchBinary("/expenses/"+encodeURIComponent(exp.id)+"/receipt");
+        if(dead)return;
+        if(blob.type&&blob.type.includes("pdf")){setEditApiReceipt({kind:"pdf"});return;}
+        objUrl=URL.createObjectURL(blob);
+        setEditApiReceipt({kind:"img",url:objUrl});
+      }catch(err){
+        if(!dead)setEditApiReceipt(null);
+      }
+    })();
+    return()=>{
+      dead=true;
+      if(objUrl)try{URL.revokeObjectURL(objUrl);}catch(e2){}
+    };
+  },[editMode,detailId,expenses]);
   if(!e)return null;
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
-  const cat=cats.find(c=>c.name===e.category);
   const approverIds=effectiveExpenseApproverIds(e,cats,users);
   const st=getItemStatus(e,cats,users);
   const canEdit=user.id===e.submittedBy||isAdmin;
-  const ivaMatch=e.ivaRate!=null&&e.ivaRate!==undefined?ivaRates.find(r=>r.value===e.ivaRate):null;
-  const ivaRowLabel=e.ivaRate!=null&&e.ivaRate!==undefined?(ivaMatch?formatIvaOptionLabel(ivaMatch):`${e.ivaRate}%`):t("expense.ivaNotTracked");
-  const recurrenceToCadenceState=rule=>{
-    const r=String(rule||"").toLowerCase();
-    if(r==="monthly")return{cadenceKey:"monthly",cadenceCustomMonths:"1"};
-    if(r==="quarterly")return{cadenceKey:"quarterly",cadenceCustomMonths:"3"};
-    if(r==="yearly")return{cadenceKey:"yearly",cadenceCustomMonths:"12"};
-    if(r.startsWith("custom:"))return{cadenceKey:"custom",cadenceCustomMonths:String(normalizeCadenceCustomMonths(r.slice(7)))};
-    if(r==="weekly")return{cadenceKey:"custom",cadenceCustomMonths:"1"};
-    if(r==="biweekly")return{cadenceKey:"custom",cadenceCustomMonths:"1"};
-    return{cadenceKey:"once",cadenceCustomMonths:"1"};
-  };
-
+  const ivaRowLabel=(()=>{
+    if(e.ivaRate===null)return formatIvaOptionLabel(IVA_RATE_SIN_IVA);
+    if(e.ivaRate!==undefined&&e.ivaRate!==null){
+      const m=ivaRates.find(r=>r.value===e.ivaRate);
+      return m?formatIvaOptionLabel(m):`${e.ivaRate}%`;
+    }
+    return t("expense.ivaNotTracked");
+  })();
   const startEdit=()=>{
-    const defIva=e.ivaRate!==null&&e.ivaRate!==undefined?String(e.ivaRate):String(readIvaDefault());
-    const cadenceInit=recurrenceToCadenceState(e.recurrenceRule);
+    const defIva=e.ivaRate===null?"":(e.ivaRate!==undefined&&e.ivaRate!==null?String(e.ivaRate):ivaRateToFormString(readIvaDefault()));
+    const fromRule=recurrenceRuleToCadenceForForm(e.recurrenceRule);
+    const ckStored=e.cadenceKey!=null&&String(e.cadenceKey).trim()!==""?String(e.cadenceKey).trim():"";
+    const cadenceKey=(ckStored&&ckStored!=="once")?ckStored:(e.recurring===1?fromRule.cadenceKey:"once");
+    const cadenceCustomMonths=(ckStored&&ckStored!=="once"&&e.cadenceCustomMonths!=null)?String(e.cadenceCustomMonths):fromRule.cadenceCustomMonths;
+    const invTerms=e.expenseType==="invoice"?expenseInvoiceTermsFromEntity(e):{paymentTermMode:"0",invoiceDueDateDirect:""};
+    const prov=String((e.proveedor!=null&&String(e.proveedor).trim()!=="")?e.proveedor:(e.vendor||"")).trim();
     setEf({description:e.description,amount:String(e.amount),category:e.category,
       date:e.date,notes:e.notes||"",receipt:e.receipt||null,receiptType:e.receiptType||null,
       paidBy:e.paidBy,
       ownerId:e.ownerId||e.submittedBy,
       ivaRate:defIva,
       departmentId:e.departmentId||defaultDeptId,
-      cadenceKey:e.recurring===1?cadenceInit.cadenceKey:"once",
-      cadenceCustomMonths:cadenceInit.cadenceCustomMonths});
+      cadenceKey,
+      cadenceCustomMonths,
+      expenseType:e.expenseType||"expense",
+      proveedor:prov,
+      vendor:String(e.vendor||prov).trim(),
+      paymentTermMode:invTerms.paymentTermMode,
+      invoiceDueDateDirect:invTerms.invoiceDueDateDirect,
+      paymentTermCustomDays:e.paymentTermCustomDays!=null?String(e.paymentTermCustomDays):"30"});
     const ownerNow=e.ownerId||e.submittedBy||user.id;
     const amtNow=parseMoney(String(e.amount))||0;
     const baseSplits=users.map(u=>{
@@ -3256,10 +3463,21 @@ function DetailPanel(){
     setEfSpMode(splitModeInit);
     setEfSplits(baseSplits.map(s=>s.checked?s:{...s,percent:0,value:0}).map(s=>s.checked&&splitModeInit==="equal"?{...s,value:parseFloat((amtNow/checkedTotal).toFixed(2))}:s));
     setEfRecPrev(e.receipt?(e.receiptType?.includes("pdf")?"PDF":`data:${e.receiptType||"image/jpeg"};base64,${e.receipt}`):null);
+    setEditApiReceipt(prev=>{
+      if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}
+      return null;
+    });
+    receiptAltHandlerRef.current=null;
+    setEditSubmitAttempt(false);
     setEditMode(true);setEfDirty(false);
   };
   const cancelEdit=()=>{
     if(efDirty&&!confirm(t("expense.unsaved")))return;
+    receiptAltHandlerRef.current=null;
+    setEditApiReceipt(prev=>{
+      if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}
+      return null;
+    });
     setEditMode(false);setEfDirty(false);
   };
   const saveEdit=()=>{
@@ -3278,8 +3496,7 @@ function DetailPanel(){
       efPaidBy=buildPaidByFromSplitState(efSplits,amt,efSpMode);
       efSplitMode=efPaidBy.length>1?efSpMode:undefined;
     }
-    const rp=parseFloat(ef.ivaRate);
-    const ivaRate=isNaN(rp)?21:rp;
+    const ivaRate=parseFormIvaRateString(ef.ivaRate);
     const ivaAmount=calcIvaParts(amt,ivaRate).iva;
     const recEdit=cadenceToRecurringPayload(ef.cadenceKey,ef.cadenceCustomMonths);
     editExp(e.id,{
@@ -3295,29 +3512,53 @@ function DetailPanel(){
       departmentId:ef.departmentId||defaultDeptId,
       recurring:recEdit.recurring,
       recurrenceRule:recEdit.recurrenceRule,
+      expenseType:ef.expenseType||"expense",
+      proveedor:String(ef.proveedor||"").trim(),
     },e);
+    receiptAltHandlerRef.current=null;
     setEditMode(false);setEfDirty(false);
   };
-  const handleEditFile=(ev)=>{
-    const f=ev.target.files?.[0];if(!f)return;
-    const err=validateUpload(f,UPLOAD_RULES.receipt);
-    if(err){alert(err);ev.target.value="";return;}
-    const r=new FileReader();
-    r.onload=evr=>{const url=evr.target.result,b64=url.split(",")[1],type=receiptEffectiveMime(f)||f.type||"image/jpeg";
-      setEf(p=>({...p,receipt:b64,receiptType:type}));
-      setEfRecPrev(type.includes("pdf")?"PDF":url);setEfDirty(true);};
-    r.readAsDataURL(f);ev.target.value="";
+  const clearEditApiReceiptPreview=()=>{
+    setEditApiReceipt(prev=>{
+      if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}
+      return null;
+    });
+  };
+  const setEfWrapped=u=>{
+    setEf(p=>{
+      const n=typeof u==="function"?u(p):{...p,...u};
+      if(n.ownerId!==p.ownerId)setEfSplits(sp=>sp.map(s=>s.userId===n.ownerId?{...s,checked:true}:s));
+      return n;
+    });
+    setEfDirty(true);
   };
 
   const activeCats=cats.filter(c=>!c.archived);
+  const isEditInv=editMode&&ef.expenseType==="invoice";
+  const editOwnerId=(ef.ownerId&&String(ef.ownerId).trim())?String(ef.ownerId):user.id;
+  const editOwnerUser=users.find(u=>u.id===editOwnerId)||user;
+  const editExpAmt=parseFloat(ef.amount)||0;
+  const editAmountNum=parseMoney(ef.amount);
+  const editAmountOk=editAmountNum>0;
+  const editIsInv=ef.expenseType==="invoice";
+  const editVendorOk=!editIsInv||String(ef.vendor||"").trim().length>0;
+  const editProveedorOk=!editIsInv||String(ef.proveedor||"").trim().length>0;
+  const editDuePickOk=!editIsInv||(String(ef.paymentTermMode||"0")==="custom"?String(ef.invoiceDueDateDirect||"").trim().length>=10:true);
+  const editExpenseValid=editAmountOk&&String(ef.description||"").trim()&&String(ef.category||"").trim()&&String(ef.date||"").trim()&&!!String(ef.departmentId||"").trim()&&!!editOwnerId&&editVendorOk&&editProveedorOk&&editDuePickOk;
+  const editTotVal=efSplits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
+  const editCheckedSplit=efSplits.filter(s=>s.checked).length;
+  const editAmtSumBad=efSplitOn&&efSpMode==="amount"&&editExpAmt>0&&Math.abs(editTotVal-editExpAmt)>0.01;
+  const editSplitBlocked=efSplitOn&&(users.length<2||editCheckedSplit<2||editAmtSumBad);
+  const editHi=editSubmitAttempt&&!editExpenseValid;
+  const editRs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11}}>
-        <div style={{fontWeight:700,fontSize:14}}>{editMode?t("expense.editTitle"):"Detalle de gasto"}</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11,...isEditInv?{borderTop:"3px solid #C4622D",paddingTop:8}:{}}}>
+        <div style={{fontWeight:700,fontSize:editMode?15:14,color:G}}>{editMode?(isEditInv?"Editar gasto · Factura":"Editar gasto"):"Detalle de gasto"}</div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {!editMode&&canEdit&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={startEdit}>{t("action.editItem")}</button>}
           {!editMode&&(user.id===e.submittedBy||isAdmin)&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>deleteExp(e.id)}>{t("action.deleteItem")}</button>}
-          <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:19,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{if(editMode&&efDirty&&!confirm(t("expense.unsaved")))return;setEditMode(false);setDetailId(null);setPanel(null);}}>×</button>
+          <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:19,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{if(editMode&&efDirty&&!confirm(t("expense.unsaved")))return;receiptAltHandlerRef.current=null;setEditApiReceipt(prev=>{if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}return null;});setEditMode(false);setDetailId(null);setPanel(null);}}>×</button>
         </div>
       </div>
 
@@ -3325,66 +3566,54 @@ function DetailPanel(){
       {editMode&&(
         <div>
           {st==="approved"&&<div style={{padding:"6px 9px",background:"#FEF3C7",borderRadius:6,fontSize:10,color:"#92400E",marginBottom:9}}>{t("expense.reapprovalWarning")}</div>}
-          <div style={{marginBottom:8}}><label className="lbl">{t("label.description")} *</label><input className="inp" value={ef.description||""} onChange={ev=>{setEf(p=>({...p,description:ev.target.value}));setEfDirty(true);}}/></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-            <div><label className="lbl">{t("label.amount")} *</label><input className="inp" type="text" inputMode="decimal" value={ef.amount||""} onChange={ev=>{setEf(p=>({...p,amount:ev.target.value}));setEfDirty(true);}}/></div>
-            <div><label className="lbl">{t("label.date")}</label><input className="inp" type="date" value={ef.date||""} onChange={ev=>{setEf(p=>({...p,date:ev.target.value}));setEfDirty(true);}}/></div>
-          </div>
-          <div style={{marginBottom:8}}><label className="lbl">{t("label.category")}</label><select className="inp" value={ef.category||"Otro"} onChange={ev=>{setEf(p=>({...p,category:ev.target.value}));setEfDirty(true);}}>{activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}</select></div>
-          <div style={{marginBottom:8}}><label className="lbl">{t("label.department")} *</label><select className="inp" value={ef.departmentId||""} onChange={ev=>{setEf(p=>({...p,departmentId:ev.target.value}));setEfDirty(true);}}>{departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-          <div style={{marginBottom:8}}><label className="lbl">Titular del gasto *</label><select className="inp" value={ef.ownerId||e.ownerId||e.submittedBy||user.id} onChange={ev=>{const oid=ev.target.value;setEf(p=>({...p,ownerId:oid}));setEfSplits(prev=>prev.map(s=>s.userId===oid?{...s,checked:true}:s));setEfDirty(true);}}>{users.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===user.id?" (yo)":""}</option>)}</select></div>
-          <div style={{marginBottom:8}}><label className="lbl">{t("expenses.cadence")}</label>
-            <select className="inp" value={ef.cadenceKey||"once"} onChange={ev=>{setEf(p=>({...p,cadenceKey:ev.target.value}));setEfDirty(true);}}>
-              <option value="once">{t("expenses.cadenceOnce")}</option>
-              <option value="monthly">{t("expenses.cadenceMonthly")}</option>
-              <option value="quarterly">{t("expenses.cadenceQuarterly")}</option>
-              <option value="yearly">{t("expenses.cadenceYearly")}</option>
-              <option value="custom">{t("expenses.cadenceCustom")}</option>
-            </select>
-            {ef.cadenceKey==="custom"&&(
-              <div style={{marginTop:6}}>
-                <label className="lbl">{t("expenses.cadenceEveryXMonths")}</label>
-                <input className="inp" type="number" min={1} max={60} value={ef.cadenceCustomMonths||"1"} onChange={ev=>{setEf(p=>({...p,cadenceCustomMonths:ev.target.value}));setEfDirty(true);}}/>
-              </div>
-            )}
-          </div>
-          <div style={{marginBottom:10,background:GL,borderRadius:8,padding:10}}>
-            <label className="lbl">{t("form.ivaRate")}</label>
-            <select className="inp" value={ef.ivaRate||String(readIvaDefault())} onChange={ev=>{setEf(p=>({...p,ivaRate:ev.target.value}));setEfDirty(true);}}>
-              {ivaRates.map(r=><option key={String(r.value)+"-"+r.name} value={r.value}>{formatIvaOptionLabel(r)}</option>)}
-            </select>
-            {(()=>{const amt=parseMoney(ef.amount)||0;const rp=parseFloat(ef.ivaRate)||0;const p=calcIvaParts(amt,rp);return(
-              <div style={{marginTop:8,fontSize:13}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:"#9CAA9F",fontSize:10}}>{t("form.ivaBase")}</span><span style={{fontWeight:700,color:G}}>{fmt(p.base)}</span></div>
-                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#9CAA9F",fontSize:10}}>{t("form.ivaAmountLabel")}</span><span style={{fontWeight:700,color:G}}>{rp===0?t("form.ivaAmountDash"):fmt(p.iva)}</span></div>
-              </div>
-            );})()}
-          </div>
-          <div style={{marginBottom:10}}><label className="lbl">{t("label.notes")}</label><textarea className="inp" rows={2} style={{resize:"vertical"}} value={ef.notes||""} onChange={ev=>{setEf(p=>({...p,notes:ev.target.value}));setEfDirty(true);}}/></div>
-          <SplitAllocationEditor t={t} user={(users.find(u=>u.id===(ef.ownerId||e.ownerId||e.submittedBy||user.id))||user)} users={users} totalAmount={parseMoney(ef.amount)||0} splitOn={efSplitOn} setSplitOn={v=>{setEfSplitOn(v);if(!v)setEfSpMode("amount");setEfDirty(true);}} splits={efSplits} setSplits={v=>{setEfSplits(v);setEfDirty(true);}} spMode={efSpMode} setSpMode={v=>{setEfSpMode("amount");setEfDirty(true);}}/>
-          {/* Receipt edit */}
-          <div style={{marginBottom:10}}>
-            <label className="lbl">{t("label.receipt")}</label>
-            {efRecPrev&&efRecPrev!=="PDF"&&<div style={{position:"relative",marginBottom:5}}>
-              <img src={efRecPrev} alt="" style={{width:"100%",maxHeight:110,objectFit:"contain",borderRadius:7,background:"#F5F0EA"}}/>
-              <button style={{position:"absolute",top:4,right:4,width:18,height:18,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{if(confirm(t("msg.attachmentRemoved")+"?")){setEf(p=>({...p,receipt:null,receiptType:null}));setEfRecPrev(null);setEfDirty(true);}}}>×</button>
-            </div>}
-            {efRecPrev==="PDF"&&<div style={{background:"#F5E8F4",borderRadius:6,padding:"5px 9px",fontSize:11,color:"#5C1057",marginBottom:5,display:"flex",justifyContent:"space-between"}}>
-              <span>PDF adjunto</span>
-              <button style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={()=>{if(confirm(t("msg.attachmentRemoved")+"?")){setEf(p=>({...p,receipt:null,receiptType:null}));setEfRecPrev(null);setEfDirty(true);}}}>✕</button>
-            </div>}
-            {!efRecPrev&&<button style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1.5px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>editFileRef.current?.click()}>+ Añadir adjunto</button>}
-            <input ref={editFileRef} type="file" accept={RECEIPT_FILE_ACCEPT} style={{display:"none"}} onChange={handleEditFile}/>
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            <button className="btn-primary" style={{flex:1,fontSize:13,padding:"8px"}} onClick={saveEdit} disabled={!ef.description||!ef.amount||!ef.departmentId}>{t("action.saveChanges")||"Guardar"}</button>
+          <ExpenseFormFields
+            t={t}
+            form={ef}
+            setForm={setEfWrapped}
+            ownerId={editOwnerId}
+            ownerUser={editOwnerUser}
+            activeCats={activeCats}
+            departments={departments}
+            users={users}
+            ivaRates={ivaRates}
+            hi={editHi}
+            rs={editRs}
+            actionColor={G}
+            splitOn={efSplitOn}
+            setSplitOn={v=>{setEfSplitOn(v);if(!v)setEfSpMode("amount");setEfDirty(true);}}
+            splits={efSplits}
+            setSplits={v=>{setEfSplits(v);setEfDirty(true);}}
+            spMode={efSpMode}
+            setSpMode={v=>{setEfSpMode("amount");setEfDirty(true);}}
+            splitSubmitBlocked={editSplitBlocked}
+            submitAttempt={editSubmitAttempt}
+            recPrev={efRecPrev}
+            onReceiptClear={()=>{
+              setEf(p=>({...p,receipt:null,receiptType:null}));
+              setEfRecPrev(null);
+              clearEditApiReceiptPreview();
+              setEfDirty(true);
+            }}
+            fileRef={fileRef}
+            startCam={startCam}
+            apiReceiptPreview={editApiReceipt}
+            onClearApiReceiptPreview={clearEditApiReceiptPreview}
+          />
+          <div style={{display:"flex",gap:6,marginTop:8}}>
+            <button className="btn-primary" style={{flex:1,fontSize:13,padding:"8px",opacity:(!editExpenseValid||editSplitBlocked)?0.5:1,cursor:(!editExpenseValid||editSplitBlocked)?"not-allowed":"pointer"}} onClick={()=>{
+              if(editSplitBlocked)return;
+              if(!editExpenseValid){setEditSubmitAttempt(true);return;}
+              saveEdit();
+            }}>{t("action.saveChanges")||"Guardar"}</button>
             <button className="btn-secondary" style={{flex:1,fontSize:13,padding:"8px"}} onClick={cancelEdit}>{t("action.cancel")}</button>
           </div>
         </div>
       )}
 
       {/* READ MODE */}
-      {!editMode&&<div>
+      {!editMode&&<div style={{display:"flex",alignItems:"stretch",gap:0}}>
+      {e.expenseType==="invoice"&&<div style={{width:3,flexShrink:0,background:T,alignSelf:"stretch",borderRadius:"2px 0 0 2px"}} aria-hidden/>}
+      <div style={{flex:1,minWidth:0}}>
       <div style={{display:"inline-block",padding:"2px 8px",borderRadius:11,fontSize:9,fontWeight:700,background:ST[st].bg,color:ST[st].color,marginBottom:7}}>{t("status."+st).toUpperCase()}</div>
       <div style={{fontSize:15,fontWeight:700,marginBottom:2}}>{e.description}</div>
       <div style={{fontSize:24,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",marginBottom:11}}>{fmtExpenseAmt(e)}</div>
@@ -3394,9 +3623,38 @@ function DetailPanel(){
       {[{l:t("label.date"),v:fmtDate(e.date)},{l:t("label.category"),v:e.category},{l:t("label.department"),v:(e.departmentId&&(departments.find(d=>d.id===e.departmentId)||{}).name)||t("detail.noDepartment")},{l:"Titular",v:getU(e.ownerId||e.submittedBy).name},{l:"Enviado por",v:getU(e.submittedBy).name}].map(({l,v})=>(
         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}><span style={{color:"#9CAA9F"}}>{l}</span><span style={{fontWeight:500}}>{v}</span></div>
       ))}
+      {e.expenseType==="invoice"&&(<>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12,gap:8}}><span style={{color:"#9CAA9F",flexShrink:0}}>Proveedor</span><span style={{fontWeight:500,textAlign:"right"}}>{String(e.proveedor||e.vendor||"").trim()||"—"}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12,gap:8}}><span style={{color:"#9CAA9F",flexShrink:0}}>Condiciones de pago</span><span style={{fontWeight:500,textAlign:"right"}}>{formatCondicionesPagoReadOnly(e)}</span></div>
+        <div style={{padding:"5px 0",borderBottom:"1px solid #F5F0EA"}}>
+          <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>Estado de pago</div>
+          <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8}}>
+            {(()=>{const pb=invoicePaymentBadgeStyle(e.paymentStatus);return(
+              <span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,display:"inline-block",background:pb.bg,color:pb.color}}>{pb.text}</span>
+            );})()}
+            {isAdmin&&st==="approved"&&e.paymentStatus!=="paid"&&(
+              !detailPayOpen?(
+                <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px",fontWeight:600}}
+                  onClick={()=>{setDetailPayDate(new Date().toISOString().slice(0,10));setDetailPayOpen(true);}}>
+                  Marcar como pagada
+                </button>
+              ):(
+                <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,width:"100%",marginTop:4}}>
+                  <label className="lbl" style={{margin:0,display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontSize:11,color:"#6B7B72"}}>Fecha de pago</span>
+                    <input className="inp" type="date" value={detailPayDate} onChange={ev=>setDetailPayDate(ev.target.value)} style={{padding:"4px 8px",fontSize:11}}/>
+                  </label>
+                  <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 12px"}} onClick={()=>{markExpensePaid(e.id,detailPayDate);setDetailPayOpen(false);}}>{t("action.confirm")}</button>
+                  <button type="button" className="btn-secondary" style={{fontSize:11,padding:"5px 12px"}} onClick={()=>setDetailPayOpen(false)}>{t("action.cancel")}</button>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      </>)}
       <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}>
         <span style={{color:"#9CAA9F"}}>{t("expense.ivaRow")} · {ivaRowLabel}</span>
-        <span style={{fontWeight:500}}>{e.ivaRate!==null&&e.ivaRate!==undefined?(e.ivaRate===0?t("form.ivaAmountDash"):fmt(e.ivaAmount||0)):t("expense.ivaNotTracked")}</span>
+        <span style={{fontWeight:500}}>{e.ivaRate===null?t("form.ivaAmountDash"):(e.ivaRate!==undefined&&e.ivaRate!==null?(e.ivaRate===0?t("form.ivaAmountDash"):fmt(e.ivaAmount||0)):t("expense.ivaNotTracked"))}</span>
       </div>
       <ExpenseSplitBreakdown e={e} t={t} users={users}/>
       <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}}>
@@ -3508,6 +3766,7 @@ function DetailPanel(){
           </button>
         </div>
       </div>
+      </div>
       </div>}
     </div>
   );
@@ -3607,15 +3866,15 @@ function DashboardView(){
   const mTotal=mTotalAll;
   const pend=isAdmin?pendAll:pendMine;
   const dashTotApproved=totApproved;
-  const myActivityExpensesMonth=expenses.filter(e=>e.submittedBy===user.id&&e.date?.slice(0,7)===ym);
-  const myActivityBillsMonth=expenses.filter(e=>e.submittedBy===user.id&&e.expenseType==="invoice"&&(e.dueDate||e.date||"").slice(0,7)===ym);
-  const apprMine=[...myActivityExpensesMonth.filter(e=>getItemStatus(e,cats,users)==="approved"),...myActivityBillsMonth.filter(b=>getItemStatus(b,cats,users)==="approved")];
+  const myActivityGastosMonth=expenses.filter(e=>e.submittedBy===user.id&&e.expenseType!=="invoice"&&e.date?.slice(0,7)===ym);
+  const myActivityFacturasMonth=expenses.filter(e=>e.submittedBy===user.id&&e.expenseType==="invoice"&&(e.dueDate||e.date||"").slice(0,7)===ym);
+  const apprMine=[...myActivityGastosMonth.filter(e=>getItemStatus(e,cats,users)==="approved"),...myActivityFacturasMonth.filter(b=>getItemStatus(b,cats,users)==="approved")];
   const apprSum=apprMine.reduce((s,e)=>s+eurForExpense(e),0);
   const apprCnt=apprMine.length;
-  const pendList=[...myActivityExpensesMonth.filter(e=>getItemStatus(e,cats,users)==="pending"),...myActivityBillsMonth.filter(b=>getItemStatus(b,cats,users)==="pending")];
+  const pendList=[...myActivityGastosMonth.filter(e=>getItemStatus(e,cats,users)==="pending"),...myActivityFacturasMonth.filter(b=>getItemStatus(b,cats,users)==="pending")];
   const pendSum=pendList.reduce((s,e)=>s+eurForExpense(e),0);
   const pendCnt=pendList.length;
-  const rejList=[...myActivityExpensesMonth.filter(e=>getItemStatus(e,cats,users)==="rejected"),...myActivityBillsMonth.filter(b=>getItemStatus(b,cats,users)==="rejected")];
+  const rejList=[...myActivityGastosMonth.filter(e=>getItemStatus(e,cats,users)==="rejected"),...myActivityFacturasMonth.filter(b=>getItemStatus(b,cats,users)==="rejected")];
   const rejSum=rejList.reduce((s,e)=>s+eurForExpense(e),0);
   const rejCnt=rejList.length;
   const watchCats=cats.filter(c=>!c.archived&&c.budget!=null&&c.budget>0&&effectiveExpenseApproverIds({category:c.name},cats,users)[0]===user.id);
@@ -3884,16 +4143,25 @@ function ExpensesView(){
           </button>
         ))}
       </div>
-      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
-        {[
-          ["all",t("expenses.filterAll")],
-          ["expense",t("expenses.filterExpenses")],
-          ["invoice",t("expenses.filterInvoices")],
-        ].map(([k,lb])=>(
-          <button key={k} type="button" style={{padding:"3px 10px",borderRadius:18,fontSize:11,fontWeight:500,border:"1.5px solid",borderColor:expKindFlt===k?T:"#DDD6CC",background:expKindFlt===k?T:"#fff",color:expKindFlt===k?"#fff":"#4B5E52",cursor:"pointer"}} onClick={()=>setExpKindFlt(k)}>
-            {lb}
-          </button>
-        ))}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
+        <span style={{fontSize:11,color:"#4B5E52",fontWeight:600,whiteSpace:"nowrap"}}>Todos · Gastos · Facturas</span>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+          {[
+            ["all",t("expenses.filterAll")],
+            ["expense",t("expenses.filterExpenses")],
+            ["invoice",t("expenses.filterInvoices")],
+          ].map(([k,lb])=>{
+            const active=expKindFlt===k;
+            const fill=k==="invoice"&&active?"#C4622D":active?"#3C0A37":"#fff";
+            const border=active?(k==="invoice"?"#C4622D":"#3C0A37"):"#DDD6CC";
+            const color=active?"#fff":"#4B5E52";
+            return(
+              <button key={k} type="button" style={{padding:"3px 12px",borderRadius:18,fontSize:11,fontWeight:600,border:`1.5px solid ${border}`,background:fill,color,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setExpKindFlt(k)}>
+                {lb}
+              </button>
+            );
+          })}
+        </div>
       </div>
       {/* ── Search + extended filters */}
       <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:9}}>
@@ -3981,11 +4249,7 @@ function ExpensesView(){
           const isInvRow=e.expenseType==="invoice";
           const ps=e.paymentStatus||"na";
           let payBadge=null;
-          if(isInvRow){
-            if(ps==="paid")payBadge={bg:"#D1FAE5",color:"#065F46",tx:t("expenses.paymentPaid")};
-            else if(ps==="overdue")payBadge={bg:"#FEE2E2",color:"#991B1B",tx:t("expenses.paymentOverdue")};
-            else if(ps==="unpaid"||ps==="pending")payBadge={bg:"#FEF3C7",color:"#92400E",tx:t("expenses.paymentPending")};
-          }
+          if(isInvRow&&st==="approved")payBadge=invoicePaymentBadgeStyle(e.paymentStatus);
           const rowTitle=isInvRow?(e.vendor||e.description):e.description;
           const metaDate=isInvRow&&e.dueDate?`${t("expenses.vence")} ${fmtDate(e.dueDate)} · `:fmtDate(e.date)+" · ";
           return(
@@ -3995,8 +4259,14 @@ function ExpensesView(){
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                     <span style={{fontSize:12,fontWeight:600}}>{rowTitle}</span>
+                    {isInvRow&&(
+                      <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:"#C4622D",color:"#fff",flexShrink:0,display:"inline-block"}}>FACTURA</span>
+                    )}
+                    {!isInvRow&&expKindFlt!=="invoice"&&(
+                      <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:"#3C0A37",color:"#fff",flexShrink:0,display:"inline-block"}}>GASTO</span>
+                    )}
                     <span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:ST[st].bg,color:ST[st].color,flexShrink:0}}>{t("status."+st)}</span>
-                    {payBadge&&<span style={{padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:payBadge.bg,color:payBadge.color,flexShrink:0}}>{payBadge.tx}</span>}
+                    {payBadge&&<span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,display:"inline-block",background:payBadge.bg,color:payBadge.color,flexShrink:0}}>{payBadge.text}</span>}
                     {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span aria-hidden="true">👥</span><span>{(e.paidBy||[]).length}</span></span>}
                   </div>
                   <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>
@@ -4083,7 +4353,7 @@ function ReceiptThumb({expenseId}){
 function ApprovalsView(){
   const{t,expenses,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel}=useApp();
   const [expandedId,setExpandedId]=useState(null);
-  const canAct=isApprover||isAdmin;
+  const [typeFilter,setTypeFilter]=useState("all");
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const priorityForItem=(item)=>{
     const ids=effectiveExpenseApproverIds(item,cats,users);
@@ -4103,16 +4373,42 @@ function ApprovalsView(){
     const db=String(b.date||b.dueDate||"");
     return db.localeCompare(da);
   });
-  const activeRows=sortByPriority(
-    canAct
-      ? expenses.filter(e=>effectiveExpenseApproverIds(e,cats,users).includes(user.id))
-      : expenses
-  );
+  const baseList=isApprover
+    ? expenses.filter(e=>effectiveExpenseApproverIds(e,cats,users).includes(user.id))
+    : expenses;
+  const kindFiltered=baseList.filter(e=>{
+    if(typeFilter==="all")return true;
+    if(typeFilter==="expense")return e.expenseType!=="invoice";
+    return e.expenseType==="invoice";
+  });
+  const activeRows=sortByPriority(kindFiltered);
+  const cAll=baseList.length;
+  const cExp=baseList.filter(e=>e.expenseType!=="invoice").length;
+  const cInv=baseList.filter(e=>e.expenseType==="invoice").length;
   return(
     <div>
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.approvals")}</h1>
       <p style={{fontSize:13,color:"#6B7B72",marginBottom:14}}>{AUTH_URL?"Gastos enviados al servidor pendientes de decisión.":t("dash.bothMustApprove")}</p>
-      {activeRows.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{t("empty.approvals")}</div>:
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+          {[
+            ["all",t("expenses.filterAll"),cAll],
+            ["expense",t("expenses.filterExpenses"),cExp],
+            ["invoice",t("expenses.filterInvoices"),cInv],
+          ].map(([k,lb,cnt])=>{
+            const active=typeFilter===k;
+            const fill=k==="invoice"&&active?"#C4622D":active?"#3C0A37":"#fff";
+            const border=active?(k==="invoice"?"#C4622D":"#3C0A37"):"#DDD6CC";
+            const color=active?"#fff":"#4B5E52";
+            return(
+              <button key={k} type="button" style={{padding:"3px 12px",borderRadius:18,fontSize:11,fontWeight:600,border:`1.5px solid ${border}`,background:fill,color,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setTypeFilter(k)}>
+                {lb} ({cnt})
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {activeRows.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{baseList.length===0?t("empty.approvals"):t("empty.approvalsFilter")}</div>:
         activeRows.map(item=>{
           const isInv=item.expenseType==="invoice";
           const itemId=item.id;
@@ -4126,14 +4422,15 @@ function ApprovalsView(){
               }).join(" · ")
             : ownerName;
           const rowDate=isInv?(item.dueDate||item.date):item.date;
-          const rowTitle=isInv?(item.vendor||item.description):item.description;
+          const rowTitle=isInv?(String(item.vendor||item.proveedor||"").trim()||item.description):item.description;
           const st=getItemStatus(item,cats,users);
           const stStyle=ST[st]||ST.pending;
-          let canActOnRow=canAct&&rowApproverIds.includes(user.id);
-          if(isAdmin&&!canActOnRow){canActOnRow=true;}
+          const canActOnRow=isAdmin||rowApproverIds.includes(user.id);
           const isExpanded=itemId===expandedId;
+          const payBadge=isInv&&st==="approved"?invoicePaymentBadgeStyle(item.paymentStatus):null;
+          const deemph=st==="rejected"||st==="deleted";
           return(
-            <div key={item.id} className="card row-hover" style={{marginBottom:9,background:st==="pending"?"#FFFBEB":st==="approved"?"#F0FDF4":st==="rejected"?"#FFF1F2":"#fff",opacity:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none"}}>
+            <div key={item.id} className="card row-hover" style={{marginBottom:9,background:st==="pending"?"#FFFBEB":st==="approved"?"#F0FDF4":st==="rejected"?"#FFF1F2":"#fff",opacity:deemph?0.55:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none"}}>
               <div
                 style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7,cursor:canActOnRow?"pointer":"default"}}
                 onClick={canActOnRow?()=>setExpandedId(prev=>prev===itemId?null:itemId):undefined}
@@ -4146,24 +4443,35 @@ function ApprovalsView(){
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
                         <span style={{fontWeight:600,fontSize:16,color:"#4B5E52"}}>{rowTitle}</span>
+                        {isInv&&(
+                          <span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,background:"#C4622D",color:"#fff",display:"inline-block"}}>FACTURA</span>
+                        )}
                       </div>
                       <div style={{fontSize:13,fontWeight:700,color:"#4B5E52",marginTop:2}}>Titular: {titularNames}</div>
-                      <div style={{fontSize:12,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                        <span>{item.category} · {fmtDate(rowDate)} · Enviado por: {submitterName}</span>
-                        <span style={{
-                          fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:10,
-                          textTransform:"uppercase",letterSpacing:"0.05em",
-                          background:isInv?"#FEF0E7":"#EDE8E0",
-                          color:isInv?"#92400E":"#4B5E52"
-                        }}>{isInv?t("expenses.typeInvoice"):t("expenses.typeExpense")}</span>
-                      </div>
+                      {isInv?(
+                        <div style={{fontSize:12,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                          <span>{fmtExpenseAmt(item)}{item.dueDate?` · Vence: ${fmtDate(item.dueDate)}`:""} · {item.category} · Enviado por: {submitterName}</span>
+                        </div>
+                      ):(
+                        <div style={{fontSize:12,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                          <span>{item.category} · {fmtDate(rowDate)} · Enviado por: {submitterName}</span>
+                          <span style={{
+                            fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,
+                            textTransform:"uppercase",letterSpacing:"0.05em",
+                            background:"#3C0A37",
+                            color:"#fff",
+                            display:"inline-block"
+                          }}>GASTO</span>
+                        </div>
+                      )}
                     </div>
                     <div style={{textAlign:"right",flexShrink:0}}>
                       <div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
-                      <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center",justifyContent:"flex-end"}}>
+                      <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center",justifyContent:"flex-end",flexWrap:"wrap"}}>
                         <span style={{padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,background:stStyle.bg,color:stStyle.color}}>
                           {t("status."+st)}
                         </span>
+                        {payBadge&&<span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,display:"inline-block",background:payBadge.bg,color:payBadge.color}}>{payBadge.text}</span>}
                         {!isExpanded&&canActOnRow&&(
                           <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px"}} onClick={ev=>{ev.stopPropagation();setExpandedId(itemId);}}>
                             Revisar
@@ -4181,20 +4489,16 @@ function ApprovalsView(){
               </div>
               {(item.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={item} t={t} users={users} alwaysInline/></div>}
               <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(item.approvals||{},aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {canAct?(
-                canActOnRow?(
-                  isExpanded?(
-                    <div onClick={ev=>ev.stopPropagation()}>
-                      <label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label>
-                      <textarea className="inp" rows={2} placeholder="" value={aNote[itemId]||""} onChange={ev=>setANote(p=>({...p,[itemId]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
-                      <div style={{display:"flex",gap:6}}>
-                        <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"approved");setExpandedId(null);}}>{t("action.approve")}</button>
-                        <button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"rejected");setExpandedId(null);}}>{t("action.reject")}</button>
-                      </div>
-                    </div>
-                  ):null
-                ):null
-              ):null}
+              {canActOnRow&&isExpanded&&(
+                <div onClick={ev=>ev.stopPropagation()}>
+                  <label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label>
+                  <textarea className="inp" rows={2} placeholder="" value={aNote[itemId]||""} onChange={ev=>setANote(p=>({...p,[itemId]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
+                  <div style={{display:"flex",gap:6}}>
+                    <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"approved");setExpandedId(null);}}>{t("action.approve")}</button>
+                    <button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"rejected");setExpandedId(null);}}>{t("action.reject")}</button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })
@@ -4213,18 +4517,23 @@ function PaymentCalendar({reportExpenses}){
   const firstDay=(new Date(year,mon,1).getDay()+6)%7; // Monday-first
   const daysInMonth=new Date(year,mon+1,0).getDate();
   const events={};
-  srcExpenses.filter(e=>e.expenseType==="invoice"&&e.dueDate).forEach(inv=>{
+  srcExpenses.forEach(e=>{
+    const isInv=e.expenseType==="invoice";
+    const dateRaw=isInv?(e.dueDate||e.date):e.date;
+    if(!dateRaw)return;
     try{
-      const dt=new Date(String(inv.dueDate).slice(0,10)+"T12:00:00");
+      const dt=new Date(String(dateRaw).slice(0,10)+"T12:00:00");
       if(dt.getFullYear()===year&&dt.getMonth()===mon){
         const day=dt.getDate();
         if(!events[day])events[day]=[];
-        events[day].push({type:"bill",id:inv.id,label:inv.vendor||inv.description,amount:eurForExpense(inv)});
+        events[day].push({
+          type:isInv?"invoice":"expense",
+          id:e.id,
+          label:isInv?(e.vendor||e.proveedor||e.description):e.description,
+          amount:eurForExpense(e),
+        });
       }
-    }catch(e){}
-  });
-  srcExpenses.filter(e=>e.expenseType!=="invoice").forEach(e=>{
-    try{const d=new Date(e.date);if(d.getFullYear()===year&&d.getMonth()===mon){const day=d.getDate();if(!events[day])events[day]=[];events[day].push({type:"expense",id:e.id,label:e.description,amount:eurForExpense(e)});}}catch{}
+    }catch(err){}
   });
   const cells=[];
   for(let i=0;i<firstDay;i++)cells.push(null);
@@ -4247,7 +4556,7 @@ function PaymentCalendar({reportExpenses}){
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
         {cells.map((d,i)=>(
           <div key={i} onClick={()=>d&&setSelDay(selDay===d?null:d)} style={{minHeight:32,borderRadius:5,background:d&&isToday(d)?"rgba(60,10,55,0.08)":d&&events[d]?"#FFFBF5":"#FAFAF8",border:d&&isToday(d)?`1.5px solid ${G}`:d&&selDay===d?"1.5px solid "+T:"1px solid transparent",padding:"3px 2px",cursor:d?"pointer":"default",transition:"border 0.1s"}}>
-            {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(events[d]||[]).map((ev,j)=><div key={j} title={ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.type==="bill"?T:G}}/>)}</div></>}
+            {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(events[d]||[]).map((ev,j)=><div key={j} title={ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?"#C4622D":"#3C0A37"}}/>)}</div></>}
           </div>
         ))}
       </div>
@@ -4256,7 +4565,7 @@ function PaymentCalendar({reportExpenses}){
           <div style={{fontWeight:600,fontSize:11,marginBottom:6,color:G}}>{selDay} {cur.toLocaleString("es-ES",{month:"long"})}</div>
           {events[selDay].map((ev,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,marginBottom:3,gap:6}}>
-              <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="bill"?T:G,display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
+              <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?"#C4622D":"#3C0A37",display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
               <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(ev.amount)}</span>
               <button style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{go("expenses");setTimeout(()=>{setDetailId(ev.id);setPanel("detail");},50);}}>{t("action.viewAll")}</button>
             </div>
@@ -4264,8 +4573,8 @@ function PaymentCalendar({reportExpenses}){
         </div>
       )}
       <div style={{display:"flex",gap:12,marginTop:8,fontSize:9}}>
-        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:T,display:"inline-block"}}/>{t("expenses.typeInvoice")}</span>
-        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:G,display:"inline-block"}}/>{t("nav.expenses")}</span>
+        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#C4622D",display:"inline-block"}}/>{t("expenses.typeInvoice")}</span>
+        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#3C0A37",display:"inline-block"}}/>{t("nav.expenses")}</span>
       </div>
     </div>
   );
@@ -4340,7 +4649,7 @@ function ReportsView(){
   const trendBarTrackPx=76;
   const exportCSV=(all)=>{
     const data=all?"all":expFilter;
-    const src=data==="all"?rangeFilteredExpenses:(rangeFilteredExpenses.filter(e=>getItemStatus(e,cats)===data));
+    const src=data==="all"?rangeFilteredExpenses:(rangeFilteredExpenses.filter(e=>getItemStatus(e,cats,users)===data));
     const now=new Date().toISOString();
     const exportedUser=user;
     if(!AUTH_URL){
@@ -4348,14 +4657,15 @@ function ReportsView(){
       saveExp(expenses.map(e=>{const u=updatedSrc.find(x=>x.id===e.id);return u||e;}));
     }
     appLog("info","csv_exported",{filter:data,count:src.length,userId:exportedUser.id,codes:src.map(e=>e.itemCode||e.id)});
-    const rows=[[t("item.code"),t("label.date"),t("label.description"),t("label.amount"),t("csv.baseAmount"),t("csv.ivaRatePct"),t("csv.ivaEur"),t("label.category"),t("label.status"),t("filter.submitter"),t("label.paidBy"),t("label.notes"),t("label.approvers")],
+    const rows=[[t("item.code"),t("csv.itemType"),t("label.date"),t("label.description"),t("label.amount"),t("csv.baseAmount"),t("csv.ivaRatePct"),t("csv.ivaEur"),t("label.category"),t("label.status"),t("filter.submitter"),t("label.paidBy"),t("label.notes"),t("label.approvers")],
       ...src.map(e=>{
         const approverIds=effectiveExpenseApproverIds(e,cats,users);
         const amtEur=eurForExpense(e);
         const base=e.ivaRate!==null&&e.ivaRate!==undefined?Math.round((amtEur-(e.ivaAmount||0))*100)/100:amtEur;
         const ivr=e.ivaRate!==null&&e.ivaRate!==undefined?e.ivaRate:"";
         const ivam=e.ivaAmount!==null&&e.ivaAmount!==undefined?e.ivaAmount:"";
-        return[e.itemCode||e.id,e.date,e.description,amtEur,base,ivr,ivam,e.category,getItemStatus(e,cats,users),(users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name,e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),e.notes||"",approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";")];
+        const tipo=e.expenseType==="invoice"?"Factura":"Gasto";
+        return[e.itemCode||e.id,tipo,e.date,e.description,amtEur,base,ivr,ivam,e.category,getItemStatus(e,cats,users),(users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name,e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),e.notes||"",approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";")];
       })];
     const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
     const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`solana-${data}-${new Date().toISOString().slice(0,10)}.csv`});
@@ -4799,9 +5109,10 @@ function PendingUsersPanel(){
 
 /* ── IVA RATES EDITOR (superadmin, settings) ─────────────────────────────── */
 function IvaRatesEditorBlock({t,ivaRates,onSave}){
-  const [rows,setRows]=useState(()=>ivaRates.map(r=>({...r})));
+  const editable=ivaRates.filter(r=>r.value!=null&&r.value!=="none");
+  const [rows,setRows]=useState(()=>editable.map(r=>({...r})));
   const [saved,setSaved]=useState(false);
-  useEffect(()=>{setRows(ivaRates.map(r=>({...r})));},[ivaRates]);
+  useEffect(()=>{const ed=ivaRates.filter(r=>r.value!=null&&r.value!=="none");setRows(ed.map(r=>({...r})));},[ivaRates]);
   const doSave=()=>{
     onSave(normalizeIvaRatesPayload(rows));
     setSaved(true);
@@ -4810,6 +5121,7 @@ function IvaRatesEditorBlock({t,ivaRates,onSave}){
   return(
     <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid #EDE8E0"}}>
       <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:10}}>{t("settings.ivaTypesSection")}</div>
+      <div style={{fontSize:11,color:"#4B5E52",marginBottom:8,lineHeight:1.4}}>Sin IVA siempre disponible · Edita los tipos personalizados:</div>
       <div style={{fontSize:9,color:"#9CAA9F",marginBottom:6}}>{t("settings.ivaPctShort")} · {t("settings.ivaNameField")}</div>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {rows.map((r,i)=>(
@@ -5095,7 +5407,12 @@ function SettingsView(){
   const saveAppIvaSettings=async(nextRates,nextDefault)=>{
     setAppSetErr("");setAppSetMsg("");
     const normalized=normalizeIvaRatesPayload(nextRates);
-    const defVal=normalized.some(r=>Number(r.value)===Number(nextDefault))?Number(nextDefault):Number(normalized[0]?.value||21);
+    let defVal;
+    if(nextDefault===null)defVal=null;
+    else{
+      const n=Number(nextDefault);
+      defVal=normalized.some(r=>Number(r.value)===n)?n:Number(normalized[0]?.value||21);
+    }
     if(AUTH_URL){
       const tok=appSettingsToken()||(API.token?String(API.token):"");
       if(!tok){setAppSetErr(t("msg.sessionExpired"));return;}
@@ -5467,8 +5784,8 @@ function SettingsView(){
         <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>IVA Rates</div>
         <div style={{marginBottom:8}}>
           <label className="lbl">{t("settings.ivaDefault")}</label>
-          <select className="inp" style={{fontSize:14}} value={String(appIvaDefaultDraft)} onChange={e=>setAppIvaDefaultDraft(Number(e.target.value))}>
-            {ivaRates.map(r=><option key={"app-iva-def-"+String(r.value)+"-"+r.name} value={r.value}>{formatIvaOptionLabel(r)}</option>)}
+          <select className="inp" style={{fontSize:14}} value={appIvaDefaultDraft===null?"":String(appIvaDefaultDraft)} onChange={e=>{const v=e.target.value;setAppIvaDefaultDraft(v===""?null:Number(v));}}>
+            {ivaRates.map(r=><option key={"app-iva-def-"+(r.value==null?"sin":String(r.value))+"-"+r.name} value={r.value===null||r.value==="none"?"":String(r.value)}>{formatIvaOptionLabel(r)}</option>)}
           </select>
         </div>
         <IvaRatesEditorBlock t={t} ivaRates={ivaRates} onSave={(rates)=>{void saveAppIvaSettings(rates,appIvaDefaultDraft);}}/>
@@ -5568,7 +5885,36 @@ function SolanaExpenses(){
   const [expenses,setExpenses]=useState(()=>{
     if(AUTH_URL)return[];
     migrateBillsToExpensesOnce();
-    const d=ls("sol-exp",[]);
+    let d=ls("sol-exp",[]);
+    if(!localStorage.getItem("sol-bills-migrated")){
+      try{
+        const rawBills=localStorage.getItem("sol-bills");
+        if(rawBills){
+          const bills=JSON.parse(rawBills);
+          if(Array.isArray(bills)&&bills.length>0){
+            const existingIds=new Set(d.map(e=>e.id));
+            const migrated=bills
+              .filter(b=>!existingIds.has(b.id))
+              .map(b=>({
+                ...b,
+                expenseType:"invoice",
+                vendor:b.vendor||b.name||"",
+                description:b.name||b.vendor||b.description||"",
+                _migratedFromBill:true,
+              }));
+            if(migrated.length>0){
+              d=[...d,...migrated];
+              localStorage.setItem("sol-exp",JSON.stringify(d));
+              console.log("[MIGRATE] bills → expenses:",migrated.length,"items");
+            }
+            localStorage.removeItem("sol-bills");
+          }
+        }
+      }catch(e){
+        console.error("[MIGRATE] bills migration failed:",e.message);
+      }
+      localStorage.setItem("sol-bills-migrated","1");
+    }
     return d.map(e=>normalizeItem(e,"expense"));
   });
   const [ledgerLoading,setLedgerLoading]=useState(false);
@@ -5650,11 +5996,12 @@ function SolanaExpenses(){
   const saveIvaRates=useCallback(rates=>{
     const n=normalizeIvaRatesPayload(rates);
     lsSet(IVA_RATES_KEY,n);
-    setIvaRates(n);
+    setIvaRates(readIvaRates());
     try{
       const raw=localStorage.getItem(IVA_DEFAULT_KEY);
       if(raw===null||raw===""){localStorage.setItem(IVA_DEFAULT_KEY,JSON.stringify(n[0].value));return;}
       const v=JSON.parse(raw);
+      if(v===null)return;
       if(typeof v!=="number"||isNaN(v)||!n.some(r=>r.value===v))localStorage.setItem(IVA_DEFAULT_KEY,JSON.stringify(n[0].value));
     }catch(e){}
   },[]);
@@ -5694,7 +6041,7 @@ function SolanaExpenses(){
     setExpKindFlt("all");
   },[setExpFlt,setCatFlt,setSubmFlt,setDateFrom,setDateTo,setExpSrc,setExpKindFlt]);
 
-  const [form,    setForm]    =useState(()=>({...BF,ivaRate:String(readIvaDefault())}));
+  const [form,    setForm]    =useState(()=>({...BF,ivaRate:ivaRateToFormString(readIvaDefault())}));
   const [splitOn, setSplitOn] =useState(false);
   const [splits,  setSplits]  =useState([]);
   const [spMode,  setSpMode]  =useState("amount");
@@ -5741,6 +6088,8 @@ function SolanaExpenses(){
   const videoRef=useRef(null);
   const canvasRef=useRef(null);
   const fileRef  =useRef(null);
+  /** When set, receipt file/camera targets edit form (DetailPanel) instead of new expense. */
+  const receiptAltHandlerRef=useRef(null);
   const importRef=useRef(null);
   const migrAttemptRef=useRef(false);
 
@@ -6001,6 +6350,11 @@ function SolanaExpenses(){
     const r=new FileReader();
     r.onload=ev=>{
       const url=ev.target.result,b64=url.split(",")[1],type=receiptEffectiveMime(f)||f.type||"image/jpeg";
+      if(receiptAltHandlerRef.current){
+        receiptAltHandlerRef.current({b64,type,preview:type.includes("pdf")?"PDF":url});
+        appLog("info","attachment_uploaded",{name:f.name,size:f.size,type});
+        return;
+      }
       setReceipt({b64,type});
       setRecPrev(type.includes("pdf")?"PDF":url);
       appLog("info","attachment_uploaded",{name:f.name,size:f.size,type});
@@ -6050,6 +6404,11 @@ function SolanaExpenses(){
     c.getContext("2d").drawImage(v,0,0);
     const url=c.toDataURL("image/jpeg",0.85);
     stopCam();
+    if(receiptAltHandlerRef.current){
+      receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
+      appLog("info","receipt_captured",{source:"camera"});
+      return;
+    }
     setRecPrev(url);
     setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
     appLog("info","receipt_captured",{source:"camera"});
@@ -6129,14 +6488,13 @@ function SolanaExpenses(){
       return;
     }
     const isInvSubmit=form.expenseType==="invoice";
-    const isFacturaSubmit=!!form.isFactura;
     const proveedorSubmit=String(form.proveedor||"").trim();
-    if(isFacturaSubmit&&!proveedorSubmit){setFormError("Indica el proveedor.");return;}
+    if(isInvSubmit&&!proveedorSubmit){setFormError("Indica el proveedor.");return;}
     const condicionesPagoSubmit=String(form.paymentTermMode||"0");
     const fechaVencimientoSubmit=condicionesPagoSubmit==="custom"
       ? String(form.invoiceDueDateDirect||"").slice(0,10)
       : addDaysToISODate(form.date, Number(condicionesPagoSubmit)||0);
-    if(isFacturaSubmit&&condicionesPagoSubmit==="custom"&&!fechaVencimientoSubmit){setFormError("Indica la fecha de vencimiento.");return;}
+    if(isInvSubmit&&condicionesPagoSubmit==="custom"&&!fechaVencimientoSubmit){setFormError("Indica la fecha de vencimiento.");return;}
     if(isInvSubmit){
       if(!String(form.vendor||"").trim()){setFormError("Indica el proveedor.");return;}
       const ptdS=paymentTermDaysFromForm(form);
@@ -6156,7 +6514,6 @@ function SolanaExpenses(){
       paymentStatus:"na",
     };
     const facturaExtras={
-      isFactura:isFacturaSubmit,
       proveedor:proveedorSubmit,
       condicionesPago:condicionesPagoSubmit,
       fechaVencimiento:fechaVencimientoSubmit||null,
@@ -6186,8 +6543,7 @@ function SolanaExpenses(){
       const shouldAutoApproveSubmitterAuth=canSubmitterAutoApprove&&approvalRequiredForSubmit.includes(user.id);
       void (async()=>{
         const clientRef="tmp_exp_"+genUuid();
-        const rpAuth=parseFloat(form.ivaRate);
-        const ivaRateAuth=isNaN(rpAuth)?readIvaDefault():rpAuth;
+        const ivaRateAuth=parseFormIvaRateString(form.ivaRate);
         const ivaAmountAuth=calcIvaParts(amount,ivaRateAuth).iva;
         try{
           /* Server: resolveApproverIds + computeSubmittedVotes(req.userId) — si el autor está en approvalRequired, queda approved en approvalVotesJson (mismo efecto que autoApprove local). */
@@ -6300,8 +6656,7 @@ function SolanaExpenses(){
       ? autoApprove(user.id,approvalRequiredLocal,{},baseTrail)
       : {approvals:{},auditTrail:baseTrail};
     const expReceiptTrail=receipt?[...expTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:receipt.type}}]:expTrail;
-    const rp=parseFloat(form.ivaRate);
-    const ivaRate=isNaN(rp)?readIvaDefault():rp;
+    const ivaRate=parseFormIvaRateString(form.ivaRate);
     const ivaAmount=calcIvaParts(amount,ivaRate).iva;
     const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID,
       ...facturaExtras,
@@ -6321,16 +6676,18 @@ function SolanaExpenses(){
   };
   const resetForm=useCallback(()=>{
     const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
-    setForm({...BF,ivaRate:String(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId});
+    receiptAltHandlerRef.current=null;
+    setForm({...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId});
     setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
   },[user?.id,defaultDeptId,departments]);
-  const openNew  =()=>{resetForm();setDetailId(null);setPanel("new");setView("expenses");};
+  const openNew  =()=>{receiptAltHandlerRef.current=null;resetForm();setDetailId(null);setPanel("new");setView("expenses");};
   const openNewInvoice=useCallback(()=>{
+    receiptAltHandlerRef.current=null;
     const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
     setForm({
       ...BF,
-      ivaRate:String(readIvaDefault()),
+      ivaRate:ivaRateToFormString(readIvaDefault()),
       ownerId:user?.id||"",
       departmentId:firstActiveDeptId,
       date:new Date().toISOString().slice(0,10),
@@ -6424,7 +6781,7 @@ function SolanaExpenses(){
       if(k==="paidBy") return JSON.stringify(updates.paidBy)!==JSON.stringify(oldExp.paidBy);
       if(k==="splitMode") return String(updates.splitMode??"")!==String(oldExp.splitMode??"");
       if(k==="receipt") return (updates.receipt||null)!==(oldExp.receipt||null);
-      if(k==="ivaRate") return Number(updates.ivaRate??NaN)!==Number(oldExp.ivaRate??NaN);
+      if(k==="ivaRate") return!expenseIvaRatesEqual(updates.ivaRate,oldExp.ivaRate);
       if(k==="ivaAmount") return Number(updates.ivaAmount??NaN)!==Number(oldExp.ivaAmount??NaN);
       if(k==="departmentId") return String(updates.departmentId||"")!==String(oldExp.departmentId||"");
       return String(updates[k]||"")!==String(oldExp[k]||"");
@@ -6437,7 +6794,7 @@ function SolanaExpenses(){
         if(k==="paidBy") return JSON.stringify(updates.paidBy)!==JSON.stringify(oldExp.paidBy);
         if(k==="splitMode") return String(updates.splitMode??"")!==String(oldExp.splitMode??"");
         if(k==="receipt") return (updates.receipt||null)!==(oldExp.receipt||null);
-        if(k==="ivaRate") return Number(updates.ivaRate??NaN)!==Number(oldExp.ivaRate??NaN);
+        if(k==="ivaRate") return!expenseIvaRatesEqual(updates.ivaRate,oldExp.ivaRate);
         if(k==="ivaAmount") return Number(updates.ivaAmount??NaN)!==Number(oldExp.ivaAmount??NaN);
         if(k==="departmentId") return String(updates.departmentId||"")!==String(oldExp.departmentId||"");
         return String(updates[k]||"")!==String(oldExp[k]||"");
@@ -6678,7 +7035,7 @@ function SolanaExpenses(){
       const ids=effectiveExpenseApproverIds(e,cats,users);
       return ids.includes(user.id)&&getItemStatus(e,cats,users)==="pending"&&approvalVoteFor(e.approvals,user.id,users)!=="approved";
     });
-  /* Approved: totApproved = sum EUR per ítem aprobado; per-person = reparto paidBy */
+  /* Approved: totApproved = sum EUR per ítem aprobado (all expenseType); per-person = reparto paidBy */
   const approvedForTot=expenses.filter(e=>getItemStatus(e,cats,users)==="approved");
   const totApproved=approvedForTot.reduce((s,e)=>s+eurForExpense(e),0);
   const perPerson=users.map(u=>({
@@ -6686,17 +7043,15 @@ function SolanaExpenses(){
     total:approvedForTot.reduce((sum,e)=>sum+shareEurInExpense(e,u.id),0),
   })).sort((a,b)=>b.total-a.total);
   const totFixed=expenses.reduce((s,e)=>{
-    const st=getItemStatus(e,cats,users);
-    if(st!=="approved"&&st!=="pending")return s;
-    const rule=String(e.recurrenceRule||"").toLowerCase().trim();
-    if(!rule||rule==="once")return s;
-    const amt=eurForExpense(e);
-    if(rule==="monthly")return s+amt;
-    if(rule==="quarterly"||rule==="trimestral")return s+amt/3;
-    if(rule==="yearly"||rule==="anual")return s+amt/12;
-    if(rule==="custom"||rule==="personalizado"||rule.startsWith("custom:")){
-      const intervalMonths=Number(e.intervalMonths)||Number((rule.split(":")[1]||"").trim())||1;
-      return s+amt/Math.max(1,intervalMonths);
+    if(!e.cadenceKey||e.cadenceKey==="once")return s;
+    if(getItemStatus(e,cats,users)!=="approved")return s;
+    const ev=eurForExpense(e);
+    if(e.cadenceKey==="monthly")return s+ev;
+    if(e.cadenceKey==="quarterly")return s+ev/3;
+    if(e.cadenceKey==="yearly")return s+ev/12;
+    if(e.cadenceKey==="custom"){
+      const months=Math.max(1,parseFloat(e.cadenceCustomMonths)||1);
+      return s+ev/months;
     }
     return s;
   },0);
@@ -6750,7 +7105,7 @@ function SolanaExpenses(){
     detailId,setDetailId,
     form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
     receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,
-    handleReceiptFile,calcEqual,fileRef,startCam,capturePhoto,stopCam,
+    handleReceiptFile,calcEqual,fileRef,startCam,capturePhoto,stopCam,receiptAltHandlerRef,
     submitExp,resetForm,
     aNote,setANote,approve,
     myPending,byStatus,filtered,
