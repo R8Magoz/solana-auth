@@ -511,7 +511,7 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
     votes[req.userId] = 'approved';
     const allApproved = approverIds.every(id => votes[id] === 'approved');
     if (allApproved) {
-      db.prepare("UPDATE bills SET approversJson=?, approvalVotesJson=?, status='paid', updatedAt=? WHERE id=?")
+      db.prepare("UPDATE bills SET approversJson=?, approvalVotesJson=?, status='approved', updatedAt=? WHERE id=?")
         .run(JSON.stringify(approverIds), JSON.stringify(votes), now, bill.id);
     } else {
       db.prepare("UPDATE bills SET approversJson=?, approvalVotesJson=?, updatedAt=? WHERE id=?")

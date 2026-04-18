@@ -209,7 +209,12 @@ function isAdminRole(role) {
 }
 
 function rowToExpense(r) {
-  return r ? { ...r } : null;
+  if (!r) return null;
+  return {
+    ...r,
+    cadenceKey: r.cadenceKey != null && r.cadenceKey !== '' ? String(r.cadenceKey) : 'once',
+    cadenceCustomMonths: r.cadenceCustomMonths != null && r.cadenceCustomMonths !== '' ? String(r.cadenceCustomMonths) : '1',
+  };
 }
 
 function getExpenseById(id) {
@@ -287,13 +292,15 @@ const insertExp = db.prepare(`
     approvedBy, approvedAt, rejectedBy, rejectedAt, rejectionNote, receiptPath, notes, createdAt, updatedAt, departmentId,
     approversJson, approvalVotesJson, paidByJson, splitMode,
     ivaRate, ivaAmount, commentsJson, ownerId,
-    expenseType, vendor, dueDate, paymentStatus, paidAt, paidConfirmedBy, paymentTermDays, recurring, recurrenceRule, originBillId
+    expenseType, vendor, dueDate, paymentStatus, paidAt, paidConfirmedBy, paymentTermDays, recurring, recurrenceRule, originBillId,
+    cadenceKey, cadenceCustomMonths
   ) VALUES (
     @id, @userId, @amount, @currency, @amountEUR, @description, @category, @date, @status,
     @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt, @departmentId,
     @approversJson, @approvalVotesJson, @paidByJson, @splitMode,
     @ivaRate, @ivaAmount, @commentsJson, @ownerId,
-    @expenseType, @vendor, @dueDate, @paymentStatus, @paidAt, @paidConfirmedBy, @paymentTermDays, @recurring, @recurrenceRule, @originBillId
+    @expenseType, @vendor, @dueDate, @paymentStatus, @paidAt, @paidConfirmedBy, @paymentTermDays, @recurring, @recurrenceRule, @originBillId,
+    @cadenceKey, @cadenceCustomMonths
   )
 `);
 
@@ -454,6 +461,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       recurring: rec ? 1 : 0,
       recurrenceRule: rule,
       originBillId: null,
+      cadenceKey: String(req.body.cadenceKey || 'once').trim().slice(0, 32),
+      cadenceCustomMonths: String(req.body.cadenceCustomMonths || '1').trim().slice(0, 8),
     });
 
     const expense = getExpenseById(id);
@@ -475,6 +484,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
     if (String(exp.paymentStatus || '') === 'paid') {
       return res.status(400).json({ error: 'La factura ya está marcada como pagada.' });
+    }
+    if (exp.status !== 'approved') {
+      return res.status(400).json({ error: 'La factura debe estar aprobada antes de marcar como pagada.' });
     }
     const now = Date.now();
     const paidMs = parsePaidAtFromBody(req.body, now);
@@ -530,6 +542,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
           recurring: 1,
           recurrenceRule: rule,
           originBillId: null,
+          cadenceKey: exp.cadenceKey != null ? String(exp.cadenceKey) : 'once',
+          cadenceCustomMonths: exp.cadenceCustomMonths != null ? String(exp.cadenceCustomMonths) : '1',
         });
         audit('expense_recurring_spawned', {
           sourceId: exp.id,
@@ -770,6 +784,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
         expenseType = ?, vendor = ?, dueDate = ?, paymentStatus = ?, paymentTermDays = ?,
         recurring = ?, recurrenceRule = ?,
+        cadenceKey = ?, cadenceCustomMonths = ?,
         updatedAt = ?
       WHERE id = ?
     `).run(
@@ -781,6 +796,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       nextRejectedBy, nextRejectedAt, nextRejectionNote,
       nextExpenseType, nextVendor, nextDue, nextPayStat, nextTerm,
       nextRec ? 1 : 0, nextRule,
+      String(req.body.cadenceKey || 'once').trim().slice(0, 32),
+      String(req.body.cadenceCustomMonths || '1').trim().slice(0, 8),
       now, exp.id,
     );
 

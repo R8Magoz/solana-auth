@@ -134,6 +134,9 @@ addColumnIfMissing('expenses', 'paymentTermDays', 'INTEGER DEFAULT 0');
 addColumnIfMissing('expenses', 'recurring',       'INTEGER DEFAULT 0');
 addColumnIfMissing('expenses', 'recurrenceRule',  'TEXT');
 addColumnIfMissing('expenses', 'originBillId',    'TEXT');
+addColumnIfMissing('expenses', 'cadenceKey', 'TEXT DEFAULT \'once\'');
+addColumnIfMissing('expenses', 'cadenceCustomMonths', 'TEXT DEFAULT \'1\'');
+addColumnIfMissing('expenses', 'condicionesPago', 'TEXT');
 addColumnIfMissing('bills', 'departmentId', 'TEXT');
 addColumnIfMissing('bills', 'receiptPath', 'TEXT');
 addColumnIfMissing('bills', 'ownerId', 'TEXT');
@@ -150,17 +153,6 @@ addColumnIfMissing('users', 'avatar', 'TEXT');
 addColumnIfMissing('departments', 'archived', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('app_settings', 'description', 'TEXT');
 
-/* Facturas → gastos unification (migration plan) */
-addColumnIfMissing('expenses', 'expenseType', 'TEXT DEFAULT \'expense\'');
-addColumnIfMissing('expenses', 'vendor', 'TEXT');
-addColumnIfMissing('expenses', 'dueDate', 'TEXT');
-addColumnIfMissing('expenses', 'paymentStatus', 'TEXT DEFAULT \'na\'');
-addColumnIfMissing('expenses', 'paidAt', 'INTEGER');
-addColumnIfMissing('expenses', 'paidConfirmedBy', 'TEXT');
-addColumnIfMissing('expenses', 'paymentTermDays', 'INTEGER DEFAULT 0');
-addColumnIfMissing('expenses', 'recurring', 'INTEGER DEFAULT 0');
-addColumnIfMissing('expenses', 'recurrenceRule', 'TEXT');
-addColumnIfMissing('expenses', 'originBillId', 'TEXT');
 addColumnIfMissing('bills', 'migratedAt', 'INTEGER');
 
 function seedAppSettings() {
