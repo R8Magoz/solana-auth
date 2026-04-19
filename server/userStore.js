@@ -124,8 +124,18 @@ function insertUsersFromJsonRows(users) {
   run(users);
 }
 
+function stripUserPublic(u) {
+  if (!u) return null;
+  const { passwordHash: _p, tempPasswordExp: _t, seedTag: _s, ...rest } = u;
+  return rest;
+}
+
 function getAllUsers() {
   return db.prepare('SELECT * FROM users').all().map(rowToUser);
+}
+
+function getAllUsersPublic() {
+  return getAllUsers().map(stripUserPublic);
 }
 
 function findUserByEmail(email) {
@@ -137,6 +147,10 @@ function findUserById(id) {
   return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id));
 }
 
+function findUserByIdPublic(id) {
+  return stripUserPublic(findUserById(id));
+}
+
 function findUserByEmailOrId(email, id) {
   const byId = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   if (byId) return rowToUser(byId);
@@ -146,6 +160,22 @@ function findUserByEmailOrId(email, id) {
 
 function listUsersByAccountStatus(status) {
   return db.prepare('SELECT * FROM users WHERE accountStatus = ?').all(status).map(rowToUser);
+}
+
+function listUsersByAccountStatusPublic(status) {
+  return listUsersByAccountStatus(status).map(stripUserPublic);
+}
+
+/** Seed admin UI: rows with seedTag, no password fields (preserves seedTag in JSON). */
+function listUsersBySeedTagForStatus(seedTag) {
+  return db
+    .prepare('SELECT * FROM users WHERE seedTag = ?')
+    .all(seedTag)
+    .map((row) => {
+      const u = rowToUser(row);
+      const { passwordHash: _p, tempPasswordExp: _t, ...rest } = u;
+      return rest;
+    });
 }
 
 function updatePasswordAfterChange(userId, passwordHash) {
@@ -237,7 +267,7 @@ function adminPatchUser(targetId, body) {
     next.role = r;
   }
   replaceUserById(next);
-  return { ok: true, user: findUserById(targetId) };
+  return { ok: true, user: findUserByIdPublic(targetId) };
 }
 
 /**
@@ -288,10 +318,14 @@ module.exports = {
   insertUser,
   insertUsersFromJsonRows,
   getAllUsers,
+  getAllUsersPublic,
   findUserByEmail,
   findUserById,
+  findUserByIdPublic,
   findUserByEmailOrId,
   listUsersByAccountStatus,
+  listUsersByAccountStatusPublic,
+  listUsersBySeedTagForStatus,
   updatePasswordAfterChange,
   updateOwnProfile,
   setPasswordForceChange,

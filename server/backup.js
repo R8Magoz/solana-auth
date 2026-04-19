@@ -26,7 +26,8 @@ function pad2(n) {
 }
 
 /**
- * @param {{ db?: import('better-sqlite3').Database }} [opts]
+ * Copies the live SQLite file to `data/backups/` with a timestamped name and prunes old files.
+ * @param {{ db?: import('better-sqlite3').Database }} [opts] Optional open DB handle to WAL-checkpoint before copy.
  * @returns {{ ok: true, filename: string, sizeBytes: number }}
  */
 function runBackup(opts = {}) {
@@ -78,6 +79,7 @@ function pruneOldBackups() {
 }
 
 /**
+ * Lists backup `.db` files under the backups directory, newest first.
  * @returns {Array<{ filename: string, sizeBytes: number, modifiedAt: string }>}
  */
 function listBackups() {
@@ -98,7 +100,7 @@ function listBackups() {
 }
 
 /**
- * Resolve a backup filename to an absolute path under BACKUPS_DIR (no path traversal).
+ * Resolves a backup basename to a safe absolute path under `BACKUPS_DIR` (blocks traversal).
  * @param {string} filename
  * @returns {string}
  */
@@ -122,10 +124,10 @@ function resolveSafeBackupPath(filename) {
 }
 
 /**
- * Replace live DB with a backup file. DB connections must be closed first.
- * Removes WAL/SHM siblings so SQLite starts clean.
- * @param {string} backupFullPath
- * @param {string} [livePath]
+ * Overwrites the live database file with a backup copy; removes `-wal` / `-shm` sidecars first.
+ * @param {string} backupFullPath Absolute path to a validated backup file.
+ * @param {string} [livePath] Live DB path (default `LIVE_DB`).
+ * @returns {void}
  */
 function replaceLiveDatabase(backupFullPath, livePath = LIVE_DB) {
   const wal = `${livePath}-wal`;

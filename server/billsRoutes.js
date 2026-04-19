@@ -143,6 +143,11 @@ const insertBill = db.prepare(`
   )
 `);
 
+/**
+ * Express router for legacy bills table (CRUD, approvals, receipts).
+ * @param {{ audit: function(string, object): void, requireAuth: import('express').RequestHandler, DATA_DIR: string, receiptUploadLimiter?: import('express').RequestHandler }} deps
+ * @returns {import('express').Router}
+ */
 function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter }) {
   ensureBillsApprovalColumns();
   const router = express.Router();
@@ -511,7 +516,7 @@ function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter 
     votes[req.userId] = 'approved';
     const allApproved = approverIds.every(id => votes[id] === 'approved');
     if (allApproved) {
-      db.prepare("UPDATE bills SET approversJson=?, approvalVotesJson=?, status='paid', updatedAt=? WHERE id=?")
+      db.prepare("UPDATE bills SET approversJson=?, approvalVotesJson=?, status='approved', updatedAt=? WHERE id=?")
         .run(JSON.stringify(approverIds), JSON.stringify(votes), now, bill.id);
     } else {
       db.prepare("UPDATE bills SET approversJson=?, approvalVotesJson=?, updatedAt=? WHERE id=?")

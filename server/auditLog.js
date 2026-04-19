@@ -9,6 +9,12 @@ const insertStmt = db.prepare(`
   VALUES (@ts, @event, @userId, @targetId, @detail, @ip)
 `);
 
+/**
+ * Inserts one row into `audit_log` with optional detail JSON (minus reserved keys).
+ * @param {string} event
+ * @param {Record<string, unknown> & { ts?: string, userId?: string, targetId?: string, ip?: string }} [data]
+ * @returns {void}
+ */
 function write(event, data = {}) {
   const ts = typeof data.ts === 'string' ? data.ts : new Date().toISOString();
   const userId = data.userId != null ? String(data.userId) : null;
@@ -24,7 +30,9 @@ function write(event, data = {}) {
 }
 
 /**
- * One-time: import legacy audit.log lines into audit_log, then rename file.
+ * One-time migration: imports legacy `audit.log` JSON lines into `audit_log`, then renames the file.
+ * @param {string} auditFilePath
+ * @returns {void}
  */
 function migrateLegacyFile(auditFilePath) {
   const migratedPath = auditFilePath + '.migrated';
@@ -74,6 +82,11 @@ function migrateLegacyFile(auditFilePath) {
   }
 }
 
+/**
+ * Returns a paginated slice of audit log entries with optional event/user filters.
+ * @param {{ limit?: number, offset?: number, event?: string, userId?: string }} [opts]
+ * @returns {{ entries: object[], total: number, limit: number, offset: number }}
+ */
 function query({ limit = 50, offset = 0, event, userId } = {}) {
   const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
   const off = Math.max(parseInt(offset, 10) || 0, 0);

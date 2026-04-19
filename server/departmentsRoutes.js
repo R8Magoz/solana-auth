@@ -46,6 +46,11 @@ function rowWithStats(row) {
   };
 }
 
+/**
+ * Express router for department CRUD and listing (budget tracker).
+ * @param {{ audit: function(string, object): void, requireAuth: import('express').RequestHandler, requireSuperAdmin: import('express').RequestHandler }} deps
+ * @returns {import('express').Router}
+ */
 function createDepartmentsRouter({ audit, requireAuth, requireSuperAdmin }) {
   const router = express.Router();
   router.use(requireAuth);

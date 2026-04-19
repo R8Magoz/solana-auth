@@ -150,7 +150,7 @@ async function buildSeedUsers() {
 // ── UPSERT LOGIC ──────────────────────────────────────────────────────────────
 async function runSeed() {
   const seedUsers = await buildSeedUsers();
-  const existingCount = userStore.getAllUsers().length;
+  const existingCount = userStore.countUsers();
 
   console.log(`\n[SEED] Mode: ${process.env.SEED_RESET === 'true' ? 'RESET (overwrite seed accounts)' : 'UPSERT (create or update)'}`);
   console.log(`[SEED] Bootstrap admin email: ${ADMIN_EMAIL}`);
