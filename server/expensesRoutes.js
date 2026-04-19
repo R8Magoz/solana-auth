@@ -6,10 +6,24 @@ const path = require('path');
 const crypto = require('crypto');
 const db = require('./db');
 const receiptStorage = require('./receiptStorage');
+const settingsCache = require('./lib/settingsCache');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
 const { nextDueDate, RECURRENCE_RULES } = require('./recurrence');
+
+/** Reads numeric app_settings keys (e.g. approval_threshold, require_receipt_above) via settingsCache. */
+function parseAppSettingFloat(key, defaultVal) {
+  try {
+    const raw = settingsCache.get(key, undefined);
+    if (raw === undefined || raw === null || raw === '') return defaultVal;
+    const n = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(',', '.'));
+    if (!Number.isFinite(n)) return defaultVal;
+    return n;
+  } catch {
+    return defaultVal;
+  }
+}
 
 function addDaysToDateISO(dateStr, days) {
   const d = new Date(`${String(dateStr).trim()}T12:00:00.000Z`);
@@ -304,6 +318,11 @@ const insertExp = db.prepare(`
   )
 `);
 
+/**
+ * Express router for expenses and invoices (CRUD, receipts, approvals, comments).
+ * @param {{ audit: function(string, object): void, requireAuth: import('express').RequestHandler, requireAdminSession: import('express').RequestHandler, DATA_DIR: string, receiptUploadLimiter?: import('express').RequestHandler, userStore: { findUserById: function(string): object|undefined, findUserByEmail: function(string): object|undefined } }} deps
+ * @returns {import('express').Router}
+ */
 function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DIR, receiptUploadLimiter, userStore }) {
   if (!userStore) throw new Error('createExpensesRouter: userStore is required');
   const router = express.Router();
@@ -321,7 +340,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
   });
 
-  router.post('/', (req, res) => {
+  router.post('/', async (req, res) => {
+    try {
     let ownerId = req.userId;
     if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'ownerId')) {
       const ownerRaw = String(req.body.ownerId || '').trim().slice(0, 128);
@@ -333,6 +353,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const {
       amount, currency, amountEUR, description, category, date, notes, status,
       expenseType: bodyExpenseType, vendor, dueDate, paymentTermDays, recurring, recurrenceRule,
+      b64: bodyB64, receiptB64,
     } = req.body || {};
     const dept = departmentIdFromBody(req.body, true);
     if (dept.error) return res.status(400).json({ error: dept.error });
@@ -395,24 +416,87 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (expenseType === 'invoice') {
       payStat = 'unpaid';
     }
-    const now = Date.now();
-    const id = 'exp_' + crypto.randomBytes(8).toString('hex');
     let eur = amountEUR != null && typeof amountEUR === 'number' ? amountEUR : null;
     if (cur === 'EUR') eur = amount;
 
-    let approverIds = resolveApproverIdsForCreate(req.body);
-    approverIds = canonicalizeApproverIds(approverIds, userStore);
+    const approvalThreshold = parseAppSettingFloat('approval_threshold', 0);
+    const requireReceiptAbove = parseAppSettingFloat('require_receipt_above', 50);
+
+    const b64Inline =
+      typeof bodyB64 === 'string' && bodyB64.trim().length > 0
+        ? bodyB64.trim()
+        : typeof receiptB64 === 'string' && receiptB64.trim().length > 0
+          ? receiptB64.trim()
+          : null;
+
+    const eurNum = eur != null && Number.isFinite(Number(eur)) ? Number(eur) : null;
+    if (
+      expenseType === 'expense' &&
+      eurNum != null &&
+      eurNum > requireReceiptAbove &&
+      !b64Inline
+    ) {
+      return res.status(400).json({
+        error: `Se requiere un justificante para gastos superiores a €${requireReceiptAbove}.`,
+      });
+    }
+
+    const now = Date.now();
+    const id = 'exp_' + crypto.randomBytes(8).toString('hex');
+
+    let receiptPathVal = null;
+    if (b64Inline) {
+      const mediaTypeRaw =
+        req.body && typeof req.body.mediaType === 'string' ? req.body.mediaType.trim() : '';
+      const mediaType = mediaTypeRaw || 'image/jpeg';
+      try {
+        const saved = await receiptStorage.saveReceiptB64ToStorage({
+          b64: b64Inline,
+          mediaType,
+          entityId: id,
+          DATA_DIR,
+        });
+        receiptPathVal = saved.receiptPath;
+      } catch (e) {
+        const code = e.statusCode || 500;
+        if (code >= 400 && code < 500) {
+          return res.status(code).json({ error: e.message || 'Recibo inválido.' });
+        }
+        console.error('[expenses/create] receipt', e.message || e);
+        return res.status(500).json({ error: 'No se pudo guardar el recibo.' });
+      }
+    }
+
+    let approverIds = [];
     let finalStatus = st;
     let approvedByVal = null;
     let approvedAtVal = null;
     let votesObj = {};
-    if (st === 'submitted') {
-      const { votes, allDone } = computeSubmittedVotes(req.userId, approverIds);
-      votesObj = votes;
-      if (allDone) {
-        finalStatus = 'approved';
-        approvedByVal = req.userId;
-        approvedAtVal = now;
+
+    const autoApproved =
+      expenseType === 'expense' &&
+      st === 'submitted' &&
+      approvalThreshold > 0 &&
+      eurNum != null &&
+      eurNum <= approvalThreshold;
+
+    if (autoApproved) {
+      finalStatus = 'approved';
+      approvedByVal = 'auto';
+      approvedAtVal = now;
+      approverIds = [];
+      votesObj = {};
+    } else {
+      approverIds = resolveApproverIdsForCreate(req.body);
+      approverIds = canonicalizeApproverIds(approverIds, userStore);
+      if (st === 'submitted') {
+        const { votes, allDone } = computeSubmittedVotes(req.userId, approverIds);
+        votesObj = votes;
+        if (allDone) {
+          finalStatus = 'approved';
+          approvedByVal = req.userId;
+          approvedAtVal = now;
+        }
       }
     }
 
@@ -438,7 +522,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       rejectedBy: null,
       rejectedAt: null,
       rejectionNote: null,
-      receiptPath: null,
+      receiptPath: receiptPathVal,
       notes: notes != null ? String(notes).trim().slice(0, 4000) : null,
       createdAt: now,
       updatedAt: now,
@@ -467,7 +551,18 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     const expense = getExpenseById(id);
     audit('expense_created', { userId: req.userId, targetId: id, amount, currency: cur, status: finalStatus });
+    if (autoApproved) {
+      audit('expense_auto_approved', {
+        expenseId: id,
+        amountEUR: eurNum,
+        threshold: approvalThreshold,
+      });
+    }
     res.json({ ok: true, expense });
+    } catch (e) {
+      console.error('[expenses/create]', e);
+      if (!res.headersSent) res.status(500).json({ error: 'Error al crear el gasto.' });
+    }
   });
 
   router.post('/:id/mark-paid', (req, res) => {
@@ -1042,7 +1137,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   return router;
 }
 
-/** Daily job helper: unpaid invoices past dueDate → overdue (see also expenseJobs). */
+/**
+ * Marks unpaid invoices whose due date is before today as overdue (batch SQL update).
+ * @returns {import('better-sqlite3').RunResult}
+ */
 function markOverdueInvoices() {
   const today = new Date().toISOString().slice(0, 10);
   const now = Date.now();

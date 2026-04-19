@@ -126,7 +126,7 @@ async function attachMockApi(page: Page, state: {
 async function prepareUserPage(context: BrowserContext, token: string) {
   const page = await context.newPage();
   await page.addInitScript((t) => {
-    localStorage.setItem('sol-session-token', t);
+    sessionStorage.setItem('sol-session-token', t);
   }, token);
   return page;
 }
@@ -163,7 +163,7 @@ test('concurrent submit/approve/edit keeps consistent final state', async ({ bro
 
   // 1) Submitter creates expense
   const createRes = await submitterPage.evaluate(async () => {
-    const tok = localStorage.getItem('sol-session-token');
+    const tok = sessionStorage.getItem('sol-session-token');
     const r = await fetch('https://solana-auth.onrender.com/expenses', {
       method: 'POST',
       headers: {
@@ -185,7 +185,7 @@ test('concurrent submit/approve/edit keeps consistent final state', async ({ bro
   // 2) Approver approves while 3) Editor edits the same item concurrently
   await Promise.all([
     approverPage.evaluate(async (id) => {
-      const tok = localStorage.getItem('sol-session-token');
+      const tok = sessionStorage.getItem('sol-session-token');
       await fetch(`https://solana-auth.onrender.com/expenses/${encodeURIComponent(id)}/approve`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
@@ -193,7 +193,7 @@ test('concurrent submit/approve/edit keeps consistent final state', async ({ bro
       });
     }, expenseId),
     editorPage.evaluate(async (id) => {
-      const tok = localStorage.getItem('sol-session-token');
+      const tok = sessionStorage.getItem('sol-session-token');
       await fetch(`https://solana-auth.onrender.com/expenses/${encodeURIComponent(id)}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },

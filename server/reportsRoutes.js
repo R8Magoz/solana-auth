@@ -1,6 +1,12 @@
 'use strict';
 
 const express = require('express');
+let PDFDocument;
+try {
+  PDFDocument = require('pdfkit');
+} catch (e) {
+  PDFDocument = null;
+}
 const db = require('./db');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -11,6 +17,7 @@ function eurAmount(row) {
   }
   const cur = String(row.currency || 'EUR').toUpperCase();
   if (cur === 'EUR') return Number(row.amount) || 0;
+  // TODO: implement live FX rates or require amountEUR always; the fallback below treats raw amount as EUR for non-EUR rows.
   return Number(row.amount) || 0;
 }
 
@@ -47,9 +54,14 @@ function line(vals) {
   return vals.map(csvEscape).join(',');
 }
 
+/** CSV header label for base-currency column (DB field remains `amountEUR`). */
+function csvAmountBaseHeader(fieldKey) {
+  return fieldKey === 'amountEUR' ? 'amountBase' : fieldKey;
+}
+
 function buildUserMap(userStore) {
   const map = {};
-  for (const u of userStore.getAllUsers()) {
+  for (const u of userStore.getAllUsersPublic()) {
     map[u.id] = (u.name && String(u.name).trim()) || u.email || u.id;
   }
   return map;
@@ -69,9 +81,76 @@ function validateRange(req, res) {
   return { from, to };
 }
 
+function getCompanyName() {
+  try {
+    const row = db.prepare("SELECT value FROM app_settings WHERE key = 'company_name'").get();
+    if (row && row.value != null) {
+      const parsed = JSON.parse(row.value);
+      if (typeof parsed === 'string' && parsed.trim()) return parsed.trim();
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  return 'Solana';
+}
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+/**
+ * Express router for admin reports (summary, CSV/PDF export, trends).
+ * @param {{ requireAdminSession: import('express').RequestHandler, userStore: { getAllUsersPublic: function(): Array<{ id: string, name?: string, email?: string }> } }} deps
+ * @returns {import('express').Router}
+ */
 function createReportsRouter({ requireAdminSession, userStore }) {
   const router = express.Router();
   router.use(requireAdminSession);
+
+  router.get('/summary/trend', (req, res) => {
+    let months = parseInt(String(req.query.months ?? '12'), 10);
+    if (!Number.isFinite(months)) months = 12;
+    if (months < 1) months = 1;
+    if (months > 24) months = 24;
+
+    const now = new Date();
+    const out = [];
+    for (let i = months - 1; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      const ym = `${y}-${pad2(m)}`;
+      const from = `${ym}-01`;
+      const lastDay = new Date(y, m, 0).getDate();
+      const to = `${ym}-${pad2(lastDay)}`;
+
+      const rows = db
+        .prepare(
+          `SELECT expenseType, amount, currency, amountEUR, status
+           FROM expenses
+           WHERE date >= ? AND date <= ? AND status != 'deleted'`,
+        )
+        .all(from, to);
+
+      let expenses = 0;
+      let bills = 0;
+      let count = 0;
+      for (const e of rows) {
+        count += 1;
+        const amt = eurAmount(e);
+        if (e.expenseType === 'invoice') bills += amt;
+        else expenses += amt;
+      }
+      out.push({
+        month: ym,
+        expenses: roundMoney(expenses),
+        bills: roundMoney(bills),
+        count,
+      });
+    }
+
+    res.json(out);
+  });
 
   router.get('/summary', (req, res) => {
     const range = validateRange(req, res);
@@ -93,6 +172,8 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     const byCategory = {};
     const byUser = {};
     const byMonth = {};
+    /** Approved non-invoice expenses only: sum EUR per departmentId */
+    const byDepartment = {};
 
     let approvedN = 0;
     let rejectedN = 0;
@@ -114,6 +195,16 @@ function createReportsRouter({ requireAdminSession, userStore }) {
         byMonth[monthKey] = (byMonth[monthKey] || 0) + amt;
       }
 
+      if (
+        e.status === 'approved' &&
+        !isInvoice &&
+        e.departmentId != null &&
+        String(e.departmentId).trim() !== ''
+      ) {
+        const depId = String(e.departmentId);
+        byDepartment[depId] = (byDepartment[depId] || 0) + amt;
+      }
+
       if (e.status === 'approved') approvedN += 1;
       else if (e.status === 'rejected') rejectedN += 1;
     }
@@ -121,6 +212,38 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     for (const k of Object.keys(byCategory)) byCategory[k] = roundMoney(byCategory[k]);
     for (const k of Object.keys(byUser)) byUser[k] = roundMoney(byUser[k]);
     for (const k of Object.keys(byMonth)) byMonth[k] = roundMoney(byMonth[k]);
+    for (const k of Object.keys(byDepartment)) byDepartment[k] = roundMoney(byDepartment[k]);
+
+    const byDepartmentName = {};
+    try {
+      const deptRows = db.prepare('SELECT id, name FROM departments').all();
+      const nameById = {};
+      for (const r of deptRows) {
+        const id = String(r.id);
+        nameById[id] =
+          r.name != null && String(r.name).trim() !== '' ? String(r.name).trim() : id;
+      }
+      for (const id of Object.keys(byDepartment)) {
+        byDepartmentName[id] = nameById[id] != null ? nameById[id] : id;
+      }
+    } catch (e) {
+      for (const id of Object.keys(byDepartment)) {
+        byDepartmentName[id] = id;
+      }
+    }
+
+    let fiscalYearStart = '01-01';
+    try {
+      const row = db.prepare("SELECT value FROM app_settings WHERE key = 'fiscal_year_start'").get();
+      if (row && row.value != null) {
+        const parsed = JSON.parse(row.value);
+        if (typeof parsed === 'string' && /^\d{2}-\d{2}$/.test(parsed)) {
+          fiscalYearStart = parsed;
+        }
+      }
+    } catch (e) {
+      /* keep default */
+    }
 
     const gastosOnly = expenses.filter((e) => e.expenseType !== 'invoice');
     const expenseCount = gastosOnly.length;
@@ -136,6 +259,9 @@ function createReportsRouter({ requireAdminSession, userStore }) {
       byCategory,
       byUser,
       byMonth,
+      byDepartment,
+      byDepartmentName,
+      fiscalYearStart,
       expenseCount,
       approvalRate,
       avgExpenseAmount,
@@ -218,7 +344,7 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     const lines = [];
 
     function pushExpenses() {
-      lines.push(line(expCols));
+      lines.push(line(expCols.map(csvAmountBaseHeader)));
       for (const e of expenseRows) {
         const row = {
           id: e.id,
@@ -246,7 +372,7 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     }
 
     function pushBills() {
-      lines.push(line(billCols));
+      lines.push(line(billCols.map(csvAmountBaseHeader)));
       for (const b of billRows) {
         const row = {
           id: b.id,
@@ -285,6 +411,254 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(body);
+  });
+
+  router.get('/export/pdf', (req, res) => {
+    if (!PDFDocument) {
+      return res.status(503).json({
+        error: 'PDF no disponible. Ejecuta npm install en el servidor (paquete pdfkit).',
+      });
+    }
+    const range = validateRange(req, res);
+    if (!range) return;
+
+    const type = String(req.query.type || 'expenses').trim().toLowerCase().slice(0, 16);
+    if (!['expenses', 'bills', 'all'].includes(type)) {
+      return res.status(400).json({ error: 'type debe ser expenses, bills o all.' });
+    }
+
+    const { from, to } = range;
+    const userMap = buildUserMap(userStore);
+
+    const allRows = db
+      .prepare(
+        `SELECT * FROM expenses
+         WHERE date >= ? AND date <= ? AND status != 'deleted'
+         ORDER BY date ASC, id ASC`,
+      )
+      .all(from, to);
+
+    function rowMatchesType(e) {
+      const inv = e.expenseType === 'invoice';
+      if (type === 'expenses') return !inv;
+      if (type === 'bills') return inv;
+      return true;
+    }
+
+    const rows = allRows.filter(rowMatchesType);
+
+    let totalExpenses = 0;
+    let totalBills = 0;
+    const byCat = {};
+    const byUserId = {};
+    let approvedN = 0;
+    let rejectedN = 0;
+
+    for (const e of rows) {
+      const amt = eurAmount(e);
+      const inv = e.expenseType === 'invoice';
+      if (inv) totalBills += amt;
+      else totalExpenses += amt;
+
+      const cat = e.category || '—';
+      if (!byCat[cat]) byCat[cat] = { count: 0, sum: 0 };
+      byCat[cat].count += 1;
+      byCat[cat].sum += amt;
+
+      const uid = e.userId || '—';
+      if (!byUserId[uid]) byUserId[uid] = { count: 0, sum: 0 };
+      byUserId[uid].count += 1;
+      byUserId[uid].sum += amt;
+
+      if (e.status === 'approved') approvedN += 1;
+      else if (e.status === 'rejected') rejectedN += 1;
+    }
+
+    const totalEur = totalExpenses + totalBills;
+    const count = rows.length;
+    const avgAmount = count > 0 ? roundMoney(totalEur / count) : 0;
+    const decided = approvedN + rejectedN;
+    const approvalRate = decided > 0 ? Math.round((approvedN / decided) * 10000) / 10000 : null;
+
+    const byDepartmentSpent = {};
+    for (const e of allRows) {
+      if (
+        e.status === 'approved' &&
+        e.expenseType !== 'invoice' &&
+        e.departmentId != null &&
+        String(e.departmentId).trim() !== ''
+      ) {
+        const depId = String(e.departmentId);
+        byDepartmentSpent[depId] = (byDepartmentSpent[depId] || 0) + eurAmount(e);
+      }
+    }
+    for (const k of Object.keys(byDepartmentSpent)) {
+      byDepartmentSpent[k] = roundMoney(byDepartmentSpent[k]);
+    }
+
+    let deptMeta = [];
+    try {
+      deptMeta = db.prepare('SELECT id, name, budget FROM departments ORDER BY name COLLATE NOCASE').all();
+    } catch (e) {
+      deptMeta = [];
+    }
+
+    const catEntries = Object.entries(byCat)
+      .map(([name, v]) => ({
+        name,
+        count: v.count,
+        sum: roundMoney(v.sum),
+      }))
+      .filter((x) => x.sum > 0 || x.count > 0)
+      .sort((a, b) => b.sum - a.sum);
+    const catDenom = catEntries.reduce((s, x) => s + x.sum, 0) || 1;
+
+    const userEntries = Object.entries(byUserId)
+      .map(([uid, v]) => ({
+        name: userMap[uid] || uid,
+        count: v.count,
+        sum: roundMoney(v.sum),
+      }))
+      .sort((a, b) => b.sum - a.sum);
+
+    const company = getCompanyName();
+    const generated = new Date().toISOString();
+
+    const doc = new PDFDocument({ margin: 48, size: 'A4' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="report-${from}-to-${to}.pdf"`,
+    );
+    doc.pipe(res);
+    doc.on('error', (err) => {
+      try {
+        console.error('[reports/pdf]', err);
+      } catch (e) {
+        /* ignore */
+      }
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'No se pudo generar el PDF.' });
+      } else {
+        res.end();
+      }
+    });
+
+    function footer() {
+      doc
+        .fontSize(8)
+        .fillColor('#666666')
+        .text('Confidential — internal use only', 48, doc.page.height - 56, {
+          align: 'center',
+          width: doc.page.width - 96,
+        });
+    }
+
+    doc.fontSize(18).fillColor('#1a1a1a').text(company, { align: 'center' });
+    doc.moveDown(0.4);
+    doc.fontSize(11).fillColor('#333333').text(`Period: ${from} — ${to}`, { align: 'center' });
+    doc.fontSize(9).fillColor('#666666').text(`Generated: ${generated}`, { align: 'center' });
+    doc.moveDown(1.2);
+
+    doc.fontSize(12).fillColor('#1a1a1a').text('Summary', { underline: true });
+    doc.moveDown(0.3);
+    doc.fontSize(9).fillColor('#000000');
+    doc.text(`Total expenses (EUR): ${roundMoney(totalExpenses).toFixed(2)}`);
+    doc.text(`Total bills (EUR): ${roundMoney(totalBills).toFixed(2)}`);
+    doc.text(`Line items: ${count}`);
+    doc.text(`Average amount (EUR): ${avgAmount.toFixed(2)}`);
+    doc.text(
+      `Approval rate: ${approvalRate != null ? `${(approvalRate * 100).toFixed(2)}%` : '—'}`,
+    );
+    doc.moveDown(0.8);
+
+    function tableHeader(labels, colWidths, yStart) {
+      let x = 48;
+      let y = yStart;
+      doc.fontSize(8).fillColor('#333333').font('Helvetica-Bold');
+      labels.forEach((lab, i) => {
+        doc.text(lab, x, y, { width: colWidths[i] });
+        x += colWidths[i];
+      });
+      doc.font('Helvetica');
+      return y + 14;
+    }
+
+    function tableRow(cells, colWidths, y) {
+      let x = 48;
+      doc.fontSize(8).fillColor('#000000');
+      cells.forEach((cell, i) => {
+        doc.text(String(cell), x, y, { width: colWidths[i], ellipsis: true });
+        x += colWidths[i];
+      });
+      return y + 13;
+    }
+
+    function pageBottom() {
+      return doc.page.height - 64;
+    }
+
+    doc.fontSize(12).fillColor('#1a1a1a').text('Category breakdown', { underline: true });
+    doc.moveDown(0.4);
+    let y = doc.y;
+    const cwCat = [150, 52, 72, 52];
+    y = tableHeader(['Category', 'Count', 'Total EUR', '% of total'], cwCat, y);
+    for (const c of catEntries) {
+      if (y + 16 > pageBottom()) {
+        footer();
+        doc.addPage();
+        y = 48;
+        y = tableHeader(['Category', 'Count', 'Total EUR', '% of total'], cwCat, y);
+      }
+      const pct = ((c.sum / catDenom) * 100).toFixed(1);
+      y = tableRow([c.name, c.count, c.sum.toFixed(2), `${pct}%`], cwCat, y);
+    }
+    doc.y = y + 6;
+
+    doc.fontSize(12).fillColor('#1a1a1a').text('Department breakdown', { underline: true });
+    doc.moveDown(0.4);
+    y = doc.y;
+    const cwDep = [120, 64, 64, 56, 72];
+    y = tableHeader(['Department', 'Budget EUR', 'Spent EUR', '% used', 'Remaining EUR'], cwDep, y);
+    for (const d of deptMeta) {
+      const id = String(d.id);
+      const budget = Number(d.budget) || 0;
+      const spent = byDepartmentSpent[id] || 0;
+      const pctUsed = budget > 0 ? ((spent / budget) * 100).toFixed(1) : spent > 0 ? '100.0' : '0.0';
+      const rem = roundMoney(budget - spent);
+      const name = d.name != null && String(d.name).trim() !== '' ? String(d.name).trim() : id;
+      if (y + 16 > pageBottom()) {
+        footer();
+        doc.addPage();
+        y = 48;
+        y = tableHeader(['Department', 'Budget EUR', 'Spent EUR', '% used', 'Remaining EUR'], cwDep, y);
+      }
+      y = tableRow(
+        [name, budget.toFixed(2), spent.toFixed(2), `${pctUsed}%`, rem.toFixed(2)],
+        cwDep,
+        y,
+      );
+    }
+    doc.y = y + 6;
+
+    doc.fontSize(12).fillColor('#1a1a1a').text('User breakdown', { underline: true });
+    doc.moveDown(0.4);
+    y = doc.y;
+    const cwUsr = [200, 48, 88];
+    y = tableHeader(['User', 'Count', 'Total EUR'], cwUsr, y);
+    for (const u of userEntries) {
+      if (y + 16 > pageBottom()) {
+        footer();
+        doc.addPage();
+        y = 48;
+        y = tableHeader(['User', 'Count', 'Total EUR'], cwUsr, y);
+      }
+      y = tableRow([u.name, u.count, u.sum.toFixed(2)], cwUsr, y);
+    }
+    doc.y = y + 8;
+
+    footer();
+    doc.end();
   });
 
   return router;

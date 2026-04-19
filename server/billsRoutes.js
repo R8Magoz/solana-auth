@@ -143,6 +143,11 @@ const insertBill = db.prepare(`
   )
 `);
 
+/**
+ * Express router for legacy bills table (CRUD, approvals, receipts).
+ * @param {{ audit: function(string, object): void, requireAuth: import('express').RequestHandler, DATA_DIR: string, receiptUploadLimiter?: import('express').RequestHandler }} deps
+ * @returns {import('express').Router}
+ */
 function createBillsRouter({ audit, requireAuth, DATA_DIR, receiptUploadLimiter }) {
   ensureBillsApprovalColumns();
   const router = express.Router();

@@ -1,974 +1,54 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <meta name="theme-color" content="#3C0A37"/>
-  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png"/>
-  <link rel="apple-touch-icon" href="/icon-192.png"/>
-  <link rel="manifest" href="/manifest.json"/>
-  <meta name="apple-mobile-web-app-capable" content="yes"/>
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <title>Solana Gestion de Gastos</title>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet"/>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body{background:#F5F0EA;font-family:'DM Sans',system-ui,sans-serif;}
-    ::-webkit-scrollbar{width:4px;}
-    ::-webkit-scrollbar-thumb{background:rgba(60,10,55,0.2);border-radius:2px;}
-    /* Auth input native focus ring for keyboard nav */
-    .auth-inp:focus-visible{border-color:#3C0A37!important;
-      box-shadow:0 0 0 3px rgba(60,10,55,0.09)!important;outline:none;}
-    /* Auth button focus ring */
-    .auth-btn:focus-visible{outline:2px solid #3C0A37;outline-offset:2px;}
-    /* Smooth transitions for auth elements */
-    .auth-inp{transition:border-color 0.15s,box-shadow 0.15s!important;}
-    @media(prefers-reduced-motion:reduce){
-      .auth-inp,.auth-btn{transition:none!important;}
-    }
-    .solana-wordmark-wrap,.solana-wordmark{
-      background:none!important;
-      background-color:transparent!important;
-      box-shadow:none!important;
-      border:none!important;
-    }
-  </style>
-</head>
-<body>
-<div id="root"></div>
-  <script>
-  window.__SOLANA_AUTH_URL__ = "https://solana-auth.onrender.com";
-</script>
-<script type="text/babel">
-/* ─────────────────────────────────────────────────────────────────────────────
-   SOLANA EXPENSE TRACKER v4
-   All view components defined OUTSIDE SolanaExpenses → fixes focus loss bug
-   State shared via React.createContext
-───────────────────────────────────────────────────────────────────────────── */
-const{useState,useEffect,useRef,useCallback,useMemo,createContext,useContext}=React;
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Ctx, useApp } from './context/AppContext.jsx';
+import { useSessionState } from './hooks/useSessionState.js';
+import {
+  G,
+  GH,
+  GL,
+  T,
+  BILL_COLOR,
+  BL,
+  UNKNOWN_USER_NAME,
+  DATA_VERSION,
+  DEF_USERS,
+  DEF_CATS,
+  AUTH_URL,
+} from './constants.js';
+import { mkT } from './i18n.js';
+import {
+  API,
+  debugApiRequest,
+  readOfflineQueue,
+  writeOfflineQueue,
+  dispatchSolanaToast,
+  isNetworkError,
+  shouldQueueWrite,
+  makeOfflineQueuedError,
+  isOfflineQueuedError,
+  isCommentPostUnavailable,
+  enqueueOfflineOp,
+} from './api.js';
+import {
+  fmt,
+  fmtKpi,
+  fmtDate,
+  parseMoney,
+  inits,
+  applyServerSettings,
+  getCurrency,
+} from './helpers.js';
+import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 
-/** Persist state in sessionStorage (tab session only). Removes key when value equals default. */
-function useSessionState(key,defaultVal){
-  const [val,setVal]=useState(()=>{
-    try{
-      const s=sessionStorage.getItem(key);
-      if(s==null)return defaultVal;
-      return JSON.parse(s);
-    }catch(e){return defaultVal;}
-  });
-  const setter=useCallback((v)=>{
-    setVal(prev=>{
-      const next=typeof v==="function"?v(prev):v;
-      try{
-        if(JSON.stringify(next)===JSON.stringify(defaultVal))sessionStorage.removeItem(key);
-        else sessionStorage.setItem(key,JSON.stringify(next));
-      }catch(e){/* quota / private mode */}
-      return next;
-    });
-  },[key,defaultVal]);
-  return[val,setter];
-}
-/* ── BRAND PALETTE ─────────────────────────────────────────────────────────
-   Primary  #3C0A37  Deep aubergine — brand primary
-   Accent   #C4622D  Terracotta — earthy complement (from brand palette grid)
-   Badge    #7A4F9A  Muted violet — notification badges
-   Hover    #52114B  Primary hover (ligther plum)
-   ────────────────────────────────────────────────────────────────────────── */
-const G  = "#3C0A37"; // brand primary — deep aubergine
-const GH = "#52114B"; // primary hover
-const GL = "rgba(60,10,55,0.07)"; // primary light tint (hover backgrounds)
-const T  = "#C4622D"; // terracotta accent — earthy complement, in palette grid
-const BILL_COLOR = "#C2622A"; // orange for facturas
-const BL = "#7A4F9A"; // muted violet for notification badges
-/** Shown when a user id is not in the local users list (e.g. server sync lag). */
-const UNKNOWN_USER_NAME="Usuario";
-
-/* ── TRANSLATIONS ──────────────────────────────────────────────────────────── */
-const TR = {
-
-    "nav.dashboard": "Panel",
-    "nav.expenses": "Gastos",
-    "nav.approvals": "Aprobaciones",
-    "nav.reports": "Informes",
-    "nav.settings": "Ajustes",
-    "nav.serverSettings": "Parámetros",
-    "nav.signOut": "Cerrar sesión",
-    "action.newExpense": "Nuevo gasto",
-    "action.addBill": "Nueva factura",
-    "action.addUser": "+ Añadir usuario",
-    "label.tempPassword": "Contraseña temporal",
-    "label.tempPasswordHint": "El usuario deberá cambiarla tras el primer inicio de sesión.",
-    "msg.tempPwRequired": "Establece una contraseña temporal, mín. 8 caracteres.",
-    "action.approve": "Aprobar",
-    "action.reject": "Rechazar",
-    "action.save": "Guardar",
-    "action.cancel": "Cancelar",
-    "action.delete": "Eliminar",
-    "action.edit": "Editar",
-    "action.add": "Añadir",
-    "action.submit": "Enviar gasto",
-    "action.submitBill": "Enviar factura",
-    "action.exportCSV": "Exportar CSV",
-    "action.downloadPdf": "Descargar PDF",
-    "action.exportJSON": "Exportar JSON",
-    "action.importJSON": "Importar JSON",
-    "action.uploadFile": "Subir archivo",
-    "action.scanCamera": "Hacer foto",
-    "action.scanBill": "Escanear",
-    "action.capturePhoto": "Capturar foto",
-    "action.addExpense": "Añadir Gasto",
-    "action.restore": "Restaurar",
-    "action.archive": "Archivar",
-    "action.upload": "Subir foto",
-    "action.changePhoto": "Cambiar foto",
-    "action.confirm": "Confirmar",
-    "action.saveChanges": "Guardar cambios",
-    "action.changePassword": "Cambiar contraseña",
-    "action.setPassword": "Establecer contraseña",
-    "action.viewAll": "Ver todo",
-    "action.review": "Revisar",
-    "action.pause": "Pausar",
-    "action.resume": "Reanudar",
-    "action.remove": "Eliminar",
-    "action.addCategory": "+ Añadir categoría",
-    "action.copyJSON": "Copiar JSON",
-    "action.downloadData": "Descargar datos",
-    "action.copyCode": "Copiar código",
-    "action.codeCopied": "¡Copiado!",
-    "action.deleteItem": "Eliminar gasto",
-    "action.deleteBill": "Eliminar factura",
-    "action.deleteConfirm": "¿Eliminar este ítem? Esta acción no se puede deshacer.",
-    "action.deleteApproved": "Este ítem ya fue aprobado. Solo un administrador puede eliminarlo.",
-    "action.deleteOwnOnly": "Solo puedes eliminar tus propios ítems.",
-    "action.editItem": "Editar",
-    "action.openFile": "Abrir archivo",
-    "action.downloadFile": "Descargar",
-    "label.amount": "Importe",
-    "label.description": "Concepto",
-    "label.category": "Categoría",
-    "label.department": "Departamento",
-    "label.date": "Fecha",
-    "label.notes": "Notas",
-    "label.paidBy": "Pagado por",
-    "label.status": "Estado",
-    "label.by": "Por",
-    "label.approval": "Aprobación",
-    "label.frequency": "Frecuencia",
-    "label.dayOfMonth": "Día del mes",
-    "label.yes": "Sí",
-    "label.no": "No",
-    "label.name": "Nombre",
-    "label.title": "Título",
-    "label.email": "Correo electrónico",
-    "label.phone": "Teléfono",
-    "label.role": "Rol",
-    "label.receipt": "Recibo",
-    "label.activity": "Mi actividad",
-    "label.decision": "Decisión",
-    "label.note": "Nota",
-    "label.splitExpense": "Dividir gasto",
-    "label.splitBadge": "Reparto",
-    "label.divideTeam": "Dividir entre el equipo",
-    "label.currentPassword": "Contraseña actual",
-    "label.newPassword": "Nueva contraseña",
-    "label.confirmPassword": "Confirmar contraseña",
-    "label.approvers": "Aprobadores",
-    "label.categoryName": "Nombre de categoría",
-    "label.billName": "Concepto",
-    "label.monthly": "Mensual",
-    "label.everyXMonths": "Cada X meses",
-    "label.intervalMonths": "Intervalo en meses",
-    "label.endDate": "Hasta",
-    "label.endDateHint": "Dejar vacío si es indefinido",
-    "label.annual": "Anual",
-    "label.once": "Pago único",
-    "label.itemCode": "Código de ítem",
-    "status.approved": "Aprobado",
-    "status.rejected": "Rechazado",
-    "status.pending": "Pendiente",
-    "status.active": "Activo",
-    "status.paused": "Pausado",
-    "status.pendingVerification.title": "Solicitud enviada",
-    "status.pendingVerification.body": "Tu solicitud ha sido recibida. Un administrador la revisará y te dará acceso si es aprobada. No necesitas hacer nada más.",
-    "status.pendingApproval.title": "Solicitud en revisión",
-    "status.pendingApproval.body": "Tu correo ha sido verificado. Un administrador revisará tu solicitud y te avisará cuando tu acceso esté listo.",
-    "status.denied.title": "Acceso no aprobado",
-    "status.denied.body": "Tu solicitud de acceso no ha sido aprobada en este momento. Si crees que es un error, contacta con el administrador.",
-    "status.backToLogin": "Volver al inicio de sesión",
-    "filter.all": "Todos",
-    "filter.pending": "Pendiente",
-    "filter.approved": "Aprobado",
-    "filter.rejected": "Rechazado",
-    "filter.submitter": "Enviado por",
-    "filter.category": "Categoría",
-    "filter.dateFrom": "Desde",
-    "filter.dateTo": "Hasta",
-    "filter.clearFilters": "Limpiar filtros",
-    "filter.codeSearch": "Buscar por código o descripción",
-    "role.superadmin": "Superadministrador",
-    "role.admin": "Administrador",
-    "role.user": "Usuario",
-    "empty.expenses": "No se encontraron gastos",
-    "empty.approvals": "Todo al día sin aprobaciones pendientes",
-    "empty.approvalsFilter": "No hay elementos con este filtro.",
-    "msg.profileUpdated": "Perfil actualizado.",
-    "msg.invalidFile": "Archivo no válido.",
-    "msg.importSuccess": "Importado correctamente.",
-    "msg.splitMustTotal100": "Los porcentajes deben sumar 100%",
-    "msg.splitEqual100Hint": "Debe sumar 100%",
-    "split.warnPctSum": "Los porcentajes suman {{sum}}% deben sumar 100%",
-    "split.warnAmtSum": "Los importes suman {{sum}} el total es {{total}}",
-    "split.minTwoTeam": "Hace falta al menos dos personas en el equipo para dividir el gasto.",
-    "split.minParticipants": "Selecciona al menos dos participantes en el reparto.",
-    "split.submitterLocked": "Quien envía el gasto siempre participa en el reparto.",
-    "msg.valueMustMatch": "Los valores deben sumar ",
-    "msg.removeAccount": "¿Eliminar tu cuenta de este dispositivo?",
-    "msg.pdfUploaded": "PDF subido",
-    "msg.receiptLoading": "Cargando recibo…",
-    "msg.cameraUnavailable": "Cámara no disponible. Intenta subir un archivo.",
-    "msg.passwordMismatch": "Las contraseñas no coinciden.",
-    "msg.passwordTooShort": "Mínimo 6 caracteres.",
-    "msg.passwordWrong": "Contraseña actual incorrecta.",
-    "msg.currentPasswordRequired": "Introduce tu contraseña actual.",
-    "msg.sessionExpired": "Tu sesión ha expirado. Cierra sesión y vuelve a entrar.",
-    "msg.passwordChanged": "Contraseña cambiada correctamente.",
-    "forceChange.title": "Cambia tu contraseña",
-    "forceChange.subtitle": "Tu cuenta usa una contraseña temporal. Establece una nueva para continuar.",
-    "forceChange.newPw": "Nueva contraseña",
-    "forceChange.confirmPw": "Confirmar contraseña",
-    "forceChange.submit": "Establecer contraseña y continuar",
-    "forceChange.mismatch": "Las contraseñas no coinciden.",
-    "forceChange.tooShort": "Mínimo 8 caracteres.",
-    "forceChange.common": "Contraseña demasiado común. Elige una más segura.",
-    "msg.passwordNoExisting": "Sin contraseña. Introduce una para proteger tu cuenta.",
-    "msg.billApprovalNeeded": "Factura enviada pendiente de aprobación.",
-    "msg.deleteUser": "Eliminar",
-    "msg.archiveCategory": "¿Archivar esta categoría?",
-    "msg.attachmentRemoved": "Adjunto eliminado.",
-    "msg.minPassword": "La contraseña debe tener al menos 8 caracteres.",
-    "msg.pwCommon": "Contraseña demasiado común. Elige una más segura.",
-    "msg.genericShort": "Error.",
-    "msg.httpStatus": "Error del servidor, código {{status}}",
-    "settings.title": "Ajustes",
-    "settings.teamMembers": "Miembros del equipo",
-    "settings.pendingUsers": "Pendientes de aprobación",
-    "settings.noPendingUsers": "No hay usuarios esperando aprobación.",
-    "settings.approveUser": "Aprobar",
-    "settings.denyUser": "Denegar",
-    "settings.adminKey": "Clave de administración",
-    "settings.pendingUsersDesc": "Usuarios que han verificado su correo y esperan aprobación.",
-    "settings.yourProfile": "Tu perfil",
-    "settings.deleteAccount": "Eliminar mi cuenta",
-    "settings.requestDeletion": "Solicitar eliminación",
-    "settings.dataSync": "Sincronización",
-    "settings.dataSyncDesc": "Datos almacenados localmente. Exporta JSON y comparte con el equipo.",
-    "settings.dangerZone": "Zona de peligro",
-    "settings.categories": "Categorías y Reglas de Aprobación",
-    "settings.password": "Contraseña",
-    "settings.passwordDesc": "Protege tu cuenta con una contraseña.",
-    "settings.newCategory": "Nueva categoría",
-    "settings.editCategory": "Editar categoría",
-    "settings.defaultApprovers": "Aprobadores por defecto cuando no hay regla para la categoría",
-    "settings.approverAutoNote": "Si un aprobador sube un gasto, su aprobación es automática; el resto de aprobadores de la categoría deben aprobar manualmente.",
-    "settings.categoryName.placeholder": "Nombre de la categoría",
-    "settings.approversLabel": "Aprobadores:",
-    "settings.noApprovers": "ninguno",
-    "settings.restoreCategory": "¿Restaurar esta categoría?",
-    "settings.pendingFirst": "Pendientes de aprobación revisa antes que todo",
-    "settings.accordion.pending": "Usuarios pendientes de aprobación",
-    "settings.accordion.appLog": "Registro de la aplicación",
-    "settings.accordion.team": "Miembros del equipo",
-    "settings.accordion.profile": "Tu perfil",
-    "settings.accordion.password": "Contraseña",
-    "settings.accordion.categories": "Categorías y aprobación",
-    "settings.accordion.budgets": "Presupuestos por departamento",
-    "settings.deptTrackerTitle": "Seguimiento de presupuesto por departamento",
-    "settings.deptTrackerMonth": "Gasto este mes",
-    "settings.deptTrackerYear": "Gasto año fiscal",
-    "settings.deptTrackerBudget": "Presupuesto anual",
-    "settings.deptTrackerUsed": "Usado del presupuesto",
-    "settings.deptTrackerRemaining": "Restante",
-    "settings.overBudgetBadge": "Por encima del presupuesto",
-    "settings.deptIntro": "Define presupuestos anuales por departamento. El gasto contabilizado son gastos aprobados y facturas marcadas como pagadas.",
-    "settings.deptName": "Nombre del departamento",
-    "settings.deptBudget": "Presupuesto",
-    "settings.deptAdd": "Añadir departamento",
-    "settings.deptSaved": "Departamentos actualizados.",
-    "settings.deptDeleteBlocked": "Hay gastos o facturas vinculados; reasígnalos antes de eliminar.",
-    "dept.budget": "Presupuesto",
-    "dept.spent": "Gastado",
-    "dept.remaining": "Restante",
-    "dept.usedPct": "% usado",
-    "dept.spentLine": "{{spent}} de {{budget}} gastado",
-    "dept.spentNoBudget": "{{spent}} gastado (sin presupuesto asignado)",
-    "dept.overBudgetMsg": "{{amount}} por encima del presupuesto",
-    "dept.remainingLine": "{{amount}} restante",
-    "msg.deptRequired": "Selecciona un departamento.",
-    "msg.categoryRequired": "Selecciona una categoría.",
-    "msg.expenseDateRequired": "Selecciona la fecha del gasto.",
-    "msg.amountRequired": "Indica un importe válido.",
-    "msg.descriptionRequired": "Añade una descripción.",
-    "msg.dayOfMonthRequired": "Indica el día del mes para facturas recurrentes.",
-    "dash.deptBudgetsTitle": "Presupuestos por departamento",
-    "settings.accordion.integrations": "Integraciones y exportación",
-    "settings.accordion.backups": "Copias de seguridad",
-    "settings.accordion.danger": "Zona de peligro",
-    "settings.apiIntegrations": "API e Integraciones",
-    "settings.apiIntegrationsDesc": "Conecta los datos de Solana con Power BI, Excel u otras herramientas de análisis.",
-    "login.email": "Correo electrónico",
-    "login.password": "Contraseña",
-    "login.enterEmail": "Introduce tu correo",
-    "login.enterPassword": "Introduce tu contraseña",
-    "login.signingIn": "Iniciando sesión…",
-    "login.invalidCreds": "Correo o contraseña incorrectos",
-    "login.showPw": "Ver",
-    "login.hidePw": "Ocultar",
-    "login.subtitle": "Gestión de Gastos",
-    "login.back": "Volver",
-    "login.signIn": "Iniciar sesión",
-    "login.title": "Iniciar sesión",
-    "login.loginSubtitle": "Accede a tu espacio de gestión",
-    "login.createAccount": "Crear cuenta",
-    "login.adminManaged": "Las cuentas son creadas por el administrador. Contacta con tu admin para obtener acceso.",
-    "login.forgotPassword": "¿Olvidaste tu contraseña?",
-    "login.forgotHelp": "Si no puedes acceder a tu cuenta, puedes solicitar asistencia de contraseña. Para cuentas gestionadas, la solicitud será revisada por el administrador.",
-    "login.requestPasswordHelp": "Solicitar asistencia de contraseña",
-    "login.enterEmailFirst": "Introduce primero tu correo electrónico.",
-    "login.forgotUnavailable": "La asistencia de contraseña no está disponible en este momento.",
-    "login.forgotSuccess": "Si el correo es reconocido, la asistencia de contraseña ha sido iniciada.",
-    "login.forgotError": "No se pudo procesar la solicitud en este momento.",
-    "login.profile": "Perfil y Ajustes",
-    "team.resetPassword": "Contraseña temporal",
-    "team.resetPasswordSave": "Aplicar",
-    "team.resetPasswordCancel": "Cancelar",
-    "team.resetPasswordHint": "El usuario iniciará sesión con esta clave y deberá cambiarla.",
-    "team.resetPasswordOk": "Contraseña restablecida. El usuario debe iniciar sesión con la nueva clave.",
-    "signup.subtitle": "Solicita acceso a Solana",
-    "signup.helperNote": "Tu solicitud será revisada por un administrador, que aprobará o denegará tu acceso.",
-    "signup.loginLink": "¿Ya tienes cuenta? Iniciar sesión",
-    "signup.title": "Crear cuenta",
-    "signup.name": "Nombre",
-    "signup.namePlaceholder": "Tu nombre",
-    "signup.email": "Correo electrónico",
-    "signup.pw": "Contraseña",
-    "signup.pwConfirm": "Confirmar contraseña",
-    "signup.submit": "Crear cuenta",
-    "signup.link": "¿No tienes cuenta? Regístrate",
-    "signup.backToLogin": "Volver al inicio de sesión",
-    "signup.success": "Solicitud recibida. Un administrador revisará y aprobará tu acceso en breve.",
-    "signup.pwMismatch": "Las contraseñas no coinciden.",
-    "signup.pendingVerification": "Tu solicitud está pendiente de aprobación por el administrador.",
-    "signup.pendingApproval": "Tu correo ha sido verificado. Un administrador debe aprobar tu cuenta antes de que puedas iniciar sesión.",
-    "signup.denied": "Tu solicitud no fue aprobada. Contacta con el administrador.",
-    "signup.serverDown": "Servidor no disponible. Inténtalo más tarde.",
-    "error.title": "Algo ha ido mal",
-    "error.desc": "Ha ocurrido un error inesperado.",
-    "error.clear": "Borrar datos y recargar",
-    "error.reload": "Recargar aplicación",
-    "error.contact": "Si el problema persiste, contacta con Marc",
-    "error.techDetails": "Detalles técnicos",
-    "item.code": "Código",
-    "item.attachment": "Archivo adjunto",
-    "item.refFile": "Archivo de referencia",
-    "cat.equipment": "Equipamiento",
-    "cat.supplies": "Suministros",
-    "cat.marketing": "Marketing",
-    "cat.legal": "Legal",
-    "cat.rent": "Alquiler",
-    "cat.software": "Software",
-    "cat.foodbeverage": "Alimentación",
-    "cat.travel": "Viajes",
-    "cat.other": "Otros",
-    "reports.title": "Informes",
-    "reports.monthlyTrend": "Tendencia mensual",
-    "reports.sparklineTitle": "Actividad mensual (12 meses)",
-    "reports.byCategory": "Gasto total por categoría",
-    "reports.perPerson": "Inversión por persona",
-    "reports.personLogHint": "Total aprobado según tu parte en el reparto. La lista incluye gastos aprobados y pendientes.",
-    "reports.submittedCount": "{{count}} movimientos",
-    "reports.personNoSplitExpenses": "Sin gastos en el reparto aprobados o pendientes.",
-    "reports.forecast": "Previsión de costes",
-    "reports.monthlyFixed": "Mensual fijo",
-    "reports.annualFixed": "Anual fijo",
-    "reports.calendar": "Calendario de pagos",
-    "reports.api": "API e Integraciones",
-    "reports.apiDesc": "Conecta con herramientas externas como Power BI.",
-    "reports.noApproved": "Sin gastos aprobados todavía",
-    "reports.total": "Total",
-    "reports.allData": "Todos los datos",
-    "reports.filteredData": "Datos filtrados",
-    "reports.approvedOnly": "Solo aprobados",
-    "reports.pendingOnly": "Solo pendientes",
-    "dash.welcome": "Bienvenido",
-    "dash.totalInvested": "Total invertido",
-    "dash.thisMonth": "Este mes",
-    "dash.pending": "Pendiente",
-    "dash.monthlyFixed": "Coste mensual",
-    "dash.totalInvestedSub": "Gastos aprobados",
-    "dash.pendingSub": "Pendientes de aprobación",
-    "dash.monthlyFixedSub": "Coste mensual fijo",
-    "dash.totalInvestedSub": "Gastos aprobados",
-    "dash.pendingSub": "Pendientes de aprobación",
-    "dash.monthlyFixedSub": "Coste mensual fijo",
-    "dash.totalInvestedSub": "Gastos aprobados",
-    "dash.pendingSub": "Pendientes de aprobación",
-    "dash.monthlyFixedSub": "Coste mensual fijo",
-    "dash.recentMine": "Mi actividad reciente",
-    "dash.recentAll": "Gastos recientes",
-    "dash.recentEmpty": "Aún no has enviado ningún gasto.",
-    "dash.investByPerson": "Inversión por persona",
-    "dash.awaitingApproval": "gasto(s) pendiente(s) de tu aprobación",
-    "dash.newInvoice": "Nueva factura",
-    "dash.newInvoiceSub": "Formulario con vencimiento y proveedor",
-    "dash.bothMustApprove": "Ambos admins deben aprobar",
-    "dash.review": "Revisar",
-    "dash.addBill": "Añadir Factura",
-    "dash.addExpense": "Añadir Gasto",
-    "dash.logCost": "Registrar un nuevo coste",
-    "dash.recurringCost": "Coste recurrente",
-    "dash.upcomingBills": "Próximas facturas · 15 días",
-    "dash.noBillsSoon": "No hay facturas en los próximos 15 días.",
-    "dash.dueIn": "Vence en {n} días",
-    "dash.dueToday": "Vence hoy",
-    "dash.dueTomorrow": "Vence mañana",
-    "form.newExpense": "Nuevo gasto",
-    "form.receiptOptional": "Recibo",
-    "form.autoApproveHint": "Gastos de hasta {{amount}} se aprueban automáticamente.",
-    "form.receiptRequiredHint": "Se requiere justificante para importes superiores a {{amount}}.",
-    "form.splitEq": "Equitativo",
-    "form.splitPct": "Por %",
-    "form.splitEur": "Por importe",
-    "cal.mon": "Lun",
-    "cal.tue": "Mar",
-    "cal.wed": "Mié",
-    "cal.thu": "Jue",
-    "cal.fri": "Vie",
-    "cal.sat": "Sáb",
-    "cal.sun": "Dom",
-    "session.expiredTitle": "Sesión caducada",
-    "session.expiredMsg": "Has sido desconectado por inactividad.",
-    "session.warningMsg": "Tu sesión caducará en {n} minutos por inactividad.",
-    "session.stayLoggedIn": "Seguir conectado",
-    "audit.attachment_uploaded": "Adjunto subido",
-    "audit.attachment_removed": "Adjunto eliminado",
-    "audit.exported": "Exportado",
-    "audit.submitted": "Enviado",
-    "audit.approved": "Aprobado",
-    "audit.auto_approved": "Aprobación automática: aprobador remitente",
-    "audit.autoApprovedDetail": "El remitente figuraba como aprobador de la categoría.",
-    "audit.rejected": "Rechazado",
-    "audit.edited": "Editado",
-    "audit.deleted": "Eliminado",
-    "audit.delete_requested": "Solicitud de borrado",
-    "audit.reapproval_required": "Vuelto a pendiente: reaprobación requerida",
-    "expense.editTitle": "Editar gasto",
-    "expense.confirmEdit": "¿Guardar cambios en este gasto?",
-    "expense.reapprovalWarning": "Este gasto estaba aprobado. Los cambios en campos clave resetearán la aprobación y requerirán revisión.",
-    "expense.reapprovalDone": "Gasto vuelto a pendiente; se requiere reaprobación.",
-    "expense.noPermission": "Solo puedes editar tus propios gastos.",
-    "expense.edited": "Editado",
-    "expense.unsaved": "Tienes cambios sin guardar. ¿Descartarlos?",
-    "person.drillTitle": "Inversión de {name}",
-    "person.expenses": "Gastos atribuidos",
-    "person.invoicesSent": "Facturas enviadas",
-    "person.noExpenses": "Sin gastos atribuidos.",
-    "person.noInvoices": "Sin facturas enviadas.",
-    "filter.showingMyExpenses": "Mostrando: mis gastos",
-    "filter.showAllExpenses": "× Ver todos",
-    "expenses.summaryApproved": "Total aprobado",
-    "expenses.summaryPending": "Pendiente",
-    "expenses.typeExpense": "Gasto",
-    "expenses.typeInvoice": "Factura",
-    "expenses.paymentPending": "Pendiente",
-    "expenses.paymentOverdue": "Vencida",
-    "expenses.paymentPaid": "Pagada",
-    "expenses.markPaid": "Marcar pagada",
-    "expenses.vendor": "Proveedor",
-    "expenses.paymentTerms": "Condiciones de pago",
-    "expenses.dueDate": "Fecha vencimiento",
-    "expenses.cadence": "Cadencia",
-    "expenses.recurringPreview": "Próxima: {{date}}",
-    "expenses.filterAll": "Todos",
-    "expenses.filterExpenses": "Gastos",
-    "expenses.filterInvoices": "Facturas",
-    "expenses.vence": "Vence el:",
-    "expenses.termCash": "Al contado (0 días)",
-    "expenses.termNet15": "NET-15",
-    "expenses.termNet30": "NET-30",
-    "expenses.termNet60": "NET-60",
-    "expenses.termCustom": "Personalizado",
-    "expenses.termCustomDays": "Días",
-    "expenses.cadenceOnce": "Una vez",
-    "expenses.cadenceMonthly": "Mensual",
-    "expenses.cadenceQuarterly": "Trimestral",
-    "expenses.cadenceYearly": "Anual",
-    "expenses.cadenceCustom": "Personalizado",
-    "expenses.cadenceEveryXMonths": "Cada X meses",
-    "expenses.confirmMarkPaid": "¿Registrar pago?",
-    "expenses.paidDateLabel": "Fecha de pago",
-    "expenses.noAttachment": "Sin adjunto",
-    "page.expensesDefTitle": "Gastos puntuales",
-    "page.expensesDefBody": "Pagos únicos, compras y desembolsos del equipo.",
-    "form.ivaRate": "Tipo de IVA",
-    "form.ivaBase": "Base imponible",
-    "form.ivaAmountLabel": "Cuota IVA",
-    "form.ivaAmountDash": "N/A",
-    "expense.ivaRow": "IVA",
-    "expense.ivaNotTracked": "N/A",
-    "expense.comments": "Comentarios",
-    "expense.commentPlaceholder": "Añadir una nota…",
-    "expense.addNote": "Añadir nota",
-    "expense.send": "Enviar",
-    "timeline.sectionTitle": "Seguimiento",
-    "timeline.now": "ahora",
-    "timeline.minsAgo": "hace {{n}}min",
-    "timeline.hoursAgo": "hace {{n}}h",
-    "timeline.noteAdded": "añadió una nota",
-    "timeline.approved": "aprobó",
-    "timeline.rejected": "rechazó",
-    "timeline.edited": "editó el gasto",
-    "timeline.receiptUploaded": "subió un recibo",
-    "timeline.receiptRemoved": "eliminó el recibo",
-    "timeline.askedReapproval": "marcó reaprobación requerida",
-    "timeline.autoApproved": "aprobación automática",
-    "timeline.submitted": "envió el gasto",
-    "timeline.resubmitted": "reenvió el gasto",
-    "timeline.editedFields": "Campos modificados: {{fields}}",
-    "timeline.attachmentDetailPdf": "Archivo PDF",
-    "timeline.attachmentDetailImage": "Imagen",
-    "expense.commentRetryHint": "El servidor no respondió. El comentario quedó solo en este dispositivo; reintenta en unos minutos.",
-    "expense.commentFailed": "No se pudo enviar el comentario.",
-    "expense.fixResubmit": "Corregir y reenviar",
-    "expense.editThenResubmit": "Editar primero y luego reenviar",
-    "dash.activityTitle": "Mi actividad",
-    "dash.approvedShort": "Aprobados",
-    "dash.pendingShort": "Pendientes",
-    "dash.rejectedShort": "Rechazados",
-    "dash.fixRejectedLink": "Tienes {n} gasto(s) rechazado(s) Corregir",
-    "dash.budgetStatus": "Presupuesto",
-    "reports.budgetVsActual": "Presupuesto vs real",
-    "reports.budgetTotal": "Total presupuestos mensuales vs gasto aprobado, este mes",
-    "csv.baseAmount": "Importe base",
-    "csv.ivaRatePct": "Tipo IVA %",
-    "csv.ivaEur": "IVA",
-    "csv.itemType": "Tipo",
-    "draft.banner": "Tienes un borrador sin guardar del {date}. ¿Recuperarlo?",
-    "draft.restore": "Recuperar",
-    "draft.discard": "Descartar",
-    "settings.monthlyBudget": "Presupuesto mensual",
-    "settings.ivaDefault": "Tipo de IVA por defecto para nuevos gastos",
-    "settings.serverBanner": "Los cambios se aplican al instante; no hace falta reiniciar el servidor.",
-    "settings.serverOffline": "Conecta la aplicación al servidor para gestionar parámetros.",
-    "settings.serverLoadError": "No se pudieron cargar los parámetros.",
-    "settings.serverSaveOk": "Guardado.",
-    "settings.ivaTypesSection": "Tipos de IVA editables",
-    "settings.ivaPctShort": "Porcentaje 0 a 99",
-    "settings.ivaNameField": "Nombre",
-    "settings.saveIvaTypes": "Guardar tipos",
-    "settings.sectionCategories": "Categorías",
-    "audit.resubmitted": "Reenviado para aprobación",
-    "audit.comment_added": "Comentario añadido",
-    "audit.pending_reset": "Vuelto a pendiente tras edición",
-    "receipt.tapEnlarge": "Toca para ver a tamaño completo",
-    "receipt.closeZoom": "Cerrar",
-    "detail.noDepartment": "Sin departamento",
-};
-
-const mkT=()=>(key,vars={})=>{
-  let s=TR[key]||key;
-  Object.entries(vars).forEach(([k,v])=>{s=s.replace(`{{${k}}}`,v);});
-  return s;
-};
-
-/* === SEED DATA (local dev / demo only) =======================================
-   Used when localStorage keys are empty and AUTH_URL is unset (offline app).
-   When AUTH_URL is set: expenses initial state is [] and are loaded from
-   GET /expenses (gastos + facturas como expenseType invoice); the user roster is replaced from GET /auth/team after
-   login (see useEffect in SolanaExpenses). Seed user ids below are not used in logic.
-   ============================================================================= */
-const DEF_USERS=[
-  {id:"u_demo1", name:"Admin User", title:"Administrador", email:"admin@example.com", phone:"", role:"superadmin", color:"#3C0A37"},
-  {id:"u_demo2", name:"Manager User", title:"Responsable", email:"manager@example.com", phone:"", role:"admin", color:"#52114B"},
-  {id:"u_demo3", name:"Team Member", title:"Equipo", email:"team1@example.com", phone:"", role:"user", color:"#8B5E3C"},
-  {id:"u_demo4", name:"Team Member 2", title:"Equipo", email:"team2@example.com", phone:"", role:"user", color:"#6B7280"},
-];
-const DEF_CATS=[
-  {id:"c1",name:"Equipment",       archived:false,approverIds:[]},
-  {id:"c2",name:"Supplies",        archived:false,approverIds:[]},
-  {id:"c3",name:"Marketing",       archived:false,approverIds:[]},
-  {id:"c4",name:"Legal",           archived:false,approverIds:[]},
-  {id:"c5",name:"Rent",            archived:false,approverIds:[]},
-  {id:"c6",name:"Software",        archived:false,approverIds:[]},
-  {id:"c7",name:"Food & Beverage", archived:false,approverIds:[]},
-  {id:"c8",name:"Travel",          archived:false,approverIds:[]},
-  {id:"c9",name:"Otro",           archived:false,approverIds:[]},
-];
-/* === END SEED DATA ========================================================== */
-
-/* ── VERSION & SCHEMA ──────────────────────────────────────────────────────── */
-const DATA_VERSION=6; // increment when schema changes; triggers normalize()
-/** Backend auth server URL. Set to empty string to use local-only mode (no signup/server login). */
-const AUTH_URL = (typeof window !== "undefined" && window.__SOLANA_AUTH_URL__) || "";
-function keepServerWarm() {
-  if (!AUTH_URL) return;
-  const ping = () => {
-    fetch(AUTH_URL + "/health", { method: "GET" }).catch(() => {});
-  };
-  ping();
-  setInterval(ping, 10 * 60 * 1000);
-}
-keepServerWarm();
-/** HTTP API (same origin as AUTH_URL). Bearer token + refresh on 401. Offline write queue. */
-const OFFLINE_QUEUE_KEY = "solana_offline_queue";
-
-function readOfflineQueue() {
+let _confirmHandler = null;
+function confirmUI(message) {
   try {
-    const r = localStorage.getItem(OFFLINE_QUEUE_KEY);
-    if (!r) return [];
-    const a = JSON.parse(r);
-    return Array.isArray(a) ? a : [];
-  } catch (e) {
-    return [];
-  }
-}
-function writeOfflineQueue(q) {
-  try {
-    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(q));
+    if (typeof _confirmHandler === 'function') return _confirmHandler(message);
   } catch (e) {}
-}
-
-function dispatchSolanaToast(message, kind) {
-  window.dispatchEvent(new CustomEvent("solana-toast", { detail: { message, kind: kind || "info" } }));
-}
-
-function isNetworkError(e) {
-  if (!e) return false;
-  if (e.name === "TypeError") return true;
-  const m = String(e.message || "");
-  if (/Failed to fetch|NetworkError|Load failed|network/i.test(m)) return true;
-  return false;
-}
-
-function shouldQueueWrite(method, path) {
-  const m = String(method || "").toUpperCase();
-  if (m !== "POST" && m !== "PUT" && m !== "DELETE") return false;
-  const p = path || "";
-  if (p.indexOf("/expenses") !== 0) return false;
-  return true;
-}
-
-function makeOfflineQueuedError() {
-  const e = new Error("OFFLINE_QUEUED");
-  e.code = "OFFLINE_QUEUED";
-  return e;
-}
-
-function isOfflineQueuedError(e) {
-  return e && (e.code === "OFFLINE_QUEUED" || e.message === "OFFLINE_QUEUED");
-}
-
-/** Comment POST failed due to gateway, timeout, missing route, or network — safe to merge locally */
-function isCommentPostUnavailable(e) {
-  if (isNetworkError(e)) return true;
-  const m = String(e && e.message ? e.message : "");
-  if (/HTTP 502|HTTP 503|HTTP 504|HTTP 404|Bad Gateway|Gateway Timeout/i.test(m)) return true;
-  return false;
-}
-
-function enqueueOfflineOp(method, path, body, meta) {
-  const q = readOfflineQueue();
-  q.push({
-    id: "q_" + Date.now() + "_" + Math.random().toString(36).slice(2, 11),
-    method: String(method).toUpperCase(),
-    path,
-    body: body === undefined ? null : body,
-    meta: meta && typeof meta === "object" ? meta : {},
-    enqueuedAt: Date.now(),
-  });
-  writeOfflineQueue(q);
-  dispatchSolanaToast("Guardado localmente, se sincronizará al reconectar", "offline");
-  throw makeOfflineQueuedError();
-}
-
-const API = {
-  get base() {
-    return AUTH_URL || "";
-  },
-  token: null,
-  _userId: null,
-  _flushBusy: false,
-
-  /** Bearer for requests: memory token, or sync from sessionStorage (login / refresh). */
-  ensureSessionToken() {
-    if (this.token) return;
-    try {
-      const s = sessionStorage.getItem("sol-session-token");
-      if (s) this.token = s;
-    } catch (e) {
-      this.token = null;
-    }
-  },
-
-  mergeMeta(meta) {
-    if (!meta || typeof meta !== "object") return {};
-    const o = { ...meta };
-    delete o.skipOfflineQueue;
-    return o;
-  },
-
-  async _rawFetch(method, path, body) {
-    this.ensureSessionToken();
-    const opts = { method, headers: {} };
-    if (this.token) opts.headers.Authorization = "Bearer " + this.token;
-    if (body != null && method !== "GET" && method !== "HEAD" && method !== "DELETE") {
-      opts.headers["Content-Type"] = "application/json";
-      opts.body = JSON.stringify(body);
-    }
-    return fetch(this.base + path, opts);
-  },
-
-  async requestNoQueue(method, path, body) {
-    if (!this.base) throw new Error("API no configurada.");
-    let res = await this._rawFetch(method, path, body);
-    if (res.status === 401) {
-      const ok = await this.refresh();
-      if (ok) {
-        res = await this._rawFetch(method, path, body);
-      } else {
-        window.dispatchEvent(new Event("solana-session-expired"));
-        throw new Error("Sesión expirada");
-      }
-    }
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-    const data = ct.includes("application/json") ? await res.json().catch(() => ({})) : {};
-    if (res.status === 409) {
-      dispatchSolanaToast("Conflicto al sincronizar, revisa los datos", "conflict");
-      throw Object.assign(new Error(data.error || "Conflicto"), { status: 409 });
-    }
-    if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
-    return data;
-  },
-
-  async request(method, path, body, meta) {
-    if (!this.base) throw new Error("API no configurada.");
-    const skipOfflineQueue = !!(meta && meta.skipOfflineQueue);
-    const storedMeta = this.mergeMeta(meta);
-    const queueWrite = shouldQueueWrite(method, path) && !skipOfflineQueue;
-
-    if (queueWrite && typeof navigator !== "undefined" && !navigator.onLine) {
-      enqueueOfflineOp(method, path, body, storedMeta);
-    }
-
-    try {
-      let res = await this._rawFetch(method, path, body);
-      if (res.status === 401) {
-        const ok = await this.refresh();
-        if (ok) {
-          res = await this._rawFetch(method, path, body);
-        } else {
-          window.dispatchEvent(new Event("solana-session-expired"));
-          throw new Error("Sesión expirada");
-        }
-      }
-      const ct = (res.headers.get("content-type") || "").toLowerCase();
-      const data = ct.includes("application/json") ? await res.json().catch(() => ({})) : {};
-      if (res.status === 409) {
-        dispatchSolanaToast("Conflicto al sincronizar, revisa los datos", "conflict");
-        throw Object.assign(new Error(data.error || "Conflicto"), { status: 409 });
-      }
-      if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
-      return data;
-    } catch (e) {
-      if (queueWrite && isNetworkError(e)) {
-        enqueueOfflineOp(method, path, body, storedMeta);
-      }
-      throw e;
-    }
-  },
-
-  async refresh() {
-    if (!AUTH_URL) return false;
-    this.ensureSessionToken();
-    try {
-      const res = await fetch(AUTH_URL + "/auth/refresh", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + this.token,
-        },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.sessionToken) {
-          this.token = data.sessionToken;
-          this._userId = data.userId || (data.user && data.user.id) || null;
-          try {
-            sessionStorage.setItem("sol-session-token", data.sessionToken);
-          } catch (e) {}
-          return true;
-        }
-      }
-    } catch (e) {}
-    return false;
-  },
-
-  async logout() {
-    if (!this.base || !this.token) return;
-    try {
-      await fetch(this.base + "/auth/logout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + this.token,
-        },
-      });
-    } catch (e) {}
-    try {
-      sessionStorage.removeItem("sol-session-token");
-    } catch (e) {}
-    this.token = null;
-  },
-
-  async flushOfflineQueue() {
-    if (this._flushBusy) return;
-    if (!this.base) return;
-    this.ensureSessionToken();
-    if (!this.token) return;
-    if (typeof navigator !== "undefined" && !navigator.onLine) return;
-    if (readOfflineQueue().length === 0) return;
-    this._flushBusy = true;
-    try {
-      while (readOfflineQueue().length > 0) {
-        const q = readOfflineQueue();
-        const op = q[0];
-        let data;
-        try {
-          data = await this.requestNoQueue(op.method, op.path, op.body);
-        } catch (err) {
-          if (err && err.status === 409) break;
-          if (isNetworkError(err)) break;
-          if (String(err.message || "").indexOf("Sesión expirada") >= 0) break;
-          break;
-        }
-
-        if (op.method === "POST" && op.path === "/expenses" && op.meta && op.meta.pendingReceipt && data.expense && data.expense.id) {
-          try {
-            await this.requestNoQueue("POST", "/expenses/" + encodeURIComponent(data.expense.id) + "/receipt", {
-              b64: op.meta.pendingReceipt.b64,
-              mediaType: op.meta.pendingReceipt.mediaType || op.meta.pendingReceipt.type || "image/jpeg",
-            });
-          } catch (recErr) {
-            if (isNetworkError(recErr)) break;
-            if (recErr && recErr.status === 409) break;
-            break;
-          }
-        }
-
-        writeOfflineQueue(q.slice(1));
-        dispatchSolanaToast("Sincronizado ✓", "sync");
-        window.dispatchEvent(new CustomEvent("solana-offline-sync", { detail: { op, response: data } }));
-      }
-    } finally {
-      this._flushBusy = false;
-    }
-  },
-
-  async fetchBinary(path) {
-    if (!this.base) throw new Error("API no configurada.");
-    this.ensureSessionToken();
-    const opts = { method: "GET", headers: {} };
-    if (this.token) opts.headers.Authorization = "Bearer " + this.token;
-    let res = await fetch(this.base + path, opts);
-    if (res.status === 401) {
-      const ok = await this.refresh();
-      if (ok) {
-        opts.headers.Authorization = "Bearer " + this.token;
-        res = await fetch(this.base + path, opts);
-      } else {
-        window.dispatchEvent(new Event("solana-session-expired"));
-        throw new Error("Sesión expirada");
-      }
-    }
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    return res.blob();
-  },
-
-  get: (path) => API.request("GET", path, null, undefined),
-  post: (path, body, meta) => API.request("POST", path, body, meta),
-  put: (path, body, meta) => API.request("PUT", path, body, meta),
-  delete: (path, meta) => API.request("DELETE", path, null, meta),
-};
-
-async function debugApiRequest(method, path, body) {
-  if (!API.base) throw new Error("API no configurada.");
-  let response = await API._rawFetch(String(method || "GET").toUpperCase(), path, body);
-  if (response.status === 401) {
-    const ok = await API.refresh();
-    if (ok) response = await API._rawFetch(String(method || "GET").toUpperCase(), path, body);
-  }
-  const rawText = await response.text().catch(() => "");
-  let responseBody = {};
-  try { responseBody = rawText ? JSON.parse(rawText) : {}; } catch (e) {}
-  return { response, responseBody, rawText };
-}
-
-/* ── HELPERS ───────────────────────────────────────────────────────────────── */
-const _settings={currency:"EUR",locale:"es-ES"};
-(function hydrateCurrencyFromLocalStorage(){
-  try{
-    const raw=localStorage.getItem("sol-currency");
-    if(!raw)return;
-    const code=JSON.parse(raw);
-    if(typeof code==="string"&&/^[A-Za-z]{3}$/.test(code.trim())){
-      _settings.currency=code.trim().toUpperCase().slice(0,3);
-    }
-  }catch(e){/* keep default */}
-})();
-function applyServerSettings(settingsObj){
-  if(!settingsObj||typeof settingsObj!=="object")return;
-  if(settingsObj.currency!=null){
-    const c=String(settingsObj.currency).trim().toUpperCase().slice(0,3);
-    if(/^[A-Z]{3}$/.test(c))_settings.currency=c;
-  }
-  if(settingsObj.locale!=null){
-    const L=String(settingsObj.locale).trim();
-    if(L)_settings.locale=L;
-  }
-}
-function getCurrency(){return _settings.currency;}
-
-let _confirmHandler=null;
-function confirmUI(message){
-  try{
-    if(typeof _confirmHandler==="function")return _confirmHandler(message);
-  }catch(e){}
   return Promise.resolve(false);
 }
-const fmt=n=>new Intl.NumberFormat(_settings.locale,{
-  style:"currency",currency:_settings.currency,
-  minimumFractionDigits:2,maximumFractionDigits:2
-}).format(Number(n||0));
-const fmtKpi=n=>{
-  const full=fmt(n);
-  const idx=full.lastIndexOf(",");
-  if(idx===-1)return{whole:full,cents:""};
-  return{whole:full.slice(0,idx),cents:full.slice(idx)};
-};
-/** Presupuestos / informes: 2 decimales si |importe| < 100; sin céntimos si ≥ 100 o > 999. */
-function formatBudgetCurrency(amount){
-  const n=Number(amount)||0;
-  const abs=Math.abs(n);
-  if(abs<100){
-    return new Intl.NumberFormat(_settings.locale,{style:"currency",currency:_settings.currency,minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
-  }
-  return new Intl.NumberFormat(_settings.locale,{style:"currency",currency:_settings.currency,maximumFractionDigits:0}).format(n);
-}
-const BUDGET_VS_BAR_MAX_PX=360;
-function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,noBottomMargin}){
+
+/* ── HELPERS (remainder in file; currency/amount helpers in helpers.js) ───── */
+export function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,noBottomMargin}){
   const spentN=Number(spent)||0;
   const budgetN=Number(budget)||0;
   const pctRaw=budgetN>0?(spentN/budgetN)*100:(spentN>0?100:0);
@@ -993,8 +73,8 @@ function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,no
           {budgetN>0&&<span style={{fontWeight:400,color:"#9CAA9F"}}>{" de "}{fmt(budgetN)}</span>}
         </span>
       </div>
-      <div style={{height:8,background:"#EDE8E0",borderRadius:4,overflow:"hidden",marginBottom:6}}>
-        {spentN>0&&<div style={{height:"100%",width:pctBar+"%",background:barColor,borderRadius:4,transition:"width 0.4s"}}/>}
+      <div className="budget-bar-track">
+        {spentN>0&&<div className="budget-bar-fill" style={{width:pctBar+"%",background:barColor}}/>}
       </div>
       <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
         <span style={{color:"#9CAA9F"}}>{isEmpty?"Sin gastos":Math.round(pctRaw)+"% utilizado"}</span>
@@ -1003,7 +83,6 @@ function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,no
     </div>
   );
 }
-const fmtDate=d=>{try{return new Date(d).toLocaleDateString("es-ES",{day:"2-digit",month:"short",year:"numeric"});}catch{return d;}};
 /** Audit actions shown in expense detail timeline (excludes comment_added — use comments[]). */
 const EXPENSE_TIMELINE_AUDIT_ACTIONS=new Set(["submitted","approved","rejected","edited","reapproval_required","auto_approved","attachment_uploaded","attachment_removed","resubmitted"]);
 function normalizeExpenseTimelineAt(at){
@@ -1055,23 +134,20 @@ function expenseTimelineEditedFieldLabels(meta,t){
   };
   return f.map(k=>{const trKey=keyMap[k];return trKey?t(trKey):k;}).join(", ");
 }
-// parseMoney: accepts "12,50" or "12.50" → 12.5 (shared utility used by all amount inputs)
-const parseMoney=s=>{if(s===null||s===undefined||s==="")return 0;const n=String(s).trim().replace(/\./g,"").replace(",",".");const v=parseFloat(n);return isNaN(v)?0:v;};
-const inits=n=>n.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase();
 
 /* ── USER AVATAR ────────────────────────────────────────────────────────────
    Renders profile photo if set, otherwise falls back to colored initials circle.
    Drop-in replacement for every inline initials-div across the app.
    Props: user (required), size (px, default 24), fontSize (px, default auto)
 ─────────────────────────────────────────────────────────────────────────── */
-function UserAvatar({user, size=24, fontSize=null}){
+export function UserAvatar({user, size=24, fontSize=null}){
   if(!user)return null;
   const fs=fontSize||Math.max(6,Math.round(size*0.32));
   if(user.avatar)return(
     <img src={user.avatar} alt={user.name||""} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1.5px solid rgba(0,0,0,0.06)"}}/>
   );
   return(
-    <div style={{width:size,height:size,borderRadius:"50%",background:user.color||"#6B7280",display:"flex",alignItems:"center",justifyContent:"center",fontSize:fs,fontWeight:700,color:"#fff",flexShrink:0}}>
+    <div className="user-avatar-initials" style={{width:size,height:size,background:user.color||"#6B7280",fontSize:fs}}>
       {inits(user.name||"?")}
     </div>
   );
@@ -1085,7 +161,7 @@ function SplitDivergeIcon({size=16,color="#4B5E52"}){
   );
 }
 /** Collapsible paidBy breakdown (multi-participant); click-only toggle */
-function ExpenseSplitBreakdown({e,t,users,alwaysInline=false}){
+export function ExpenseSplitBreakdown({e,t,users,alwaysInline=false}){
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const [stick,setStick]=useState(false);
   const paid=e.paidBy||[];
@@ -1110,19 +186,19 @@ function ExpenseSplitBreakdown({e,t,users,alwaysInline=false}){
   }
   const denom=Number(e.amount)||1;
   return(
-    <div style={{padding:"6px 0",borderBottom:"1px solid #F5F0EA"}}>
-      <div style={{fontSize:11,color:"#9CAA9F",marginBottom:4}}>{t("label.paidBy")}</div>
+    <div className="split-breakdown-wrap">
+      <div className="form-label" style={{color:"#9CAA9F"}}>{t("label.paidBy")}</div>
       <button type="button"
         aria-expanded={open}
         onClick={()=>setStick(s=>!s)}
-        style={{display:"flex",alignItems:"center",gap:8,width:"100%",border:"1px solid #EDE8E0",borderRadius:8,padding:"7px 10px",background:"#FAF7F2",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+        className="split-breakdown-btn">
         <SplitDivergeIcon size={16} color={G}/>
         <span style={{fontSize:11,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {n}</span>
         {e.splitMode&&<span style={{fontSize:11,color:"#6B7B72"}}>{t("label.splitBadge")}: {e.splitMode==="equal"?t("form.splitEq"):e.splitMode==="percentage"?t("form.splitPct"):t("form.splitEur")}</span>}
         <span style={{marginLeft:"auto",fontSize:11,color:"#9CAA9F"}}>{open?"▼":"▶"}</span>
       </button>
       {open&&(
-        <div style={{marginTop:8,padding:"9px 11px",background:"#F5F0EA",borderRadius:8}}>
+        <div className="split-breakdown-panel">
           {paid.map(p=>{
             const pct=p.pct!=null&&!isNaN(Number(p.pct))?Number(p.pct):Math.round((p.amount/denom)*1000)/10;
             const u=getU(p.userId);
@@ -1588,6 +664,10 @@ const ACTIVITY_COLORS={
   pending:{bg:"#FEF3C7",color:"#92400E"},
   rejected:{bg:"#FEE2E2",color:"#991B1B"},
 };
+/** Maps workflow status to shared `.status-*` tones (approved | pending | rejected). */
+function statusToneClass(st){
+  return st==="approved"||st==="pending"||st==="rejected"?`status-${st}`:"";
+}
 /** Translate a category name for display (known names only, preserves unknown) */
 const tCat=(name,t)=>{const k="cat."+name.toLowerCase().replace(/[^a-z]/g,"");const tr=t(k);return tr===k?name:tr;};
 
@@ -1962,16 +1042,12 @@ const BF={amount:"",description:"",category:"",date:new Date().toISOString().sli
   expenseType:"expense",vendor:"",paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",proveedor:""};
 const DRAFT_KEY="sol-exp-draft";
 
-/* ── CONTEXT ───────────────────────────────────────────────────────────────── */
-const Ctx=createContext(null);
-const useApp=()=>useContext(Ctx);
-
 /* ══════════════════════════════════════════════════════════════════════════════
-   COMPONENTS — all defined OUTSIDE SolanaExpenses to prevent focus loss
+   COMPONENTS — all defined OUTSIDE main App to prevent focus loss
 ══════════════════════════════════════════════════════════════════════════════ */
 
 /* ── ERROR BOUNDARY ───────────────────────────────────────────────────────── */
-class AppErrorBoundary extends React.Component{
+export class AppErrorBoundary extends React.Component{
   constructor(p){super(p);this.state={err:null,info:null};}
   static getDerivedStateFromError(err){return{err};}
   componentDidCatch(err,info){
@@ -2571,7 +1647,7 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
 }
 
 /* ── LOGIN ─────────────────────────────────────────────────────────────────── */
-function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
+export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
   const tl = React.useMemo(() => mkT(), []);
   const [screen, setScreen] = useState("login"); // "login" | "signup" | "status"
   const [statusType, setStatusType] = useState(null); // "pending_verification"|"pending_approval"|"denied"
@@ -3690,7 +2766,18 @@ function DetailPanel(){
       {!editMode&&<div style={{display:"flex",alignItems:"stretch",gap:0}}>
       {e.expenseType==="invoice"&&<div style={{width:3,flexShrink:0,background:T,alignSelf:"stretch",borderRadius:"2px 0 0 2px"}} aria-hidden/>}
       <div style={{flex:1,minWidth:0}}>
-      <div style={{display:"inline-block",padding:"2px 8px",borderRadius:11,fontSize:9,fontWeight:700,background:ST[st].bg,color:ST[st].color,marginBottom:7}}>{t("status."+st).toUpperCase()}</div>
+      <div
+        className={statusToneClass(st)}
+        style={{
+          display:"inline-block",
+          padding:"2px 8px",
+          borderRadius:11,
+          fontSize:9,
+          fontWeight:700,
+          marginBottom:7,
+          ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
+        }}
+      >{t("status."+st).toUpperCase()}</div>
       <div style={{fontSize:15,fontWeight:700,marginBottom:2}}>{e.description}</div>
       <div style={{fontSize:24,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",marginBottom:11}}>{fmtExpenseAmt(e)}</div>
       {e.itemCode&&(
@@ -3892,7 +2979,18 @@ function PersonDrilldown({userId, onClose}){
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
                     <div style={{fontSize:12,fontWeight:700,color:G}}>{fmt(shareEurInExpense(e,userId))}</div>
-                    <div style={{display:"inline-block",padding:"1px 5px",borderRadius:5,fontSize:8,fontWeight:600,background:ST[st].bg,color:ST[st].color,marginTop:1}}>{t("status."+st)}</div>
+                    <div
+                      className={statusToneClass(st)}
+                      style={{
+                        display:"inline-block",
+                        padding:"1px 5px",
+                        borderRadius:5,
+                        fontSize:8,
+                        fontWeight:600,
+                        marginTop:1,
+                        ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
+                      }}
+                    >{t("status."+st)}</div>
                   </div>
                 </div>
               );})}
@@ -3910,7 +3008,18 @@ function PersonDrilldown({userId, onClose}){
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
                     <div style={{fontSize:12,fontWeight:700,color:G}}>{fmtExpenseAmt(inv)}</div>
-                    <div style={{display:"inline-block",padding:"1px 5px",borderRadius:5,fontSize:8,fontWeight:600,background:ST[bst].bg,color:ST[bst].color,marginTop:1}}>{t("status."+bst)}</div>
+                    <div
+                      className={statusToneClass(bst)}
+                      style={{
+                        display:"inline-block",
+                        padding:"1px 5px",
+                        borderRadius:5,
+                        fontSize:8,
+                        fontWeight:600,
+                        marginTop:1,
+                        ...(statusToneClass(bst)?{}:{background:(ST[bst]||ST.pending).bg,color:(ST[bst]||ST.pending).color}),
+                      }}
+                    >{t("status."+bst)}</div>
                   </div>
                 </div>
               );})}
@@ -3923,7 +3032,7 @@ function PersonDrilldown({userId, onClose}){
 }
 
 /* ── DASHBOARD ─────────────────────────────────────────────────────────────── */
-function DashboardView(){
+export function DashboardView(){
   const{t,user,expenses,cats,users,isAdmin,myPending,
         totApproved,totFixed,perPerson,go,openNew,openNewInvoice,setView,setDetailId,setPanel,goToMyRejected,departmentsWithStats}=useApp();
   const today=new Date();
@@ -4095,7 +3204,7 @@ function DashboardView(){
         <div style={{display:"flex",justifyContent:"space-between",gap:8,textAlign:"center"}}>
           {[{lbl:t("dash.approvedShort"),cnt:apprCnt,sum:apprSum,st:"approved"},{lbl:t("dash.pendingShort"),cnt:pendCnt,sum:pendSum,st:"pending"},{lbl:t("dash.rejectedShort"),cnt:rejCnt,sum:rejSum,st:"rejected"}].map(col=>(
             <div key={col.st} style={{flex:1}}>
-              <div style={{display:"inline-block",padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,marginBottom:6,background:ACTIVITY_COLORS[col.st].bg,color:ACTIVITY_COLORS[col.st].color}}>{col.lbl}</div>
+              <div className={`badge ${statusToneClass(col.st)}`.trim()} style={{marginBottom:6}}>{col.lbl}</div>
               <div style={{fontWeight:800,fontSize:16,color:ACTIVITY_COLORS[col.st].color}}>{col.cnt}</div>
               <div style={{fontSize:11,color:"#9CAA9F"}}>{col.cnt===0?fmt(0):fmt(col.sum)}</div>
             </div>
@@ -4161,7 +3270,7 @@ function DashboardView(){
           const pool=expenses.slice();
           const sorted=[...pool].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
           if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{isAdmin?"Sin datos":t("dash.recentEmpty")}</div>;
-          return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;const sub=(users.find(x=>x.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;return(
+          return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const sub=(users.find(x=>x.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;return(
             <div key={e.id} className="row-hover" style={{display:"flex",alignItems:"flex-start",padding:"7px 3px",borderBottom:i<sorted.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}} onClick={()=>{go("expenses");setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -4172,7 +3281,17 @@ function DashboardView(){
               </div>
               <div style={{marginLeft:9,textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
                 <div style={{fontSize:12,fontWeight:700,color:G}}>{fmt(eurForExpense(e))}</div>
-                <span style={{padding:"1px 6px",borderRadius:11,fontSize:8,fontWeight:700,background:ac.bg,color:ac.color}}>{t("status."+st)}</span>
+                <span
+                  className={statusToneClass(st)}
+                  style={{
+                    padding:"1px 6px",
+                    borderRadius:11,
+                    fontSize:8,
+                    fontWeight:700,
+                    display:"inline-block",
+                    ...(statusToneClass(st)?{}:{background:(ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending).bg,color:(ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending).color}),
+                  }}
+                >{t("status."+st)}</span>
               </div>
             </div>
           );});
@@ -4183,7 +3302,7 @@ function DashboardView(){
 }
 
 /* ── EXPENSES VIEW ─────────────────────────────────────────────────────────── */
-function ExpensesView(){
+export function ExpensesView(){
   const{t,expenses,cats,users,byStatus,filtered,expFlt,setExpFlt,expSrc,setExpSrc,
         catFlt,setCatFlt,submFlt,setSubmFlt,dateFrom,setDateFrom,dateTo,setDateTo,activeFilterCount,
         detailId,setDetailId,panel,setPanel,openNew,resetForm,isAdmin,user,aNote,setANote,approve,clearMyExpenseFilter,totApproved,
@@ -4341,7 +3460,17 @@ function ExpensesView(){
                     {!isInvRow&&expKindFlt!=="invoice"&&(
                       <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:"#3C0A37",color:"#fff",flexShrink:0,display:"inline-block"}}>GASTO</span>
                     )}
-                    <span style={{padding:"1px 5px",borderRadius:7,fontSize:9,fontWeight:600,background:ST[st].bg,color:ST[st].color,flexShrink:0}}>{t("status."+st)}</span>
+                    <span
+                      className={statusToneClass(st)}
+                      style={{
+                        padding:"1px 5px",
+                        borderRadius:7,
+                        fontSize:9,
+                        fontWeight:600,
+                        flexShrink:0,
+                        ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
+                      }}
+                    >{t("status."+st)}</span>
                     {payBadge&&<span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,display:"inline-block",background:payBadge.bg,color:payBadge.color,flexShrink:0}}>{payBadge.text}</span>}
                     {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span aria-hidden="true">👥</span><span>{(e.paidBy||[]).length}</span></span>}
                   </div>
@@ -4426,7 +3555,7 @@ function ReceiptThumb({expenseId}){
 }
 
 /* ── APPROVALS ─────────────────────────────────────────────────────────────── */
-function ApprovalsView(){
+export function ApprovalsView(){
   const{t,expenses,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel}=useApp();
   const [expandedId,setExpandedId]=useState(null);
   const [typeFilter,setTypeFilter]=useState("all");
@@ -4500,7 +3629,6 @@ function ApprovalsView(){
           const rowDate=isInv?(item.dueDate||item.date):item.date;
           const rowTitle=isInv?(String(item.vendor||item.proveedor||"").trim()||item.description):item.description;
           const st=getItemStatus(item,cats,users);
-          const stStyle=ST[st]||ST.pending;
           const canActOnRow=isAdmin||rowApproverIds.includes(user.id);
           const isExpanded=itemId===expandedId;
           const payBadge=isInv&&st==="approved"?invoicePaymentBadgeStyle(item.paymentStatus):null;
@@ -4544,7 +3672,16 @@ function ApprovalsView(){
                     <div style={{textAlign:"right",flexShrink:0}}>
                       <div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
                       <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center",justifyContent:"flex-end",flexWrap:"wrap"}}>
-                        <span style={{padding:"2px 8px",borderRadius:11,fontSize:10,fontWeight:700,background:stStyle.bg,color:stStyle.color}}>
+                        <span
+                          className={statusToneClass(st)}
+                          style={{
+                            padding:"2px 8px",
+                            borderRadius:11,
+                            fontSize:10,
+                            fontWeight:700,
+                            ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
+                          }}
+                        >
                           {t("status."+st)}
                         </span>
                         {payBadge&&<span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,display:"inline-block",background:payBadge.bg,color:payBadge.color}}>{payBadge.text}</span>}
@@ -4680,7 +3817,7 @@ function reportsApiDateRange(dateRange){
 }
 
 /* ── REPORTS VIEW ──────────────────────────────────────────────────────────── */
-function ReportsView(){
+export function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel}=useApp();
   const [expFilter,setExpFilter]=useState("all");
   const [dateRange,setDateRange]=useState("thisMonth");
@@ -5901,7 +5038,7 @@ function DepartmentsSettingsBlock({t}){
 }
 
 /* ── SETTINGS VIEW ─────────────────────────────────────────────────────────── */
-function SettingsView(){
+export function SettingsView(){
   const{t,user,users,expenses,cats,saveCats,saveUsers,saveExp,
         onSignOut,passwords,savePasswords,ivaRates,saveIvaRates,setUser}=useApp();
   const isSA=user?.role==="superadmin";
@@ -6039,7 +5176,7 @@ function SettingsView(){
     }
     try{localStorage.setItem("sol-currency",JSON.stringify(code));}catch(e){}
     setAppCurrency(code);
-    applyServerSettings({currency:code});
+    applyServerSettings({ currency: code });
     setAppSetMsg("Moneda guardada.");
   };
   const saveIvaDefault=v=>{
@@ -6450,7 +5587,7 @@ function SettingsView(){
 /* ══════════════════════════════════════════════════════════════════════════════
    MAIN APP COMPONENT
 ══════════════════════════════════════════════════════════════════════════════ */
-function SolanaExpenses(){
+export default function App(){
   /* ── STATE ──────────────────────────────────────────────────────────────── */
   /* With AUTH_URL, roster is replaced from GET /auth/team after login; seed DEF_USERS is only the initial placeholder until that fetch runs. */
   const [users,   setUsers]   =useState(()=>{
@@ -6526,8 +5663,8 @@ function SolanaExpenses(){
           approval_threshold:Number.isFinite(at)?at:0,
           require_receipt_above:Number.isFinite(rr)?rr:50,
         });
-        if(typeof d.currency==="string"&&d.currency.trim()){
-          applyServerSettings({currency:d.currency});
+        if (typeof d.currency === 'string' && d.currency.trim()) {
+          applyServerSettings({ currency: d.currency });
         }
       }catch(e){/* keep defaults */}
     })();
@@ -6697,12 +5834,17 @@ function SolanaExpenses(){
   const importRef=useRef(null);
   const migrAttemptRef=useRef(false);
 
-  const confirmHandler=useCallback((message)=>new Promise(resolve=>{
-    setConfirmModal({message:String(message||"").trim()||"¿Confirmar?",resolve});
-  }),[]);
+  const confirmHandler = useCallback((message) => new Promise((resolve) => {
+    setConfirmModal({
+      message: String(message || '').trim() || '¿Confirmar?',
+      resolve,
+    });
+  }), []);
   useEffect(()=>{
-    _confirmHandler=confirmHandler;
-    return()=>{if(_confirmHandler===confirmHandler)_confirmHandler=null;};
+    _confirmHandler = confirmHandler;
+    return ()=>{
+      if (_confirmHandler === confirmHandler) _confirmHandler = null;
+    };
   },[confirmHandler]);
 
   const clearMyExpenseFilter=useCallback(()=>{
@@ -6829,16 +5971,20 @@ function SolanaExpenses(){
   },[user?.id]);
 
   useEffect(()=>{
-    if(!user||!AUTH_URL)return;
+    if (!user || !AUTH_URL) return;
     API.ensureSessionToken();
-    if(!API.token)return;
-    let cancelled=false;
-    void API.get("/settings").then(data=>{
-      if(cancelled||!data||!data.settings)return;
-      applyServerSettings(data.settings);
-    }).catch(()=>{});
-    return()=>{cancelled=true;};
-  },[user?.id,AUTH_URL]);
+    if (!API.token) return;
+    let cancelled = false;
+    void API.get('/settings')
+      .then((data) => {
+        if (cancelled || !data?.settings) return;
+        applyServerSettings(data.settings);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, AUTH_URL]);
 
   useEffect(()=>{
     const h=(ev)=>{
@@ -7920,12 +7066,12 @@ function SolanaExpenses(){
 
           <div style={{flex:1,overflow:"hidden",display:"flex",minWidth:0}}>
             <div style={{flex:1,overflowY:"auto",padding:"14px 12px 80px",minWidth:0,WebkitOverflowScrolling:"touch"}}>
-              {view==="dashboard"&&<DashboardView/>}
-              {view==="expenses" &&<ExpensesView/>}
-              {view==="approvals"&&<ApprovalsView/>}
-              {view==="reports"  &&<ReportsView/>}
+              {view==="dashboard"&&<ErrorBoundary><DashboardView/></ErrorBoundary>}
+              {view==="expenses" &&<ErrorBoundary><ExpensesView/></ErrorBoundary>}
+              {view==="approvals"&&<ErrorBoundary><ApprovalsView/></ErrorBoundary>}
+              {view==="reports"  &&<ErrorBoundary><ReportsView/></ErrorBoundary>}
               {view==="serverSettings"&&isSA&&<ServerSettingsView/>}
-              {view==="settings" &&<SettingsView/>}
+              {view==="settings" &&<ErrorBoundary><SettingsView/></ErrorBoundary>}
             </div>
             {rpOpen&&(
               <div className="dt-only panel-slide" style={{width:350,borderLeft:"1px solid #E5DDD2",overflowY:"auto",padding:16,flexShrink:0,background:"#fff"}}>
@@ -8003,13 +7149,3 @@ function SolanaExpenses(){
     </Ctx.Provider>
   );
 }
-
-ReactDOM.createRoot(document.getElementById("root")).render(<AppErrorBoundary><SolanaExpenses/></AppErrorBoundary>);
-</script>
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js');
-}
-</script>
-</body>
-</html>

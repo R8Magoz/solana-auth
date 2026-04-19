@@ -155,51 +155,43 @@ addColumnIfMissing('app_settings', 'description', 'TEXT');
 
 addColumnIfMissing('bills', 'migratedAt', 'INTEGER');
 
-function seedAppSettings() {
-  const count = db.prepare(
-    'SELECT COUNT(*) AS c FROM app_settings'
-  ).get().c;
-  if (count > 0) return;
+/**
+ * Creates query indexes if absent, then refreshes planner statistics.
+ * @returns {void}
+ */
+function createIndexesIfMissing() {
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
+    CREATE INDEX IF NOT EXISTS idx_expenses_userId ON expenses(userId);
+    CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status);
+    CREATE INDEX IF NOT EXISTS idx_expenses_departmentId ON expenses(departmentId);
+    CREATE INDEX IF NOT EXISTS idx_expenses_expenseType ON expenses(expenseType);
+    CREATE INDEX IF NOT EXISTS idx_expenses_paymentStatus ON expenses(paymentStatus);
+    CREATE INDEX IF NOT EXISTS idx_expenses_dueDate ON expenses(dueDate);
+    CREATE INDEX IF NOT EXISTS idx_expenses_ownerId ON expenses(ownerId);
+    CREATE INDEX IF NOT EXISTS idx_expenses_recurring ON expenses(recurring);
+    CREATE INDEX IF NOT EXISTS idx_expenses_date_status ON expenses(date, status);
+    CREATE INDEX IF NOT EXISTS idx_expenses_date_type ON expenses(date, expenseType);
 
-  const now = Date.now();
-  const insert = db.prepare(
-    'INSERT INTO app_settings (key, value, description, updatedBy, updatedAt) VALUES (?, ?, ?, ?, ?)'
-  );
+    CREATE INDEX IF NOT EXISTS idx_bills_userId ON bills(userId);
+    CREATE INDEX IF NOT EXISTS idx_bills_status ON bills(status);
+    CREATE INDEX IF NOT EXISTS idx_bills_dueDate ON bills(dueDate);
+    CREATE INDEX IF NOT EXISTS idx_bills_departmentId ON bills(departmentId);
 
-  insert.run('categories', JSON.stringify([
-    { id: 'c1', name: 'Equipment',       archived: false, approverIds: [] },
-    { id: 'c2', name: 'Supplies',        archived: false, approverIds: [] },
-    { id: 'c3', name: 'Marketing',       archived: false, approverIds: [] },
-    { id: 'c4', name: 'Legal',           archived: false, approverIds: [] },
-    { id: 'c5', name: 'Rent',            archived: false, approverIds: [] },
-    { id: 'c6', name: 'Software',        archived: false, approverIds: [] },
-    { id: 'c7', name: 'Food & Beverage', archived: false, approverIds: [] },
-    { id: 'c8', name: 'Travel',          archived: false, approverIds: [] },
-    { id: 'c9', name: 'Otro',            archived: false, approverIds: [] },
-  ]), 'Expense categories available for selection', 'system', now);
+    CREATE INDEX IF NOT EXISTS idx_audit_log_event ON audit_log(event);
+    CREATE INDEX IF NOT EXISTS idx_audit_log_userId ON audit_log(userId);
+    CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts);
 
-  insert.run('iva_rates', JSON.stringify([
-    { value: 0,  name: 'exento'        },
-    { value: 4,  name: 'superreducido' },
-    { value: 10, name: 'reducido'      },
-    { value: 21, name: 'general'       },
-  ]), 'Available IVA/VAT rates', 'system', now);
+    CREATE INDEX IF NOT EXISTS idx_users_accountStatus ON users(accountStatus);
+    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
-  insert.run('iva_default', '21', 'Default IVA rate applied to new expenses', 'system', now);
-  insert.run('currency',    '"EUR"', 'Default currency for the app', 'system', now);
+    CREATE INDEX IF NOT EXISTS idx_departments_archived ON departments(archived);
+  `);
+  db.exec('ANALYZE');
+  console.log('[db] indexes created at startup');
 }
-seedAppSettings();
 
-const _deptCount = db.prepare('SELECT COUNT(*) AS c FROM departments').get();
-if (_deptCount.c === 0) {
-  const now = Date.now();
-  const ins = db.prepare(
-    'INSERT INTO departments (id, name, budget, createdAt) VALUES (?, ?, ?, ?)',
-  );
-  ins.run('dept_branding', 'Branding', 10000, now);
-  ins.run('dept_estrategia', 'Estrategia', 5000, now);
-  ins.run('dept_operaciones', 'Operaciones', 3000, now);
-}
+createIndexesIfMissing();
 
 module.exports = db;
 module.exports.DATA_DIR = DATA_DIR;
