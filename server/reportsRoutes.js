@@ -34,13 +34,36 @@ function quarterLabelFromDate(dateStr) {
   return `${y}-Q${q}`;
 }
 
-function csvFilename(type, from, to) {
+function csvFilename(type, from, to, ivaMode = 'both') {
   const base =
     type === 'expenses' ? 'solana-expenses' : type === 'bills' ? 'solana-bills' : 'solana-all';
   const q1 = quarterLabelFromDate(from);
   const q2 = quarterLabelFromDate(to);
-  if (q1 === q2) return `${base}-${q1}.csv`;
-  return `${base}-${from}_to_${to}.csv`;
+  const im = String(ivaMode || 'both').trim() || 'both';
+  if (q1 === q2) return `${base}-${q1}-${im}.csv`;
+  return `${base}-${from}_to_${to}-${im}.csv`;
+}
+
+function parseIvaMode(raw) {
+  const v = String(raw ?? 'both').trim().toLowerCase();
+  if (v === 'with_iva' || v === 'without_iva' || v === 'both') return v;
+  return 'both';
+}
+
+/** Base (imponible), IVA cuota, total EUR — aligned with client reporting. */
+function ivaPartsForRow(row) {
+  const total = eurAmount(row);
+  const ivaAmt =
+    row.ivaAmount != null && Number.isFinite(Number(row.ivaAmount)) ? Number(row.ivaAmount) : 0;
+  const base =
+    row.ivaRate != null && Number.isFinite(Number(row.ivaRate)) ? roundMoney(total - ivaAmt) : total;
+  return { total, base, ivaAmt };
+}
+
+function expenseAmountColumnLabels(mode) {
+  if (mode === 'with_iva') return ['Total con IVA'];
+  if (mode === 'without_iva') return ['Base imponible'];
+  return ['Base imponible', 'Cuota IVA', 'Total con IVA'];
 }
 
 function csvEscape(val) {
@@ -52,11 +75,6 @@ function csvEscape(val) {
 
 function line(vals) {
   return vals.map(csvEscape).join(',');
-}
-
-/** CSV header label for base-currency column (DB field remains `amountEUR`). */
-function csvAmountBaseHeader(fieldKey) {
-  return fieldKey === 'amountEUR' ? 'amountBase' : fieldKey;
 }
 
 function buildUserMap(userStore) {
@@ -279,7 +297,8 @@ function createReportsRouter({ requireAdminSession, userStore }) {
 
     const { from, to } = range;
     const userMap = buildUserMap(userStore);
-    const filename = csvFilename(type, from, to);
+    const ivaMode = parseIvaMode(req.query.iva_mode);
+    const filename = csvFilename(type, from, to, ivaMode);
 
     const expenseRows = db
       .prepare(
@@ -299,13 +318,7 @@ function createReportsRouter({ requireAdminSession, userStore }) {
       )
       .all(from, to);
 
-    const expCols = [
-      'id',
-      'userId',
-      'userName',
-      'amount',
-      'currency',
-      'amountEUR',
+    const expenseColsTail = [
       'description',
       'category',
       'date',
@@ -321,14 +334,7 @@ function createReportsRouter({ requireAdminSession, userStore }) {
       'updatedAt',
     ];
 
-    const billCols = [
-      'id',
-      'userId',
-      'userName',
-      'vendor',
-      'amount',
-      'currency',
-      'amountEUR',
+    const billColsTail = [
       'category',
       'dueDate',
       'status',
@@ -344,15 +350,18 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     const lines = [];
 
     function pushExpenses() {
-      lines.push(line(expCols.map(csvAmountBaseHeader)));
+      const hdr = ['id', 'userId', 'userName', ...expenseAmountColumnLabels(ivaMode), ...expenseColsTail];
+      lines.push(line(hdr));
       for (const e of expenseRows) {
+        const { total, base, ivaAmt } = ivaPartsForRow(e);
+        let amountPart;
+        if (ivaMode === 'with_iva') amountPart = [total];
+        else if (ivaMode === 'without_iva') amountPart = [base];
+        else amountPart = [base, ivaAmt, total];
         const row = {
           id: e.id,
           userId: e.userId,
           userName: userMap[e.userId] || '',
-          amount: e.amount,
-          currency: e.currency,
-          amountEUR: e.amountEUR,
           description: e.description,
           category: e.category,
           date: e.date,
@@ -367,21 +376,20 @@ function createReportsRouter({ requireAdminSession, userStore }) {
           createdAt: e.createdAt,
           updatedAt: e.updatedAt,
         };
-        lines.push(line(expCols.map((c) => row[c])));
+        lines.push(line([e.id, e.userId, row.userName, ...amountPart, ...expenseColsTail.map((c) => row[c])]));
       }
     }
 
     function pushBills() {
-      lines.push(line(billCols.map(csvAmountBaseHeader)));
+      const hdr = ['id', 'userId', 'userName', 'vendor', ...expenseAmountColumnLabels(ivaMode), ...billColsTail];
+      lines.push(line(hdr));
       for (const b of billRows) {
+        const { total, base, ivaAmt } = ivaPartsForRow(b);
+        let amountPart;
+        if (ivaMode === 'with_iva') amountPart = [total];
+        else if (ivaMode === 'without_iva') amountPart = [base];
+        else amountPart = [base, ivaAmt, total];
         const row = {
-          id: b.id,
-          userId: b.userId,
-          userName: userMap[b.userId] || '',
-          vendor: b.vendor || b.description || '',
-          amount: b.amount,
-          currency: b.currency,
-          amountEUR: b.amountEUR,
           category: b.category,
           dueDate: b.dueDate || b.date,
           status: b.paymentStatus || b.status,
@@ -393,7 +401,16 @@ function createReportsRouter({ requireAdminSession, userStore }) {
           createdAt: b.createdAt,
           updatedAt: b.updatedAt,
         };
-        lines.push(line(billCols.map((c) => row[c])));
+        lines.push(
+          line([
+            b.id,
+            b.userId,
+            userMap[b.userId] || '',
+            b.vendor || b.description || '',
+            ...amountPart,
+            ...billColsTail.map((c) => row[c]),
+          ]),
+        );
       }
     }
 

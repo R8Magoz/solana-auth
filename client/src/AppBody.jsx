@@ -595,28 +595,46 @@ function recurrenceRuleLabel(rule,t){
   if(r==="quarterly")return t("expenses.cadenceQuarterly");
   if(r==="yearly")return t("expenses.cadenceYearly");
   if(r.startsWith("custom:")){
-    const n=normalizeCadenceCustomMonths(r.slice(7));
+    const tail=r.slice(7);
+    const m2=tail.match(/^(\d+)(weeks|months|years)$/);
+    if(m2){
+      const lbl=m2[2]==="weeks"?"sem.":m2[2]==="months"?"m":"a";
+      return `${t("expenses.cadenceCustom")} (${m2[1]} ${lbl})`;
+    }
+    const n=normalizeCadenceCustomMonths(tail);
     return `${t("expenses.cadenceCustom")} (${n}m)`;
   }
   if(r==="weekly")return "Semanal";
   if(r==="biweekly")return "Quincenal";
   return r||"";
 }
-function nextCadencePreviewISO(baseDate,cadenceKey,customMonths){
-  if(!baseDate||cadenceKey==="once"||!cadenceKey)return"";
+function nextCadencePreviewISO(baseDate,form){
+  if(!baseDate||!form)return"";
+  const cadenceKey=form.cadenceKey||"once";
+  if(cadenceKey==="once"||!cadenceKey)return"";
+  if(cadenceKey==="weekly")return addDaysToISODate(baseDate,7);
   if(cadenceKey==="monthly")return addMonthsToISODate(baseDate,1);
   if(cadenceKey==="quarterly")return addMonthsToISODate(baseDate,3);
-  if(cadenceKey==="custom")return addMonthsToISODate(baseDate,normalizeCadenceCustomMonths(customMonths));
   if(cadenceKey==="yearly")return addYearsToISODate(baseDate,1);
+  if(cadenceKey==="custom"){
+    const n=Math.max(1,parseInt(String(form.cadenceCustomAmount||"1"),10)||1);
+    const unit=form.cadenceCustomUnit||"months";
+    if(unit==="weeks")return addDaysToISODate(baseDate,n*7);
+    if(unit==="months")return addMonthsToISODate(baseDate,n);
+    if(unit==="years")return addYearsToISODate(baseDate,n);
+  }
   return"";
 }
-function cadenceToRecurringPayload(cadenceKey,customMonths){
+function cadenceToRecurringPayload(form){
+  const cadenceKey=form&&form.cadenceKey;
   if(!cadenceKey||cadenceKey==="once")return{recurring:0,recurrenceRule:null};
-  const map={monthly:"monthly",quarterly:"quarterly",yearly:"yearly"};
+  if(cadenceKey==="weekly")return{recurring:1,recurrenceRule:"weekly"};
   if(cadenceKey==="custom"){
-    const n=normalizeCadenceCustomMonths(customMonths);
-    return{recurring:1,recurrenceRule:`custom:${n}`};
+    const n=Math.max(1,parseInt(String(form.cadenceCustomAmount||"1"),10)||1);
+    const unit=form.cadenceCustomUnit||"months";
+    return{recurring:1,recurrenceRule:`custom:${n}${unit}`};
   }
+  const map={monthly:"monthly",quarterly:"quarterly",yearly:"yearly"};
   const rule=map[cadenceKey];
   if(!rule)return{recurring:0,recurrenceRule:null};
   return{recurring:1,recurrenceRule:rule};
@@ -627,8 +645,17 @@ function invoiceForecastMonthlyEUR(e){
   if(r==="quarterly")return ev/3;
   if(r==="yearly")return ev/12;
   if(String(r).startsWith("custom:")){
-    const n=normalizeCadenceCustomMonths(String(r).slice(7));
-    return ev/n;
+    const tail=String(r).slice(7);
+    const match=tail.match(/^(\d+)(weeks|months|years)$/);
+    if(match){
+      const n=parseInt(match[1],10);
+      const unit=match[2];
+      if(unit==="weeks")return(ev*(52/12))/n;
+      if(unit==="months")return ev/n;
+      if(unit==="years")return ev/(12*n);
+    }
+    const legacy=normalizeCadenceCustomMonths(tail);
+    return ev/legacy;
   }
   if(r==="weekly")return ev*52/12;
   if(r==="biweekly")return ev*26/12;
@@ -701,7 +728,7 @@ const tCat=(name,t)=>{const k="cat."+name.toLowerCase().replace(/[^a-z]/g,"");co
 const IDLE_TIMEOUT_MS   = 30 * 24 * 60 * 60 * 1000; // 30 days — effectively never
 const IDLE_WARNING_MS   = 28 * 60 * 1000; // warn 2 min before
 const LAST_ACTIVITY_KEY = "sol-last-activity";
-const VALID_VIEWS = new Set(["dashboard","expenses","approvals","reports","settings","serverSettings"]);
+const VALID_VIEWS = new Set(["dashboard","expenses","approvals","reports","settings"]);
 const COMMON_PASSWORDS  = new Set([
   "password","123456","qwerty","abc123","letmein","monkey","dragon",
   "iloveyou","sunshine","princess","welcome","shadow","master","football",
@@ -1039,7 +1066,7 @@ function readLocalDepartments(){
   }
 }
 const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
-  expenseType:"expense",vendor:"",paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",proveedor:""};
+  expenseType:"expense",vendor:"",paymentDeferred:false,paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months",proveedor:""};
 const DRAFT_KEY="sol-exp-draft";
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -2011,7 +2038,7 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
 }
   
   
-function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,showSplitError=false}){
+function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,showSplitError=false,actionColor=G}){
   const expAmt=Number(totalAmount)||0;
   const ownerId=user?.id||"";
   useEffect(()=>{if(spMode==="percentage")setSpMode("amount");},[spMode,setSpMode]);
@@ -2049,7 +2076,7 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
           {!splitOn&&<div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{users.length<2?t("split.minTwoTeam"):t("label.divideTeam")}</div>}
           {splitOn&&<div style={{fontSize:9,color:"#6B7B72",marginTop:3}}>{t("split.submitterLocked")}</div>}
         </div>
-        <div onClick={toggleSplit} style={{width:36,height:20,borderRadius:10,background:splitOn?G:(users.length<2?"#E5E0D8":"#C9C0B4"),cursor:users.length<2?"not-allowed":"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,opacity:users.length<2?0.65:1}}>
+        <div onClick={toggleSplit} style={{width:36,height:20,borderRadius:10,background:splitOn?actionColor:(users.length<2?"#E5E0D8":"#C9C0B4"),cursor:users.length<2?"not-allowed":"pointer",position:"relative",transition:"background 0.2s ease",flexShrink:0,opacity:users.length<2?0.65:1}}>
           <div style={{position:"absolute",top:2,left:splitOn?18:2,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
         </div>
       </div>
@@ -2057,7 +2084,7 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
         <div>
           <div style={{display:"flex",gap:4,marginBottom:10}}>
             {[["amount",t("form.splitEur")]].map(([m,lbl])=>(
-              <button key={m} type="button" style={{flex:1,padding:"4px 2px",borderRadius:12,fontSize:10,fontWeight:600,border:"1.5px solid",borderColor:spMode===m?G:"#DDD6CC",background:spMode===m?G:"#fff",color:spMode===m?"#fff":"#4B5E52",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>{setSpMode("amount");}}>{lbl}</button>
+              <button key={m} type="button" style={{flex:1,padding:"4px 2px",borderRadius:12,fontSize:10,fontWeight:600,border:"1.5px solid",borderColor:spMode===m?actionColor:"#DDD6CC",background:spMode===m?actionColor:"#fff",color:spMode===m?"#fff":"#4B5E52",cursor:"pointer",fontFamily:"inherit",transition:"background-color 0.2s ease,border-color 0.2s ease,color 0.2s ease"}} onClick={()=>{setSpMode("amount");}}>{lbl}</button>
             ))}
           </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
@@ -2065,7 +2092,7 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
               const u=users.find(x=>x.id===s.userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
               const locked=s.userId===ownerId;
               return(
-                <div key={s.userId} onClick={()=>!locked&&toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+G):"1.5px solid #DDD6CC",background:s.checked?"rgba(60,10,55,0.06)":"#fff",cursor:locked?"default":"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s"}}>
+                <div key={s.userId} onClick={()=>!locked&&toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+actionColor):"1.5px solid #DDD6CC",background:s.checked?(actionColor==="#D97706"?"rgba(217,119,6,0.10)":"rgba(60,10,55,0.06)"):"#fff",cursor:locked?"default":"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s,border-color 0.2s ease,background-color 0.2s ease"}}>
                   <UserAvatar user={u} size={20} fontSize={7}/>
                   <span style={{fontSize:12,fontWeight:s.checked?600:400}}>{u.name.split(" ")[0]}</span>
                   {locked&&<span style={{fontSize:9,color:"#9CAA9F"}}>*</span>}
@@ -2103,13 +2130,18 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
 
 function recurrenceRuleToCadenceForForm(rule){
   const r=String(rule||"").toLowerCase();
-  if(r==="monthly")return{cadenceKey:"monthly",cadenceCustomMonths:"1"};
-  if(r==="quarterly")return{cadenceKey:"quarterly",cadenceCustomMonths:"3"};
-  if(r==="yearly")return{cadenceKey:"yearly",cadenceCustomMonths:"12"};
-  if(r.startsWith("custom:"))return{cadenceKey:"custom",cadenceCustomMonths:String(normalizeCadenceCustomMonths(r.slice(7)))};
-  if(r==="weekly")return{cadenceKey:"custom",cadenceCustomMonths:"1"};
-  if(r==="biweekly")return{cadenceKey:"custom",cadenceCustomMonths:"1"};
-  return{cadenceKey:"once",cadenceCustomMonths:"1"};
+  if(r==="monthly")return{cadenceKey:"monthly",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months"};
+  if(r==="quarterly")return{cadenceKey:"quarterly",cadenceCustomMonths:"3",cadenceCustomAmount:"1",cadenceCustomUnit:"months"};
+  if(r==="yearly")return{cadenceKey:"yearly",cadenceCustomMonths:"12",cadenceCustomAmount:"1",cadenceCustomUnit:"months"};
+  if(r.startsWith("custom:")){
+    const tail=r.slice(7);
+    const match=tail.match(/^(\d+)(weeks|months|years)$/);
+    if(match)return{cadenceKey:"custom",cadenceCustomMonths:match[1],cadenceCustomAmount:match[1],cadenceCustomUnit:match[2]};
+    return{cadenceKey:"custom",cadenceCustomMonths:String(normalizeCadenceCustomMonths(tail)),cadenceCustomAmount:String(normalizeCadenceCustomMonths(tail)),cadenceCustomUnit:"months"};
+  }
+  if(r==="weekly")return{cadenceKey:"weekly",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"weeks"};
+  if(r==="biweekly")return{cadenceKey:"custom",cadenceCustomMonths:"1",cadenceCustomAmount:"2",cadenceCustomUnit:"weeks"};
+  return{cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months"};
 }
 function expenseInvoiceTermsFromEntity(e){
   const due=String(e.dueDate||"").slice(0,10);
@@ -2157,28 +2189,28 @@ function ExpenseFormFields({
   const amountNum=parseMoney(form.amount);
   const amountOk=amountNum>0;
   const isInv=form.expenseType==="invoice";
-  const duePickOk=!isInv||(String(form.paymentTermMode||"0")==="custom"?String(form.invoiceDueDateDirect||"").trim().length>=10:true);
-  const nextPrevISO=nextCadencePreviewISO(form.date,form.cadenceKey,form.cadenceCustomMonths);
+  const duePickOk=!isInv||!form.paymentDeferred||(String(form.paymentTermMode||"0")!=="custom")||String(form.invoiceDueDateDirect||"").trim().length>=10;
+  const nextPrevISO=nextCadencePreviewISO(form.date,form);
   const nextPrevLbl=nextPrevISO?formatDMYFromISO(nextPrevISO):"";
   const hasLocalPrev=!!recPrev;
   const hasApiPrev=!!apiReceiptPreview;
   const hasPreview=hasLocalPrev||hasApiPrev;
   const thPub=publicExpenseSettings&&typeof publicExpenseSettings.approval_threshold==="number"?publicExpenseSettings.approval_threshold:0;
-  const rrPub=publicExpenseSettings&&typeof publicExpenseSettings.require_receipt_above==="number"?publicExpenseSettings.require_receipt_above:50;
-  const receiptWarnActive=!isInv&&AUTH_URL&&amountOk&&amountNum>rrPub&&!hasPreview;
   const clearAllReceipt=()=>{
     onReceiptClear();
     if(hasApiPrev&&onClearApiReceiptPreview)onClearApiReceiptPreview();
   };
+  const invTint=actionColor==="#D97706";
+  const ivaBandBg=invTint?"rgba(217, 119, 6, 0.08)":GL;
   return(
-    <>
+    <div className="expense-form-fields-wrap" style={{["--expense-action"]:actionColor}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
         <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.description")} <span style={{color:"#A32D2D"}}>*</span></label>
           <input className="inp" placeholder={t("label.description")} value={form.description} style={rs(hi&&!String(form.description||"").trim())} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
         </div>
-        <div style={{gridColumn:"1/-1",padding:"8px 0"}}>
+        <div style={{gridColumn:"1/-1",padding:"8px 0",...(isInv?{borderLeft:`3px solid ${actionColor}`,paddingLeft:8,borderRadius:6,transition:"border-color 0.2s ease"}:{})}}>
           <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",margin:0}}>
-            <input type="checkbox" style={{width:14,height:14,margin:0,flexShrink:0}} checked={form.expenseType==="invoice"} onChange={e=>setForm(p=>{
+            <input type="checkbox" style={{width:14,height:14,margin:0,flexShrink:0,accentColor:actionColor}} checked={form.expenseType==="invoice"} onChange={e=>setForm(p=>{
               const inv=e.target.checked;
               const prov=String(p.proveedor||"").trim();
               const vend=String(p.vendor||"").trim();
@@ -2204,15 +2236,10 @@ function ExpenseFormFields({
         <div><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
           <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
         </div>
-        {AUTH_URL&&!isInv&&(
+        {AUTH_URL&&!isInv&&thPub>0&&(
           <div style={{gridColumn:"1/-1",display:"flex",flexDirection:"column",gap:6}}>
-            {thPub>0&&(
-              <div style={{fontSize:11,color:"#1e3a5f",background:"#e8f4fc",border:"1px solid #bae0fd",borderRadius:6,padding:"8px 10px",lineHeight:1.45}}>
-                {t("form.autoApproveHint").replace("{{amount}}",fmt(thPub))}
-              </div>
-            )}
-            <div style={{fontSize:11,color:receiptWarnActive?"#991B1B":"#6B7B72",background:receiptWarnActive?"#FEF2F2":"#FAF7F2",border:`1px solid ${receiptWarnActive?"#FECACA":"#E5E0D8"}`,borderRadius:6,padding:"8px 10px",lineHeight:1.45}}>
-              {t("form.receiptRequiredHint").replace("{{amount}}",fmt(rrPub))}
+            <div style={{fontSize:11,color:"#1e3a5f",background:"#e8f4fc",border:"1px solid #bae0fd",borderRadius:6,padding:"8px 10px",lineHeight:1.45}}>
+              {t("form.autoApproveHint").replace("{{amount}}",fmt(thPub))}
             </div>
           </div>
         )}
@@ -2241,9 +2268,9 @@ function ExpenseFormFields({
         <div style={{gridColumn:"1/-1"}}>
           <div style={{padding:"8px 0"}}>
             <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",margin:0}}>
-              <input type="checkbox" style={{width:14,height:14,margin:0,flexShrink:0}} checked={(form.cadenceKey||"once")!=="once"} onChange={e=>{
+              <input type="checkbox" style={{width:14,height:14,margin:0,flexShrink:0,accentColor:actionColor}} checked={(form.cadenceKey||"once")!=="once"} onChange={e=>{
                 const on=e.target.checked;
-                setForm(p=>(on?{...p,cadenceKey:"monthly",cadenceCustomMonths:"1"}:{...p,cadenceKey:"once"}));
+                setForm(p=>(on?{...p,cadenceKey:"monthly",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months"}:{...p,cadenceKey:"once"}));
               }}/>
               <span style={{fontSize:13,color:"#4B5E52"}}>Gasto recurrente</span>
             </label>
@@ -2251,16 +2278,25 @@ function ExpenseFormFields({
           {(form.cadenceKey||"once")!=="once"&&(
             <>
               <select className="inp" style={{marginTop:4}} value={form.cadenceKey||"monthly"} onChange={e=>setForm(p=>({...p,cadenceKey:e.target.value}))}>
+                <option value="weekly">Semanal</option>
                 <option value="monthly">{t("expenses.cadenceMonthly")}</option>
                 <option value="quarterly">{t("expenses.cadenceQuarterly")}</option>
                 <option value="yearly">{t("expenses.cadenceYearly")}</option>
                 <option value="custom">{t("expenses.cadenceCustom")}</option>
               </select>
               {form.cadenceKey==="custom"&&(
-                <div style={{marginTop:8,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",fontSize:13,color:"#4B5E52",fontFamily:"inherit"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",fontSize:13,marginTop:8}}>
                   <span>Cada</span>
-                  <input className="inp" type="number" min={1} max={60} style={{width:48}} value={form.cadenceCustomMonths||"1"} onChange={e=>setForm(p=>({...p,cadenceCustomMonths:e.target.value}))}/>
-                  <span>meses</span>
+                  <input className="inp" type="number" min={1} max={999} style={{width:52}}
+                    value={form.cadenceCustomAmount||"1"}
+                    onChange={e=>setForm(p=>({...p,cadenceCustomAmount:e.target.value}))}/>
+                  <select className="inp" style={{width:"auto"}}
+                    value={form.cadenceCustomUnit||"months"}
+                    onChange={e=>setForm(p=>({...p,cadenceCustomUnit:e.target.value}))}>
+                    <option value="weeks">semanas</option>
+                    <option value="months">meses</option>
+                    <option value="years">años</option>
+                  </select>
                 </div>
               )}
               {nextPrevLbl&&(
@@ -2271,39 +2307,55 @@ function ExpenseFormFields({
         </div>
         {isInv&&(
           <>
-            <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("expenses.paymentTerms")}</label>
-              <select className="inp" value={String(form.paymentTermMode||"0")} onChange={e=>setForm(p=>({...p,paymentTermMode:e.target.value}))}>
-                <option value="0">Al contado</option>
-                <option value="15">A 15 días</option>
-                <option value="30">A 30 días</option>
-                <option value="60">A 60 días</option>
-                <option value="custom">Personalizado</option>
-              </select>
+            <div style={{gridColumn:"1/-1",padding:"8px 0"}}>
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",margin:0}}>
+                <input type="checkbox"
+                  style={{width:14,height:14,margin:0,flexShrink:0,accentColor:actionColor}}
+                  checked={form.paymentDeferred||false}
+                  onChange={e=>{
+                    const on=e.target.checked;
+                    setForm(p=>({
+                      ...p,
+                      paymentDeferred:on,
+                      paymentTermMode:on?(p.paymentTermMode==="0"||!p.paymentTermMode?"30":p.paymentTermMode):"0",
+                    }));
+                  }}/>
+                <span style={{fontSize:13,color:"#4B5E52"}}>
+                  A pagar <span style={{color:"#9CA3AF",fontWeight:400}}>(pago diferido)</span>
+                </span>
+              </label>
+
+              {form.paymentDeferred&&(
+                <select className="inp" style={{marginTop:8}}
+                  value={String(form.paymentTermMode||"30")}
+                  onChange={e=>setForm(p=>({...p,paymentTermMode:e.target.value}))}>
+                  <option value="15">A 15 días</option>
+                  <option value="30">A 30 días</option>
+                  <option value="60">A 60 días</option>
+                  <option value="custom">Personalizado</option>
+                </select>
+              )}
             </div>
-            <div style={{gridColumn:"1/-1",fontSize:12,color:"#4B5E52"}}>
-              <label className="lbl">{t("expenses.dueDate")}</label>
-              <input
-                className="inp"
-                type="date"
-                readOnly={form.paymentTermMode!=="custom"}
-                value={form.paymentTermMode==="custom"
-                  ? String(form.invoiceDueDateDirect||"").slice(0,10)
-                  : addDaysToISODate(form.date, Number(form.paymentTermMode)||0)}
-                style={rs(hi&&!duePickOk)}
-                onChange={e=>{
-                  if(form.paymentTermMode!=="custom")return;
-                  setForm(p=>({...p,invoiceDueDateDirect:e.target.value}));
-                }}
-              />
-            </div>
+            {form.paymentDeferred&&form.paymentTermMode==="custom"&&(
+              <div style={{gridColumn:"1/-1",fontSize:12,color:"#4B5E52"}}>
+                <label className="lbl">{t("expenses.dueDate")}</label>
+                <input
+                  className="inp"
+                  type="date"
+                  value={String(form.invoiceDueDateDirect||"").slice(0,10)}
+                  style={rs(hi&&!duePickOk)}
+                  onChange={e=>setForm(p=>({...p,invoiceDueDateDirect:e.target.value}))}
+                />
+              </div>
+            )}
           </>
         )}
       </div>
-      <div style={{marginBottom:12,background:GL,borderRadius:8,padding:10}}>
+      <div style={{marginBottom:12,background:ivaBandBg,borderRadius:8,padding:10,transition:"background-color 0.2s ease"}}>
         {(()=>{const rp=parseFormIvaRateString(form.ivaRate);const p=calcIvaParts(expAmt,rp);return(
           <div style={{marginTop:8,fontSize:13}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:"#9CAA9F",fontSize:10}}>{t("form.ivaBase")}</span><span style={{fontWeight:700,color:G}}>{fmt(p.base)}</span></div>
-            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#9CAA9F",fontSize:10}}>{t("form.ivaAmountLabel")}</span><span style={{fontWeight:700,color:G}}>{rp==null||rp===0?t("form.ivaAmountDash"):fmt(p.iva)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:"#9CAA9F",fontSize:10}}>{t("form.ivaBase")}</span><span style={{fontWeight:700,color:actionColor,transition:"color 0.2s ease"}}>{fmt(p.base)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#9CAA9F",fontSize:10}}>{t("form.ivaAmountLabel")}</span><span style={{fontWeight:700,color:actionColor,transition:"color 0.2s ease"}}>{rp==null||rp===0?t("form.ivaAmountDash"):fmt(p.iva)}</span></div>
           </div>
         );})()}
       </div>
@@ -2334,8 +2386,9 @@ function ExpenseFormFields({
         spMode={spMode}
         setSpMode={setSpMode}
         showSplitError={submitAttempt && splitSubmitBlocked}
+        actionColor={actionColor}
       />
-    </>
+    </div>
   );
 }
 
@@ -2352,10 +2405,11 @@ function NewPanel(){
   const amountNum=parseMoney(form.amount);
   const amountOk=amountNum>0;
   const isInv=form.expenseType==="invoice";
-  const actionColor=G;
+  const actionColor=isInv?"#D97706":G;
+  const submitHoverBg=isInv?"#B45309":GH;
   const vendorOk=!isInv||String(form.vendor||"").trim().length>0;
   const proveedorOk=!isInv||String(form.proveedor||"").trim().length>0;
-  const duePickOk=!isInv||(String(form.paymentTermMode||"0")==="custom"?String(form.invoiceDueDateDirect||"").trim().length>=10:true);
+  const duePickOk=!isInv||!form.paymentDeferred||(String(form.paymentTermMode||"0")!=="custom")||String(form.invoiceDueDateDirect||"").trim().length>=10;
   const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId&&vendorOk&&proveedorOk&&duePickOk;
   const [submitAttempt,setSubmitAttempt]=useState(false);
   useEffect(()=>{if(user?.id&&!form.ownerId)setForm(p=>({...p,ownerId:user.id}));},[user?.id,form.ownerId,setForm]);
@@ -2401,7 +2455,7 @@ function NewPanel(){
     draftTimer.current=setTimeout(()=>{
       try{
         const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate===""?"":(form.ivaRate??ivaRateToFormString(readIvaDefault())),departmentId:form.departmentId||"",ownerId:form.ownerId||"",
-          expenseType:form.expenseType||"expense",vendor:form.vendor||"",paymentTermMode:form.paymentTermMode||"0",paymentTermCustomDays:form.paymentTermCustomDays||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once",cadenceCustomMonths:form.cadenceCustomMonths||"1",proveedor:form.proveedor||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
+          expenseType:form.expenseType||"expense",vendor:form.vendor||"",paymentDeferred:!!form.paymentDeferred,paymentTermMode:form.paymentTermMode||"0",paymentTermCustomDays:form.paymentTermCustomDays||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once",cadenceCustomMonths:form.cadenceCustomMonths||"1",cadenceCustomAmount:form.cadenceCustomAmount||"1",cadenceCustomUnit:form.cadenceCustomUnit||"months",proveedor:form.proveedor||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
         localStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
       }catch(e){}
     },500);
@@ -2413,8 +2467,8 @@ function NewPanel(){
   const splitSubmitBlocked=splitOn&&(users.length<2||checkedSplitCount<2||amtSumBad);
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,...isInv?{borderTop:"3px solid #C4622D",paddingTop:8}:{}}}>
-        <div style={{fontWeight:700,fontSize:15,color:G}}>{isInv?"Nuevo gasto · Factura":t("form.newExpense")}</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div style={{fontWeight:700,fontSize:15,color:actionColor,transition:"color 0.2s ease"}}>{isInv?"Nuevo gasto · Factura":t("form.newExpense")}</div>
         <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:21,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{resetForm();setPanel(null);}}>×</button>
       </div>
       {draftPrompt&&(
@@ -2423,8 +2477,13 @@ function NewPanel(){
           <div style={{display:"flex",gap:8}}>
             <button type="button" className="btn-sm" style={{flex:1,fontSize:11,background:actionColor}} onClick={()=>{
               const f=draftPrompt.form||{};
-              setForm(p=>({...p,...f,date:f.date!=null?String(f.date):"",ivaRate:f.ivaRate===""||f.ivaRate==="none"?"":(f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):ivaRateToFormString(readIvaDefault())),departmentId:f.departmentId!=null?String(f.departmentId):"",
-                expenseType:(f.expenseType==="invoice"||(f[LEGACY_INVOICE_FLAG]===true&&f.expenseType!=="invoice"))?"invoice":(f.expenseType||p.expenseType||"expense"),vendor:f.vendor!=null?String(f.vendor):"",paymentTermMode:f.paymentTermMode!=null?String(f.paymentTermMode):"0",paymentTermCustomDays:f.paymentTermCustomDays!=null?String(f.paymentTermCustomDays):"30",invoiceDueDateDirect:f.invoiceDueDateDirect!=null?String(f.invoiceDueDateDirect):"",cadenceKey:f.cadenceKey||"once",cadenceCustomMonths:f.cadenceCustomMonths!=null?String(f.cadenceCustomMonths):"1",proveedor:f.proveedor!=null?String(f.proveedor):""}));
+              setForm(p=>{
+                const expInv=(f.expenseType==="invoice"||(f[LEGACY_INVOICE_FLAG]===true&&f.expenseType!=="invoice"))?"invoice":(f.expenseType||p.expenseType||"expense");
+                const pm=f.paymentTermMode!=null?String(f.paymentTermMode):"0";
+                const defPayDef=f.paymentDeferred===true||(expInv==="invoice"&&pm!=="0");
+                return{...p,...f,date:f.date!=null?String(f.date):"",ivaRate:f.ivaRate===""||f.ivaRate==="none"?"":(f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):ivaRateToFormString(readIvaDefault())),departmentId:f.departmentId!=null?String(f.departmentId):"",
+                  expenseType:expInv,vendor:f.vendor!=null?String(f.vendor):"",paymentDeferred:defPayDef,paymentTermMode:pm,paymentTermCustomDays:f.paymentTermCustomDays!=null?String(f.paymentTermCustomDays):"30",invoiceDueDateDirect:f.invoiceDueDateDirect!=null?String(f.invoiceDueDateDirect):"",cadenceKey:f.cadenceKey||"once",cadenceCustomMonths:f.cadenceCustomMonths!=null?String(f.cadenceCustomMonths):"1",cadenceCustomAmount:f.cadenceCustomAmount!=null?String(f.cadenceCustomAmount):"1",cadenceCustomUnit:f.cadenceCustomUnit!=null?String(f.cadenceCustomUnit):"months",proveedor:f.proveedor!=null?String(f.proveedor):""};
+              });
               if(draftPrompt.splitOn&&draftPrompt.splits?.length){
                 let m=draftPrompt.spMode||"equal";
                 if(m==="value")m="amount";
@@ -2468,7 +2527,9 @@ function NewPanel(){
       />
       {formError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{formError}</div>}
       <div style={{position:"relative",width:"100%"}}>
-        <button type="button" className="btn-primary" style={{width:"100%",padding:11,background:actionColor,opacity:(!expenseValid||splitSubmitBlocked)?0.5:1,cursor:(!expenseValid||splitSubmitBlocked)?"not-allowed":"pointer"}}
+        <button type="button" className="btn-primary" style={{width:"100%",padding:11,background:actionColor,opacity:(!expenseValid||splitSubmitBlocked)?0.5:1,cursor:(!expenseValid||splitSubmitBlocked)?"not-allowed":"pointer",transition:"color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease"}}
+          onMouseEnter={e=>{if(!expenseValid||splitSubmitBlocked)return;e.currentTarget.style.background=submitHoverBg;}}
+          onMouseLeave={e=>{e.currentTarget.style.background=actionColor;}}
           onClick={()=>{
             setFormError("");
             if(splitSubmitBlocked){
@@ -2577,7 +2638,10 @@ function DetailPanel(){
     const ckStored=e.cadenceKey!=null&&String(e.cadenceKey).trim()!==""?String(e.cadenceKey).trim():"";
     const cadenceKey=(ckStored&&ckStored!=="once")?ckStored:(e.recurring===1?fromRule.cadenceKey:"once");
     const cadenceCustomMonths=(ckStored&&ckStored!=="once"&&e.cadenceCustomMonths!=null)?String(e.cadenceCustomMonths):fromRule.cadenceCustomMonths;
+    const cadenceCustomAmount=(ckStored&&ckStored!=="once"&&e.cadenceCustomAmount!=null)?String(e.cadenceCustomAmount):fromRule.cadenceCustomAmount;
+    const cadenceCustomUnit=(ckStored&&ckStored!=="once"&&e.cadenceCustomUnit!=null)?String(e.cadenceCustomUnit):fromRule.cadenceCustomUnit;
     const invTerms=e.expenseType==="invoice"?expenseInvoiceTermsFromEntity(e):{paymentTermMode:"0",invoiceDueDateDirect:""};
+    const paymentDeferred=e.expenseType==="invoice"&&String(invTerms.paymentTermMode||"0")!=="0";
     const prov=String((e.proveedor!=null&&String(e.proveedor).trim()!=="")?e.proveedor:(e.vendor||"")).trim();
     setEf({description:e.description,amount:String(e.amount),category:e.category,
       date:e.date,notes:e.notes||"",receipt:e.receipt||null,receiptType:e.receiptType||null,
@@ -2587,9 +2651,12 @@ function DetailPanel(){
       departmentId:e.departmentId||defaultDeptId,
       cadenceKey,
       cadenceCustomMonths,
+      cadenceCustomAmount,
+      cadenceCustomUnit,
       expenseType:e.expenseType||"expense",
       proveedor:prov,
       vendor:String(e.vendor||prov).trim(),
+      paymentDeferred,
       paymentTermMode:invTerms.paymentTermMode,
       invoiceDueDateDirect:invTerms.invoiceDueDateDirect,
       paymentTermCustomDays:e.paymentTermCustomDays!=null?String(e.paymentTermCustomDays):"30"});
@@ -2648,7 +2715,7 @@ function DetailPanel(){
     }
     const ivaRate=parseFormIvaRateString(ef.ivaRate);
     const ivaAmount=calcIvaParts(amt,ivaRate).iva;
-    const recEdit=cadenceToRecurringPayload(ef.cadenceKey,ef.cadenceCustomMonths);
+    const recEdit=cadenceToRecurringPayload(ef);
     editExp(e.id,{
       description:ef.description,
       amount:amt,
@@ -2694,7 +2761,7 @@ function DetailPanel(){
   const editIsInv=ef.expenseType==="invoice";
   const editVendorOk=!editIsInv||String(ef.vendor||"").trim().length>0;
   const editProveedorOk=!editIsInv||String(ef.proveedor||"").trim().length>0;
-  const editDuePickOk=!editIsInv||(String(ef.paymentTermMode||"0")==="custom"?String(ef.invoiceDueDateDirect||"").trim().length>=10:true);
+  const editDuePickOk=!editIsInv||!ef.paymentDeferred||(String(ef.paymentTermMode||"0")!=="custom")||String(ef.invoiceDueDateDirect||"").trim().length>=10;
   const editExpenseValid=editAmountOk&&String(ef.description||"").trim()&&String(ef.category||"").trim()&&String(ef.date||"").trim()&&!!String(ef.departmentId||"").trim()&&!!editOwnerId&&editVendorOk&&editProveedorOk&&editDuePickOk;
   const editTotVal=efSplits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
   const editCheckedSplit=efSplits.filter(s=>s.checked).length;
@@ -2702,10 +2769,12 @@ function DetailPanel(){
   const editSplitBlocked=efSplitOn&&(users.length<2||editCheckedSplit<2||editAmtSumBad);
   const editHi=editSubmitAttempt&&!editExpenseValid;
   const editRs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
+  const editActionColor=editIsInv?"#D97706":G;
+  const editSubmitHoverBg=editIsInv?"#B45309":GH;
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11,...isEditInv?{borderTop:"3px solid #C4622D",paddingTop:8}:{}}}>
-        <div style={{fontWeight:700,fontSize:editMode?15:14,color:G}}>{editMode?(isEditInv?"Editar gasto · Factura":"Editar gasto"):"Detalle de gasto"}</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11}}>
+        <div style={{fontWeight:700,fontSize:editMode?15:14,color:(editMode?editActionColor:G),transition:"color 0.2s ease"}}>{editMode?(isEditInv?"Editar gasto · Factura":"Editar gasto"):"Detalle de gasto"}</div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {!editMode&&canEdit&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={startEdit}>{t("action.editItem")}</button>}
           {!editMode&&(user.id===e.submittedBy||isAdmin)&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>deleteExp(e.id)}>{t("action.deleteItem")}</button>}
@@ -2729,7 +2798,7 @@ function DetailPanel(){
             ivaRates={ivaRates}
             hi={editHi}
             rs={editRs}
-            actionColor={G}
+            actionColor={editActionColor}
             splitOn={efSplitOn}
             setSplitOn={v=>{setEfSplitOn(v);if(!v)setEfSpMode("amount");setEfDirty(true);}}
             splits={efSplits}
@@ -2752,7 +2821,7 @@ function DetailPanel(){
             publicExpenseSettings={publicExpenseSettings}
           />
           <div style={{display:"flex",gap:6,marginTop:8}}>
-            <button className="btn-primary" style={{flex:1,fontSize:13,padding:"8px",opacity:(!editExpenseValid||editSplitBlocked)?0.5:1,cursor:(!editExpenseValid||editSplitBlocked)?"not-allowed":"pointer"}} onClick={()=>{
+            <button className="btn-primary" style={{flex:1,fontSize:13,padding:"8px",background:editActionColor,opacity:(!editExpenseValid||editSplitBlocked)?0.5:1,cursor:(!editExpenseValid||editSplitBlocked)?"not-allowed":"pointer",transition:"color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease"}} onMouseEnter={e=>{if(!editExpenseValid||editSplitBlocked)return;e.currentTarget.style.background=editSubmitHoverBg;}} onMouseLeave={e=>{e.currentTarget.style.background=editActionColor;}} onClick={()=>{
               if(editSplitBlocked)return;
               if(!editExpenseValid){setEditSubmitAttempt(true);return;}
               saveEdit();
@@ -3820,6 +3889,7 @@ function reportsApiDateRange(dateRange){
 export function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel}=useApp();
   const [expFilter,setExpFilter]=useState("all");
+  const [ivaMode,setIvaMode]=useState("both");
   const [dateRange,setDateRange]=useState("thisMonth");
   const [trendRows,setTrendRows]=useState(null);
   const [trendLoad,setTrendLoad]=useState(false);
@@ -3909,28 +3979,60 @@ export function ReportsView(){
   const maxMonth=Math.max(...monthlyTrend.map(m=>m.total),1);
   const hasTrendData=monthlyTrend.some(m=>m.total>0);
   const trendBarTrackPx=76;
-  const exportCSV=(all)=>{
+  const exportCSV=(all,modeIn)=>{
+    const ivaM=modeIn||ivaMode;
     const data=all?"all":expFilter;
     const src=data==="all"?rangeFilteredExpenses:(rangeFilteredExpenses.filter(e=>getItemStatus(e,cats,users)===data));
     const now=new Date().toISOString();
     const exportedUser=user;
     if(!AUTH_URL){
-      const updatedSrc=src.map(e=>({...e,auditTrail:[...(e.auditTrail||[]),{action:"exported",by:exportedUser.id,at:now,meta:{format:"csv",filter:data}}]}));
+      const updatedSrc=src.map(e=>({...e,auditTrail:[...(e.auditTrail||[]),{action:"exported",by:exportedUser.id,at:now,meta:{format:"csv",filter:data,ivaMode:ivaM}}]}));
       saveExp(expenses.map(e=>{const u=updatedSrc.find(x=>x.id===e.id);return u||e;}));
     }
-    appLog("info","csv_exported",{filter:data,count:src.length,userId:exportedUser.id,codes:src.map(e=>e.itemCode||e.id)});
-    const rows=[[t("item.code"),t("csv.itemType"),t("label.date"),t("label.description"),t("label.amount"),t("csv.baseAmount"),t("csv.ivaRatePct"),t("csv.ivaEur"),t("label.category"),t("label.status"),t("filter.submitter"),t("label.paidBy"),t("label.notes"),t("label.approvers")],
+    appLog("info","csv_exported",{filter:data,ivaMode:ivaM,count:src.length,userId:exportedUser.id,codes:src.map(e=>e.itemCode||e.id)});
+    const headerBase=[
+      t("item.code"),
+      t("csv.itemType"),
+      t("label.date"),
+      t("label.description"),
+      t("label.category"),
+      t("label.status"),
+      t("filter.submitter"),
+      t("label.paidBy"),
+      t("label.notes"),
+      t("label.approvers"),
+    ];
+    const amountHeaders=
+      ivaM==="with_iva"?["Total con IVA"]
+      :ivaM==="without_iva"?["Base imponible"]
+      :["Base imponible","Cuota IVA","Total con IVA"];
+    const rows=[
+      [...headerBase,...amountHeaders],
       ...src.map(e=>{
         const approverIds=effectiveExpenseApproverIds(e,cats,users);
         const amtEur=eurForExpense(e);
-        const base=e.ivaRate!==null&&e.ivaRate!==undefined?Math.round((amtEur-(e.ivaAmount||0))*100)/100:amtEur;
-        const ivr=e.ivaRate!==null&&e.ivaRate!==undefined?e.ivaRate:"";
-        const ivam=e.ivaAmount!==null&&e.ivaAmount!==undefined?e.ivaAmount:"";
+        const ivaAmt=e.ivaAmount!=null?Number(e.ivaAmount):0;
+        const base=e.ivaRate!=null?Math.round((amtEur-ivaAmt)*100)/100:amtEur;
         const tipo=e.expenseType==="invoice"?"Factura":"Gasto";
-        return[e.itemCode||e.id,tipo,e.date,e.description,amtEur,base,ivr,ivam,e.category,getItemStatus(e,cats,users),(users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name,e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),e.notes||"",approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";")];
-      })];
+        const commonFields=[
+          e.itemCode||e.id,
+          tipo,
+          e.date,
+          e.description,
+          e.category,
+          getItemStatus(e,cats,users),
+          (users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name,
+          e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),
+          e.notes||"",
+          approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";"),
+        ];
+        if(ivaM==="with_iva")return[...commonFields,amtEur];
+        if(ivaM==="without_iva")return[...commonFields,base];
+        return[...commonFields,base,ivaAmt,amtEur];
+      }),
+    ];
     const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`solana-${data}-${new Date().toISOString().slice(0,10)}.csv`});
+    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`solana-${data}-${ivaM}-${new Date().toISOString().slice(0,10)}.csv`});
     a.click();URL.revokeObjectURL(a.href);
   };
   const downloadPdf=async()=>{
@@ -3986,7 +4088,27 @@ export function ReportsView(){
             <option value="approved">{t("reports.approvedOnly")}</option>
             <option value="pending">{t("reports.pendingOnly")}</option>
           </select>
-          <button className="btn-secondary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportCSV(expFilter==="all")}>{t("action.exportCSV")}</button>
+          <div style={{display:"flex",alignItems:"center",gap:4,border:"1px solid #E5E0D8",borderRadius:8,overflow:"hidden"}}>
+            <button type="button" className="btn-secondary"
+              style={{borderRadius:0,fontSize:11,padding:"5px 8px",
+                background:ivaMode==="with_iva"?"#3C0A37":"transparent",
+                color:ivaMode==="with_iva"?"#fff":undefined,border:"none"}}
+              onClick={()=>setIvaMode("with_iva")}>Con IVA</button>
+            <button type="button" className="btn-secondary"
+              style={{borderRadius:0,fontSize:11,padding:"5px 8px",
+                borderLeft:"1px solid #E5E0D8",borderRight:"1px solid #E5E0D8",
+                background:ivaMode==="without_iva"?"#3C0A37":"transparent",
+                color:ivaMode==="without_iva"?"#fff":undefined,border:"none"}}
+              onClick={()=>setIvaMode("without_iva")}>Sin IVA</button>
+            <button type="button" className="btn-secondary"
+              style={{borderRadius:0,fontSize:11,padding:"5px 8px",
+                background:ivaMode==="both"?"#3C0A37":"transparent",
+                color:ivaMode==="both"?"#fff":undefined,border:"none"}}
+              onClick={()=>setIvaMode("both")}>Con y sin IVA</button>
+          </div>
+          <button type="button" className="btn-secondary"
+            style={{fontSize:11,padding:"5px 10px"}}
+            onClick={()=>exportCSV(expFilter==="all",ivaMode)}>{t("action.exportCSV")}</button>
           {AUTH_URL&&<button type="button" className="btn-secondary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void downloadPdf()}>{t("action.downloadPdf")}</button>}
         </div>
       </div>
@@ -4385,16 +4507,6 @@ function buildPayloadForSetting(key,schemaValue,draft,w){
   return draft;
 }
 
-function GearNavIcon({size=14,color}){
-  const c=color||"currentColor";
-  return(
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{display:"block",flexShrink:0}}>
-      <path stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 3.51l-.15.1a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-3.51l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-      <circle cx="12" cy="12" r="3" stroke={c} strokeWidth="2"/>
-    </svg>
-  );
-}
-
 function ServerSettingsView(){
   const{t}=useApp();
   const [rows,setRows]=useState([]);
@@ -4470,16 +4582,12 @@ function ServerSettingsView(){
 
   if(!AUTH_URL){
     return(
-      <div className="card" style={{maxWidth:720,margin:"0 auto"}}>
-        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:G,marginBottom:8}}>{t("nav.serverSettings")}</h1>
-        <p style={{fontSize:13,color:"#6B7B72"}}>{t("settings.serverOffline")}</p>
-      </div>
+      <p style={{fontSize:13,color:"#6B7B72"}}>{t("settings.serverOffline")}</p>
     );
   }
 
   return(
-    <div className="card" style={{maxWidth:720,margin:"0 auto"}}>
-      <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:G,marginBottom:10}}>{t("nav.serverSettings")}</h1>
+    <>
       <div style={{fontSize:12,color:"#5C6B62",background:"#EDE8E0",borderRadius:8,padding:"10px 12px",marginBottom:16,lineHeight:1.45}}>{t("settings.serverBanner")}</div>
       {loading&&<div style={{fontSize:13,color:"#6B7B72"}}>…</div>}
       {loadErr&&!loading&&<div style={{fontSize:12,padding:"8px 10px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",marginBottom:10}}>{loadErr}</div>}
@@ -4560,7 +4668,7 @@ function ServerSettingsView(){
           </div>
         );
       })}
-    </div>
+    </>
   );
 }
 
@@ -5258,13 +5366,6 @@ export function SettingsView(){
   return(
     <div style={{maxWidth:540}}>
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:12}}>{t("settings.title")}</h1>
-      {AUTH_URL&&(isAdmin||isSA)&&(
-        <div style={{padding:"8px 10px",borderRadius:8,background:"#FFFBEB",border:"1px solid #FDE68A",fontSize:11,color:"#92400E",lineHeight:1.45,marginBottom:10}}>
-          Migración de facturas pendiente — contacta con el administrador.
-        </div>
-      )}
-
-
 
       {/* ── Team members ── */}
       {isSA&&<AccordionSection title={t("settings.accordion.team")}>
@@ -5495,6 +5596,10 @@ export function SettingsView(){
 
       {(isSA||isAdmin)&&<DepartmentsSettingsBlock t={t}/>}
 
+      {isSA&&<AccordionSection title="Parámetros del sistema">
+        <ServerSettingsView/>
+      </AccordionSection>}
+
       {isSA&&<AccordionSection title="Ajustes de aplicación">
         {appSetMsg&&<div style={{padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",fontSize:11,marginBottom:8}}>{appSetMsg}</div>}
         {appSetErr&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{appSetErr}</div>}
@@ -5636,7 +5741,7 @@ export default function App(){
     return d.map(e=>normalizeItem(e,"expense"));
   });
   const [ledgerLoading,setLedgerLoading]=useState(false);
-  const [publicExpenseSettings,setPublicExpenseSettings]=useState({approval_threshold:0,require_receipt_above:50});
+  const [publicExpenseSettings,setPublicExpenseSettings]=useState({approval_threshold:0});
   const [cats,    setCats]    =useState(()=>{
     const d=ls("sol-cats",DEF_CATS);
     return d.map(c=>normalizeItem(c,"cat"));
@@ -5658,10 +5763,8 @@ export default function App(){
         const d=await r.json().catch(()=>({}));
         if(cancelled||!r.ok)return;
         const at=Number(d.approval_threshold);
-        const rr=Number(d.require_receipt_above);
         setPublicExpenseSettings({
           approval_threshold:Number.isFinite(at)?at:0,
-          require_receipt_above:Number.isFinite(rr)?rr:50,
         });
         if (typeof d.currency === 'string' && d.currency.trim()) {
           applyServerSettings({ currency: d.currency });
@@ -5750,10 +5853,12 @@ export default function App(){
   const parseViewFromPath=useCallback((pathname)=>{
     const raw=String(pathname||"/").split("?")[0].split("#")[0];
     const seg=raw.replace(/^\/+/,"").split("/")[0]||"";
+    if(seg==="serverSettings")return"settings";
     return VALID_VIEWS.has(seg)?seg:"dashboard";
   },[]);
   const setView=useCallback((nextView)=>{
-    const safeView=VALID_VIEWS.has(nextView)?nextView:"dashboard";
+    const mapped=nextView==="serverSettings"?"settings":nextView;
+    const safeView=VALID_VIEWS.has(mapped)?mapped:"dashboard";
     setViewState(safeView);
     if(typeof window==="undefined"||!user)return;
     window.history.pushState({view:safeView},"","/"+safeView);
@@ -5884,11 +5989,6 @@ export default function App(){
     window.addEventListener("popstate",onPopState);
     return()=>window.removeEventListener("popstate",onPopState);
   },[user,parseViewFromPath]);
-
-  useEffect(()=>{
-    if(!user)return;
-    if(view==="serverSettings"&&user.role!=="superadmin")setView("dashboard");
-  },[user,view,setView]);
 
   /* ── SAVES ──────────────────────────────────────────────────────────────── */
   const saveUsers   =d=>{
@@ -6270,12 +6370,8 @@ export default function App(){
       ? String(form.invoiceDueDateDirect||"").slice(0,10)
       : addDaysToISODate(form.date, Number(condicionesPagoSubmit)||0);
     if(isInvSubmit&&condicionesPagoSubmit==="custom"&&!fechaVencimientoSubmit){setFormError("Indica la fecha de vencimiento.");return;}
-    if(isInvSubmit){
-      if(!String(form.vendor||"").trim()){setFormError("Indica el proveedor.");return;}
-      const ptdS=paymentTermDaysFromForm(form);
-      if(ptdS===0&&!String(form.invoiceDueDateDirect||"").trim().slice(0,10)){setFormError("Indica la fecha de vencimiento.");return;}
-    }
-    const cadSubmit=cadenceToRecurringPayload(form.cadenceKey,form.cadenceCustomMonths);
+    if(isInvSubmit&&!String(form.vendor||"").trim()){setFormError("Indica el proveedor.");return;}
+    const cadSubmit=cadenceToRecurringPayload(form);
     const ptdSubmit=paymentTermDaysFromForm(form);
     const computedDueIso=computeInvoiceDueISO(form);
     const invExtras=isInvSubmit?{
@@ -6471,11 +6567,14 @@ export default function App(){
       date:new Date().toISOString().slice(0,10),
       expenseType:"invoice",
       vendor:"",
+      paymentDeferred:false,
       paymentTermMode:"0",
       paymentTermCustomDays:"30",
       invoiceDueDateDirect:new Date().toISOString().slice(0,10),
       cadenceKey:"once",
       cadenceCustomMonths:"1",
+      cadenceCustomAmount:"1",
+      cadenceCustomUnit:"months",
     });
     setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
@@ -6823,15 +6922,7 @@ export default function App(){
   const totFixed=expenses.reduce((s,e)=>{
     if(!e.cadenceKey||e.cadenceKey==="once")return s;
     if(getItemStatus(e,cats,users)!=="approved")return s;
-    const ev=eurForExpense(e);
-    if(e.cadenceKey==="monthly")return s+ev;
-    if(e.cadenceKey==="quarterly")return s+ev/3;
-    if(e.cadenceKey==="yearly")return s+ev/12;
-    if(e.cadenceKey==="custom"){
-      const months=Math.max(1,parseFloat(e.cadenceCustomMonths)||1);
-      return s+ev/months;
-    }
-    return s;
+    return s+invoiceForecastMonthlyEUR(e);
   },0);
 
   const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
@@ -6863,7 +6954,6 @@ export default function App(){
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
     {id:"reports",  label:t("nav.reports")},
-    ...(isSA?[{id:"serverSettings",label:t("nav.serverSettings"),badge:0}]:[]),
     // Settings (profile) — accessed via profile avatar
   ];
   const mobNav=[
@@ -6871,7 +6961,6 @@ export default function App(){
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
     {id:"reports",  label:t("nav.reports"),badge:0},
-    ...(isSA?[{id:"serverSettings",label:t("nav.serverSettings"),badge:0}]:[]),
     // Ajustes (profile) — mobile header avatar
   ];
 
@@ -6959,6 +7048,7 @@ export default function App(){
           .card{background:#fff;border-radius:11px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,0.06);}
           .inp{width:100%;background:#FAF7F8;border:1.5px solid #DDD6CC;border-radius:7px;padding:8px 11px;font-size:14px;color:#1A0E18;font-family:inherit;transition:border-color 0.15s;outline:none;display:block;}
           .inp:focus{border-color:${G};}
+          .expense-form-fields-wrap .inp:focus{border-color:var(--expense-action, ${G})!important;}
           .lbl{font-size:12px;font-weight:600;color:#6B7B72;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;display:block;}
           .btn-primary{background:${G};color:#fff;border:none;padding:9px 18px;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
           .btn-primary:hover{background:${GH};}.btn-primary:disabled{opacity:0.5;cursor:default;}
@@ -7023,7 +7113,6 @@ export default function App(){
           {navItems.map(n=>(
             <div key={n.id} onClick={()=>go(n.id)} style={{padding:"6px 9px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:500,marginBottom:2,transition:"background 0.15s",background:view===n.id?"rgba(250,247,242,0.12)":"transparent",color:view===n.id?"#FAF7F2":"rgba(250,247,242,0.5)",borderLeft:`3px solid ${view===n.id?T:"transparent"}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <span style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
-                {n.id==="serverSettings"&&<GearNavIcon size={13} color="rgba(250,247,242,0.88)"/>}
                 <span>{n.label}</span>
               </span>
               {n.badge>0&&<span style={{background:BL,color:"#fff",borderRadius:"50%",width:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0}}>{n.badge}</span>}
@@ -7070,7 +7159,6 @@ export default function App(){
               {view==="expenses" &&<ErrorBoundary><ExpensesView/></ErrorBoundary>}
               {view==="approvals"&&<ErrorBoundary><ApprovalsView/></ErrorBoundary>}
               {view==="reports"  &&<ErrorBoundary><ReportsView/></ErrorBoundary>}
-              {view==="serverSettings"&&isSA&&<ServerSettingsView/>}
               {view==="settings" &&<ErrorBoundary><SettingsView/></ErrorBoundary>}
             </div>
             {rpOpen&&(
@@ -7085,7 +7173,6 @@ export default function App(){
             {mobNav.map(n=>(
               <div key={n.id} style={{flex:1,padding:"8px 2px 6px",textAlign:"center",cursor:"pointer",borderTop:`2px solid ${view===n.id?G:"transparent"}`}} onClick={()=>go(n.id)}>
                 <div style={{display:"inline-flex",alignItems:"center",gap:2,flexWrap:"wrap",justifyContent:"center"}}>
-                  {n.id==="serverSettings"&&<span style={{display:"inline-flex",lineHeight:0}} aria-hidden="true"><GearNavIcon size={12} color={view===n.id?G:"#6B7B72"}/></span>}
                   <span style={{fontSize:11,fontWeight:view===n.id?700:500,color:view===n.id?G:"#6B7B72"}}>{n.label}</span>
                   {n.badge>0&&<span style={{background:BL,color:"#fff",borderRadius:"50%",width:13,height:13,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0}}>{n.badge}</span>}
                 </div>
