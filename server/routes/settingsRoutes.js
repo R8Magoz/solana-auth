@@ -132,7 +132,6 @@ function createSettingsRouter(deps) {
   router.get('/settings/public', (req, res) => {
     res.json({
       approval_threshold: readNumericSetting('approval_threshold', 0),
-      require_receipt_above: readNumericSetting('require_receipt_above', 50),
       currency: readCurrencyCodeFromCache(),
     });
   });

@@ -10,9 +10,9 @@ const settingsCache = require('./lib/settingsCache');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
-const { nextDueDate, RECURRENCE_RULES } = require('./recurrence');
+const { nextDueDate, RECURRENCE_RULES, isValidRecurrenceRule } = require('./recurrence');
 
-/** Reads numeric app_settings keys (e.g. approval_threshold, require_receipt_above) via settingsCache. */
+/** Reads numeric app_settings keys (e.g. approval_threshold) via settingsCache. */
 function parseAppSettingFloat(key, defaultVal) {
   try {
     const raw = settingsCache.get(key, undefined);
@@ -396,10 +396,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       }
     }
     const rec = recurring === true || recurring === 1 || recurring === '1';
-    let rule = recurrenceRule != null ? String(recurrenceRule).trim().slice(0, 32) : null;
+    let rule = recurrenceRule != null ? String(recurrenceRule).trim().slice(0, 48) : null;
     if (rec) {
-      if (!rule || !RECURRENCE_RULES.includes(rule)) {
-        return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES.join(' | ')}` });
+      if (!rule || !isValidRecurrenceRule(rule)) {
+        return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES.join(' | ')} | custom:N[weeks|months|years] | custom:N` });
       }
     } else {
       rule = null;
@@ -420,7 +420,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (cur === 'EUR') eur = amount;
 
     const approvalThreshold = parseAppSettingFloat('approval_threshold', 0);
-    const requireReceiptAbove = parseAppSettingFloat('require_receipt_above', 50);
 
     const b64Inline =
       typeof bodyB64 === 'string' && bodyB64.trim().length > 0
@@ -430,16 +429,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
           : null;
 
     const eurNum = eur != null && Number.isFinite(Number(eur)) ? Number(eur) : null;
-    if (
-      expenseType === 'expense' &&
-      eurNum != null &&
-      eurNum > requireReceiptAbove &&
-      !b64Inline
-    ) {
-      return res.status(400).json({
-        error: `Se requiere un justificante para gastos superiores a €${requireReceiptAbove}.`,
-      });
-    }
 
     const now = Date.now();
     const id = 'exp_' + crypto.randomBytes(8).toString('hex');
@@ -751,7 +740,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       ? Math.max(0, Math.min(3650, Math.round(Number(exp.paymentTermDays))))
       : 0;
     let nextRec = Number(exp.recurring) === 1;
-    let nextRule = exp.recurrenceRule != null ? String(exp.recurrenceRule).trim().slice(0, 32) : null;
+    let nextRule = exp.recurrenceRule != null ? String(exp.recurrenceRule).trim().slice(0, 48) : null;
 
     if (nextExpenseType === 'expense') {
       nextVendor = null;
@@ -796,11 +785,11 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         nextRec = recurring === true || recurring === 1 || recurring === '1';
       }
       if (Object.prototype.hasOwnProperty.call(req.body || {}, 'recurrenceRule')) {
-        nextRule = recurrenceRule != null ? String(recurrenceRule).trim().slice(0, 32) : null;
+        nextRule = recurrenceRule != null ? String(recurrenceRule).trim().slice(0, 48) : null;
       }
       if (nextRec) {
-        if (!nextRule || !RECURRENCE_RULES.includes(nextRule)) {
-          return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES.join(' | ')}` });
+        if (!nextRule || !isValidRecurrenceRule(nextRule)) {
+          return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES.join(' | ')} | custom:N[weeks|months|years] | custom:N` });
         }
       } else {
         nextRule = null;
