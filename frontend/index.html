@@ -13,6 +13,7 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet"/>
   <style>
@@ -113,6 +114,7 @@ const TR = {
     "action.submit": "Enviar gasto",
     "action.submitBill": "Enviar factura",
     "action.exportCSV": "Exportar CSV",
+    "action.exportXLSX": "Exportar Excel",
     "action.downloadPdf": "Descargar PDF",
     "action.exportJSON": "Exportar JSON",
     "action.importJSON": "Importar JSON",
@@ -3119,7 +3121,6 @@ function ExpenseFormFields({
   const hasLocalPrev=!!recPrev;
   const hasApiPrev=!!apiReceiptPreview;
   const hasPreview=hasLocalPrev||hasApiPrev;
-  const thPub=publicExpenseSettings&&typeof publicExpenseSettings.approval_threshold==="number"?publicExpenseSettings.approval_threshold:0;
   const clearAllReceipt=()=>{
     onReceiptClear();
     if(hasApiPrev&&onClearApiReceiptPreview)onClearApiReceiptPreview();
@@ -3160,13 +3161,6 @@ function ExpenseFormFields({
         <div><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
           <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
         </div>
-        {AUTH_URL&&!isInv&&thPub>0&&(
-          <div style={{gridColumn:"1/-1",display:"flex",flexDirection:"column",gap:6}}>
-            <div style={{fontSize:11,color:"#1e3a5f",background:"#e8f4fc",border:"1px solid #bae0fd",borderRadius:6,padding:"8px 10px",lineHeight:1.45}}>
-              {t("form.autoApproveHint").replace("{{amount}}",fmt(thPub))}
-            </div>
-          </div>
-        )}
         <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={form.category} style={rs(hi&&!String(form.category||"").trim())} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
             <option value="">{t("label.category")}</option>
@@ -4890,9 +4884,56 @@ function ReportsView(){
         return[...commonFields,base,ivaAmt,amtEur];
       }),
     ];
-    const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`solana-${data}-${ivaM}-${new Date().toISOString().slice(0,10)}.csv`});
-    a.click();URL.revokeObjectURL(a.href);
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    // Bold + background for header row
+    const headerStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: "3C0A37" } },
+    };
+    if(ws['!ref']) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for(let C = range.s.c; C <= range.e.c; C++) {
+        const addr = XLSX.utils.encode_cell({ r: 0, c: C });
+        if(!ws[addr]) continue;
+        ws[addr].s = headerStyle;
+      }
+    }
+    // Auto column widths based on max content length (cap at 40 chars)
+    const colWidths = rows[0].map((_, ci) =>
+      Math.min(40, Math.max(...rows.map(r => String(r[ci]||"").length))) + 2
+    );
+    ws['!cols'] = colWidths.map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, ws, "Gastos");
+    XLSX.writeFile(wb, `solana-${data}-${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+  const exportXlsx=(all)=>exportCSV(all,ivaMode);
+  const downloadXlsx = async () => {
+    if (!AUTH_URL) return;
+    try { API.ensureSessionToken(); } catch(e) {}
+    const tok = API.token || sessionStorage.getItem("sol-session-token") || "";
+    if (!tok) { dispatchSolanaToast(t("msg.sessionExpired"), "error"); return; }
+    const { from, to } = reportsApiDateRange(dateRange);
+    const qs = new URLSearchParams({ from, to, type: "all" });
+    let r;
+    try {
+      r = await fetch(AUTH_URL + "/reports/export/xlsx?" + qs.toString(),
+        { headers: { Authorization: "Bearer " + tok } });
+    } catch(e) {
+      dispatchSolanaToast(t("msg.genericShort"), "error");
+      return;
+    }
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      dispatchSolanaToast(j.error || t("msg.genericShort"), "error");
+      return;
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement("a"),
+      { href: url, download: `informe-${from}-${to}.xlsx` });
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
   };
   const downloadPdf=async()=>{
     if(!AUTH_URL)return;
@@ -4965,9 +5006,15 @@ function ReportsView(){
                 color:ivaMode==="both"?"#fff":undefined,border:"none"}}
               onClick={()=>setIvaMode("both")}>Con y sin IVA</button>
           </div>
-          <button type="button" className="btn-secondary"
+          <button className="btn-secondary" style={{fontSize:11,padding:"5px 10px"}}
+            onClick={()=>exportXlsx(expFilter==="all")}>
+            Exportar Excel
+          </button>
+          {AUTH_URL && <button type="button" className="btn-secondary"
             style={{fontSize:11,padding:"5px 10px"}}
-            onClick={()=>exportCSV(expFilter==="all",ivaMode)}>{t("action.exportCSV")}</button>
+            onClick={()=>void downloadXlsx()}>
+            Excel (servidor)
+          </button>}
           {AUTH_URL&&<button type="button" className="btn-secondary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void downloadPdf()}>{t("action.downloadPdf")}</button>}
         </div>
       </div>

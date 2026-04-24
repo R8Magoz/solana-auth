@@ -7,6 +7,12 @@ try {
 } catch (e) {
   PDFDocument = null;
 }
+let ExcelJS;
+try {
+  ExcelJS = require('exceljs');
+} catch (e) {
+  ExcelJS = null;
+}
 const db = require('./db');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -430,6 +436,199 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     res.send(body);
   });
 
+  router.get('/export/xlsx', requireAdminSession, async (req, res) => {
+    if (!ExcelJS) {
+      return res.status(503).json({
+        error: 'Excel no disponible. Ejecuta npm install en el servidor (paquete exceljs).',
+      });
+    }
+    const range = validateRange(req, res);
+    if (!range) return;
+    const { from, to } = range;
+    const type = String(req.query.type || 'all').trim().toLowerCase().slice(0, 16);
+    if (!['expenses', 'bills', 'all'].includes(type)) {
+      return res.status(400).json({ error: 'type debe ser expenses, bills o all.' });
+    }
+
+    // Reuse the same DB queries and user map as the CSV route
+    const userMap = buildUserMap(userStore);
+
+    // ── Expense rows ──
+    const expRows = db
+      .prepare(
+        `SELECT * FROM expenses
+         WHERE date >= ? AND date <= ? AND status != 'deleted'
+           AND (expenseType IS NULL OR expenseType != 'invoice')
+         ORDER BY date ASC`,
+      )
+      .all(from, to);
+
+    // ── Invoice rows ──
+    const invRows = db
+      .prepare(
+        `SELECT * FROM expenses
+         WHERE date >= ? AND date <= ? AND status != 'deleted'
+           AND expenseType = 'invoice'
+         ORDER BY date ASC`,
+      )
+      .all(from, to);
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = getCompanyName();
+    wb.created = new Date();
+
+    const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3C0A37' } };
+    const HEADER_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+    const BORDER_THIN = { style: 'thin', color: { argb: 'FFE0D8D0' } };
+    const cellBorder = {
+      top: BORDER_THIN,
+      left: BORDER_THIN,
+      bottom: BORDER_THIN,
+      right: BORDER_THIN,
+    };
+
+    function styleHeader(row) {
+      row.eachCell((cell) => {
+        cell.fill = HEADER_FILL;
+        cell.font = HEADER_FONT;
+        cell.border = cellBorder;
+        cell.alignment = { vertical: 'middle' };
+      });
+      row.height = 18;
+    }
+
+    function addSheet(workbook, sheetName, headers, dataRows) {
+      const ws = workbook.addWorksheet(sheetName);
+      const headerRow = ws.addRow(headers);
+      styleHeader(headerRow);
+      for (const row of dataRows) {
+        const r = ws.addRow(row);
+        r.eachCell((cell) => {
+          cell.border = cellBorder;
+        });
+      }
+      // Auto column widths
+      ws.columns.forEach((col, i) => {
+        let max = String(headers[i] || '').length;
+        col.eachCell({ includeEmpty: false }, (cell) => {
+          const len = String(cell.value ?? '').length;
+          if (len > max) max = len;
+        });
+        col.width = Math.min(45, max + 2);
+      });
+      // Freeze header row
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      return ws;
+    }
+
+    // ── Spanish column headers ──
+    const EXP_HEADERS = [
+      'Código',
+      'Fecha',
+      'Concepto',
+      'Categoría',
+      'Departamento',
+      'Importe EUR',
+      'Base imponible',
+      '% IVA',
+      'Cuota IVA',
+      'Estado',
+      'Remitente',
+      'Notas',
+    ];
+    const INV_HEADERS = [
+      'Código',
+      'Fecha',
+      'Concepto',
+      'Proveedor',
+      'Categoría',
+      'Importe EUR',
+      'Base imponible',
+      '% IVA',
+      'Cuota IVA',
+      'Estado pago',
+      'Vencimiento',
+      'Remitente',
+      'Notas',
+    ];
+
+    function mapExpRow(e) {
+      const amt = eurAmount(e);
+      const iva = e.ivaAmount != null ? roundMoney(e.ivaAmount) : '';
+      const base = e.ivaRate != null ? roundMoney(amt - (e.ivaAmount || 0)) : amt;
+      return [
+        e.itemCode || e.id,
+        e.date,
+        e.description || '',
+        e.category || '',
+        e.departmentId || '',
+        amt,
+        base,
+        e.ivaRate != null ? e.ivaRate : '',
+        iva,
+        e.status || '',
+        userMap[e.userId] || e.userId || '',
+        e.notes || '',
+      ];
+    }
+
+    function mapInvRow(e) {
+      const amt = eurAmount(e);
+      const iva = e.ivaAmount != null ? roundMoney(e.ivaAmount) : '';
+      const base = e.ivaRate != null ? roundMoney(amt - (e.ivaAmount || 0)) : amt;
+      const payStatus =
+        e.paymentStatus === 'paid'
+          ? 'Pagada'
+          : e.paymentStatus === 'unpaid'
+            ? 'Pendiente'
+            : e.paymentStatus || '';
+      return [
+        e.itemCode || e.id,
+        e.date,
+        e.description || '',
+        e.vendor || e.proveedor || '',
+        e.category || '',
+        amt,
+        base,
+        e.ivaRate != null ? e.ivaRate : '',
+        iva,
+        payStatus,
+        e.dueDate || '',
+        userMap[e.userId] || e.userId || '',
+        e.notes || '',
+      ];
+    }
+
+    if (type === 'expenses' || type === 'all') {
+      addSheet(wb, 'Gastos', EXP_HEADERS, expRows.map(mapExpRow));
+    }
+    if (type === 'bills' || type === 'all') {
+      addSheet(wb, 'Facturas', INV_HEADERS, invRows.map(mapInvRow));
+    }
+
+    // Summary sheet
+    const totalExp = expRows.reduce((s, e) => s + eurAmount(e), 0);
+    const totalInv = invRows.reduce((s, e) => s + eurAmount(e), 0);
+    const summaryWs = wb.addWorksheet('Resumen');
+    const sumHeader = summaryWs.addRow(['Concepto', 'Importe EUR']);
+    styleHeader(sumHeader);
+    summaryWs.addRow(['Total gastos', roundMoney(totalExp)]);
+    summaryWs.addRow(['Total facturas', roundMoney(totalInv)]);
+    summaryWs.addRow(['TOTAL', roundMoney(totalExp + totalInv)]);
+    summaryWs.getColumn(1).width = 22;
+    summaryWs.getColumn(2).width = 16;
+    summaryWs.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const filename = `informe-${from}_${to}.xlsx`;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    await wb.xlsx.write(res);
+    res.end();
+  });
+
   router.get('/export/pdf', (req, res) => {
     if (!PDFDocument) {
       return res.status(503).json({
@@ -565,7 +764,7 @@ function createReportsRouter({ requireAdminSession, userStore }) {
       doc
         .fontSize(8)
         .fillColor('#666666')
-        .text('Confidential — internal use only', 48, doc.page.height - 56, {
+        .text('Confidencial — solo para uso interno', 48, doc.page.height - 56, {
           align: 'center',
           width: doc.page.width - 96,
         });
@@ -573,19 +772,19 @@ function createReportsRouter({ requireAdminSession, userStore }) {
 
     doc.fontSize(18).fillColor('#1a1a1a').text(company, { align: 'center' });
     doc.moveDown(0.4);
-    doc.fontSize(11).fillColor('#333333').text(`Period: ${from} — ${to}`, { align: 'center' });
-    doc.fontSize(9).fillColor('#666666').text(`Generated: ${generated}`, { align: 'center' });
+    doc.fontSize(11).fillColor('#333333').text(`Período: ${from} — ${to}`, { align: 'center' });
+    doc.fontSize(9).fillColor('#666666').text(`Generado: ${generated}`, { align: 'center' });
     doc.moveDown(1.2);
 
-    doc.fontSize(12).fillColor('#1a1a1a').text('Summary', { underline: true });
+    doc.fontSize(12).fillColor('#1a1a1a').text('Resumen', { underline: true });
     doc.moveDown(0.3);
     doc.fontSize(9).fillColor('#000000');
-    doc.text(`Total expenses (EUR): ${roundMoney(totalExpenses).toFixed(2)}`);
-    doc.text(`Total bills (EUR): ${roundMoney(totalBills).toFixed(2)}`);
-    doc.text(`Line items: ${count}`);
-    doc.text(`Average amount (EUR): ${avgAmount.toFixed(2)}`);
+    doc.text(`Total gastos (EUR): ${roundMoney(totalExpenses).toFixed(2)}`);
+    doc.text(`Total facturas (EUR): ${roundMoney(totalBills).toFixed(2)}`);
+    doc.text(`Líneas: ${count}`);
+    doc.text(`Importe medio (EUR): ${avgAmount.toFixed(2)}`);
     doc.text(
-      `Approval rate: ${approvalRate != null ? `${(approvalRate * 100).toFixed(2)}%` : '—'}`,
+      `Tasa de aprobación: ${approvalRate != null ? `${(approvalRate * 100).toFixed(2)}%` : '—'}`,
     );
     doc.moveDown(0.8);
 
@@ -615,28 +814,28 @@ function createReportsRouter({ requireAdminSession, userStore }) {
       return doc.page.height - 64;
     }
 
-    doc.fontSize(12).fillColor('#1a1a1a').text('Category breakdown', { underline: true });
+    doc.fontSize(12).fillColor('#1a1a1a').text('Desglose por categoría', { underline: true });
     doc.moveDown(0.4);
     let y = doc.y;
     const cwCat = [150, 52, 72, 52];
-    y = tableHeader(['Category', 'Count', 'Total EUR', '% of total'], cwCat, y);
+    y = tableHeader(['Categoría', 'Unidades', 'Total EUR', '% del total'], cwCat, y);
     for (const c of catEntries) {
       if (y + 16 > pageBottom()) {
         footer();
         doc.addPage();
         y = 48;
-        y = tableHeader(['Category', 'Count', 'Total EUR', '% of total'], cwCat, y);
+        y = tableHeader(['Categoría', 'Unidades', 'Total EUR', '% del total'], cwCat, y);
       }
       const pct = ((c.sum / catDenom) * 100).toFixed(1);
       y = tableRow([c.name, c.count, c.sum.toFixed(2), `${pct}%`], cwCat, y);
     }
     doc.y = y + 6;
 
-    doc.fontSize(12).fillColor('#1a1a1a').text('Department breakdown', { underline: true });
+    doc.fontSize(12).fillColor('#1a1a1a').text('Desglose por departamento', { underline: true });
     doc.moveDown(0.4);
     y = doc.y;
     const cwDep = [120, 64, 64, 56, 72];
-    y = tableHeader(['Department', 'Budget EUR', 'Spent EUR', '% used', 'Remaining EUR'], cwDep, y);
+    y = tableHeader(['Departamento', 'Presupuesto EUR', 'Gastado EUR', '% usado', 'Restante EUR'], cwDep, y);
     for (const d of deptMeta) {
       const id = String(d.id);
       const budget = Number(d.budget) || 0;
@@ -648,7 +847,7 @@ function createReportsRouter({ requireAdminSession, userStore }) {
         footer();
         doc.addPage();
         y = 48;
-        y = tableHeader(['Department', 'Budget EUR', 'Spent EUR', '% used', 'Remaining EUR'], cwDep, y);
+        y = tableHeader(['Departamento', 'Presupuesto EUR', 'Gastado EUR', '% usado', 'Restante EUR'], cwDep, y);
       }
       y = tableRow(
         [name, budget.toFixed(2), spent.toFixed(2), `${pctUsed}%`, rem.toFixed(2)],
@@ -658,17 +857,17 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     }
     doc.y = y + 6;
 
-    doc.fontSize(12).fillColor('#1a1a1a').text('User breakdown', { underline: true });
+    doc.fontSize(12).fillColor('#1a1a1a').text('Desglose por usuario', { underline: true });
     doc.moveDown(0.4);
     y = doc.y;
     const cwUsr = [200, 48, 88];
-    y = tableHeader(['User', 'Count', 'Total EUR'], cwUsr, y);
+    y = tableHeader(['Usuario', 'Unidades', 'Total EUR'], cwUsr, y);
     for (const u of userEntries) {
       if (y + 16 > pageBottom()) {
         footer();
         doc.addPage();
         y = 48;
-        y = tableHeader(['User', 'Count', 'Total EUR'], cwUsr, y);
+        y = tableHeader(['Usuario', 'Unidades', 'Total EUR'], cwUsr, y);
       }
       y = tableRow([u.name, u.count, u.sum.toFixed(2)], cwUsr, y);
     }
