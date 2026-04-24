@@ -2195,7 +2195,6 @@ function ExpenseFormFields({
   const hasLocalPrev=!!recPrev;
   const hasApiPrev=!!apiReceiptPreview;
   const hasPreview=hasLocalPrev||hasApiPrev;
-  const thPub=publicExpenseSettings&&typeof publicExpenseSettings.approval_threshold==="number"?publicExpenseSettings.approval_threshold:0;
   const clearAllReceipt=()=>{
     onReceiptClear();
     if(hasApiPrev&&onClearApiReceiptPreview)onClearApiReceiptPreview();
@@ -2236,13 +2235,6 @@ function ExpenseFormFields({
         <div><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
           <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
         </div>
-        {AUTH_URL&&!isInv&&thPub>0&&(
-          <div style={{gridColumn:"1/-1",display:"flex",flexDirection:"column",gap:6}}>
-            <div style={{fontSize:11,color:"#1e3a5f",background:"#e8f4fc",border:"1px solid #bae0fd",borderRadius:6,padding:"8px 10px",lineHeight:1.45}}>
-              {t("form.autoApproveHint").replace("{{amount}}",fmt(thPub))}
-            </div>
-          </div>
-        )}
         <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={form.category} style={rs(hi&&!String(form.category||"").trim())} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
             <option value="">{t("label.category")}</option>
