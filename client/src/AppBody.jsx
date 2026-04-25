@@ -1162,10 +1162,34 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, labe
   const openDataUrl = () => {
     if(srcUrl) window.open(srcUrl, '_blank', 'noopener');
   };
-  const downloadFile=()=>{
-    const ext=isPdf?".pdf":isImg?(mime?.includes("png")?".png":mime?.includes("webp")?".webp":".jpg"):".bin";
-    const a=Object.assign(document.createElement("a"),{href:srcUrl,download:"adjunto"+ext});
+  const downloadFile = () => {
+    const url = srcUrl;
+    if (!url) return;
+    const ext = (() => {
+      if (mime?.includes("pdf")) return ".pdf";
+      if (mime?.includes("png")) return ".png";
+      if (mime?.includes("webp")) return ".webp";
+      if (mime?.includes("gif")) return ".gif";
+      if (mime?.includes("tiff")) return ".tif";
+      if (mime?.includes("xlsx") || mime?.includes("spreadsheet")) return ".xlsx";
+      if (mime?.includes("word")) return ".docx";
+      if (mime?.includes("csv")) return ".csv";
+      if (receiptPath) {
+        const dot = receiptPath.lastIndexOf(".");
+        if (dot !== -1) return receiptPath.slice(dot);
+      }
+      return ".bin";
+    })();
+    const code = apiExpenseId || "doc";
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `${code}_${dateStr}${ext}`;
+    const a = Object.assign(document.createElement("a"), {
+      href: url,
+      download: filename,
+    });
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
   };
 
   return(
@@ -3030,7 +3054,7 @@ function PersonDrilldown({userId, onClose}){
 /* ── DASHBOARD ─────────────────────────────────────────────────────────────── */
 export function DashboardView(){
   const{t,user,expenses,cats,users,isAdmin,myPending,
-        totApproved,totFixed,perPerson,go,openNew,openNewInvoice,setView,setDetailId,setPanel,goToMyRejected,departmentsWithStats,departments}=useApp();
+        totApproved,totFixed,perPerson,go,openNew,openNewInvoice,setView,setDetailId,setPanel,goToMyRejected,departmentsWithStats,departments,setRecurringFlt}=useApp();
   const today=new Date();
   const m0=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
   const ym=today.toISOString().slice(0,7);
@@ -3210,7 +3234,7 @@ export function DashboardView(){
               {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,"#DC2626",true,28,"#7F1D1D","#991B1B","#FCA5A5",`${budgetProgressPct.toFixed(1)}% usado`,"#7F1D1D")}
               {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetSub,"#059669",true,28,"#064E3B","#065F46","#6EE7B7",`${budgetProgressPct.toFixed(1)}% disponible`,"#064E3B")}
               {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,monthSub,null,false,22,"#78350F","#78350F")}
-              <div style={{cursor:"pointer"}} onClick={()=>{setView("expenses");}}>
+              <div style={{cursor:"pointer"}} onClick={() => { go("expenses"); setRecurringFlt("recurring"); }}>
                 {renderKpiCard("k-fixed",fixedKpiLabel,totFixed,fixedKpiBg,fixedKpiText,fixedSub,null,false)}
               </div>
             </>
@@ -3349,7 +3373,7 @@ export function ExpensesView(){
   const{t,expenses,cats,users,byStatus,filtered,expFlt,setExpFlt,expSrc,setExpSrc,
         catFlt,setCatFlt,submFlt,setSubmFlt,dateFrom,setDateFrom,dateTo,setDateTo,activeFilterCount,
         detailId,setDetailId,panel,setPanel,openNew,resetForm,isAdmin,user,aNote,setANote,approve,clearMyExpenseFilter,totApproved,
-        expKindFlt,setExpKindFlt,markExpensePaid}=useApp();
+        expKindFlt,setExpKindFlt,markExpensePaid,recurringFlt,setRecurringFlt}=useApp();
   const [payOpenId,setPayOpenId]=useState(null);
   const [payDate,setPayDate]=useState(()=>new Date().toISOString().slice(0,10));
   const pendingTotal=expenses.filter(e=>getItemStatus(e,cats)==="pending").reduce((s,e)=>s+eurForExpense(e),0);
@@ -3400,6 +3424,13 @@ export function ExpensesView(){
             );
           })}
         </div>
+        <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
+          value={recurringFlt} onChange={e => setRecurringFlt(e.target.value)}>
+          <option value="all">Todos los gastos</option>
+          <option value="recurring">Costes fijos (todos)</option>
+          <option value="recurring_pending">Costes fijos · pendientes</option>
+          <option value="recurring_paid">Costes fijos · pagados</option>
+        </select>
       </div>
       {/* ── Search + extended filters */}
       <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:9}}>
@@ -3462,7 +3493,7 @@ export function ExpensesView(){
           <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
             onClick={()=>{
               try{
-                ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind"].forEach(k=>sessionStorage.removeItem(k));
+                ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
               }catch(e){}
               setExpFlt("all");
               setCatFlt("");
@@ -3471,6 +3502,7 @@ export function ExpensesView(){
               setDateTo("");
               setExpSrc("");
               setExpKindFlt("all");
+              setRecurringFlt("all");
               setPendingFrom(naturalFrom);
               setPendingTo(naturalTo);
             }}>
@@ -3600,7 +3632,6 @@ function ReceiptThumb({expenseId}){
 /* ── APPROVALS ─────────────────────────────────────────────────────────────── */
 export function ApprovalsView(){
   const{t,expenses,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel}=useApp();
-  const [expandedId,setExpandedId]=useState(null);
   const [typeFilter,setTypeFilter]=useState("all");
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const priorityForItem=(item)=>{
@@ -3621,9 +3652,16 @@ export function ApprovalsView(){
     const db=String(b.date||b.dueDate||"");
     return db.localeCompare(da);
   });
-  const baseList=isApprover
+  const baseList=(isApprover
     ? expenses.filter(e=>effectiveExpenseApproverIds(e,cats,users).includes(user.id))
-    : expenses;
+    : expenses
+  ).filter(e=>{
+    const st=getItemStatus(e,cats,users);
+    if(st==="deleted")return false;
+    // hide invoices that are approved AND paid — nothing left to do
+    if(e.expenseType==="invoice"&&st==="approved"&&e.paymentStatus==="paid")return false;
+    return true;
+  });
   const kindFiltered=baseList.filter(e=>{
     if(typeFilter==="all")return true;
     if(typeFilter==="expense")return e.expenseType!=="invoice";
@@ -3680,18 +3718,12 @@ export function ApprovalsView(){
             ? '1.5px solid #D4AED0'
             : '1px solid transparent';
           const canActOnRow=isAdmin||rowApproverIds.includes(user.id);
-          const isExpanded=itemId===expandedId;
           const payBadge=isInv&&st==="approved"?invoicePaymentBadgeStyle(item.paymentStatus):null;
-          const deemph=st==="rejected"||st==="deleted";
           return(
-            <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:deemph?0.55:1,border:cardBorder}}>
+            <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={()=>{setDetailId(item.id);setPanel("detail");}}>
               <div
-                style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7,cursor:canActOnRow?"pointer":"default"}}
-                onClick={canActOnRow?()=>setExpandedId(prev=>prev===itemId?null:itemId):undefined}
+                style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7}}
               >
-                {AUTH_URL&&item.receiptPath&&(
-                  <ReceiptThumb expenseId={item.id}/>
-                )}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                     <div style={{flex:1,minWidth:0}}>
@@ -3735,14 +3767,9 @@ export function ApprovalsView(){
                           {t("status."+st)}
                         </span>
                         {payBadge&&<span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,display:"inline-block",background:payBadge.bg,color:payBadge.color}}>{payBadge.text}</span>}
-                        {st !== 'rejected' && !isExpanded&&canActOnRow&&(
-                          <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px"}} onClick={ev=>{ev.stopPropagation();setExpandedId(itemId);}}>
+                        {st !== 'rejected' && canActOnRow&&(
+                          <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px"}} onClick={ev=>{ev.stopPropagation();setDetailId(item.id);setPanel("detail");}}>
                             Revisar
-                          </button>
-                        )}
-                        {isExpanded&&canActOnRow&&(
-                          <button type="button" style={{background:"none",border:"none",color:"#9CAA9F",cursor:"pointer",fontSize:16,lineHeight:1,fontFamily:"inherit"}} onClick={ev=>{ev.stopPropagation();setExpandedId(null);}}>
-                            ×
                           </button>
                         )}
                       </div>
@@ -3752,19 +3779,6 @@ export function ApprovalsView(){
               </div>
               {(item.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={item} t={t} users={users} alwaysInline/></div>}
               <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(item.approvals||{},aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {canActOnRow&&isExpanded&&(
-                <div onClick={ev=>ev.stopPropagation()}>
-                  <label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label>
-                  <textarea className="inp" rows={2} placeholder="" value={aNote[itemId]||""} onChange={ev=>setANote(p=>({...p,[itemId]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
-                  <div style={{fontSize:10,color:(aNote[itemId]||"").trim().length<10?"#DC2626":"#6B7B72",textAlign:"right",marginTop:2}}>
-                    {(aNote[itemId]||"").trim().length}/10 mín.
-                  </div>
-                  <div style={{display:"flex",gap:6}}>
-                    <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"approved");setExpandedId(null);}}>{t("action.approve")}</button>
-                    <button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"rejected");setExpandedId(null);}}>{t("action.reject")}</button>
-                  </div>
-                </div>
-              )}
               {st === 'rejected' && item.rejectionNote && (
                 <div style={{
                   marginTop: 8, padding: '8px 10px',
@@ -3975,7 +3989,8 @@ export function ReportsView(){
     }
     return months;
   }, [expenses]);
-  const maxVal = Math.max(...monthlyData.map(m => m.total), 1);
+  const chartData = monthlyData.filter(m => m.total > 0);
+  const maxVal = Math.max(...chartData.map(m => m.total), 1);
   const exportCSV=(includeIva=true)=>{
     const ivaM=includeIva ? (ivaFilter==="with" ? "with_iva" : "both") : "without_iva";
     const data=statusFilter;
@@ -4137,28 +4152,34 @@ export function ReportsView(){
           <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:10,height:10,background:"#3C0A37",display:"inline-block",borderRadius:2}}/>Gastos</span>
           <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:10,height:10,background:"#C4622D",display:"inline-block",borderRadius:2}}/>Facturas</span>
         </div>
-        <svg width="100%" viewBox={`0 0 ${monthlyData.length * 48} 200`}
-          style={{overflow:"visible", display:"block"}}
-          xmlns="http://www.w3.org/2000/svg">
-          <line x1="0" y1="170" x2="100%" y2="170"
-            stroke="#E5E0D8" strokeWidth="1"/>
-          {monthlyData.map((m,idx)=>{
-            const groupX=idx*48;
-            const gastosH = m.gastos > 0 ? Math.max(3, (m.gastos / maxVal) * 160) : 0;
-            const facturasH = m.facturas > 0 ? Math.max(3, (m.facturas / maxVal) * 160) : 0;
-            return(
-              <g key={m.ym}>
-                <rect x={groupX+12} y={170 - gastosH} width="10" height={gastosH} fill="#3C0A37" rx="2">
-                  <title>{`${m.label} · Gastos: ${fmt(m.gastos)}`}</title>
-                </rect>
-                <rect x={groupX+26} y={170 - facturasH} width="10" height={facturasH} fill="#C4622D" rx="2">
-                  <title>{`${m.label} · Facturas: ${fmt(m.facturas)}`}</title>
-                </rect>
-                <text x={groupX+24} y="185" textAnchor="middle" fontSize="9" fill="#9CAA9F">{m.label}</text>
-              </g>
-            );
-          })}
-        </svg>
+        {chartData.length===0?(
+          <div style={{padding:"24px",textAlign:"center",color:"#9CAA9F",fontSize:13}}>
+            Sin actividad en los últimos 12 meses
+          </div>
+        ):(
+          <svg width="100%" viewBox={`0 0 ${Math.max(chartData.length, 1) * 48} 200`}
+            style={{overflow:"visible", display:"block"}}
+            xmlns="http://www.w3.org/2000/svg">
+            <line x1="0" y1="170" x2="100%" y2="170"
+              stroke="#E5E0D8" strokeWidth="1"/>
+            {chartData.map((m,idx)=>{
+              const groupX=idx*48;
+              const gastosH = m.gastos > 0 ? Math.max(3, (m.gastos / maxVal) * 160) : 0;
+              const facturasH = m.facturas > 0 ? Math.max(3, (m.facturas / maxVal) * 160) : 0;
+              return(
+                <g key={m.ym}>
+                  <rect x={groupX+12} y={170 - gastosH} width="10" height={gastosH} fill="#3C0A37" rx="2">
+                    <title>{`${m.label} · Gastos: ${fmt(m.gastos)}`}</title>
+                  </rect>
+                  <rect x={groupX+26} y={170 - facturasH} width="10" height={facturasH} fill="#C4622D" rx="2">
+                    <title>{`${m.label} · Facturas: ${fmt(m.facturas)}`}</title>
+                  </rect>
+                  <text x={groupX+24} y="185" textAnchor="middle" fontSize="9" fill="#9CAA9F">{m.label}</text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
       </div>
       {/* By category */}
       <div className="card" style={{marginBottom:11}}>
@@ -4342,7 +4363,7 @@ function AdminReadme(){
           <div style={S.heading}>ADJUNTOS (RECIBOS)</div>
           <div style={S.body}>
             Los recibos se almacenan como <b>Base64 inline</b> en <span style={S.code}>localStorage</span> (clave <span style={S.code}>sol-exp</span>).<br/>
-            Tipos permitidos: JPEG, PNG, WEBP, PDF · Tamaño máximo: 4 MB por archivo.<br/>
+            Se admite cualquier tipo de archivo. Tamaño máximo: 20 MB.<br/>
             El campo <span style={S.code}>receiptType</span> indica el MIME type; <span style={S.code}>receipt</span> contiene el Base64.<br/>
             Los adjuntos eliminados registran un evento <span style={S.code}>attachment_removed</span> en el auditTrail del ítem.
           </div>
@@ -5816,10 +5837,11 @@ export default function App(){
   const [dateFrom,setDateFrom]=useSessionState("sol-flt-from","");   // YYYY-MM-DD or ""
   const [dateTo,  setDateTo]  =useSessionState("sol-flt-to","");   // YYYY-MM-DD or ""
   const [expKindFlt,setExpKindFlt]=useSessionState("sol-flt-kind","all");
+  const [recurringFlt,setRecurringFlt]=useSessionState("sol-flt-recurring","all");
   const myExpFilterClearedRef=useRef(false);
   const resetExpenseFiltersToDefault=useCallback(()=>{
     try{
-      ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind"].forEach(k=>sessionStorage.removeItem(k));
+      ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
     }catch(e){}
     setExpFlt("all");
     setCatFlt("");
@@ -5828,7 +5850,8 @@ export default function App(){
     setDateTo("");
     setExpSrc("");
     setExpKindFlt("all");
-  },[setExpFlt,setCatFlt,setSubmFlt,setDateFrom,setDateTo,setExpSrc,setExpKindFlt]);
+    setRecurringFlt("all");
+  },[setExpFlt,setCatFlt,setSubmFlt,setDateFrom,setDateTo,setExpSrc,setExpKindFlt,setRecurringFlt]);
 
   const [form,    setForm]    =useState(()=>{
     const base={
@@ -6433,7 +6456,7 @@ export default function App(){
             }catch(e2){
               if(isOfflineQueuedError(e2)){
                 saveExp([exp,...expenses]);
-                try{localStorage.removeItem("sol-exp-draft");}catch(e){}
+                try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
                 resetForm();setPanel("detail");setDetailId(exp.id);
                 try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
                 appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
@@ -6448,7 +6471,7 @@ export default function App(){
               const full=await API.get("/expenses");
             }catch(e){}
           }
-          try{localStorage.removeItem("sol-exp-draft");}catch(e){}
+          try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
           resetForm();setPanel("detail");setDetailId(exp.id);
           try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
           appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
@@ -6491,7 +6514,7 @@ export default function App(){
               ...recExtras,
             },"expense");
             saveExp([optimistic,...expenses]);
-            try{localStorage.removeItem("sol-exp-draft");}catch(e){}
+            try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
             resetForm();setPanel("detail");setDetailId(clientRef);
             try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
             appLog("info","expense_submitted",{itemCode:optimistic.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt,pendingSync:true});
@@ -6518,7 +6541,7 @@ export default function App(){
       ...recExtras,
     };
     appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
-    try{localStorage.removeItem("sol-exp-draft");}catch(e){}
+    try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
     saveExp([exp,...expenses]);resetForm();setPanel("detail");setDetailId(exp.id);
     try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
   };
@@ -6534,7 +6557,7 @@ export default function App(){
     receiptAltHandlerRef.current=null;
     setForm({...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId});
     setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
-    try{localStorage.removeItem("sol-exp-draft");}catch(e){}
+    try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
     try{sessionStorage.removeItem(DRAFT_KEY);}catch(e){}
   },[user?.id,defaultDeptId,departments]);
   const openNew  =()=>{
@@ -6883,7 +6906,7 @@ export default function App(){
     approved:expVisible.filter(e=>getItemStatus(e,cats,users)==="approved"),
     rejected:expVisible.filter(e=>getItemStatus(e,cats,users)==="rejected"),
   };
-  const filtered=(byStatus[expFlt]||expVisible).filter(e=>{
+  const filteredBase=(byStatus[expFlt]||expVisible).filter(e=>{
     const src=expSrc.toLowerCase().trim();
     if(src){
       const matchDesc=e.description.toLowerCase().includes(src);
@@ -6899,8 +6922,21 @@ export default function App(){
     if(expKindFlt==="expense"&&e.expenseType==="invoice")return false;
     return true;
   });
+  let recurringFiltered = filteredBase;
+  if (recurringFlt === "recurring") {
+    recurringFiltered = filteredBase.filter(e => expenseIsRecurringNonOnce(e));
+  } else if (recurringFlt === "recurring_pending") {
+    recurringFiltered = filteredBase.filter(e =>
+      expenseIsRecurringNonOnce(e) && e.status !== "approved"
+    );
+  } else if (recurringFlt === "recurring_paid") {
+    recurringFiltered = filteredBase.filter(e =>
+      expenseIsRecurringNonOnce(e) && e.status === "approved"
+    );
+  }
+  const filtered=recurringFiltered;
   const dateFilterActive = dateFrom !== "" || dateTo !== "";
-  const activeFilterCount = [catFlt, submFlt, dateFilterActive?"range":"", expKindFlt!=="all"?"kind":""]
+  const activeFilterCount = [catFlt, submFlt, dateFilterActive?"range":"", expKindFlt!=="all"?"kind":"", recurringFlt!=="all"?"recurring":""]
     .filter(Boolean).length;
   const isApprover = isAdmin || cats.some(c=>{
     if(c.archived)return false;
@@ -6986,6 +7022,7 @@ export default function App(){
     totApproved,totFixed,perPerson,
     expFlt,setExpFlt,expSrc,setExpSrc,activeFilterCount,
     expKindFlt,setExpKindFlt,
+    recurringFlt,setRecurringFlt,
     catFlt,setCatFlt,submFlt,setSubmFlt,dateFrom,setDateFrom,dateTo,setDateTo,
     clearMyExpenseFilter,
     importRef,

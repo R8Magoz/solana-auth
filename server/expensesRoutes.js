@@ -936,7 +936,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   });
 
   router.post('/:id/approve', requireAuth, (req, res) => {
-    const exp = getExpenseById(req.params.id);
+    let exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
     const now = Date.now();
@@ -968,8 +968,18 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       return res.json({ ok: true, expense: updated });
     }
 
-    if (exp.status !== 'submitted') {
-      return res.status(400).json({ error: 'El gasto no está pendiente de aprobación.' });
+    const canApprove = exp.status === 'submitted' ||
+      (exp.status === 'rejected' && isAdminRole(req.userRole));
+    if (!canApprove) {
+      return res.status(400).json({ error: 'No se puede aprobar en este estado.' });
+    }
+    if (exp.status === 'rejected') {
+      // reopen first
+      db.prepare(
+        "UPDATE expenses SET status='submitted', rejectedBy=NULL, rejectedAt=NULL, rejectionNote=NULL, updatedAt=? WHERE id=?"
+      ).run(Date.now(), exp.id);
+      // reload
+      exp = getExpenseById(exp.id);
     }
     if (!userIdInRawApproverList(approversRaw, adminId, userStore)) {
       return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
@@ -1150,8 +1160,11 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     };
     const type = MIME_MAP[ext] || 'application/octet-stream';
     res.setHeader('Content-Type', type);
+    const expCode = exp.itemCode || exp.id;
+    const dateStr = new Date().toISOString().slice(0, 10);
     const fname = path.basename(abs);
-    res.setHeader('Content-Disposition', `inline; filename="${fname}"`);
+    const safeFilename = `${expCode}_${dateStr}_${fname}`;
+    res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
     res.sendFile(path.resolve(abs));
   });
 
