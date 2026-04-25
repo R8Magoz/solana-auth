@@ -1,3 +1,4 @@
+// Build-step module consumed by client/src/App.jsx; keep synchronized with frontend/index.html, which is the canonical source of truth.
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Ctx, useApp } from './context/AppContext.jsx';
 import { useSessionState } from './hooks/useSessionState.js';
