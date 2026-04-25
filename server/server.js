@@ -216,23 +216,37 @@ const accessDeniedHtml = (name) => emailBase(`
 
 // ── FORGOT-PASSWORD EMAIL TEMPLATES ──────────────────────────────────────────
 
-const passwordResetEmailHtml = (tempPassword) => emailBase(`
-  <p style="font-size:15px;font-weight:600;margin-bottom:8px">Restablecimiento de contraseña — Solana</p>
-  <p style="font-size:13px;line-height:1.6;color:#4B5E52;margin-bottom:16px">
-    Has solicitado un restablecimiento de contraseña. A continuación encontrarás una contraseña temporal
-    que puedes usar para acceder y cambiarla desde Ajustes.
-  </p>
-  <div style="background:#F5F0EA;border-radius:8px;padding:14px 18px;margin-bottom:20px;text-align:center">
-    <div style="font-size:10px;color:#9CAA9F;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px">Contraseña temporal</div>
-    <code style="font-size:22px;font-weight:700;color:#3C0A37;letter-spacing:0.12em">${tempPassword}</code>
+const passwordResetEmailHtml = (tempPassword) => {
+  const emailHtml = `
+  <div style="font-family:system-ui,sans-serif;max-width:480px;margin:40px auto;color:#1a1a1a;">
+    <p style="font-size:13px;font-weight:700;letter-spacing:0.08em;color:#9CAA9F;margin:0 0 24px;">
+      SOLANA · GESTIÓN DE GASTOS
+    </p>
+    <h2 style="font-size:20px;font-weight:700;margin:0 0 12px;">
+      Restablecimiento de contraseña
+    </h2>
+    <p style="font-size:14px;color:#4B5E52;margin:0 0 24px;">
+      Tu contraseña temporal es:
+    </p>
+    <div style="background:#F5F0EA;border-radius:8px;padding:20px;text-align:center;margin:0 0 24px;">
+      <code style="font-size:22px;font-weight:700;letter-spacing:0.12em;color:#3C0A37;">
+        ${tempPassword}
+      </code>
+    </div>
+    <p style="font-size:12px;color:#9CAA9F;margin:0 0 28px;">
+      Caduca en 24 horas.
+    </p>
+    <a href="${APP_URL}" style="display:inline-block;background:#3C0A37;color:#fff;
+      text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;">
+      Entrar en Solana →
+    </a>
+    <p style="font-size:11px;color:#C4B8C0;margin:32px 0 0;">
+      Solana · Barcelona · ${new Date().getFullYear()}
+    </p>
   </div>
-  <p style="font-size:12px;color:#4B5E52;margin-bottom:8px">
-    Una vez que accedas, ve a <strong>Ajustes → Contraseña</strong> para establecer una nueva contraseña permanente.
-  </p>
-  <p style="font-size:11px;color:#9CAA9F">Esta contraseña temporal caduca en 24 horas. Si no solicitaste esto, ignora este mensaje.</p>
-  <a href="${APP_URL}" style="display:inline-block;margin-top:16px;background:#3C0A37;color:#fff;text-decoration:none;padding:10px 22px;border-radius:7px;font-size:13px;font-weight:600">
-    Entrar en Solana →
-  </a>`);
+  `;
+  return emailHtml;
+};
 
 const passwordAssistanceNotificationHtml = (requestingEmail) => emailBase(`
   <p style="font-size:15px;font-weight:600;margin-bottom:8px">Solicitud de asistencia de contraseña</p>

@@ -13,7 +13,11 @@ function mimeToExt(mime) {
   if (m === 'image/tiff' || m === 'image/tif' || m === 'image/x-tiff') return 'tiff';
   if (m === 'image/heic' || m === 'image/heif') return 'heic';
   if (m === 'application/pdf') return 'pdf';
-  return null;
+  if (m === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx';
+  if (m === 'application/vnd.ms-excel') return 'xls';
+  if (m === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  if (m === 'text/csv') return 'csv';
+  return 'bin';
 }
 
 function cloudinaryEnvOk() {
@@ -117,13 +121,8 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
     err.statusCode = 413;
     throw err;
   }
-  const mime = String(mediaType || 'image/jpeg').trim().toLowerCase().slice(0, 128);
+  const mime = String(mediaType || 'application/octet-stream').trim().toLowerCase().slice(0, 128);
   const ext = mimeToExt(mime);
-  if (!ext) {
-    const err = new Error(`Tipo no soportado: ${mime}`);
-    err.statusCode = 400;
-    throw err;
-  }
   let buf;
   try {
     buf = Buffer.from(b64, 'base64');

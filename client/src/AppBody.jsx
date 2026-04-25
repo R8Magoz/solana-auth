@@ -323,6 +323,9 @@ const effectiveExpenseApproverIds=(e,cats,users)=>{
   return finalizeApproverIdList(canon,u);
 };
 const getItemStatus=(item,cats,users)=>{
+  if (item && item._apiType === 'expense' && item.status === 'rejected') return 'rejected';
+  if (item && item._apiType === 'expense' && item.status === 'approved') return 'approved';
+  if (item && item._apiType === 'expense' && item.status === 'deleted') return 'deleted';
   if(item&&item._apiType==="expense"&&item.status){
     const s=item.status;
     if(s==="deleted")return"deleted";
@@ -678,13 +681,14 @@ function daysUntilISO(iso){
   d.setHours(0,0,0,0);
   return Math.ceil((d-t)/86400000);
 }
-const ST={
-  approved:{bg:"#D1FAE5",color:"#065F46"},
-  rejected:{bg:"#F5E8F4",color:"#5C1057"},
-  pending: {bg:"#FEF3C7",color:"#78350F"},
-  paid: {bg:"#D1FAE5",color:"#065F46"},
-  overdue: {bg:"#FEE2E2",color:"#991B1B"},
-  cancelled: {bg:"#F5E8F4",color:"#5C1057"},
+const ST = {
+  approved: { bg: '#D1FAE5', color: '#065F46' },
+  rejected: { bg: '#FEE2E2', color: '#991B1B' },
+  pending:  { bg: '#FEF3C7', color: '#78350F' },
+  submitted:{ bg: '#FEF3C7', color: '#78350F' },
+  paid:     { bg: '#D1FAE5', color: '#065F46' },
+  overdue:  { bg: '#FEE2E2', color: '#991B1B' },
+  cancelled:{ bg: '#FEE2E2', color: '#991B1B' },
 };
 /** Invoice payment badge (list + detail): paid / overdue / unpaid or absent */
 function invoicePaymentBadgeStyle(ps){
@@ -742,7 +746,7 @@ const COMMON_PASSWORDS  = new Set([
 ]);
 
 /** Browser `accept` + extension fallback for HEIC etc. when `file.type` is empty */
-const RECEIPT_FILE_ACCEPT="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif,image/tiff,image/tif,application/pdf,.heic,.heif,.gif,.tif,.tiff";
+const RECEIPT_FILE_ACCEPT="*/*";
 
 const RECEIPT_EXT_TO_MIME={
   ".jpg":"image/jpeg",".jpeg":"image/jpeg",".jpe":"image/jpeg",
@@ -1094,13 +1098,6 @@ const REAPPROVAL_FIELDS = ["amount","description","category","date","paidBy","sp
 /* ── ATTACHMENT VIEWER ─────────────────────────────────────────────────────────
    Receipt preview: inline image/PDF, server fetch via apiExpenseId + Bearer, empty state.
 ─────────────────────────────────────────────────────────────────────────────── */
-function receiptMimeOkForServerUpload(mediaType){
-  const m=String(mediaType||"").toLowerCase();
-  if(m.includes("pdf"))return false;
-  return m.includes("jpeg")||m.includes("jpg")||m.includes("png")||m.includes("webp")
-    ||m.includes("heic")||m.includes("heif")||m.includes("gif")||m.includes("tiff")||m.includes("tif");
-}
-
 function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, label, onRemove, t}){
   const [blobUrl,setBlobUrl]=useState(null);
   const [blobMime,setBlobMime]=useState(null);
@@ -3679,12 +3676,19 @@ export function ApprovalsView(){
           const rowDate=isInv?(item.dueDate||item.date):item.date;
           const rowTitle=isInv?(String(item.vendor||item.proveedor||"").trim()||item.description):item.description;
           const st=getItemStatus(item,cats,users);
+          const cardBg =
+            st === 'approved' ? '#F0FDF4' :
+            st === 'rejected' ? '#FFF1F2' :
+            '#FFFBEB';
+          const cardBorder = priorityForItem(item) === 0
+            ? '1.5px solid #D4AED0'
+            : '1px solid transparent';
           const canActOnRow=isAdmin||rowApproverIds.includes(user.id);
           const isExpanded=itemId===expandedId;
           const payBadge=isInv&&st==="approved"?invoicePaymentBadgeStyle(item.paymentStatus):null;
           const deemph=st==="rejected"||st==="deleted";
           return(
-            <div key={item.id} className="card row-hover" style={{marginBottom:9,background:st==="pending"?"#FFFBEB":st==="approved"?"#F0FDF4":st==="rejected"?"#FFF1F2":"#fff",opacity:deemph?0.55:1,border:priorityForItem(item)===0?"1px solid #D4AED0":"none"}}>
+            <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:deemph?0.55:1,border:cardBorder}}>
               <div
                 style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7,cursor:canActOnRow?"pointer":"default"}}
                 onClick={canActOnRow?()=>setExpandedId(prev=>prev===itemId?null:itemId):undefined}
@@ -3735,7 +3739,7 @@ export function ApprovalsView(){
                           {t("status."+st)}
                         </span>
                         {payBadge&&<span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,display:"inline-block",background:payBadge.bg,color:payBadge.color}}>{payBadge.text}</span>}
-                        {!isExpanded&&canActOnRow&&(
+                        {st !== 'rejected' && !isExpanded&&canActOnRow&&(
                           <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px"}} onClick={ev=>{ev.stopPropagation();setExpandedId(itemId);}}>
                             Revisar
                           </button>
@@ -3763,6 +3767,15 @@ export function ApprovalsView(){
                     <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"approved");setExpandedId(null);}}>{t("action.approve")}</button>
                     <button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"rejected");setExpandedId(null);}}>{t("action.reject")}</button>
                   </div>
+                </div>
+              )}
+              {st === 'rejected' && item.rejectionNote && (
+                <div style={{
+                  marginTop: 8, padding: '8px 10px',
+                  background: '#FEE2E2', borderRadius: 8,
+                  fontSize: 11, color: '#991B1B'
+                }}>
+                  <strong>Motivo del rechazo:</strong> {item.rejectionNote}
                 </div>
               )}
             </div>
@@ -3872,8 +3885,8 @@ function reportsApiDateRange(dateRange){
 /* ── REPORTS VIEW ──────────────────────────────────────────────────────────── */
 export function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel}=useApp();
-  const [expFilter,setExpFilter]=useState("all");
-  const [ivaMode,setIvaMode]=useState("both");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [ivaFilter, setIvaFilter] = useState("both");
   const [dateRange,setDateRange]=useState("thisMonth");
   const [trendRows,setTrendRows]=useState(null);
   const [trendLoad,setTrendLoad]=useState(false);
@@ -3920,17 +3933,19 @@ export function ReportsView(){
     })();
     return()=>{cancelled=true;};
   },[AUTH_URL,t]);
-  const filteredExpenses = expFilter === "all"
-    ? rangeFilteredExpenses.filter(e => getItemStatus(e, cats, users) !== "deleted")
-    : rangeFilteredExpenses.filter(e => getItemStatus(e, cats, users) === expFilter);
-  const filterLabel = expFilter==="all" ? ""
-    : expFilter==="approved" ? ` — ${t("reports.approvedOnly")}`
+  const displayExpenses = rangeFilteredExpenses.filter(e => {
+    if (statusFilter === "approved") return e.status === "approved";
+    if (statusFilter === "pending") return e.status !== "approved" && e.status !== "rejected" && e.status !== "deleted";
+    return true;
+  });
+  const filterLabel = statusFilter==="all" ? ""
+    : statusFilter==="approved" ? ` — ${t("reports.approvedOnly")}`
     : ` — ${t("reports.pendingOnly")}`;
   const [openPersonLog,setOpenPersonLog]=useState({});
   const personInvestmentRows=useMemo(()=>users.map(u=>{
-    const filteredTotal=filteredExpenses.reduce((s,e)=>s+shareEurInExpense(e,u.id),0);
-    const submittedCount=rangeFilteredExpenses.filter(e=>e.submittedBy===u.id&&getItemStatus(e,cats,users)!=="deleted").length;
-    const logItems=filteredExpenses.filter(e=>{
+    const filteredTotal=displayExpenses.reduce((s,e)=>s+shareEurInExpense(e,u.id),0);
+    const submittedCount=displayExpenses.filter(e=>e.submittedBy===u.id&&getItemStatus(e,cats,users)!=="deleted").length;
+    const logItems=displayExpenses.filter(e=>{
       const st=getItemStatus(e,cats,users);
       if(st==="deleted"||st==="rejected")return false;
       if(st!=="approved"&&st!=="pending")return false;
@@ -3940,33 +3955,38 @@ export function ReportsView(){
     }).map(e=>({...e,__kind:e.expenseType==="invoice"?"invoice":"expense",__sortDate:(e.expenseType==="invoice"?(e.dueDate||e.date):e.date)||""}))
       .sort((a,b)=>String(b.__sortDate||"").localeCompare(String(a.__sortDate||"")));
     return{...u,filteredTotal,submittedCount,logItems};
-  }).sort((a,b)=>b.filteredTotal-a.filteredTotal),[users,rangeFilteredExpenses,cats,filteredExpenses]);
+  }).sort((a,b)=>b.filteredTotal-a.filteredTotal),[users,displayExpenses,cats]);
   const catTotals=cats.filter(c=>!c.archived).map(c=>({
     cat:c.name,
-    total:rangeFilteredExpenses.filter(e=>e.category===c.name&&expenseCountsTowardDeptSpend(e,cats,users)).reduce((s,e)=>s+eurForExpense(e),0),
+    total:displayExpenses.filter(e=>e.category===c.name&&expenseCountsTowardDeptSpend(e,cats,users)).reduce((s,e)=>s+eurForExpense(e),0),
   })).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const maxC=catTotals[0]?.total||1;
-  const monthlyTrend=(()=>{
-    const now=new Date();
-    const months=[];
-    for(let i=5;i>=0;i--){
-      const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-      const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-      const label=d.toLocaleString("es-ES",{month:"short"});
-      const total=filteredExpenses
-        .filter(e=>e.date?.slice(0,7)===ym)
-        .reduce((s,e)=>s+eurForExpense(e),0);
-      months.push({ym,label,total});
+  const monthlyData = React.useMemo(()=>{
+    const months = [];
+    const now = new Date();
+    for(let i=11; i>=0; i--){
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const ym = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+      const label = d.toLocaleDateString("es-ES",{month:"short",year:"2-digit"});
+      const rows = (expenses||[]).filter(e =>
+        e.status !== "deleted" &&
+        e.date &&
+        e.date.startsWith(ym)
+      );
+      const gastos = rows.filter(e=>e.expenseType!=="invoice").reduce((s,e)=>s+(Number(e.amount)||0),0);
+      const facturas = rows.filter(e=>e.expenseType==="invoice").reduce((s,e)=>s+(Number(e.amount)||0),0);
+      months.push({ym, label, gastos, facturas, total:gastos+facturas});
     }
     return months;
-  })();
-  const maxMonth=Math.max(...monthlyTrend.map(m=>m.total),1);
-  const hasTrendData=monthlyTrend.some(m=>m.total>0);
-  const trendBarTrackPx=76;
-  const exportCSV=(all,modeIn)=>{
-    const ivaM=modeIn||ivaMode;
-    const data=all?"all":expFilter;
-    const src=data==="all"?rangeFilteredExpenses:(rangeFilteredExpenses.filter(e=>getItemStatus(e,cats,users)===data));
+  }, [expenses]);
+  const maxMonthlyTotal=Math.max(...monthlyData.map(m=>m.total),1);
+  const monthlyChartHeight=200;
+  const monthlyChartBaseY=160;
+  const monthlyMaxBarHeight=120;
+  const exportCSV=(includeIva=true)=>{
+    const ivaM=includeIva ? (ivaFilter==="with" ? "with_iva" : "both") : "without_iva";
+    const data=statusFilter;
+    const src=displayExpenses;
     const now=new Date().toISOString();
     const exportedUser=user;
     if(!AUTH_URL){
@@ -4066,34 +4086,30 @@ export function ReportsView(){
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:6}}>
         <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G}}>{t("reports.title")}</h1>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}} value={expFilter} onChange={e=>setExpFilter(e.target.value)}>
-            <option value="all">{t("reports.allData")}</option>
-            <option value="approved">{t("reports.approvedOnly")}</option>
-            <option value="pending">{t("reports.pendingOnly")}</option>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
+            value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+            <option value="all">Mostrar: Todos</option>
+            <option value="approved">Solo aprobados</option>
+            <option value="pending">Solo pendientes</option>
           </select>
-          <div style={{display:"flex",alignItems:"center",gap:4,border:"1px solid #E5E0D8",borderRadius:8,overflow:"hidden"}}>
-            <button type="button" className="btn-secondary"
-              style={{borderRadius:0,fontSize:11,padding:"5px 8px",
-                background:ivaMode==="with_iva"?"#3C0A37":"transparent",
-                color:ivaMode==="with_iva"?"#fff":undefined,border:"none"}}
-              onClick={()=>setIvaMode("with_iva")}>Con IVA</button>
-            <button type="button" className="btn-secondary"
-              style={{borderRadius:0,fontSize:11,padding:"5px 8px",
-                borderLeft:"1px solid #E5E0D8",borderRight:"1px solid #E5E0D8",
-                background:ivaMode==="without_iva"?"#3C0A37":"transparent",
-                color:ivaMode==="without_iva"?"#fff":undefined,border:"none"}}
-              onClick={()=>setIvaMode("without_iva")}>Sin IVA</button>
-            <button type="button" className="btn-secondary"
-              style={{borderRadius:0,fontSize:11,padding:"5px 8px",
-                background:ivaMode==="both"?"#3C0A37":"transparent",
-                color:ivaMode==="both"?"#fff":undefined,border:"none"}}
-              onClick={()=>setIvaMode("both")}>Con y sin IVA</button>
-          </div>
-          <button type="button" className="btn-secondary"
-            style={{fontSize:11,padding:"5px 10px"}}
-            onClick={()=>exportCSV(expFilter==="all",ivaMode)}>{t("action.exportCSV")}</button>
-          {AUTH_URL&&<button type="button" className="btn-secondary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void downloadPdf()}>{t("action.downloadPdf")}</button>}
+          <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
+            value={ivaFilter} onChange={e=>setIvaFilter(e.target.value)}>
+            <option value="both">IVA: Con y sin IVA</option>
+            <option value="with">Con IVA</option>
+            <option value="without">Sin IVA</option>
+          </select>
+          <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
+            value="" onChange={e=>{
+              const v = e.target.value;
+              if (v === "csv") exportCSV(ivaFilter !== "without");
+              if (v === "pdf") void downloadPdf();
+              e.target.value = "";
+            }}>
+            <option value="">Exportar…</option>
+            <option value="csv">Exportar CSV</option>
+            {AUTH_URL && <option value="pdf">Exportar PDF</option>}
+          </select>
         </div>
       </div>
       <div className="card" style={{marginBottom:11,padding:"10px 12px"}}>
@@ -4122,38 +4138,38 @@ export function ReportsView(){
         {!trendLoad&&!trendErr&&!sparklinePts&&<div style={{fontSize:11,color:"#9CAA9F"}}>—</div>}
       </div>
       )}
-      {hasTrendData&&(
       <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:12}}>{t("reports.monthlyTrend")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
-        <div style={{display:"flex",alignItems:"flex-end",gap:6,minHeight:120}}>
-          {monthlyTrend.map(m=>{
-            const barH=Math.max(4,Math.round((m.total/maxMonth)*trendBarTrackPx));
+        <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:10}}>Actividad mensual (12 meses)</div>
+        <div style={{display:"flex",alignItems:"center",gap:12,fontSize:11,color:"#4B5E52",marginBottom:8}}>
+          <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:10,height:10,background:"#3C0A37",display:"inline-block",borderRadius:2}}/>Gastos</span>
+          <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:10,height:10,background:"#C4622D",display:"inline-block",borderRadius:2}}/>Facturas</span>
+        </div>
+        <svg width="100%" height="200" viewBox={`0 0 ${monthlyData.length*34+24} 200`} preserveAspectRatio="xMinYMin meet" aria-label="Actividad mensual">
+          <line x1="12" y1={monthlyChartBaseY} x2={monthlyData.length*34+12} y2={monthlyChartBaseY} stroke="#E5E0D8" strokeWidth="1"/>
+          {monthlyData.map((m,idx)=>{
+            const groupX=12+idx*34;
+            const hG=Math.max(m.gastos>0?2:0,(m.gastos/maxMonthlyTotal)*monthlyMaxBarHeight);
+            const hF=Math.max(m.facturas>0?2:0,(m.facturas/maxMonthlyTotal)*monthlyMaxBarHeight);
+            const yG=monthlyChartBaseY-hG;
+            const yF=monthlyChartBaseY-hF;
             return(
-            <div key={m.ym} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:0}}>
-              <div style={{fontSize:9,fontWeight:600,color:G,fontVariantNumeric:"tabular-nums",textAlign:"center",lineHeight:1.2,minHeight:22}}>
-                {m.total>0?fmt(m.total):fmt(0)}
-              </div>
-              <div style={{
-                width:"100%",maxWidth:40,height:trendBarTrackPx,display:"flex",flexDirection:"column",justifyContent:"flex-end",alignItems:"center",
-              }}>
-                <div style={{
-                  width:"100%",
-                  height:barH,
-                  background:T,borderRadius:"4px 4px 0 0",
-                  transition:"height 0.4s",
-                }}/>
-              </div>
-              <div style={{fontSize:9,color:"#9CAA9F",textTransform:"capitalize"}}>{m.label}</div>
-            </div>
+              <g key={m.ym}>
+                <rect x={groupX} y={yG} width="12" height={hG} fill="#3C0A37" rx="2">
+                  <title>{`${m.label} · Gastos: ${fmt(m.gastos)}`}</title>
+                </rect>
+                <rect x={groupX+14} y={yF} width="12" height={hF} fill="#C4622D" rx="2">
+                  <title>{`${m.label} · Facturas: ${fmt(m.facturas)}`}</title>
+                </rect>
+                <text x={groupX+13} y="178" textAnchor="middle" fontSize="9" fill="#9CAA9F">{m.label}</text>
+              </g>
             );
           })}
-        </div>
+        </svg>
       </div>
-      )}
       {/* By category */}
       <div className="card" style={{marginBottom:11}}>
         <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:12}}>{t("reports.calendar")}</div>
-        <PaymentCalendar reportExpenses={rangeFilteredExpenses}/>
+        <PaymentCalendar reportExpenses={displayExpenses}/>
       </div>
       <div style={{borderTop:"1px solid #F0EBE3",margin:"2px 0 12px"}}/>
       {/* By category */}
@@ -4181,7 +4197,7 @@ export function ReportsView(){
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontWeight:800,fontSize:14,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(u.filteredTotal)}</div>
-                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{expFilter==="pending" ? t("status.pending") : t("filter.approved")}</div>
+                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{statusFilter==="pending" ? t("status.pending") : t("filter.approved")}</div>
                   </div>
                   <span style={{fontSize:14,color:"#9CAA9F",flexShrink:0,width:18}}>{open?"▼":"▶"}</span>
                 </button>
@@ -4218,7 +4234,7 @@ export function ReportsView(){
           })}
         </div>
         {(() => {
-          const filteredTotal=filteredExpenses.reduce((s,e)=>s+eurForExpense(e),0);
+          const filteredTotal=displayExpenses.reduce((s,e)=>s+eurForExpense(e),0);
           return(
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14,paddingTop:12,borderTop:"2px solid #EDE8E0"}}>
           <span style={{fontWeight:700,fontSize:12}}>{t("reports.total")}</span>

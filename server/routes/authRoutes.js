@@ -399,7 +399,7 @@ function createAuthRouter(deps) {
 
       const emailResult = await sendEmail({
         to: ADMIN_EMAIL,
-        subject: '[Solana] Contraseña temporal — restablecimiento solicitado',
+        subject: 'Tu contraseña temporal — Solana',
         html: passwordResetEmailHtml(tempPassword),
         logEvent: 'password_reset_email_sent',
         logData: { to: ADMIN_EMAIL },
