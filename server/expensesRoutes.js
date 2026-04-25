@@ -342,6 +342,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
   router.post('/', async (req, res) => {
     try {
+    console.log('[POST /expenses] body:', JSON.stringify(req.body, null, 2));
     let ownerId = req.userId;
     if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'ownerId')) {
       const ownerRaw = String(req.body.ownerId || '').trim().slice(0, 128);
@@ -564,8 +565,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
     res.json({ ok: true, expense });
     } catch (e) {
+      console.error('[POST /expenses] UNHANDLED ERROR:', e && (e.stack || e.message || e));
       console.error('[expenses/create]', e);
-      if (!res.headersSent) res.status(500).json({ error: 'Error al crear el gasto.' });
+      if (!res.headersSent) res.status(500).json({ error: 'Error al crear gasto: ' + (e && e.message ? e.message : String(e)) });
     }
   });
 
