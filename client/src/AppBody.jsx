@@ -1025,8 +1025,7 @@ function readLocalDepartments(){
 }
 const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
   expenseType:"expense",vendor:"",paymentDeferred:false,paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months",proveedor:""};
-const DRAFT_KEY="sol-exp-draft";
-const SESSION_DRAFT_KEY="sol-draft-expense";
+const DRAFT_KEY="sol-session-draft";
 
 /* ══════════════════════════════════════════════════════════════════════════════
    COMPONENTS — all defined OUTSIDE main App to prevent focus loss
@@ -2377,7 +2376,6 @@ function NewPanel(){
   useEffect(()=>{if(expenseValid)setSubmitAttempt(false);},[expenseValid]);
   const hi=submitAttempt&&!expenseValid;
   const rs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
-  const [draftPrompt,setDraftPrompt]=useState(null);
   const draftTimer=useRef(null);
   const ivaScanB64Ref=useRef(null);
   useEffect(()=>{
@@ -2404,11 +2402,18 @@ function NewPanel(){
   },[receipt?.b64,receipt?.type,ivaRates,setForm]);
   useEffect(()=>{
     try{
-      const raw=localStorage.getItem(DRAFT_KEY);
-      if(raw){
-        const d=JSON.parse(raw);
-        if(d&&d.savedAt&&d.form)setDraftPrompt(d);
-      }
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (!d || !d.form) return;
+      const f = d.form;
+      setForm(p => ({
+        ...p, ...f,
+        date: f.date != null ? String(f.date) : p.date,
+        ownerId: f.ownerId || p.ownerId || "",
+        departmentId: f.departmentId || p.departmentId || "",
+        expenseType: f.expenseType || "expense",
+      }));
     }catch(e){}
   },[]);
   useEffect(()=>{
@@ -2417,7 +2422,7 @@ function NewPanel(){
       try{
         const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate===""?"":(form.ivaRate??ivaRateToFormString(readIvaDefault())),departmentId:form.departmentId||"",ownerId:form.ownerId||"",
           expenseType:form.expenseType||"expense",vendor:form.vendor||"",paymentDeferred:!!form.paymentDeferred,paymentTermMode:form.paymentTermMode||"0",paymentTermCustomDays:form.paymentTermCustomDays||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once",cadenceCustomMonths:form.cadenceCustomMonths||"1",cadenceCustomAmount:form.cadenceCustomAmount||"1",cadenceCustomUnit:form.cadenceCustomUnit||"months",proveedor:form.proveedor||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
-        localStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
+        sessionStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
       }catch(e){}
     },500);
     return()=>clearTimeout(draftTimer.current);
@@ -2432,31 +2437,6 @@ function NewPanel(){
         <div style={{fontWeight:700,fontSize:15,color:actionColor,transition:"color 0.2s ease"}}>{isInv?"Nuevo gasto · Factura":t("form.newExpense")}</div>
         <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:21,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{resetForm();setPanel(null);}}>×</button>
       </div>
-      {draftPrompt&&(
-        <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:8,padding:"10px 11px",marginBottom:11,fontSize:11,color:"#92400E",lineHeight:1.45}}>
-          <div style={{marginBottom:8}}>{t("draft.banner").replace("{date}",new Date(draftPrompt.savedAt).toLocaleString())}</div>
-          <div style={{display:"flex",gap:8}}>
-            <button type="button" className="btn-sm" style={{flex:1,fontSize:11,background:actionColor}} onClick={()=>{
-              const f=draftPrompt.form||{};
-              setForm(p=>{
-                const expInv=(f.expenseType==="invoice"||(f[LEGACY_INVOICE_FLAG]===true&&f.expenseType!=="invoice"))?"invoice":(f.expenseType||p.expenseType||"expense");
-                const pm=f.paymentTermMode!=null?String(f.paymentTermMode):"0";
-                const defPayDef=f.paymentDeferred===true||(expInv==="invoice"&&pm!=="0");
-                return{...p,...f,date:f.date!=null?String(f.date):"",ivaRate:f.ivaRate===""||f.ivaRate==="none"?"":(f.ivaRate!=null&&f.ivaRate!==""?String(f.ivaRate):ivaRateToFormString(readIvaDefault())),departmentId:f.departmentId!=null?String(f.departmentId):"",
-                  expenseType:expInv,vendor:f.vendor!=null?String(f.vendor):"",paymentDeferred:defPayDef,paymentTermMode:pm,paymentTermCustomDays:f.paymentTermCustomDays!=null?String(f.paymentTermCustomDays):"30",invoiceDueDateDirect:f.invoiceDueDateDirect!=null?String(f.invoiceDueDateDirect):"",cadenceKey:f.cadenceKey||"once",cadenceCustomMonths:f.cadenceCustomMonths!=null?String(f.cadenceCustomMonths):"1",cadenceCustomAmount:f.cadenceCustomAmount!=null?String(f.cadenceCustomAmount):"1",cadenceCustomUnit:f.cadenceCustomUnit!=null?String(f.cadenceCustomUnit):"months",proveedor:f.proveedor!=null?String(f.proveedor):""};
-              });
-              if(draftPrompt.splitOn&&draftPrompt.splits?.length){
-                let m=draftPrompt.spMode||"equal";
-                if(m==="value")m="amount";
-                if(!["equal","amount"].includes(m))m="equal";
-                setSplitOn(true);setSpMode(m);setSplits(draftPrompt.splits);
-              }
-              setDraftPrompt(null);
-            }}>{t("draft.restore")}</button>
-            <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px",borderColor:actionColor,color:actionColor}} onClick={()=>{try{localStorage.removeItem(DRAFT_KEY);}catch(e){}setDraftPrompt(null);}}>{t("draft.discard")}</button>
-          </div>
-        </div>
-      )}
       <ExpenseFormFields
         t={t}
         form={form}
@@ -5823,7 +5803,7 @@ export default function App(){
       ownerId: users.find(u => u.id === user?.id) ? user.id : (users[0]?.id || ""),
     };
     try{
-      const saved=sessionStorage.getItem(SESSION_DRAFT_KEY);
+      const saved=sessionStorage.getItem(DRAFT_KEY);
       if(!saved)return base;
       const parsed=JSON.parse(saved);
       if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))return{...base,...parsed};
@@ -5905,7 +5885,7 @@ export default function App(){
     resetExpenseFiltersToDefault();
     void API.logout();
     try{sessionStorage.removeItem("sol-session-token");}catch(e){}
-    try{sessionStorage.removeItem(SESSION_DRAFT_KEY);}catch(e){}
+    try{sessionStorage.removeItem(DRAFT_KEY);}catch(e){}
     try{localStorage.removeItem(LAST_ACTIVITY_KEY);}catch(e){}
     API.token=null;
     setIdleTrackingEnabled(false);
@@ -5975,7 +5955,7 @@ export default function App(){
 
   useEffect(()=>{
     try{
-      sessionStorage.setItem(SESSION_DRAFT_KEY,JSON.stringify(form));
+      sessionStorage.setItem(DRAFT_KEY,JSON.stringify(form));
     }catch(e){}
   },[form]);
 
@@ -5984,7 +5964,7 @@ export default function App(){
       dispatchSolanaToast("Sesión expirada, inicia sesión de nuevo","error");
       API.token=null;
       try{sessionStorage.removeItem("sol-session-token");}catch(e){}
-      try{sessionStorage.removeItem(SESSION_DRAFT_KEY);}catch(e){}
+      try{sessionStorage.removeItem(DRAFT_KEY);}catch(e){}
       myExpFilterClearedRef.current=false;
       setUser(null);
       setView("dashboard");
@@ -6421,6 +6401,7 @@ export default function App(){
                 saveExp([exp,...expenses]);
                 try{localStorage.removeItem("sol-exp-draft");}catch(e){}
                 resetForm();setPanel("detail");setDetailId(exp.id);
+                try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
                 appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
                 return;
               }
@@ -6435,6 +6416,7 @@ export default function App(){
           }
           try{localStorage.removeItem("sol-exp-draft");}catch(e){}
           resetForm();setPanel("detail");setDetailId(exp.id);
+          try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
           appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
         }catch(err){
           if(isOfflineQueuedError(err)){
@@ -6477,6 +6459,7 @@ export default function App(){
             saveExp([optimistic,...expenses]);
             try{localStorage.removeItem("sol-exp-draft");}catch(e){}
             resetForm();setPanel("detail");setDetailId(clientRef);
+            try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
             appLog("info","expense_submitted",{itemCode:optimistic.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt,pendingSync:true});
             return;
           }
@@ -6503,6 +6486,7 @@ export default function App(){
     appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
     saveExp([exp,...expenses]);resetForm();setPanel("detail");setDetailId(exp.id);
+    try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
   };
   const removeAttachment=(expId)=>{
     if(AUTH_URL){dispatchSolanaToast("Quitar el recibo no está disponible en modo servidor. Sube uno nuevo al editar el gasto.","error");return;}
@@ -6517,7 +6501,7 @@ export default function App(){
     setForm({...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId});
     setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
-    try{sessionStorage.removeItem(SESSION_DRAFT_KEY);}catch(e){}
+    try{sessionStorage.removeItem(DRAFT_KEY);}catch(e){}
   },[user?.id,defaultDeptId,departments]);
   const openNew  =()=>{
     receiptAltHandlerRef.current=null;
@@ -6525,7 +6509,7 @@ export default function App(){
     const base={...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId};
     let nextForm=base;
     try{
-      const saved=sessionStorage.getItem(SESSION_DRAFT_KEY);
+      const saved=sessionStorage.getItem(DRAFT_KEY);
       if(saved){
         const parsed=JSON.parse(saved);
         if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))nextForm={...base,...parsed};
@@ -6557,7 +6541,7 @@ export default function App(){
     };
     let nextForm=baseInvoiceForm;
     try{
-      const saved=sessionStorage.getItem(SESSION_DRAFT_KEY);
+      const saved=sessionStorage.getItem(DRAFT_KEY);
       if(saved){
         const parsed=JSON.parse(saved);
         if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))nextForm={...baseInvoiceForm,...parsed};

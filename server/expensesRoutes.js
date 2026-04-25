@@ -512,6 +512,26 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const ivaParsed = ivaFromBody(req.body, totalForSplit);
     if (ivaParsed.error) return res.status(400).json({ error: ivaParsed.error });
 
+    // Validate all FK references exist in users table before INSERT
+    const fkChecks = [
+      { field: 'userId', value: req.userId },
+      { field: 'ownerId', value: ownerId },
+    ];
+    for (const { field, value } of fkChecks) {
+      if (value) {
+        const exists = db.prepare('SELECT id FROM users WHERE id = ?').get(value);
+        if (!exists) {
+          console.error(`[POST /expenses] FK fail: ${field}=${value} not in users table`);
+          if (field === 'ownerId') {
+            // fallback: use submitter
+            ownerId = req.userId;
+          } else {
+            return res.status(400).json({ error: `Usuario no encontrado: ${field}` });
+          }
+        }
+      }
+    }
+
     insertExp.run({
       id,
       userId: req.userId,
