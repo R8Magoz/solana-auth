@@ -2361,7 +2361,11 @@ function NewPanel(){
   const duePickOk=!isInv||!form.paymentDeferred||(String(form.paymentTermMode||"0")!=="custom")||String(form.invoiceDueDateDirect||"").trim().length>=10;
   const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId&&vendorOk&&proveedorOk&&duePickOk;
   const [submitAttempt,setSubmitAttempt]=useState(false);
-  useEffect(()=>{if(user?.id&&!form.ownerId)setForm(p=>({...p,ownerId:user.id}));},[user?.id,form.ownerId,setForm]);
+  useEffect(()=>{
+    if(!users.find(u => u.id === form.ownerId)){
+      setForm(p => ({ ...p, ownerId: user?.id || users[0]?.id || "" }));
+    }
+  },[users,user?.id,form.ownerId,setForm]);
   useEffect(()=>{if(expenseValid)setSubmitAttempt(false);},[expenseValid]);
   const hi=submitAttempt&&!expenseValid;
   const rs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
@@ -5805,7 +5809,11 @@ export default function App(){
   },[setExpFlt,setCatFlt,setSubmFlt,setDateFrom,setDateTo,setExpSrc,setExpKindFlt]);
 
   const [form,    setForm]    =useState(()=>{
-    const base={...BF,ivaRate:ivaRateToFormString(readIvaDefault())};
+    const base={
+      ...BF,
+      ivaRate:ivaRateToFormString(readIvaDefault()),
+      ownerId: users.find(u => u.id === user?.id) ? user.id : (users[0]?.id || ""),
+    };
     try{
       const saved=sessionStorage.getItem(SESSION_DRAFT_KEY);
       if(!saved)return base;
@@ -6284,6 +6292,11 @@ export default function App(){
     const ownerId = (form.ownerId && String(form.ownerId).trim())
       ? String(form.ownerId).trim()
       : (user?.id || "");
+    const ownerExists = users.find(u => u.id === ownerId);
+    if (!ownerExists) {
+      setFormError("Selecciona un titular válido.");
+      return;
+    }
     const amount=parseMoney(form.amount);
     if(!amount||amount<=0||!String(form.description||"").trim()||!String(form.category||"").trim()||!String(form.date||"").trim()||!form.departmentId||!ownerId){
       setFormError("Completa los campos obligatorios marcados con *");
