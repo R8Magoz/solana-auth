@@ -34,7 +34,8 @@ function runExpenseMaintenance(audit) {
   const od = db.prepare(`
     UPDATE expenses SET paymentStatus = 'overdue', updatedAt = ?
     WHERE expenseType = 'invoice'
-      AND paymentStatus = 'unpaid'
+      AND paymentStatus IN ('unpaid', 'overdue')
+      AND paymentStatus != 'pending_approval'
       AND dueDate IS NOT NULL
       AND dueDate < ?
       AND status != 'deleted'
