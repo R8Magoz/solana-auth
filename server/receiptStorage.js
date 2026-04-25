@@ -16,8 +16,10 @@ function mimeToExt(mime) {
   if (m === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx';
   if (m === 'application/vnd.ms-excel') return 'xls';
   if (m === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  if (m === 'application/msword') return 'doc';
   if (m === 'text/csv') return 'csv';
-  return 'bin';
+  if (m === 'application/zip') return 'zip';
+  return '';
 }
 
 function cloudinaryEnvOk() {
@@ -116,13 +118,14 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
     err.statusCode = 400;
     throw err;
   }
-  if (b64.length > 8_400_000) {
-    const err = new Error('Archivo demasiado grande (máx. 6 MB).');
+  if (b64.length > 28_000_000) {
+    const err = new Error('Archivo demasiado grande (máx. 20 MB).');
     err.statusCode = 413;
     throw err;
   }
   const mime = String(mediaType || 'application/octet-stream').trim().toLowerCase().slice(0, 128);
-  const ext = mimeToExt(mime);
+  let ext = mimeToExt(mime);
+  if (!ext) ext = 'bin';  // unknown type stored as binary, never rejected
   let buf;
   try {
     buf = Buffer.from(b64, 'base64');
@@ -131,8 +134,8 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
     err.statusCode = 400;
     throw err;
   }
-  if (buf.length > 6 * 1024 * 1024) {
-    const err = new Error('Archivo demasiado grande (máx. 6 MB).');
+  if (buf.length > 20 * 1024 * 1024) {
+    const err = new Error('Archivo demasiado grande (máx. 20 MB).');
     err.statusCode = 413;
     throw err;
   }
