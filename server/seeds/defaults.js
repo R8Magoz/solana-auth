@@ -49,13 +49,6 @@ function seedAppSettings(db) {
   insert.run('currency', '"EUR"', 'Default currency for the app', 'system', now);
 
   insert.run(
-    'approval_threshold',
-    '500',
-    'Expenses above this EUR amount require admin approval (0 = all require approval)',
-    'system',
-    now,
-  );
-  insert.run(
     'company_name',
     JSON.stringify('Solana'),
     'Company name shown in reports and email footers',
@@ -71,20 +64,6 @@ function seedAppSettings(db) {
   );
   insert.run('payment_terms_days', '30', 'Default payment terms in days for invoices', 'system', now);
   insert.run('max_receipt_mb', '10', 'Maximum allowed receipt file size in MB', 'system', now);
-  insert.run(
-    'require_receipt_above',
-    '50',
-    'Require receipt attachment for expenses above this EUR amount',
-    'system',
-    now,
-  );
-  insert.run(
-    'allowed_currencies',
-    JSON.stringify(['EUR', 'USD', 'GBP', 'CHF']),
-    'List of currencies selectable in expense/bill forms',
-    'system',
-    now,
-  );
   insert.run(
     'report_logo_url',
     JSON.stringify(''),
@@ -105,11 +84,6 @@ function ensureMissingAppSettings(db) {
   );
   const now = Date.now();
   const rows = [
-    [
-      'approval_threshold',
-      '500',
-      'Expenses above this EUR amount require admin approval (0 = all require approval)',
-    ],
     ['company_name', JSON.stringify('Solana'), 'Company name shown in reports and email footers'],
     [
       'fiscal_year_start',
@@ -118,16 +92,6 @@ function ensureMissingAppSettings(db) {
     ],
     ['payment_terms_days', '30', 'Default payment terms in days for invoices'],
     ['max_receipt_mb', '10', 'Maximum allowed receipt file size in MB'],
-    [
-      'require_receipt_above',
-      '50',
-      'Require receipt attachment for expenses above this EUR amount',
-    ],
-    [
-      'allowed_currencies',
-      JSON.stringify(['EUR', 'USD', 'GBP', 'CHF']),
-      'List of currencies selectable in expense/bill forms',
-    ],
     [
       'report_logo_url',
       JSON.stringify(''),
