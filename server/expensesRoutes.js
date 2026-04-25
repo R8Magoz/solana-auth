@@ -447,7 +447,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (b64Inline) {
       const mediaTypeRaw =
         req.body && typeof req.body.mediaType === 'string' ? req.body.mediaType.trim() : '';
-      const mediaType = mediaTypeRaw || 'image/jpeg';
+      const mediaType = mediaTypeRaw || 'application/octet-stream';
       try {
         const saved = await receiptStorage.saveReceiptB64ToStorage({
           b64: b64Inline,
@@ -1115,7 +1115,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       try {
         const r = await fetch(exp.receiptPath);
         if (!r.ok) return res.status(502).json({ error: 'No se pudo cargar el recibo.' });
-        const ct = (r.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+        const ct = (r.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim();
         res.setHeader('Content-Type', ct);
         res.send(Buffer.from(await r.arrayBuffer()));
       } catch (e) {
@@ -1133,16 +1133,20 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const MIME_MAP = {
       '.pdf':  'application/pdf',
       '.png':  'image/png',
-      '.webp': 'image/webp',
       '.jpg':  'image/jpeg',
       '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp',
       '.gif':  'image/gif',
-      '.tiff': 'image/tiff',
-      '.tif':  'image/tiff',
       '.heic': 'image/heic',
       '.heif': 'image/heif',
+      '.tiff': 'image/tiff',
+      '.tif':  'image/tiff',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.xls':  'application/vnd.ms-excel',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.csv':  'text/csv',
     };
-    const type = MIME_MAP[ext] || 'image/jpeg';
+    const type = MIME_MAP[ext] || 'application/octet-stream';
     res.setHeader('Content-Type', type);
     const fname = path.basename(abs);
     res.setHeader('Content-Disposition', `inline; filename="${fname}"`);
