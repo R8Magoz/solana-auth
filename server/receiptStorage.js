@@ -10,8 +10,9 @@ function mimeToExt(mime) {
   if (m === 'image/png') return 'png';
   if (m === 'image/webp') return 'webp';
   if (m === 'image/gif') return 'gif';
-  if (m === 'image/tiff' || m === 'image/tif' || m === 'image/x-tiff') return 'tiff';
-  if (m === 'image/heic' || m === 'image/heif') return 'heic';
+  if (m === 'image/tiff' || m === 'image/tif' || m === 'image/x-tiff') return 'tif';
+  if (m === 'image/heic') return 'heic';
+  if (m === 'image/heif') return 'heif';
   if (m === 'application/pdf') return 'pdf';
   if (m === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx';
   if (m === 'application/vnd.ms-excel') return 'xls';
@@ -19,7 +20,7 @@ function mimeToExt(mime) {
   if (m === 'application/msword') return 'doc';
   if (m === 'text/csv') return 'csv';
   if (m === 'application/zip') return 'zip';
-  return '';
+  return 'bin';
 }
 
 function cloudinaryEnvOk() {
