@@ -980,11 +980,7 @@ async function fetchAndApplyServerSettings(authUrl, token) {
     if (settings.iva_default != null) {
       try { localStorage.setItem(IVA_DEFAULT_KEY, JSON.stringify(Number(settings.iva_default))); } catch(e) {}
     }
-    if (settings.currency) {
-      try { localStorage.setItem('sol-currency', JSON.stringify(settings.currency)); } catch(e) {}
-    }
     applyServerSettings({
-      ...(settings.currency != null ? { currency: settings.currency } : {}),
       ...(settings.locale != null ? { locale: settings.locale } : {}),
     });
   } catch(e) {
@@ -2141,7 +2137,6 @@ function ExpenseFormFields({
   startCam,
   apiReceiptPreview,
   onClearApiReceiptPreview,
-  publicExpenseSettings,
 }){
   const expAmt=parseFloat(form.amount)||0;
   const amountNum=parseMoney(form.amount);
@@ -2348,7 +2343,7 @@ function NewPanel(){
   const{t,user,cats,form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
         receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,handleReceiptFile,fileRef,
         startCam,
-        submitExp,resetForm,setPanel,users,calcEqual,ivaRates,departments,publicExpenseSettings}=useApp();
+        submitExp,resetForm,setPanel,users,calcEqual,ivaRates,departments}=useApp();
   const activeCats=cats.filter(c=>!c.archived);
   const ownerRaw=(form.ownerId&&String(form.ownerId).trim())?String(form.ownerId).trim():"";
   const ownerById=ownerRaw?users.find(u=>String(u.id)===ownerRaw):null;
@@ -2464,7 +2459,6 @@ function NewPanel(){
         startCam={startCam}
         apiReceiptPreview={null}
         onClearApiReceiptPreview={undefined}
-        publicExpenseSettings={publicExpenseSettings}
       />
       {formError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{formError}</div>}
       <div style={{position:"relative",width:"100%"}}>
@@ -2493,7 +2487,7 @@ function NewPanel(){
 /* ── DETAIL PANEL ──────────────────────────────────────────────────────────── */
 function DetailPanel(){
   const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,markExpensePaid,ivaRates,departments,defaultDeptId,
-        fileRef,startCam,receiptAltHandlerRef,publicExpenseSettings}=useApp();
+        fileRef,startCam,receiptAltHandlerRef}=useApp();
   const [editMode,setEditMode]=useState(false);
   const [ef,setEf]=useState({});        // edit form fields
   const [efDirty,setEfDirty]=useState(false);
@@ -2759,7 +2753,6 @@ function DetailPanel(){
             startCam={startCam}
             apiReceiptPreview={editApiReceipt}
             onClearApiReceiptPreview={clearEditApiReceiptPreview}
-            publicExpenseSettings={publicExpenseSettings}
           />
           <div style={{display:"flex",gap:6,marginTop:8}}>
             <button className="btn-primary" style={{flex:1,fontSize:13,padding:"8px",background:editActionColor,opacity:(!editExpenseValid||editSplitBlocked)?0.5:1,cursor:(!editExpenseValid||editSplitBlocked)?"not-allowed":"pointer",transition:"color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease"}} onMouseEnter={e=>{if(!editExpenseValid||editSplitBlocked)return;e.currentTarget.style.background=editSubmitHoverBg;}} onMouseLeave={e=>{e.currentTarget.style.background=editActionColor;}} onClick={()=>{
@@ -3044,7 +3037,7 @@ function PersonDrilldown({userId, onClose}){
 /* ── DASHBOARD ─────────────────────────────────────────────────────────────── */
 export function DashboardView(){
   const{t,user,expenses,cats,users,isAdmin,myPending,
-        totApproved,totFixed,perPerson,go,openNew,openNewInvoice,setView,setDetailId,setPanel,goToMyRejected,departmentsWithStats}=useApp();
+        totApproved,totFixed,perPerson,go,openNew,openNewInvoice,setView,setDetailId,setPanel,goToMyRejected,departmentsWithStats,departments}=useApp();
   const today=new Date();
   const m0=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
   const ym=today.toISOString().slice(0,7);
@@ -3091,6 +3084,28 @@ export function DashboardView(){
   });
   upcoming15.sort((a,b)=>a.daysUntil-b.daysUntil);
   const fixedTipActive=fixedTipOpen||fixedTipHover;
+  const monthSpendByDept=React.useMemo(()=>{
+    const now = new Date();
+    const ym = now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+    const spendByDept = {};
+    (expenses||[]).forEach(e => {
+      if(e.status==="approved" && e.expenseType!=="invoice" && e.date && e.date.startsWith(ym) && e.departmentId){
+        spendByDept[e.departmentId] = (spendByDept[e.departmentId]||0) + (Number(e.amount)||0);
+      }
+    });
+    return spendByDept;
+  },[expenses]);
+  const alerts=React.useMemo(()=>{
+    return (departments||[]).filter(d => {
+      if(!d.budget || Number(d.budget) <= 0 || d.archived) return false;
+      const spent = monthSpendByDept[d.id] || 0;
+      return spent >= Number(d.budget) * 0.70;
+    }).map(d => {
+      const spent = monthSpendByDept[d.id] || 0;
+      const pct = Math.round((spent / Number(d.budget)) * 100);
+      return { ...d, spent, pct };
+    }).sort((a,b) => b.pct - a.pct);
+  },[departments,monthSpendByDept]);
   useEffect(()=>{
     if(!fixedTipActive||!fixedTipIconRef.current)return;
     const r=fixedTipIconRef.current.getBoundingClientRect();
@@ -3209,6 +3224,31 @@ export function DashboardView(){
           );
         })()}
       </div>
+      {alerts.length>0&&(
+        <div className="card" style={{marginBottom:14}}>
+          <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>Alertas de presupuesto</div>
+          <div style={{display:"grid",gap:8}}>
+            {alerts.map(a=>{
+              const tone=a.pct>=100
+                ? {bg:"#FEE2E2",border:"#DC2626"}
+                : a.pct>=90
+                  ? {bg:"#FFF7ED",border:"#F97316"}
+                  : {bg:"#FFFBEB",border:"#F59E0B"};
+              return(
+                <div key={a.id} style={{background:tone.bg,borderLeft:`3px solid ${tone.border}`,borderRadius:8,padding:"8px 10px"}}>
+                  <div style={{fontWeight:700,fontSize:12,marginBottom:2}}>{a.name||"—"}</div>
+                  <div style={{fontSize:11,color:"#6B7B72"}}>
+                    {a.pct}% del presupuesto mensual · {fmt(a.spent)} de {fmt(Number(a.budget)||0)}
+                  </div>
+                  <div style={{height:4,background:"rgba(0,0,0,0.08)",borderRadius:2,marginTop:6}}>
+                    <div style={{height:"100%",width:`${Math.min(100,Math.max(0,a.pct))}%`,background:tone.border,borderRadius:2}}/>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div className="card" style={{marginBottom:14}}>
         <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>{t("dash.activityTitle")}</div>
         <div style={{display:"flex",justifyContent:"space-between",gap:8,textAlign:"center"}}>
@@ -3716,6 +3756,9 @@ export function ApprovalsView(){
                 <div onClick={ev=>ev.stopPropagation()}>
                   <label className="lbl" style={{marginBottom:3}}>{t("label.note")}</label>
                   <textarea className="inp" rows={2} placeholder="" value={aNote[itemId]||""} onChange={ev=>setANote(p=>({...p,[itemId]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
+                  <div style={{fontSize:10,color:(aNote[itemId]||"").trim().length<10?"#DC2626":"#6B7B72",textAlign:"right",marginTop:2}}>
+                    {(aNote[itemId]||"").trim().length}/10 mín.
+                  </div>
                   <div style={{display:"flex",gap:6}}>
                     <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"approved");setExpandedId(null);}}>{t("action.approve")}</button>
                     <button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13}} onClick={()=>{approve(itemId,"rejected");setExpandedId(null);}}>{t("action.reject")}</button>
@@ -5651,7 +5694,6 @@ export default function App(){
     return d.map(e=>normalizeItem(e,"expense"));
   });
   const [ledgerLoading,setLedgerLoading]=useState(false);
-  const [publicExpenseSettings,setPublicExpenseSettings]=useState({approval_threshold:0});
   const [cats,    setCats]    =useState(()=>{
     const d=ls("sol-cats",DEF_CATS);
     return d.map(c=>normalizeItem(c,"cat"));
@@ -5664,25 +5706,7 @@ export default function App(){
     appLog("info","auth:boot",{ts:new Date().toISOString()});
     setAppReady(true);
   },[]);
-  useEffect(()=>{
-    if(!AUTH_URL)return;
-    let cancelled=false;
-    void (async()=>{
-      try{
-        const r=await fetch(AUTH_URL+"/settings/public");
-        const d=await r.json().catch(()=>({}));
-        if(cancelled||!r.ok)return;
-        const at=Number(d.approval_threshold);
-        setPublicExpenseSettings({
-          approval_threshold:Number.isFinite(at)?at:0,
-        });
-        if (typeof d.currency === 'string' && d.currency.trim()) {
-          applyServerSettings({ currency: d.currency });
-        }
-      }catch(e){/* keep defaults */}
-    })();
-    return()=>{cancelled=true;};
-  },[]);
+  // currency is hardcoded EUR
   useEffect(()=>{
     if(!AUTH_URL)return;
     if(sessionRestoreAttempted.current)return;
@@ -6777,9 +6801,29 @@ export default function App(){
   };
 
   /* ── APPROVE ────────────────────────────────────────────────────────────── */
-  const approve=(itemId,action)=>{
+  const approve=async(itemId,action)=>{
+    if (action === "rejected") {
+      const item = expenses.find(x => x.id === itemId);
+      const isFullyApproved = item && (
+        item.status === "approved" ||
+        (item._apiType === "expense" && item.status === "approved")
+      );
+      if (isFullyApproved) {
+        const confirmed = await confirmUI(
+          "Este gasto ha sido aprobado por todos los revisores. ¿Seguro que quieres rechazarlo? Esta acción revertirá la aprobación completa."
+        );
+        if (!confirmed) return;
+      }
+    }
     const note=aNote[itemId]||"";
     const item=expenses.find(x=>x.id===itemId);
+    if (action === "rejected") {
+      const noteVal = (aNote[itemId] || "").trim();
+      if (noteVal.length < 10) {
+        dispatchSolanaToast("Escribe un motivo de rechazo (mínimo 10 caracteres).", "error");
+        return;
+      }
+    }
     appLog("info","item_"+action,{itemId,itemCode:item?.itemCode,userId:user.id,note:note||undefined});
     if(AUTH_URL){
       if(item&&item._pendingSync){
@@ -6939,7 +6983,7 @@ export default function App(){
   const ctxVal={
     t,user,users,expenses,cats,passwords,ivaRates,saveIvaRates,
     saveUsers,saveExp,saveCats,savePasswords,
-    departments,departmentsWithStats,refreshDepartments,defaultDeptId,publicExpenseSettings,
+    departments,departmentsWithStats,refreshDepartments,defaultDeptId,
     isAdmin,isApprover,isSA,getUser,ledgerLoading,markExpensePaid,
     view,setView,go,panel,setPanel,openNew,openNewInvoice,
     detailId,setDetailId,

@@ -128,12 +128,8 @@ function createSettingsRouter(deps) {
     WHERE key = @key
   `);
 
-  // GET /settings/public — numeric thresholds for expense forms (no auth; safe to expose)
   router.get('/settings/public', (req, res) => {
-    res.json({
-      approval_threshold: readNumericSetting('approval_threshold', 0),
-      currency: readCurrencyCodeFromCache(),
-    });
+    res.json({ currency: 'EUR' });
   });
 
   // GET /settings/schema — full rows for superadmin UI (register before /settings/:key patterns)

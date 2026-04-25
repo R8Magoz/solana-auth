@@ -420,22 +420,16 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     } else {
       rule = null;
     }
-    const cur = String(currency || 'EUR').trim().toUpperCase().slice(0, 3);
-    if (!ISO4217.test(cur)) {
-      return res.status(400).json({ error: 'currency inválida (ISO 4217).' });
-    }
+    const cur = 'EUR';
     let st = typeof status === 'string' ? status.trim().slice(0, 32) : 'submitted';
     if (!['draft', 'submitted'].includes(st)) {
       return res.status(400).json({ error: 'status inicial solo draft o submitted.' });
     }
     let payStat = 'na';
     if (expenseType === 'invoice') {
-      payStat = 'unpaid';
+      payStat = 'pending_approval';
     }
-    let eur = amountEUR != null && typeof amountEUR === 'number' ? amountEUR : null;
-    if (cur === 'EUR') eur = amount;
-
-    const approvalThreshold = parseAppSettingFloat('approval_threshold', 0);
+    const eur = amount;
 
     const b64Inline =
       typeof bodyB64 === 'string' && bodyB64.trim().length > 0
@@ -478,30 +472,15 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     let approvedAtVal = null;
     let votesObj = {};
 
-    const autoApproved =
-      expenseType === 'expense' &&
-      st === 'submitted' &&
-      approvalThreshold > 0 &&
-      eurNum != null &&
-      eurNum <= approvalThreshold;
-
-    if (autoApproved) {
-      finalStatus = 'approved';
-      approvedByVal = 'auto';
-      approvedAtVal = now;
-      approverIds = [];
-      votesObj = {};
-    } else {
-      approverIds = resolveApproverIdsForCreate(req.body);
-      approverIds = canonicalizeApproverIds(approverIds, userStore);
-      if (st === 'submitted') {
-        const { votes, allDone } = computeSubmittedVotes(req.userId, approverIds);
-        votesObj = votes;
-        if (allDone) {
-          finalStatus = 'approved';
-          approvedByVal = req.userId;
-          approvedAtVal = now;
-        }
+    approverIds = resolveApproverIdsForCreate(req.body);
+    approverIds = canonicalizeApproverIds(approverIds, userStore);
+    if (st === 'submitted') {
+      const { votes, allDone } = computeSubmittedVotes(req.userId, approverIds);
+      votesObj = votes;
+      if (allDone) {
+        finalStatus = 'approved';
+        approvedByVal = req.userId;
+        approvedAtVal = now;
       }
     }
 
@@ -576,13 +555,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     const expense = getExpenseById(id);
     audit('expense_created', { userId: req.userId, targetId: id, amount, currency: cur, status: finalStatus });
-    if (autoApproved) {
-      audit('expense_auto_approved', {
-        expenseId: id,
-        amountEUR: eurNum,
-        threshold: approvalThreshold,
-      });
-    }
     res.json({ ok: true, expense });
     } catch (e) {
       console.error('[POST /expenses] UNHANDLED ERROR:', e && (e.stack || e.message || e));
@@ -981,6 +953,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         db.prepare(`UPDATE expenses SET status='approved', approvedBy=?, approvedAt=?,
           rejectedBy=NULL, rejectedAt=NULL, rejectionNote=NULL, updatedAt=? WHERE id=?`)
           .run(req.userId, now, now, exp.id);
+        if (exp.expenseType === 'invoice') {
+          db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
+            .run(Date.now(), exp.id);
+        }
       } else {
         db.prepare(`UPDATE expenses SET approversJson=?, approvalVotesJson=?, updatedAt=? WHERE id=?`)
           .run(JSON.stringify(defaultIds), JSON.stringify(votes), now, exp.id);
@@ -1013,6 +989,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
           updatedAt = ?
         WHERE id = ?
       `).run(JSON.stringify(approversCanon), JSON.stringify(votes), adminId, now, now, exp.id);
+      if (exp.expenseType === 'invoice') {
+        db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
+          .run(Date.now(), exp.id);
+      }
     } else {
       db.prepare(`
         UPDATE expenses SET approversJson = ?, approvalVotesJson = ?, updatedAt = ?
@@ -1032,6 +1012,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const now = Date.now();
     const adminId = req.userId || null;
     const note = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : null;
+    if (!note || note.length < 10) {
+      return res.status(400).json({ error: 'El motivo del rechazo es obligatorio (mínimo 10 caracteres).' });
+    }
     const approversRaw = parseJsonArray(exp.approversJson);
 
     if (approversRaw.length === 0) {
@@ -1056,8 +1039,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     if (approversRaw.length > 0) {
-      if (exp.status !== 'submitted') {
-        return res.status(400).json({ error: 'El gasto no está pendiente de aprobación.' });
+      const canReject = exp.status === 'submitted' ||
+        (exp.status === 'approved' && isAdminRole(req.userRole));
+      if (!canReject) {
+        return res.status(400).json({ error: 'No se puede rechazar en este estado.' });
       }
       if (!userIdInRawApproverList(approversRaw, adminId, userStore)) {
         return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
@@ -1072,6 +1057,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         updatedAt = ?
       WHERE id = ?
     `).run(adminId, now, note, JSON.stringify({}), now, exp.id);
+    if (exp.expenseType === 'invoice') {
+      db.prepare("UPDATE expenses SET paymentStatus = 'pending_approval', updatedAt = ? WHERE id = ?")
+        .run(Date.now(), exp.id);
+    }
     const updated = getExpenseById(exp.id);
     audit('expense_rejected', { userId: adminId, targetId: exp.id, note });
     res.json({ ok: true, expense: updated });
@@ -1173,7 +1162,7 @@ function markOverdueInvoices() {
   return db.prepare(`
     UPDATE expenses SET paymentStatus = 'overdue', updatedAt = ?
     WHERE expenseType = 'invoice'
-      AND paymentStatus = 'unpaid'
+      AND paymentStatus IN ('unpaid')
       AND dueDate < ?
   `).run(now, today);
 }
