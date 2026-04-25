@@ -1990,6 +1990,7 @@ function readLocalDepartments(){
 const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
   expenseType:"expense",vendor:"",paymentDeferred:false,paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months",proveedor:""};
 const DRAFT_KEY="sol-exp-draft";
+const SESSION_DRAFT_KEY="sol-draft-expense";
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
 const Ctx=createContext(null);
@@ -6792,7 +6793,16 @@ function SolanaExpenses(){
     setExpKindFlt("all");
   },[setExpFlt,setCatFlt,setSubmFlt,setDateFrom,setDateTo,setExpSrc,setExpKindFlt]);
 
-  const [form,    setForm]    =useState(()=>({...BF,ivaRate:ivaRateToFormString(readIvaDefault())}));
+  const [form,    setForm]    =useState(()=>{
+    const base={...BF,ivaRate:ivaRateToFormString(readIvaDefault())};
+    try{
+      const saved=sessionStorage.getItem(SESSION_DRAFT_KEY);
+      if(!saved)return base;
+      const parsed=JSON.parse(saved);
+      if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))return{...base,...parsed};
+    }catch(e){}
+    return base;
+  });
   const [splitOn, setSplitOn] =useState(false);
   const [splits,  setSplits]  =useState([]);
   const [spMode,  setSpMode]  =useState("amount");
@@ -6863,6 +6873,7 @@ function SolanaExpenses(){
     resetExpenseFiltersToDefault();
     void API.logout();
     try{sessionStorage.removeItem("sol-session-token");}catch(e){}
+    try{sessionStorage.removeItem(SESSION_DRAFT_KEY);}catch(e){}
     try{localStorage.removeItem(LAST_ACTIVITY_KEY);}catch(e){}
     API.token=null;
     setIdleTrackingEnabled(false);
@@ -6931,10 +6942,17 @@ function SolanaExpenses(){
   },[user]);
 
   useEffect(()=>{
+    try{
+      sessionStorage.setItem(SESSION_DRAFT_KEY,JSON.stringify(form));
+    }catch(e){}
+  },[form]);
+
+  useEffect(()=>{
     const onSess=()=>{
       dispatchSolanaToast("Sesión expirada, inicia sesión de nuevo","error");
       API.token=null;
       try{sessionStorage.removeItem("sol-session-token");}catch(e){}
+      try{sessionStorage.removeItem(SESSION_DRAFT_KEY);}catch(e){}
       myExpFilterClearedRef.current=false;
       setUser(null);
       setView("dashboard");
@@ -7328,7 +7346,6 @@ function SolanaExpenses(){
             paidBy,
             ivaRate:ivaRateAuth,
             ivaAmount:ivaAmountAuth,
-            ...(receipt?.b64?{b64:receipt.b64,mediaType:receipt.type||"image/jpeg"}:{}),
             ...facturaExtras,
             ...(splitModeOut?{splitMode:splitModeOut}:{}),
             ...(isInvSubmit?{
@@ -7340,10 +7357,18 @@ function SolanaExpenses(){
             ...(recExtras.recurring?{recurring:1,recurrenceRule:recExtras.recurrenceRule}:{recurring:0}),
           };
           const { response, responseBody, rawText } = await debugApiRequest("POST", "/expenses", body);
-          if (!response.ok) throw new Error(responseBody.error || ("HTTP " + response.status));
+          if (!response.ok) {
+            const serverError =
+              (responseBody && typeof responseBody.error === "string" && responseBody.error.trim())
+                ? responseBody.error.trim()
+                : (typeof rawText === "string" && rawText.trim())
+                  ? rawText.trim()
+                  : ("HTTP " + response.status);
+            throw new Error(serverError);
+          }
           const d = responseBody;
           let exp=expenseFromApi(d.expense);
-          if(receipt?.b64&&!(d.expense&&d.expense.receiptPath)){
+          if(receipt?.b64){
             try{
               await API.post("/expenses/"+encodeURIComponent(exp.id)+"/receipt",{b64:receipt.b64,mediaType:receipt.type||"image/jpeg"});
               const full=await API.get("/expenses");
@@ -7358,7 +7383,7 @@ function SolanaExpenses(){
                 appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
                 return;
               }
-              dispatchSolanaToast(e2.message||"Gasto creado; falló la subida del recibo.","error");
+              dispatchSolanaToast("No se pudo guardar el recibo","error");
               saveExp([exp,...expenses]);
             }
           }else{
@@ -7451,12 +7476,28 @@ function SolanaExpenses(){
     setForm({...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId});
     setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
     try{localStorage.removeItem("sol-exp-draft");}catch(e){}
+    try{sessionStorage.removeItem(SESSION_DRAFT_KEY);}catch(e){}
   },[user?.id,defaultDeptId,departments]);
-  const openNew  =()=>{receiptAltHandlerRef.current=null;resetForm();setDetailId(null);setPanel("new");setView("expenses");};
+  const openNew  =()=>{
+    receiptAltHandlerRef.current=null;
+    const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
+    const base={...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId};
+    let nextForm=base;
+    try{
+      const saved=sessionStorage.getItem(SESSION_DRAFT_KEY);
+      if(saved){
+        const parsed=JSON.parse(saved);
+        if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))nextForm={...base,...parsed};
+      }
+    }catch(e){}
+    setForm(nextForm);
+    setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
+    setDetailId(null);setPanel("new");setView("expenses");
+  };
   const openNewInvoice=useCallback(()=>{
     receiptAltHandlerRef.current=null;
     const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
-    setForm({
+    const baseInvoiceForm={
       ...BF,
       ivaRate:ivaRateToFormString(readIvaDefault()),
       ownerId:user?.id||"",
@@ -7472,9 +7513,17 @@ function SolanaExpenses(){
       cadenceCustomMonths:"1",
       cadenceCustomAmount:"1",
       cadenceCustomUnit:"months",
-    });
+    };
+    let nextForm=baseInvoiceForm;
+    try{
+      const saved=sessionStorage.getItem(SESSION_DRAFT_KEY);
+      if(saved){
+        const parsed=JSON.parse(saved);
+        if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))nextForm={...baseInvoiceForm,...parsed};
+      }
+    }catch(e){}
+    setForm(nextForm);
     setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
-    try{localStorage.removeItem("sol-exp-draft");}catch(e){}
     setDetailId(null);setPanel("new");setView("expenses");
   },[user?.id,defaultDeptId,departments]);
 

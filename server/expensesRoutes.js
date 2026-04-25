@@ -378,21 +378,24 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (!DATE_RE.test(dateStr)) {
       return res.status(400).json({ error: 'date debe ser YYYY-MM-DD.' });
     }
-    let dueStr = '';
+    let resolvedDueDate = typeof dueDate === 'string' ? dueDate.trim().slice(0, 10) : '';
     if (expenseType === 'invoice') {
       if (!vendorStr) {
         return res.status(400).json({ error: 'vendor requerido para factura (máx. 256 caracteres).' });
       }
-      if (termDays > 0) {
-        dueStr = addDaysToDateISO(dateStr, termDays) || '';
-      } else {
-        dueStr = typeof dueDate === 'string' ? dueDate.trim().slice(0, 10) : '';
+      if (!resolvedDueDate) {
+        if (termDays > 0 && dateStr) {
+          // compute dueDate = dateStr + termDays days
+          const d = new Date(dateStr);
+          d.setDate(d.getDate() + termDays);
+          resolvedDueDate = d.toISOString().slice(0, 10);
+        } else if (dateStr) {
+          // paymentTermDays === 0 → al contado, due same day
+          resolvedDueDate = dateStr;
+        }
       }
-      if (dueStr && !DATE_RE.test(dueStr)) {
+      if (resolvedDueDate && !DATE_RE.test(resolvedDueDate)) {
         return res.status(400).json({ error: 'dueDate inválida.' });
-      }
-      if (!dueStr) {
-        return res.status(400).json({ error: 'dueDate requerida para factura (o paymentTermDays > 0).' });
       }
     }
     const rec = recurring === true || recurring === 1 || recurring === '1';
@@ -526,7 +529,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       ownerId,
       expenseType,
       vendor: expenseType === 'invoice' ? vendorStr : null,
-      dueDate: expenseType === 'invoice' ? dueStr : null,
+      dueDate: expenseType === 'invoice' ? resolvedDueDate : null,
       paymentStatus: payStat,
       paidAt: null,
       paidConfirmedBy: null,
