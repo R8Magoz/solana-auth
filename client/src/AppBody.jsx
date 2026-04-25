@@ -719,8 +719,6 @@ const tCat=(name,t)=>{const k="cat."+name.toLowerCase().replace(/[^a-z]/g,"");co
    manage users │  –    │  –    │  ✓
    manage cats  │  –    │  –    │  ✓
    ─────────────────────────────────────────────────────────────────────────────
-   NOTE: this app is client-side only. Authorization is enforced in UI only.
-   For server-side enforcement deploy solana-auth-server.js and configure AUTH_URL.
 ══════════════════════════════════════════════════════════════════════════════ */
 
 /* ── UPLOAD RULES ──────────────────────────────────────────────────────────── */
@@ -864,54 +862,6 @@ function migrateDataModel(){
     }
   }catch(e){}
 }
-function mapBillCondicionesPago(bill){
-  const mode=String(bill?.paymentTermMode??"").toLowerCase().trim();
-  const daysRaw=bill?.paymentTermDays;
-  const days=Number(daysRaw);
-  if(mode==="0"||mode==="cash"||mode==="contado")return"Al contado";
-  if(mode==="15"||days===15)return"A 15 días";
-  if(mode==="30"||days===30)return"A 30 días";
-  if(mode==="60"||days===60)return"A 60 días";
-  if(mode==="custom")return"Personalizado";
-  if(days===0)return"Al contado";
-  return"Al contado";
-}
-function migrateBillsToExpensesOnce(){
-  try{
-    if(AUTH_URL)return;
-    if(localStorage.getItem("_billsMigrated")==="1")return;
-    const expRaw=localStorage.getItem("sol-exp");
-    const billRaw=localStorage.getItem("sol-bills");
-    const expArr=expRaw?JSON.parse(expRaw):[];
-    const billArr=billRaw?JSON.parse(billRaw):[];
-    const expenses=Array.isArray(expArr)?expArr:[];
-    const bills=Array.isArray(billArr)?billArr:[];
-    const existingIds=new Set(expenses.map(x=>String(x?.id||"")).filter(Boolean));
-    const migrated=[];
-    for(const b of bills){
-      if(!b||typeof b!=="object")continue;
-      const id=String(b.id||"");
-      if(!id||existingIds.has(id))continue;
-      migrated.push({
-        ...b,
-        expenseType:"invoice",
-        proveedor:String(b.vendor||b.name||"").trim(),
-        condicionesPago:mapBillCondicionesPago(b),
-        _migratedFromBill:true,
-      });
-      existingIds.add(id);
-    }
-    if(migrated.length){
-      localStorage.setItem("sol-exp",JSON.stringify([...expenses,...migrated]));
-    }
-    localStorage.removeItem("sol-bills");
-    localStorage.setItem("_billsMigrated","1");
-    console.log("[MIGRATION] Bills to expenses migration executed.",{migrated:migrated.length});
-  }catch(e){
-    console.warn("[MIGRATION] Bills to expenses migration failed:",e?.message||e);
-  }
-}
-
 const genUuid=()=>{try{if(typeof crypto!=="undefined"&&crypto.randomUUID)return crypto.randomUUID();}catch(e){}return"c"+Date.now()+"-"+Math.random().toString(36).slice(2,11);};
 /** ratePercent: 0–100 */
 const calcIvaParts=(amount,ratePercent)=>{
@@ -2392,7 +2342,12 @@ function NewPanel(){
         startCam,
         submitExp,resetForm,setPanel,users,calcEqual,ivaRates,departments,publicExpenseSettings}=useApp();
   const activeCats=cats.filter(c=>!c.archived);
-  const ownerId=(form.ownerId&&String(form.ownerId).trim())?String(form.ownerId):user.id;
+  const ownerRaw=(form.ownerId&&String(form.ownerId).trim())?String(form.ownerId).trim():"";
+  const ownerById=ownerRaw?users.find(u=>String(u.id)===ownerRaw):null;
+  const ownerByAlias=ownerRaw&&!ownerById
+    ? users.find(u=>String(u.name||"").trim().toLowerCase()===ownerRaw.toLowerCase()||String(u.username||"").trim().toLowerCase()===ownerRaw.toLowerCase())
+    : null;
+  const ownerId=ownerById?.id||ownerByAlias?.id||user.id;
   const ownerUser=users.find(u=>u.id===ownerId)||user;
   const expAmt=parseFloat(form.amount)||0;
   const amountNum=parseMoney(form.amount);
@@ -5691,7 +5646,6 @@ export default function App(){
   const [users,   setUsers]   =useState(()=>{
     migrateItemCodes();
     migrateDataModel();
-    migrateBillsToExpensesOnce();
     const d=ls("sol-users",DEF_USERS);
     const n=d.map(u=>normalizeItem(u,"user"));
     appLog("info","auth:init",{userIds:n.map(u=>u.id),count:n.length});
@@ -5700,37 +5654,7 @@ export default function App(){
   const [user,    setUser]    =useState(null);
   const [expenses,setExpenses]=useState(()=>{
     if(AUTH_URL)return[];
-    migrateBillsToExpensesOnce();
     let d=ls("sol-exp",[]);
-    if(!localStorage.getItem("sol-bills-migrated")){
-      try{
-        const rawBills=localStorage.getItem("sol-bills");
-        if(rawBills){
-          const bills=JSON.parse(rawBills);
-          if(Array.isArray(bills)&&bills.length>0){
-            const existingIds=new Set(d.map(e=>e.id));
-            const migrated=bills
-              .filter(b=>!existingIds.has(b.id))
-              .map(b=>({
-                ...b,
-                expenseType:"invoice",
-                vendor:b.vendor||b.name||"",
-                description:b.name||b.vendor||b.description||"",
-                _migratedFromBill:true,
-              }));
-            if(migrated.length>0){
-              d=[...d,...migrated];
-              localStorage.setItem("sol-exp",JSON.stringify(d));
-              console.log("[MIGRATE] bills → expenses:",migrated.length,"items");
-            }
-            localStorage.removeItem("sol-bills");
-          }
-        }
-      }catch(e){
-        console.error("[MIGRATE] bills migration failed:",e.message);
-      }
-      localStorage.setItem("sol-bills-migrated","1");
-    }
     return d.map(e=>normalizeItem(e,"expense"));
   });
   const [ledgerLoading,setLedgerLoading]=useState(false);

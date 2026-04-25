@@ -346,8 +346,20 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'ownerId')) {
       const ownerRaw = String(req.body.ownerId || '').trim().slice(0, 128);
       if (!ownerRaw) return res.status(400).json({ error: 'ownerId inválido.' });
-      const own = userStore.findUserById(resolveApproverTokenToUserId(ownerRaw, userStore));
-      if (!own) return res.status(400).json({ error: 'Titular no encontrado.' });
+      const ownerRawLc = ownerRaw.toLowerCase();
+      const own =
+        userStore.findUserById(ownerRaw)
+        || userStore.findUserById(resolveApproverTokenToUserId(ownerRaw, userStore))
+        || (typeof userStore.listUsers === 'function'
+          ? (userStore.listUsers() || []).find((u) =>
+              String(u && (u.name || '')).trim().toLowerCase() === ownerRawLc
+              || String(u && (u.username || '')).trim().toLowerCase() === ownerRawLc,
+            )
+          : null);
+      if (!own) {
+        console.error('[ownerId] not resolved:', ownerRaw, 'available:', (typeof userStore.listUsers === 'function' ? userStore.listUsers() : []).map((u) => u.id + '/' + u.name));
+        return res.status(400).json({ error: 'Titular no encontrado.' });
+      }
       ownerId = own.id;
     }
     const {
