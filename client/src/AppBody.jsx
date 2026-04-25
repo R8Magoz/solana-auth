@@ -693,6 +693,7 @@ const ST = {
 /** Invoice payment badge (list + detail): paid / overdue / unpaid or absent */
 function invoicePaymentBadgeStyle(ps){
   const s=String(ps||"").toLowerCase();
+  if(s==="pending_approval")return null;
   if(s==="paid")return{bg:"#BBF7D0",color:"#064E3B",text:"Pagada"};
   if(s==="overdue")return{bg:"#FECACA",color:"#991B1B",text:"Vencida"};
   return{bg:"#FDE68A",color:"#92400E",text:"Pendiente de pago"};
@@ -2812,7 +2813,7 @@ function DetailPanel(){
         <div style={{padding:"5px 0",borderBottom:"1px solid #F5F0EA"}}>
           <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>Estado de pago</div>
           <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8}}>
-            {(()=>{const pb=invoicePaymentBadgeStyle(e.paymentStatus);return(
+            {(()=>{const pb=invoicePaymentBadgeStyle(e.paymentStatus);if(!pb)return null;return(
               <span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,display:"inline-block",background:pb.bg,color:pb.color}}>{pb.text}</span>
             );})()}
             {isAdmin&&st==="approved"&&e.paymentStatus!=="paid"&&(
@@ -3427,7 +3428,7 @@ export function ExpensesView(){
         <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
           value={recurringFlt} onChange={e => setRecurringFlt(e.target.value)}>
           <option value="all">Todos los gastos</option>
-          <option value="recurring">Costes fijos (todos)</option>
+          <option value="recurring">Costes fijos</option>
           <option value="recurring_pending">Costes fijos · pendientes</option>
           <option value="recurring_paid">Costes fijos · pagados</option>
         </select>
@@ -3768,8 +3769,17 @@ export function ApprovalsView(){
                         </span>
                         {payBadge&&<span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,display:"inline-block",background:payBadge.bg,color:payBadge.color}}>{payBadge.text}</span>}
                         {st !== 'rejected' && canActOnRow&&(
-                          <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px"}} onClick={ev=>{ev.stopPropagation();setDetailId(item.id);setPanel("detail");}}>
-                            Revisar
+                          <button
+                            type="button"
+                            className="btn-sm"
+                            style={{fontSize:11}}
+                            onClick={e => {
+                              e.stopPropagation();
+                              setDetailId(item.id);
+                              setPanel("detail");
+                            }}
+                          >
+                            {t("action.review")}
                           </button>
                         )}
                       </div>
@@ -3990,7 +4000,14 @@ export function ReportsView(){
     return months;
   }, [expenses]);
   const chartData = monthlyData.filter(m => m.total > 0);
+  const BAR_W = 20;
+  const BAR_GAP = 6;
+  const GROUP_W = BAR_W * 2 + BAR_GAP + 12;
+  const CHART_H = 160;
+  const LABEL_H = 30;
+  const SVG_H = CHART_H + LABEL_H;
   const maxVal = Math.max(...chartData.map(m => m.total), 1);
+  const svgW = chartData.length * GROUP_W + 16;
   const exportCSV=(includeIva=true)=>{
     const ivaM=includeIva ? (ivaFilter==="with" ? "with_iva" : "both") : "without_iva";
     const data=statusFilter;
@@ -4157,28 +4174,37 @@ export function ReportsView(){
             Sin actividad en los últimos 12 meses
           </div>
         ):(
-          <svg width="100%" viewBox={`0 0 ${Math.max(chartData.length, 1) * 48} 200`}
-            style={{overflow:"visible", display:"block"}}
-            xmlns="http://www.w3.org/2000/svg">
-            <line x1="0" y1="170" x2="100%" y2="170"
-              stroke="#E5E0D8" strokeWidth="1"/>
-            {chartData.map((m,idx)=>{
-              const groupX=idx*48;
-              const gastosH = m.gastos > 0 ? Math.max(3, (m.gastos / maxVal) * 160) : 0;
-              const facturasH = m.facturas > 0 ? Math.max(3, (m.facturas / maxVal) * 160) : 0;
-              return(
-                <g key={m.ym}>
-                  <rect x={groupX+12} y={170 - gastosH} width="10" height={gastosH} fill="#3C0A37" rx="2">
-                    <title>{`${m.label} · Gastos: ${fmt(m.gastos)}`}</title>
-                  </rect>
-                  <rect x={groupX+26} y={170 - facturasH} width="10" height={facturasH} fill="#C4622D" rx="2">
-                    <title>{`${m.label} · Facturas: ${fmt(m.facturas)}`}</title>
-                  </rect>
-                  <text x={groupX+24} y="185" textAnchor="middle" fontSize="9" fill="#9CAA9F">{m.label}</text>
-                </g>
-              );
-            })}
-          </svg>
+          <div style={{overflowX:"auto",width:"100%"}}>
+            <svg
+              width={svgW}
+              height={SVG_H}
+              viewBox={`0 0 ${svgW} ${SVG_H}`}
+              xmlns="http://www.w3.org/2000/svg"
+              style={{display:"block",minWidth:"100%"}}
+            >
+              <line x1="0" y1={CHART_H} x2={svgW} y2={CHART_H}
+                stroke="#E5E0D8" strokeWidth="1"/>
+              {chartData.map((m, i) => {
+                const x = i * GROUP_W + 8;
+                const gastosH = m.gastos > 0 ? Math.max(4, (m.gastos / maxVal) * (CHART_H - 10)) : 0;
+                const facturasH = m.facturas > 0 ? Math.max(4, (m.facturas / maxVal) * (CHART_H - 10)) : 0;
+                return (
+                  <g key={m.ym}>
+                    <rect x={x} y={CHART_H - gastosH} width={BAR_W} height={gastosH}
+                      fill="#3C0A37" rx="3"
+                      title={`Gastos ${m.label}: ${fmt(m.gastos)}`}/>
+                    <rect x={x + BAR_W + BAR_GAP} y={CHART_H - facturasH} width={BAR_W} height={facturasH}
+                      fill="#C4622D" rx="3"
+                      title={`Facturas ${m.label}: ${fmt(m.facturas)}`}/>
+                    <text x={x + BAR_W} y={CHART_H + 16}
+                      textAnchor="middle" fontSize="9" fill="#9CAA9F">
+                      {m.label}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
         )}
       </div>
       {/* By category */}

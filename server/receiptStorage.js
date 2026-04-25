@@ -11,8 +11,7 @@ function mimeToExt(mime) {
   if (m === 'image/webp') return 'webp';
   if (m === 'image/gif') return 'gif';
   if (m === 'image/tiff' || m === 'image/tif' || m === 'image/x-tiff') return 'tif';
-  if (m === 'image/heic') return 'heic';
-  if (m === 'image/heif') return 'heif';
+  if (m === 'image/heic' || m === 'image/heif') return 'heic';
   if (m === 'application/pdf') return 'pdf';
   if (m === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx';
   if (m === 'application/vnd.ms-excel') return 'xls';
@@ -125,8 +124,7 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
     throw err;
   }
   const mime = String(mediaType || 'application/octet-stream').trim().toLowerCase().slice(0, 128);
-  let ext = mimeToExt(mime);
-  if (!ext) ext = 'bin';  // unknown type stored as binary, never rejected
+  let ext = mimeToExt(mime) || 'bin';
   let buf;
   try {
     buf = Buffer.from(b64, 'base64');
