@@ -1533,6 +1533,7 @@ function recurrenceRuleLabel(rule,t){
   }
   if(r==="weekly")return "Semanal";
   if(r==="biweekly")return "Quincenal";
+  if(r==="daily") return "Diario";
   return r||"";
 }
 function nextCadencePreviewISO(baseDate,form){
@@ -1550,6 +1551,11 @@ function nextCadencePreviewISO(baseDate,form){
     if(unit==="months")return addMonthsToISODate(baseDate,n);
     if(unit==="years")return addYearsToISODate(baseDate,n);
   }
+  if(cadenceKey==="daily") {
+    const d = new Date(baseDate+"T12:00:00");
+    d.setDate(d.getDate()+1);
+    return d.toISOString().slice(0,10);
+  }
   return"";
 }
 function cadenceToRecurringPayload(form){
@@ -1561,7 +1567,7 @@ function cadenceToRecurringPayload(form){
     const unit=form.cadenceCustomUnit||"months";
     return{recurring:1,recurrenceRule:`custom:${n}${unit}`};
   }
-  const map={monthly:"monthly",quarterly:"quarterly",yearly:"yearly"};
+  const map={daily:"daily",monthly:"monthly",quarterly:"quarterly",yearly:"yearly"};
   const rule=map[cadenceKey];
   if(!rule)return{recurring:0,recurrenceRule:null};
   return{recurring:1,recurrenceRule:rule};
@@ -1586,6 +1592,7 @@ function invoiceForecastMonthlyEUR(e){
   }
   if(r==="weekly")return ev*52/12;
   if(r==="biweekly")return ev*26/12;
+  if(r==="daily") return ev*365/12;
   return ev;
 }
 function daysUntilISO(iso){
@@ -3148,6 +3155,7 @@ function ExpenseFormFields({
           {(form.cadenceKey||"once")!=="once"&&(
             <>
               <select className="inp" style={{marginTop:4}} value={form.cadenceKey||"monthly"} onChange={e=>setForm(p=>({...p,cadenceKey:e.target.value}))}>
+                <option value="daily">Diario</option>
                 <option value="weekly">Semanal</option>
                 <option value="monthly">{t("expenses.cadenceMonthly")}</option>
                 <option value="quarterly">{t("expenses.cadenceQuarterly")}</option>
@@ -3187,7 +3195,7 @@ function ExpenseFormFields({
                     }));
                   }}/>
                 <span style={{fontSize:13,color:"#4B5E52"}}>
-                  A pagar <span style={{color:"#9CA3AF",fontWeight:400}}>(pago diferido)</span>
+                  A pagar
                 </span>
               </label>
 
@@ -4681,20 +4689,38 @@ function PaymentCalendar({reportExpenses}){
 /* ── REPORTS VIEW ──────────────────────────────────────────────────────────── */
 function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel}=useApp();
-  const [expFilter,setExpFilter]=useState("all");
-  const [ivaMode,setIvaMode]=useState("both");
+  const expFilter="all";
   const [reportFrom, setReportFrom] = React.useState("");
   const [reportTo, setReportTo] = React.useState(new Date().toISOString().slice(0,10));
   const [trendRows,setTrendRows]=useState(null);
   const [trendLoad,setTrendLoad]=useState(false);
   const [trendErr,setTrendErr]=useState("");
   React.useEffect(()=>{
-    const sorted = (expenses||[])
-      .filter(e=>e.status!=="deleted"&&e.date)
-      .map(e=>e.date)
+    const allDates = (expenses||[])
+      .filter(e => e.status !== "deleted" && e.date && e.date.length >= 10)
+      .map(e => e.date.slice(0,10))
       .sort();
-    setReportFrom(sorted.length>0 ? sorted[0] : "2000-01-01");
-  },[expenses]);
+    if(allDates.length > 0){
+      setReportFrom(allDates[0]);
+    } else if(AUTH_URL){
+      // try to fetch oldest from server
+      const tok = (()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
+      if(tok){
+        fetch(AUTH_URL+"/expenses?limit=1&sort=date&order=asc", {headers:{Authorization:"Bearer "+tok}})
+          .then(r=>r.json())
+          .catch(()=>({}))
+          .then(j=>{
+            const first = (j.expenses||[])[0];
+            if(first&&first.date) setReportFrom(first.date.slice(0,10));
+            else setReportFrom("2000-01-01");
+          });
+      } else {
+        setReportFrom("2000-01-01");
+      }
+    } else {
+      setReportFrom("2000-01-01");
+    }
+  }, [expenses]);
   const rangeFilteredExpenses=useMemo(()=>{
     const getRefDate=e=>{
       return ((e.expenseType==="invoice"?(e.dueDate||e.date):e.date)||"").slice(0,10);
@@ -4774,7 +4800,7 @@ function ReportsView(){
   const hasTrendData=monthlyTrend.some(m=>m.total>0);
   const trendBarTrackPx=76;
   const exportCSV=(all,modeIn)=>{
-    const ivaM=modeIn||ivaMode;
+    const ivaM=modeIn||"both";
     const data=all?"all":expFilter;
     const src=data==="all"?rangeFilteredExpenses:(rangeFilteredExpenses.filter(e=>getItemStatus(e,cats,users)===data));
     const now=new Date().toISOString();
@@ -4848,34 +4874,6 @@ function ReportsView(){
     XLSX.utils.book_append_sheet(wb, ws, "Gastos");
     XLSX.writeFile(wb, `solana-${data}-${new Date().toISOString().slice(0,10)}.xlsx`);
   };
-  const exportXlsx=(all)=>exportCSV(all,ivaMode);
-  const downloadXlsx = async () => {
-    if (!AUTH_URL) return;
-    try { API.ensureSessionToken(); } catch(e) {}
-    const tok = API.token || sessionStorage.getItem("sol-session-token") || "";
-    if (!tok) { dispatchSolanaToast(t("msg.sessionExpired"), "error"); return; }
-    const { from, to } = { from: reportFrom, to: reportTo };
-    const qs = new URLSearchParams({ from, to, type: "all" });
-    let r;
-    try {
-      r = await fetch(AUTH_URL + "/reports/export/xlsx?" + qs.toString(),
-        { headers: { Authorization: "Bearer " + tok } });
-    } catch(e) {
-      dispatchSolanaToast(t("msg.genericShort"), "error");
-      return;
-    }
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
-      dispatchSolanaToast(j.error || t("msg.genericShort"), "error");
-      return;
-    }
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = Object.assign(document.createElement("a"),
-      { href: url, download: `informe-${from}-${to}.xlsx` });
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-  };
   const downloadPdf=async()=>{
     if(!AUTH_URL)return;
     try{API.ensureSessionToken();}catch(e){}
@@ -4924,38 +4922,19 @@ function ReportsView(){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:6}}>
         <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G}}>{t("reports.title")}</h1>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}} value={expFilter} onChange={e=>setExpFilter(e.target.value)}>
-            <option value="all">{t("reports.allData")}</option>
-            <option value="approved">{t("reports.approvedOnly")}</option>
-            <option value="pending">{t("reports.pendingOnly")}</option>
-          </select>
-          <div style={{display:"flex",alignItems:"center",gap:4,border:"1px solid #E5E0D8",borderRadius:8,overflow:"hidden"}}>
-            <button type="button" className="btn-secondary"
-              style={{borderRadius:0,fontSize:11,padding:"5px 8px",
-                background:ivaMode==="with_iva"?"#3C0A37":"transparent",
-                color:ivaMode==="with_iva"?"#fff":undefined,border:"none"}}
-              onClick={()=>setIvaMode("with_iva")}>Con IVA</button>
-            <button type="button" className="btn-secondary"
-              style={{borderRadius:0,fontSize:11,padding:"5px 8px",
-                borderLeft:"1px solid #E5E0D8",borderRight:"1px solid #E5E0D8",
-                background:ivaMode==="without_iva"?"#3C0A37":"transparent",
-                color:ivaMode==="without_iva"?"#fff":undefined,border:"none"}}
-              onClick={()=>setIvaMode("without_iva")}>Sin IVA</button>
-            <button type="button" className="btn-secondary"
-              style={{borderRadius:0,fontSize:11,padding:"5px 8px",
-                background:ivaMode==="both"?"#3C0A37":"transparent",
-                color:ivaMode==="both"?"#fff":undefined,border:"none"}}
-              onClick={()=>setIvaMode("both")}>Con y sin IVA</button>
-          </div>
           <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
             value="" onChange={e=>{
               const v=e.target.value;
-              if(v==="csv") exportCSV(true);
+              if(v==="csv_con_sin") exportCSV(true);
+              if(v==="csv_con") exportCSV(false);
+              if(v==="csv_sin") exportCSV(false);
               if(v==="pdf") void downloadPdf();
               e.target.value="";
             }}>
             <option value="">Exportar…</option>
-            <option value="csv">Exportar CSV</option>
+            <option value="csv_con_sin">CSV con y sin IVA</option>
+            <option value="csv_con">CSV con IVA</option>
+            <option value="csv_sin">CSV sin IVA</option>
             {AUTH_URL&&<option value="pdf">Exportar PDF</option>}
           </select>
         </div>

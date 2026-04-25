@@ -607,6 +607,7 @@ function recurrenceRuleLabel(rule,t){
   }
   if(r==="weekly")return "Semanal";
   if(r==="biweekly")return "Quincenal";
+  if(r==="daily") return "Diario";
   return r||"";
 }
 function nextCadencePreviewISO(baseDate,form){
@@ -624,6 +625,11 @@ function nextCadencePreviewISO(baseDate,form){
     if(unit==="months")return addMonthsToISODate(baseDate,n);
     if(unit==="years")return addYearsToISODate(baseDate,n);
   }
+  if(cadenceKey==="daily") {
+    const d = new Date(baseDate+"T12:00:00");
+    d.setDate(d.getDate()+1);
+    return d.toISOString().slice(0,10);
+  }
   return"";
 }
 function cadenceToRecurringPayload(form){
@@ -635,7 +641,7 @@ function cadenceToRecurringPayload(form){
     const unit=form.cadenceCustomUnit||"months";
     return{recurring:1,recurrenceRule:`custom:${n}${unit}`};
   }
-  const map={monthly:"monthly",quarterly:"quarterly",yearly:"yearly"};
+  const map={daily:"daily",monthly:"monthly",quarterly:"quarterly",yearly:"yearly"};
   const rule=map[cadenceKey];
   if(!rule)return{recurring:0,recurrenceRule:null};
   return{recurring:1,recurrenceRule:rule};
@@ -660,6 +666,7 @@ function invoiceForecastMonthlyEUR(e){
   }
   if(r==="weekly")return ev*52/12;
   if(r==="biweekly")return ev*26/12;
+  if(r==="daily") return ev*365/12;
   return ev;
 }
 function daysUntilISO(iso){
@@ -2222,6 +2229,7 @@ function ExpenseFormFields({
           {(form.cadenceKey||"once")!=="once"&&(
             <>
               <select className="inp" style={{marginTop:4}} value={form.cadenceKey||"monthly"} onChange={e=>setForm(p=>({...p,cadenceKey:e.target.value}))}>
+                <option value="daily">Diario</option>
                 <option value="weekly">Semanal</option>
                 <option value="monthly">{t("expenses.cadenceMonthly")}</option>
                 <option value="quarterly">{t("expenses.cadenceQuarterly")}</option>
@@ -2265,7 +2273,7 @@ function ExpenseFormFields({
                     }));
                   }}/>
                 <span style={{fontSize:13,color:"#4B5E52"}}>
-                  A pagar <span style={{color:"#9CA3AF",fontWeight:400}}>(pago diferido)</span>
+                  A pagar
                 </span>
               </label>
 
