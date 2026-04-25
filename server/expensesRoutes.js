@@ -788,7 +788,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       if (!nextDue) {
         return res.status(400).json({ error: 'dueDate requerida para factura (o paymentTermDays > 0).' });
       }
-      nextPayStat = 'unpaid';
+      if (prevType === 'expense' && nextExpenseType === 'invoice') {
+        nextPayStat = 'pending_approval';
+      }
       nextTerm = termDays;
       if (Object.prototype.hasOwnProperty.call(req.body || {}, 'recurring')) {
         nextRec = recurring === true || recurring === 1 || recurring === '1';
