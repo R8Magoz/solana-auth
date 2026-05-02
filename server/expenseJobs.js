@@ -49,11 +49,13 @@ function runExpenseMaintenance(audit) {
     WHERE recurring = 1
       AND expenseType = 'expense'
       AND status = 'approved'
+      AND paymentStatus != 'paid'
   `).all();
 
   const clearRecurring = db.prepare(`UPDATE expenses SET recurring = 0, updatedAt = ? WHERE id = ?`);
 
   for (const exp of recurringApproved) {
+    if (exp.expenseType === 'invoice') continue; // never spawn from invoice
     if (!exp.recurrenceRule) continue;
     const baseDate = exp.date;
     const next = nextDueDate(baseDate, exp.recurrenceRule);

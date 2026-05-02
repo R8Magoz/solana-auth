@@ -1616,6 +1616,7 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
     saveUsers(updated);
     appLog("info","forced_password_changed",{userId:user.id});
     setOk(true);
+    dispatchSolanaToast("Contraseña actualizada correctamente.", "success", 5000);
     setTimeout(()=>onDone({...user,mustChangePassword:false}),600);
   };
 
@@ -2603,6 +2604,13 @@ function DetailPanel(){
   const st=getItemStatus(e,cats,users);
   const isInvDetail = e && e.expenseType === 'invoice';
   const detailAccent = isInvDetail ? '#C4622D' : '#3C0A37';
+  const detailStatusTone = (status) => ({
+    approved: { bg: '#D1FAE5', color: '#065F46' },
+    rejected: { bg: '#FEE2E2', color: '#991B1B' },
+    submitted: { bg: '#FEF3C7', color: '#78350F' },
+    pending: { bg: '#FEF3C7', color: '#78350F' },
+    deleted: { bg: '#F3F4F6', color: '#6B7280' },
+  }[status] || { bg: '#FEF3C7', color: '#78350F' });
   const canEdit=user.id===e.submittedBy||isAdmin;
   const ivaRowLabel=(()=>{
     if(e.ivaRate===null)return formatIvaOptionLabel(IVA_RATE_SIN_IVA);
@@ -2657,18 +2665,27 @@ function DetailPanel(){
   }, [e]);
 
   const actionLabel = (action) => ({
-    created: 'Enviado',
-    submitted: 'Enviado',
-    approved: 'Aprobado',
-    rejected: 'Rechazado',
-    resubmitted: 'Reenviado',
-    paid: 'Marcado como pagado',
-    mark_paid: 'Marcado como pagado',
-    edited: 'Editado',
-    updated: 'Editado',
-    attachment_removed: 'Adjunto eliminado',
-    comment_added: 'Nota añadida',
-    exported: 'Exportado',
+    'created':              'Enviado',
+    'submitted':            'Enviado',
+    'auto_approved':        'Aprobado automáticamente',
+    'approved':             'Aprobado',
+    'rejected':             'Rechazado',
+    'resubmitted':          'Reenviado',
+    'paid':                 'Marcado como pagado',
+    'mark_paid':            'Marcado como pagado',
+    'edited':               'Editado',
+    'updated':              'Editado',
+    'attachment_removed':   'Adjunto eliminado',
+    'comment_added':        'Nota añadida',
+    'exported':             'Exportado',
+    'expense_created':      'Enviado',
+    'expense_auto_approved':'Aprobado automáticamente',
+    'expense_approved':     'Aprobado',
+    'expense_rejected':     'Rechazado',
+    'expense_comment_added':'Nota añadida',
+    'expense_recurring_spawned': 'Nueva ocurrencia generada',
+    'reopen':               'Reabierto',
+    'deleted':              'Eliminado',
   })[action] || action;
   const startEdit=()=>{
     const defIva=e.ivaRate===null?"":(e.ivaRate!==undefined&&e.ivaRate!==null?String(e.ivaRate):ivaRateToFormString(readIvaDefault()));
@@ -2878,15 +2895,16 @@ function DetailPanel(){
       {e.expenseType==="invoice"&&<div style={{width:3,flexShrink:0,background:T,alignSelf:"stretch",borderRadius:"2px 0 0 2px"}} aria-hidden/>}
       <div style={{flex:1,minWidth:0}}>
       <div
-        className={statusToneClass(st)}
         style={{
           display:"inline-block",
-          padding:"2px 8px",
-          borderRadius:11,
-          fontSize:9,
+          background:detailStatusTone(st).bg,
+          color:detailStatusTone(st).color,
           fontWeight:700,
+          fontSize:11,
+          padding:"3px 10px",
+          borderRadius:20,
+          letterSpacing:"0.06em",
           marginBottom:7,
-          ...(statusToneClass(st)?{}:{background:(st==="approved"?detailAccent:(ST[st]||ST.pending).bg),color:(ST[st]||ST.pending).color}),
         }}
       >{t("status."+st).toUpperCase()}</div>
       <div style={{fontSize:15,fontWeight:700,marginBottom:2}}>{e.description}</div>
@@ -2913,9 +2931,10 @@ function DetailPanel(){
                 }}>{pb.text}</span>
               );
             })()}
-            {e.expenseType === "invoice" &&
+            {(e.userId === user?.id || e.ownerId === user?.id || isAdmin) &&
+             e.expenseType === "invoice" &&
              e.status === "approved" &&
-             (e.paymentStatus === "unpaid" || e.paymentStatus === "overdue") && (
+             e.paymentStatus === "unpaid" && (
               !detailPayOpen?(
                 <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px",fontWeight:600,background:detailAccent}}
                   onClick={()=>{setDetailPayDate(new Date().toISOString().slice(0,10));setDetailPayOpen(true);}}>
@@ -2934,7 +2953,8 @@ function DetailPanel(){
             )}
           </div>
         </div>
-        {e.expenseType === 'invoice' &&
+        {(e.userId === user?.id || e.ownerId === user?.id || isAdmin) &&
+         e.expenseType === 'invoice' &&
          e.status === 'approved' &&
          e.paymentStatus !== 'paid' &&
          e.dueDate && (() => {
@@ -2985,11 +3005,16 @@ function DetailPanel(){
           </div>
         );})}
       </div>
-      {((AUTH_URL&&e._apiType==="expense"&&(e.status==="submitted"||e.status==="pending")&&approverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved")||(!AUTH_URL&&approverIds.includes(user.id)&&st==="pending"&&approvalVoteFor(e.approvals,user.id,users)!=="approved"))&&(
+      {((AUTH_URL&&e._apiType==="expense"&&(e.status==="submitted"||e.status==="pending"||(isAdmin&&e.status==="approved"))&&approverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved")||(!AUTH_URL&&approverIds.includes(user.id)&&(st==="pending"||(isAdmin&&st==="approved"))&&approvalVoteFor(e.approvals,user.id,users)!=="approved"))&&(
         <div style={{marginTop:9}}>
           <label className="lbl" style={{marginBottom:3,color:detailAccent}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
-          <div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:detailAccent}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13,borderColor:e.expenseType==="invoice"?"#C4622D":"#3C0A37"}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button></div>
+          <div style={{display:"flex",gap:6}}>
+            <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:detailAccent}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button>
+            {(isAdmin || st === 'submitted') && st !== 'rejected' && st !== 'deleted' && (
+              <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,borderColor:e.expenseType==="invoice"?"#C4622D":"#3C0A37"}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
+            )}
+          </div>
         </div>
       )}
       {e._apiType==="expense"&&e.status==="rejected"&&e.rejectionNote&&(
@@ -3103,7 +3128,6 @@ function PersonDrilldown({userId, onClose}){
                   <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
                     <div style={{fontSize:12,fontWeight:700,color:G}}>{fmt(shareEurInExpense(e,userId))}</div>
                     <div
-                      className={statusToneClass(st)}
                       style={{
                         display:"inline-block",
                         padding:"1px 5px",
@@ -3111,7 +3135,8 @@ function PersonDrilldown({userId, onClose}){
                         fontSize:8,
                         fontWeight:600,
                         marginTop:1,
-                        ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
+                        background:detailStatusTone(st).bg,
+                        color:detailStatusTone(st).color,
                       }}
                     >{t("status."+st)}</div>
                   </div>
@@ -3706,9 +3731,10 @@ export function ExpensesView(){
                     )}
                     <div style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(e)}</div>
                   </div>
-                  {e.expenseType === "invoice" &&
+                  {(e.userId === user?.id || e.ownerId === user?.id || isAdmin) &&
+                   e.expenseType === "invoice" &&
                    e.status === "approved" &&
-                   (e.paymentStatus === "unpaid" || e.paymentStatus === "overdue") && (
+                   e.paymentStatus === "unpaid" && (
                     <button type="button" className="btn-sm" style={{fontSize:10,padding:"3px 8px",fontWeight:600}}
                       onClick={ev=>{
                         ev.stopPropagation();
@@ -6249,11 +6275,12 @@ export default function App(){
 
   useEffect(()=>{
     const h=(ev)=>{
-      const{message,kind}=ev.detail||{};
+      const{message,kind,durationMs}=ev.detail||{};
       if(!message)return;
       const id="t_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
       setToasts(p=>[...p,{id,message,kind:kind||"info"}]);
-      setTimeout(()=>setToasts(p=>p.filter(x=>x.id!==id)),4200);
+      const dismissMs = Number.isFinite(Number(durationMs)) ? Math.max(500, Number(durationMs)) : 4200;
+      setTimeout(()=>setToasts(p=>p.filter(x=>x.id!==id)),dismissMs);
     };
     window.addEventListener("solana-toast",h);
     return()=>window.removeEventListener("solana-toast",h);
