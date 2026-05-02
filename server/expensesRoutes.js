@@ -98,14 +98,37 @@ function normalizeApprovalRequiredFromBody(body) {
   return out;
 }
 
-function defaultApproverIdsFromDb() {
-  return db.prepare("SELECT id FROM users WHERE role IN ('admin', 'superadmin')").all().map((r) => r.id);
+function fallbackApprovers() {
+  // Only used when category has no approvers assigned
+  return db.prepare(
+    "SELECT id FROM users WHERE role IN ('superadmin')"
+  ).all().map(r => r.id);
+}
+
+function getApproverIdsForCategory(categoryName) {
+  try {
+    const row = db.prepare(
+      "SELECT value FROM app_settings WHERE key = 'categories'"
+    ).get();
+    if (!row || !row.value) return fallbackApprovers();
+    const cats = JSON.parse(row.value);
+    if (!Array.isArray(cats)) return fallbackApprovers();
+    const cat = cats.find(c =>
+      c.name && c.name.toLowerCase() === (categoryName || '').toLowerCase()
+    );
+    if (cat && Array.isArray(cat.approverIds) && cat.approverIds.length > 0) {
+      return cat.approverIds;
+    }
+    return fallbackApprovers();
+  } catch (e) {
+    return fallbackApprovers();
+  }
 }
 
 function resolveApproverIdsForCreate(body) {
   const fromBody = normalizeApprovalRequiredFromBody(body);
   if (fromBody.length > 0) return fromBody;
-  return defaultApproverIdsFromDb();
+  return getApproverIdsForCategory(body && body.category);
 }
 
 function computeSubmittedVotes(submitterId, approverIds) {
@@ -256,20 +279,18 @@ function departmentIdFromBody(body, required) {
 }
 
 function listExpenses(req) {
-  const admin = isAdminRole(req.userRole);
   const { status, from, to, category, userId: qUser, includeDeleted, expenseType, paymentStatus } = req.query;
   const parts = ['1=1'];
   const vals = [];
 
-  if (!admin && qUser) {
+  if (qUser) {
     parts.push('userId = ?');
     vals.push(String(qUser).trim().slice(0, 128));
   }
 
-  const incDel = admin && (includeDeleted === '1' || includeDeleted === 'true');
-  if (!incDel) {
-    parts.push("status != 'deleted'");
-  }
+  const _includeDeletedRequested = includeDeleted === '1' || includeDeleted === 'true';
+  void _includeDeletedRequested;
+  parts.push("status != 'deleted'");
 
   if (status) {
     parts.push('status = ?');
@@ -306,14 +327,14 @@ const insertExp = db.prepare(`
     approvedBy, approvedAt, rejectedBy, rejectedAt, rejectionNote, receiptPath, notes, createdAt, updatedAt, departmentId,
     approversJson, approvalVotesJson, paidByJson, splitMode,
     ivaRate, ivaAmount, commentsJson, ownerId,
-    expenseType, vendor, dueDate, paymentStatus, paidAt, paidConfirmedBy, paymentTermDays, recurring, recurrenceRule, originBillId,
+    expenseType, vendor, dueDate, paymentStatus, paidAt, paidConfirmedBy, paymentTermDays, deferredPayment, recurring, recurrenceRule, originBillId,
     cadenceKey, cadenceCustomMonths
   ) VALUES (
     @id, @userId, @amount, @currency, @amountEUR, @description, @category, @date, @status,
     @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt, @departmentId,
     @approversJson, @approvalVotesJson, @paidByJson, @splitMode,
     @ivaRate, @ivaAmount, @commentsJson, @ownerId,
-    @expenseType, @vendor, @dueDate, @paymentStatus, @paidAt, @paidConfirmedBy, @paymentTermDays, @recurring, @recurrenceRule, @originBillId,
+    @expenseType, @vendor, @dueDate, @paymentStatus, @paidAt, @paidConfirmedBy, @paymentTermDays, @deferredPayment, @recurring, @recurrenceRule, @originBillId,
     @cadenceKey, @cadenceCustomMonths
   )
 `);
@@ -438,8 +459,11 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       return res.status(400).json({ error: 'status inicial solo draft o submitted.' });
     }
     let payStat = 'na';
+    const deferredPayment = expenseType === 'invoice'
+      ? ((req.body.deferredPayment === true || req.body.deferredPayment === 1) ? 1 : 0)
+      : 0;
     if (expenseType === 'invoice') {
-      const deferred = req.body.deferredPayment === true;
+      const deferred = deferredPayment === 1;
       payStat = deferred ? 'pending_approval' : 'paid';
     }
     const eur = amount;
@@ -559,6 +583,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       paidAt: payStat === 'paid' ? now : null,
       paidConfirmedBy: payStat === 'paid' ? req.userId : null,
       paymentTermDays: expenseType === 'invoice' ? termDays : 0,
+      deferredPayment,
       recurring: rec ? 1 : 0,
       recurrenceRule: rule,
       originBillId: null,
@@ -582,7 +607,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (!canAccessExpense(req, exp)) {
       return res.status(403).json({ error: 'No autorizado.' });
     }
-    const isOwner = exp.userId === req.userId || exp.ownerId === req.userId;
+    const isOwner = (exp.ownerId || exp.userId) === req.userId;
     const isAdm = isAdminRole(req.userRole);
     if (!isOwner && !isAdm) {
       return res.status(403).json({
@@ -600,6 +625,11 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
     if (exp.status !== 'approved') {
       return res.status(400).json({ error: 'La factura debe estar aprobada antes de marcar como pagada.' });
+    }
+    if (!isAdm && exp.deferredPayment !== 1 && exp.deferredPayment !== true) {
+      return res.status(403).json({
+        error: 'Solo facturas con "A pagar" pueden marcarse como pagadas por el titular.'
+      });
     }
     const now = Date.now();
     const paidMs = parsePaidAtFromBody(req.body, now);
@@ -656,6 +686,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
           paidAt: null,
           paidConfirmedBy: null,
           paymentTermDays: exp.paymentTermDays != null ? exp.paymentTermDays : 0,
+          deferredPayment: 1,
           recurring: 1,
           recurrenceRule: rule,
           originBillId: null,
@@ -774,6 +805,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     let nextVendor = exp.vendor ?? null;
     let nextDue = exp.dueDate ?? null;
     let nextPayStat = exp.paymentStatus != null ? String(exp.paymentStatus) : 'na';
+    let nextDeferredPayment = nextExpenseType === 'invoice'
+      ? ((exp.deferredPayment === 1 || exp.deferredPayment === true) ? 1 : 0)
+      : 0;
     let nextTerm = exp.paymentTermDays != null
       ? Math.max(0, Math.min(3650, Math.round(Number(exp.paymentTermDays))))
       : 0;
@@ -785,9 +819,13 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       nextDue = null;
       nextPayStat = 'na';
       nextTerm = 0;
+      nextDeferredPayment = 0;
       nextRec = false;
       nextRule = null;
     } else {
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'deferredPayment')) {
+        nextDeferredPayment = (req.body.deferredPayment === true || req.body.deferredPayment === 1) ? 1 : 0;
+      }
       if (Object.prototype.hasOwnProperty.call(req.body || {}, 'vendor')) {
         nextVendor = String(vendor || '').trim().slice(0, 256);
       } else {
@@ -880,7 +918,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (becomingSubmitted) {
       const bodyList = normalizeApprovalRequiredFromBody(req.body);
       let approverIds = bodyList.length > 0 ? bodyList : parseJsonArray(exp.approversJson);
-      if (approverIds.length === 0) approverIds = defaultApproverIdsFromDb();
+      if (approverIds.length === 0) approverIds = getApproverIdsForCategory(exp.category);
       approverIds = canonicalizeApproverIds(approverIds, userStore);
       const { votes, allDone } = computeSubmittedVotes(exp.userId, approverIds);
       nextApproversJson = JSON.stringify(approverIds);
@@ -907,6 +945,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         approvedBy = ?, approvedAt = ?,
         rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
         expenseType = ?, vendor = ?, dueDate = ?, paymentStatus = ?, paymentTermDays = ?,
+        deferredPayment = CASE WHEN ? = 'invoice' THEN ? ELSE 0 END,
         recurring = ?, recurrenceRule = ?,
         cadenceKey = ?, cadenceCustomMonths = ?,
         updatedAt = ?
@@ -919,11 +958,27 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       nextApprovedBy, nextApprovedAt,
       nextRejectedBy, nextRejectedAt, nextRejectionNote,
       nextExpenseType, nextVendor, nextDue, nextPayStat, nextTerm,
+      nextExpenseType, nextDeferredPayment,
       nextRec ? 1 : 0, nextRule,
       String(req.body.cadenceKey || 'once').trim().slice(0, 32),
       String(req.body.cadenceCustomMonths || '1').trim().slice(0, 8),
       now, exp.id,
     );
+    // If deferredPayment changed, sync paymentStatus accordingly
+    const deferredChanged = exp.deferredPayment !== nextDeferredPayment;
+    if (nextExpenseType === 'invoice' && deferredChanged) {
+      if (nextDeferredPayment === 0) {
+        // User unchecked A pagar — mark as already paid
+        db.prepare(
+          "UPDATE expenses SET paymentStatus = 'paid', paidAt = ?, paidConfirmedBy = ?, updatedAt = ? WHERE id = ?"
+        ).run(Date.now(), req.userId, Date.now(), exp.id);
+      } else {
+        // User checked A pagar — reset to pending
+        db.prepare(
+          "UPDATE expenses SET paymentStatus = 'pending_approval', updatedAt = ? WHERE id = ?"
+        ).run(Date.now(), exp.id);
+      }
+    }
 
     const updated = getExpenseById(exp.id);
     audit('expense_updated', {
@@ -965,6 +1020,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   });
 
   router.post('/:id/approve', requireAuth, (req, res) => {
+    if (!isAdminRole(req.userRole)) {
+      return res.status(403).json({ error: 'No autorizado.' });
+    }
     let exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
@@ -973,7 +1031,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const approversRaw = parseJsonArray(exp.approversJson);
 
     if (approversRaw.length === 0) {
-      const defaultIds = defaultApproverIdsFromDb();
+      const defaultIds = getApproverIdsForCategory(exp.category);
       if (!defaultIds.includes(req.userId) && !isAdminRole(req.userRole)) {
         return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
       }
@@ -984,7 +1042,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         db.prepare(`UPDATE expenses SET status='approved', approvedBy=?, approvedAt=?,
           rejectedBy=NULL, rejectedAt=NULL, rejectionNote=NULL, updatedAt=? WHERE id=?`)
           .run(req.userId, now, now, exp.id);
-        if (exp.expenseType === 'invoice') {
+        if (exp.expenseType === 'invoice' && exp.paymentStatus === 'pending_approval') {
+          // Only flip to 'unpaid' if this was a deferred payment invoice.
+          // If paymentStatus is already 'paid' (non-deferred), leave it alone.
           db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
             .run(Date.now(), exp.id);
         }
@@ -1030,7 +1090,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
           updatedAt = ?
         WHERE id = ?
       `).run(JSON.stringify(approversCanon), JSON.stringify(votes), adminId, now, now, exp.id);
-      if (exp.expenseType === 'invoice') {
+      if (exp.expenseType === 'invoice' && exp.paymentStatus === 'pending_approval') {
+        // Only flip to 'unpaid' if this was a deferred payment invoice.
+        // If paymentStatus is already 'paid' (non-deferred), leave it alone.
         db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
           .run(Date.now(), exp.id);
       }
@@ -1047,6 +1109,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   });
 
   router.post('/:id/reject', requireAuth, (req, res) => {
+    if (!isAdminRole(req.userRole)) {
+      return res.status(403).json({ error: 'No autorizado.' });
+    }
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
@@ -1059,7 +1124,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const approversRaw = parseJsonArray(exp.approversJson);
 
     if (approversRaw.length === 0) {
-      const defaultIds = defaultApproverIdsFromDb();
+      const defaultIds = getApproverIdsForCategory(exp.category);
       if (!defaultIds.includes(req.userId) && !isAdminRole(req.userRole)) {
         return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
       }
@@ -1100,7 +1165,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         updatedAt = ?
       WHERE id = ?
     `).run(adminId, now, note, JSON.stringify({}), now, exp.id);
-    if (exp.expenseType === 'invoice') {
+    if (exp.expenseType === 'invoice' &&
+        exp.paymentStatus === 'unpaid') {
       db.prepare("UPDATE expenses SET paymentStatus = 'pending_approval', updatedAt = ? WHERE id = ?")
         .run(Date.now(), exp.id);
     }

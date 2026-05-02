@@ -131,6 +131,24 @@ addColumnIfMissing('expenses', 'paymentStatus',   'TEXT DEFAULT \'na\'');
 addColumnIfMissing('expenses', 'paidAt',          'INTEGER');
 addColumnIfMissing('expenses', 'paidConfirmedBy', 'TEXT');
 addColumnIfMissing('expenses', 'paymentTermDays', 'INTEGER DEFAULT 0');
+try {
+  db.prepare(
+    "ALTER TABLE expenses ADD COLUMN deferredPayment INTEGER NOT NULL DEFAULT 0"
+  ).run();
+} catch (e) {
+  // column already exists, ignore
+}
+db.prepare(`
+  UPDATE expenses
+  SET deferredPayment = 1
+  WHERE expenseType = 'invoice'
+    AND deferredPayment = 0
+    AND (
+      paymentStatus IN ('unpaid', 'overdue', 'pending_approval')
+      OR paymentTermDays > 0
+    )
+    AND status != 'deleted'
+`).run();
 addColumnIfMissing('expenses', 'recurring',       'INTEGER DEFAULT 0');
 addColumnIfMissing('expenses', 'recurrenceRule',  'TEXT');
 addColumnIfMissing('expenses', 'originBillId',    'TEXT');

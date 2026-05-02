@@ -309,18 +309,24 @@ const finalizeApproverIdList=(canonicalIds,users)=>{
   const admins=getAdminIds(u);
   return valid.length>=2?valid:admins;
 };
-/** Approver list for an expense/bill-shaped item: API approvalRequired or category approverIds / admins. Canonicalized + orphan-cleaned when roster exists. */
-const effectiveExpenseApproverIds=(e,cats,users)=>{
-  let raw;
-  if(e&&e._apiType==="expense"&&Array.isArray(e.approvalRequired)&&e.approvalRequired.length>0)raw=e.approvalRequired;
-  else{
-    const cat=cats?.find(c=>c.name===e?.category&&!c.archived);
-    const adminIds=getAdminIds(users);
-    raw=cat?.approverIds?.length>0?cat.approverIds:adminIds;
+const effectiveExpenseApproverIds=(exp,cats,users)=>{
+  // First check expense's own approversJson (set at creation)
+  const fromExp = exp?.approversJson ||
+    (Array.isArray(exp?.approvers) ? exp.approvers : []);
+  if (Array.isArray(fromExp) && fromExp.length > 0) return fromExp;
+
+  // Fall back to category assignment
+  const cat = (cats || []).find(c =>
+    c.name && c.name.toLowerCase() === (exp?.category || '').toLowerCase()
+  );
+  if (cat && Array.isArray(cat.approverIds) && cat.approverIds.length > 0) {
+    return cat.approverIds;
   }
-  const u=Array.isArray(users)?users:[];
-  const canon=u.length?canonicalApproverIdList(raw,u):(Array.isArray(raw)?raw.slice():[]);
-  return finalizeApproverIdList(canon,u);
+
+  // Last resort: superadmins only
+  return (users || [])
+    .filter(u => u.role === 'superadmin')
+    .map(u => u.id);
 };
 const getItemStatus=(item,cats,users)=>{
   if (item && item._apiType === 'expense' && item.status === 'rejected') return 'rejected';
@@ -509,10 +515,7 @@ function expenseFromApi(row){
     paidAt:row.paidAt!=null?row.paidAt:null,
     paidConfirmedBy:row.paidConfirmedBy||null,
     paymentTermDays:row.paymentTermDays!=null?Number(row.paymentTermDays):0,
-    deferredPayment:
-      row.deferredPayment === true
-      || Number(row.paymentTermDays || 0) > 0
-      || ["pending_approval", "unpaid", "overdue"].includes(String(row.paymentStatus || "").toLowerCase()),
+    deferredPayment: row.deferredPayment === true || row.deferredPayment === 1,
     recurring:Number(row.recurring)===1?1:0,
     recurrenceRule:row.recurrenceRule||null,
   },"expense");
@@ -2176,6 +2179,8 @@ function ExpenseFormFields({
   startCam,
   apiReceiptPreview,
   onClearApiReceiptPreview,
+  disableDeferredPaymentToggle,
+  showDeferredPaymentLockedHint,
 }){
   const expAmt=parseFloat(form.amount)||0;
   const amountNum=parseMoney(form.amount);
@@ -2297,7 +2302,8 @@ function ExpenseFormFields({
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",margin:0}}>
                 <input type="checkbox"
                   style={{width:14,height:14,margin:0,flexShrink:0,accentColor:actionColor}}
-                  checked={form.deferredPayment||false}
+                  checked={form.deferredPayment === true}
+                  disabled={disableDeferredPaymentToggle}
                   onChange={e=>{
                     const on=e.target.checked;
                     setForm(p=>({
@@ -2310,6 +2316,11 @@ function ExpenseFormFields({
                   A pagar
                 </span>
               </label>
+              {showDeferredPaymentLockedHint&&(
+                <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>
+                  No se puede cambiar tras la aprobación.
+                </div>
+              )}
 
               {form.deferredPayment&&(
                 <select className="inp" style={{marginTop:8}}
@@ -2604,13 +2615,12 @@ function DetailPanel(){
   const st=getItemStatus(e,cats,users);
   const isInvDetail = e && e.expenseType === 'invoice';
   const detailAccent = isInvDetail ? '#C4622D' : '#3C0A37';
-  const detailStatusTone = (status) => ({
-    approved: { bg: '#D1FAE5', color: '#065F46' },
-    rejected: { bg: '#FEE2E2', color: '#991B1B' },
-    submitted: { bg: '#FEF3C7', color: '#78350F' },
-    pending: { bg: '#FEF3C7', color: '#78350F' },
-    deleted: { bg: '#F3F4F6', color: '#6B7280' },
-  }[status] || { bg: '#FEF3C7', color: '#78350F' });
+  const detailSublistStatusTone = (s) =>
+    ST[s] || (s === 'deleted' ? { bg: '#F3F4F6', color: '#6B7280' } : ST.pending);
+  const detailTopStatusTone =
+    st === 'approved'
+      ? { bg: '#D1FAE5', color: '#065F46' }
+      : detailSublistStatusTone(st);
   const canEdit=user.id===e.submittedBy||isAdmin;
   const ivaRowLabel=(()=>{
     if(e.ivaRate===null)return formatIvaOptionLabel(IVA_RATE_SIN_IVA);
@@ -2878,6 +2888,11 @@ function DetailPanel(){
             startCam={startCam}
             apiReceiptPreview={editApiReceipt}
             onClearApiReceiptPreview={clearEditApiReceiptPreview}
+            disableDeferredPaymentToggle={
+              (e.status === 'approved' || e.status === 'rejected') &&
+              e.paymentStatus !== 'pending_approval'
+            }
+            showDeferredPaymentLockedHint={e.status === 'approved'}
           />
           <div style={{display:"flex",gap:6,marginTop:8}}>
             <button className="btn-primary" style={{flex:1,fontSize:13,padding:"8px",background:editActionColor,opacity:(!editExpenseValid||editSplitBlocked)?0.5:1,cursor:(!editExpenseValid||editSplitBlocked)?"not-allowed":"pointer",transition:"color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease"}} onMouseEnter={e=>{if(!editExpenseValid||editSplitBlocked)return;e.currentTarget.style.background=editSubmitHoverBg;}} onMouseLeave={e=>{e.currentTarget.style.background=editActionColor;}} onClick={()=>{
@@ -2897,8 +2912,8 @@ function DetailPanel(){
       <div
         style={{
           display:"inline-block",
-          background:detailStatusTone(st).bg,
-          color:detailStatusTone(st).color,
+          background:detailTopStatusTone.bg,
+          color:detailTopStatusTone.color,
           fontWeight:700,
           fontSize:11,
           padding:"3px 10px",
@@ -2934,7 +2949,8 @@ function DetailPanel(){
             {(e.userId === user?.id || e.ownerId === user?.id || isAdmin) &&
              e.expenseType === "invoice" &&
              e.status === "approved" &&
-             e.paymentStatus === "unpaid" && (
+             e.deferredPayment === true &&
+             (e.paymentStatus === "unpaid" || e.paymentStatus === "overdue") && (
               !detailPayOpen?(
                 <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px",fontWeight:600,background:detailAccent}}
                   onClick={()=>{setDetailPayDate(new Date().toISOString().slice(0,10));setDetailPayOpen(true);}}>
@@ -2956,7 +2972,8 @@ function DetailPanel(){
         {(e.userId === user?.id || e.ownerId === user?.id || isAdmin) &&
          e.expenseType === 'invoice' &&
          e.status === 'approved' &&
-         e.paymentStatus !== 'paid' &&
+         (e.paymentStatus === 'unpaid' || e.paymentStatus === 'overdue') &&
+         e.deferredPayment === true &&
          e.dueDate && (() => {
           const today = new Date().toISOString().slice(0, 10);
           const due = String(e.dueDate).slice(0, 10);
@@ -3005,13 +3022,13 @@ function DetailPanel(){
           </div>
         );})}
       </div>
-      {((AUTH_URL&&e._apiType==="expense"&&(e.status==="submitted"||e.status==="pending"||(isAdmin&&e.status==="approved"))&&approverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved")||(!AUTH_URL&&approverIds.includes(user.id)&&(st==="pending"||(isAdmin&&st==="approved"))&&approvalVoteFor(e.approvals,user.id,users)!=="approved"))&&(
+      {((AUTH_URL&&e._apiType==="expense"&&(e.status==="submitted"||e.status==="pending"||(isAdmin&&e.status==="approved"))&&isAdmin&&approverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved")||(!AUTH_URL&&isAdmin&&approverIds.includes(user.id)&&(st==="pending"||(isAdmin&&st==="approved"))&&approvalVoteFor(e.approvals,user.id,users)!=="approved"))&&(
         <div style={{marginTop:9}}>
           <label className="lbl" style={{marginBottom:3,color:detailAccent}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
           <div style={{display:"flex",gap:6}}>
             <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:detailAccent}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button>
-            {(isAdmin || st === 'submitted') && st !== 'rejected' && st !== 'deleted' && (
+            {isAdmin && st !== 'rejected' && st !== 'deleted' && (
               <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,borderColor:e.expenseType==="invoice"?"#C4622D":"#3C0A37"}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
             )}
           </div>
@@ -3135,8 +3152,8 @@ function PersonDrilldown({userId, onClose}){
                         fontSize:8,
                         fontWeight:600,
                         marginTop:1,
-                        background:detailStatusTone(st).bg,
-                        color:detailStatusTone(st).color,
+                        background:detailSublistStatusTone(st).bg,
+                        color:detailSublistStatusTone(st).color,
                       }}
                     >{t("status."+st)}</div>
                   </div>
@@ -3819,14 +3836,12 @@ export function ApprovalsView(){
     const db=String(b.date||b.dueDate||"");
     return db.localeCompare(da);
   });
-  const baseList=(isApprover
-    ? expenses.filter(e=>effectiveExpenseApproverIds(e,cats,users).includes(user.id))
-    : expenses
-  ).filter(e=>{
-    const st=getItemStatus(e,cats,users);
-    if(st==="deleted")return false;
-    // hide invoices that are approved AND paid — nothing left to do
-    if(e.expenseType==="invoice"&&st==="approved"&&e.paymentStatus==="paid")return false;
+  const baseList = expenses.filter(e => {
+    const st = getItemStatus(e, cats, users);
+    if (st === "deleted") return false;
+    if (e.expenseType === "invoice" &&
+        st === "approved" &&
+        e.paymentStatus === "paid") return false;
     return true;
   });
   const kindFiltered=baseList.filter(e=>{
@@ -3842,6 +3857,12 @@ export function ApprovalsView(){
     <div>
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.approvals")}</h1>
       <p style={{fontSize:13,color:"#6B7B72",marginBottom:14}}>{AUTH_URL?"Gastos enviados al servidor pendientes de decisión.":t("dash.bothMustApprove")}</p>
+      {!isAdmin && !isApprover && (
+        <p style={{fontSize:12,color:"#9CAA9F",marginBottom:12}}>
+          Vista de solo lectura. Solo los aprobadores asignados pueden
+          aprobar o rechazar.
+        </p>
+      )}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
         <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
           {[
@@ -3884,7 +3905,7 @@ export function ApprovalsView(){
           const cardBorder = priorityForItem(item) === 0
             ? '1.5px solid #D4AED0'
             : '1px solid transparent';
-          const canActOnRow=isAdmin||rowApproverIds.includes(user.id);
+          const canActOnRow=isAdmin&&rowApproverIds.includes(user.id);
           const payBadge=invoicePaymentBadge(item);
           return(
             <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
@@ -5516,6 +5537,23 @@ export function SettingsView(){
     saveCats(appCatsDraft);
     setAppSetMsg("Categorías guardadas.");
   };
+  const updateCategory = (catId, changes) => {
+    setAppCatsDraft(prev =>
+      prev.map(c => (c.id === catId ? { ...c, ...changes } : c))
+    );
+  };
+  const toggleCategoryApprover = (catId, userId) => {
+    const cat = appCatsDraft.find(c => c.id === catId);
+    if (!cat) return;
+    const current = cat.approverIds || [];
+    const next = current.includes(userId)
+      ? current.filter(id => id !== userId)
+      : [...current, userId];
+    updateCategory(catId, { approverIds: next });
+  };
+  const approverCandidates = users.filter(u =>
+    u.accountStatus === 'active' && u.id !== 'system'
+  );
   const saveAppCurrency=async()=>{
     setAppSetErr("");setAppSetMsg("");
     const code=String(appCurrency||"EUR").toUpperCase().slice(0,3);
@@ -5864,11 +5902,49 @@ export function SettingsView(){
         <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Categorías</div>
         <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:8}}>
           {appCatsDraft.map((c,idx)=>(
-            <div key={c.id||("tmp-"+idx)} style={{display:"flex",gap:7,alignItems:"center"}}>
-              <input className="inp" style={{flex:1,fontSize:13,opacity:c.archived?0.65:1}} value={c.name||""} onChange={e=>setAppCatsDraft(prev=>prev.map((x,i)=>i===idx?{...x,name:e.target.value}:x))}/>
-              <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>setAppCatsDraft(prev=>prev.map((x,i)=>i===idx?{...x,archived:!x.archived}:x))}>
+            <div key={c.id||("tmp-"+idx)} style={{display:"flex",flexDirection:"column",gap:7}}>
+              <div style={{display:"flex",gap:7,alignItems:"center"}}>
+              <input className="inp" style={{flex:1,fontSize:13,opacity:c.archived?0.65:1}} value={c.name||""} onChange={e=>updateCategory(c.id,{name:e.target.value})}/>
+              <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>updateCategory(c.id,{archived:!c.archived})}>
                 {c.archived?"Restaurar":"Archivar"}
               </button>
+              </div>
+              <div style={{marginTop:6}}>
+                <label style={{fontSize:11,color:"#6B7B72",display:"block",marginBottom:4}}>
+                  Aprobadores
+                </label>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {approverCandidates.map(u => {
+                    const isSelected = (c.approverIds || []).includes(u.id);
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => toggleCategoryApprover(c.id, u.id)}
+                        style={{
+                          fontSize: 11,
+                          padding: '3px 10px',
+                          borderRadius: 20,
+                          border: '1px solid',
+                          cursor: 'pointer',
+                          background: isSelected ? '#3C0A37' : '#FAF7F4',
+                          color: isSelected ? '#fff' : '#6B7B72',
+                          borderColor: isSelected ? '#3C0A37' : '#DDD6CC',
+                          fontWeight: isSelected ? 600 : 400,
+                        }}
+                      >
+                        {u.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(c.approverIds || []).length === 0 && (
+                  <div style={{fontSize:10,color:"#DC2626",marginTop:4}}>
+                    Sin aprobadores asignados — los gastos de esta categoría
+                    no podrán ser aprobados.
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -6900,6 +6976,9 @@ export default function App(){
             paymentTermDays: updates.paymentTermDays || 0,
             splitMode: updates.splitMode || 'amount',
             paidBy: updates.paidBy || [],
+            deferredPayment: (updates.expenseType || 'expense') === 'invoice'
+              ? (updates.deferredPayment === true)
+              : false,
           };
 
           if (oldExp.status === 'rejected') {
@@ -7203,10 +7282,10 @@ export default function App(){
   const dateFilterActive = dateFrom !== "" || dateTo !== "";
   const activeFilterCount = [catFlt, submFlt, dateFilterActive?"range":"", expKindFlt!=="all"?"kind":"", recurringFlt!=="all"?"recurring":""]
     .filter(Boolean).length;
-  const isApprover = isAdmin || cats.some(c=>{
-    if(c.archived)return false;
-    return effectiveExpenseApproverIds({category:c.name},cats,users).includes(user.id);
-  });
+  const isApprover = (cats || []).some(c =>
+    Array.isArray(c.approverIds) &&
+    c.approverIds.includes(user?.id)
+  );
   const myPending=AUTH_URL
     ?expenses.filter(e=>{
       if(e._apiType!=="expense"||e._pendingSync)return false;
@@ -7259,14 +7338,14 @@ export default function App(){
     {id:"dashboard",label:t("nav.dashboard")},
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
-    {id:"reports",  label:t("nav.reports")},
+    {id:"reports",label:t("nav.reports")},
     // Settings (profile) — accessed via profile avatar
   ];
   const mobNav=[
     {id:"dashboard",label:t("nav.dashboard"),badge:0},
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
-    {id:"reports",  label:t("nav.reports"),badge:0},
+    {id:"reports",label:t("nav.reports"),badge:0},
     // Ajustes (profile) — mobile header avatar
   ];
 
@@ -7427,7 +7506,7 @@ export default function App(){
           ))}
           <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
-              <div onClick={()=>go("settings")} title={t("login.profile")} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,cursor:"pointer",borderRadius:7,padding:"4px 6px",transition:"background 0.15s",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent"}}
+              <div onClick={()=>{if(isSA)go("settings");}} title={t("login.profile")} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,cursor:isSA?"pointer":"default",borderRadius:7,padding:"4px 6px",transition:"background 0.15s",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent"}}
                 onMouseEnter={e=>e.currentTarget.style.background="rgba(250,247,242,0.12)"}
                 onMouseLeave={e=>e.currentTarget.style.background=view==="settings"?"rgba(250,247,242,0.12)":"transparent"}>
                 {user.avatar
@@ -7451,7 +7530,7 @@ export default function App(){
           <div className="mob-only" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="light" size="sm"/></div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div onClick={()=>go("settings")} title={t("login.profile")} style={{cursor:"pointer",flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%"}}>
+              <div onClick={()=>{if(isSA)go("settings");}} title={t("login.profile")} style={{cursor:isSA?"pointer":"default",flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%"}}>
                 {user.avatar
                   ?<img src={user.avatar} alt="" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(250,247,242,0.5)"}}/>
                   :<div style={{width:34,height:34,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>{inits(user.name)}</div>
@@ -7466,7 +7545,7 @@ export default function App(){
               {view==="expenses" &&<ErrorBoundary><ExpensesView/></ErrorBoundary>}
               {view==="approvals"&&<ErrorBoundary><ApprovalsView/></ErrorBoundary>}
               {view==="reports"  &&<ErrorBoundary><ReportsView/></ErrorBoundary>}
-              {view==="settings" &&<ErrorBoundary><SettingsView/></ErrorBoundary>}
+              {view==="settings" && isSA &&<ErrorBoundary><SettingsView/></ErrorBoundary>}
             </div>
             {rpOpen&&(
               <div className="dt-only panel-slide" style={{width:350,borderLeft:"1px solid #E5DDD2",overflowY:"auto",padding:16,flexShrink:0,background:"#fff"}}>
