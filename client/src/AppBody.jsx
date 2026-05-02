@@ -2402,11 +2402,15 @@ function NewPanel(){
   const duePickOk=!isInv||!form.deferredPayment||(String(form.paymentTermMode||"0")!=="custom")||String(form.invoiceDueDateDirect||"").trim().length>=10;
   const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId&&vendorOk&&proveedorOk&&duePickOk;
   const [submitAttempt,setSubmitAttempt]=useState(false);
-  useEffect(()=>{
-    if(!users.find(u => u.id === form.ownerId)){
-      setForm(p => ({ ...p, ownerId: user?.id || users[0]?.id || "" }));
-    }
-  },[users,user?.id,form.ownerId,setForm]);
+  React.useEffect(() => {
+    if (!users || users.length === 0) return;
+    setForm(p => {
+      if (p.ownerId && users.find(u => u.id === p.ownerId)) return p;
+      // current value not valid — reset to logged-in user or first user
+      const fallback = users.find(u => u.id === user?.id) || users[0];
+      return { ...p, ownerId: fallback ? fallback.id : p.ownerId };
+    });
+  }, [users]);
   useEffect(()=>{if(expenseValid)setSubmitAttempt(false);},[expenseValid]);
   const hi=submitAttempt&&!expenseValid;
   const rs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
@@ -6536,9 +6540,7 @@ export default function App(){
 
   /* ── SUBMIT EXPENSE ─────────────────────────────────────────────────────── */
   const submitExp=()=>{
-    const ownerId = (form.ownerId && String(form.ownerId).trim())
-      ? String(form.ownerId).trim()
-      : (user?.id || "");
+    const ownerId = String(form.ownerId || user?.id || "").trim();
     const ownerExists = users.find(u => u.id === ownerId);
     if (!ownerExists) {
       setFormError("Selecciona un titular válido.");
