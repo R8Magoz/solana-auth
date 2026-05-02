@@ -343,26 +343,30 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   router.post('/', async (req, res) => {
     try {
     console.log('[POST /expenses] body:', JSON.stringify(req.body, null, 2));
-    let ownerId = req.userId;
-    if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'ownerId')) {
-      const ownerRaw = String(req.body.ownerId || '').trim().slice(0, 128);
-      if (!ownerRaw) return res.status(400).json({ error: 'ownerId inválido.' });
-      const ownerRawLc = ownerRaw.toLowerCase();
-      const own =
-        userStore.findUserById(ownerRaw)
-        || userStore.findUserById(resolveApproverTokenToUserId(ownerRaw, userStore))
-        || (typeof userStore.listUsers === 'function'
-          ? (userStore.listUsers() || []).find((u) =>
-              String(u && (u.name || '')).trim().toLowerCase() === ownerRawLc
-              || String(u && (u.username || '')).trim().toLowerCase() === ownerRawLc,
-            )
-          : null);
-      if (!own) {
-        console.error('[ownerId] not resolved:', ownerRaw, 'available:', (typeof userStore.listUsers === 'function' ? userStore.listUsers() : []).map((u) => u.id + '/' + u.name));
-        return res.status(400).json({ error: 'Titular no encontrado.' });
-      }
-      ownerId = own.id;
+    const ownerRaw = String(req.body.ownerId || req.body.owner || '').trim();
+    let resolvedOwner = null;
+
+    if (ownerRaw) {
+      const allUsers = userStore.listUsers ? userStore.listUsers() : [];
+      resolvedOwner =
+        allUsers.find(u => u.id === ownerRaw) ||
+        allUsers.find(u => u.id === resolveApproverTokenToUserId(ownerRaw, userStore)) ||
+        allUsers.find(u => u.name && u.name.toLowerCase() === ownerRaw.toLowerCase()) ||
+        allUsers.find(u => u.username && u.username.toLowerCase() === ownerRaw.toLowerCase()) ||
+        allUsers.find(u => u.email && u.email.toLowerCase() === ownerRaw.toLowerCase());
     }
+
+    // Final fallback: use the submitting user
+    if (!resolvedOwner) {
+      resolvedOwner = userStore.findUserById(req.userId);
+      console.warn('[ownerId] could not resolve "' + ownerRaw + '", falling back to submitter:', req.userId);
+    }
+
+    if (!resolvedOwner) {
+      return res.status(400).json({ error: 'Usuario no encontrado. Por favor recarga la página.' });
+    }
+
+    const ownerId = resolvedOwner.id;
     const {
       amount, currency, amountEUR, description, category, date, notes, status,
       expenseType: bodyExpenseType, vendor, dueDate, paymentTermDays, recurring, recurrenceRule,
