@@ -27,8 +27,8 @@ function writeOfflineQueue(q) {
   } catch (e) {}
 }
 
-function dispatchSolanaToast(message, kind) {
-  window.dispatchEvent(new CustomEvent("solana-toast", { detail: { message, kind: kind || "info" } }));
+function dispatchSolanaToast(message, kind, durationMs) {
+  window.dispatchEvent(new CustomEvent("solana-toast", { detail: { message, kind: kind || "info", durationMs } }));
 }
 
 function isNetworkError(e) {

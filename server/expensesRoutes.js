@@ -582,6 +582,13 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (!canAccessExpense(req, exp)) {
       return res.status(403).json({ error: 'No autorizado.' });
     }
+    const isOwner = exp.userId === req.userId || exp.ownerId === req.userId;
+    const isAdm = isAdminRole(req.userRole);
+    if (!isOwner && !isAdm) {
+      return res.status(403).json({
+        error: 'Solo el titular o un administrador puede confirmar el pago.'
+      });
+    }
     if (exp.status === 'deleted') {
       return res.status(400).json({ error: 'Gasto eliminado.' });
     }
@@ -600,6 +607,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       UPDATE expenses SET paymentStatus = 'paid', paidAt = ?, paidConfirmedBy = ?, updatedAt = ?
       WHERE id = ?
     `).run(paidMs, req.userId, now, exp.id);
+    // Prevent job from re-spawning this specific item
+    db.prepare(
+      "UPDATE expenses SET recurring = 0, updatedAt = ? WHERE id = ? AND expenseType = 'invoice'"
+    ).run(Date.now(), exp.id);
     audit('expense_marked_paid', { userId: req.userId, targetId: exp.id });
 
     const rec = Number(exp.recurring) === 1;
@@ -666,8 +677,13 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   router.post('/:id/comments', (req, res) => {
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
-    if (!canAccessExpense(req, exp)) {
-      return res.status(403).json({ error: 'No autorizado.' });
+    const canComment =
+      exp.userId === req.userId ||
+      exp.ownerId === req.userId ||
+      isAdminRole(req.userRole) ||
+      parseJsonArray(exp.approversJson).includes(req.userId);
+    if (!canComment) {
+      return res.status(403).json({ error: 'No autorizado para comentar.' });
     }
     if (exp.status === 'deleted') {
       return res.status(400).json({ error: 'Gasto eliminado.' });
@@ -1078,6 +1094,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       UPDATE expenses SET
         status = 'rejected',
         rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
+        approvedBy = NULL,
+        approvedAt = NULL,
         approvalVotesJson = ?,
         updatedAt = ?
       WHERE id = ?
