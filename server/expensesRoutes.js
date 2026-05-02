@@ -427,7 +427,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
     let payStat = 'na';
     if (expenseType === 'invoice') {
-      payStat = 'pending_approval';
+      const deferred = req.body.deferredPayment === true;
+      payStat = deferred ? 'pending_approval' : 'paid';
     }
     const eur = amount;
 
@@ -543,8 +544,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       vendor: expenseType === 'invoice' ? vendorStr : null,
       dueDate: expenseType === 'invoice' ? resolvedDueDate : null,
       paymentStatus: payStat,
-      paidAt: null,
-      paidConfirmedBy: null,
+      paidAt: payStat === 'paid' ? now : null,
+      paidConfirmedBy: payStat === 'paid' ? req.userId : null,
       paymentTermDays: expenseType === 'invoice' ? termDays : 0,
       recurring: rec ? 1 : 0,
       recurrenceRule: rule,

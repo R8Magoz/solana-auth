@@ -194,7 +194,7 @@ export function ExpenseSplitBreakdown({e,t,users,alwaysInline=false}){
         onClick={()=>setStick(s=>!s)}
         className="split-breakdown-btn">
         <SplitDivergeIcon size={16} color={G}/>
-        <span style={{fontSize:11,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {n}</span>
+        <span style={{fontSize:11,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}} aria-hidden="true">{n}</span>
         {e.splitMode&&<span style={{fontSize:11,color:"#6B7B72"}}>{t("label.splitBadge")}: {e.splitMode==="equal"?t("form.splitEq"):e.splitMode==="percentage"?t("form.splitPct"):t("form.splitEur")}</span>}
         <span style={{marginLeft:"auto",fontSize:11,color:"#9CAA9F"}}>{open?"▼":"▶"}</span>
       </button>
@@ -509,6 +509,10 @@ function expenseFromApi(row){
     paidAt:row.paidAt!=null?row.paidAt:null,
     paidConfirmedBy:row.paidConfirmedBy||null,
     paymentTermDays:row.paymentTermDays!=null?Number(row.paymentTermDays):0,
+    deferredPayment:
+      row.deferredPayment === true
+      || Number(row.paymentTermDays || 0) > 0
+      || ["pending_approval", "unpaid", "overdue"].includes(String(row.paymentStatus || "").toLowerCase()),
     recurring:Number(row.recurring)===1?1:0,
     recurrenceRule:row.recurrenceRule||null,
   },"expense");
@@ -705,19 +709,14 @@ const ST = {
 };
 const invoicePaymentBadge = (e) => {
   if (e.expenseType !== 'invoice') return null;
-  if (e.status !== 'approved') return null; // never show before approval
-  if (e.paymentStatus === 'paid') return { text: 'Pagada', bg: '#D1FAE5', color: '#065F46' };
-  if (e.paymentStatus === 'pending_approval') return null; // pre-approval, hide
-  // unpaid or overdue
-  const today = new Date().toISOString().slice(0, 10);
-  const due = e.dueDate ? String(e.dueDate).slice(0, 10) : null;
-  if (due && due < today) {
-    return { text: 'Vencida', bg: '#FEE2E2', color: '#991B1B' };
-  }
-  if (due && due === today) {
-    return { text: 'Vence hoy', bg: '#FEF3C7', color: '#78350F' };
-  }
-  return { text: 'Pendiente de pago', bg: '#FEF3C7', color: '#78350F' };
+  const deferred = e.deferredPayment === true
+    || Number(e.paymentTermDays || 0) > 0
+    || ["pending_approval", "unpaid", "overdue"].includes(String(e.paymentStatus || "").toLowerCase());
+  if (!deferred) return null;
+  if (e.status !== 'approved') return null;
+  if (e.paymentStatus === 'paid') return null;
+  if (e.paymentStatus === 'pending_approval') return null;
+  return { text: 'A pagar', bg: '#FEF3C7', color: '#78350F' };
 };
 /** Dashboard activity + recent list — semantic greens/amber/red per spec */
 const ACTIVITY_COLORS={
@@ -1037,7 +1036,7 @@ function readLocalDepartments(){
   }
 }
 const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
-  expenseType:"expense",vendor:"",paymentDeferred:false,paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months",proveedor:""};
+  expenseType:"expense",vendor:"",deferredPayment:false,paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months",proveedor:""};
 const DRAFT_KEY="sol-session-draft";
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -1295,7 +1294,7 @@ function ItemCodeBadge({code, inline=false}){
         cursor:"pointer",userSelect:"none",transition:"background 0.15s"}}
       onMouseEnter={e=>e.currentTarget.style.background=GL}
       onMouseLeave={e=>e.currentTarget.style.background="#F5F0EA"}>
-      {copied?"✓":code}
+      {copied?"":code}
     </span>
   );
   return(
@@ -1309,7 +1308,7 @@ function ItemCodeBadge({code, inline=false}){
           color:"#9CAA9F",fontSize:9,cursor:"pointer",fontFamily:"inherit",fontWeight:600,
           transition:"background 0.15s,color 0.15s"}}
         title="Copy item code">
-        {copied?"✓ Copiado":"⌘ Copiar"}
+        {copied?"Copiado":"⌘ Copiar"}
       </button>
     </div>
   );
@@ -1476,7 +1475,7 @@ function SignupScreen({onBack}){
         <div style={{...AUTH.logoWrap,marginBottom:20}}>
           <SolanaLogo theme="dark" size="md" variant="auth"/>
         </div>
-        <div style={{fontSize:40,marginBottom:16,lineHeight:1,color:"#16A34A",fontWeight:700}}>✓</div>
+        <div style={{fontSize:40,marginBottom:16,lineHeight:1,color:"#16A34A",fontWeight:700}}></div>
         <h1 style={{...AUTH.title,marginTop:0,marginBottom:8,fontSize:20}}>
           {tl("signup.success")}
         </h1>
@@ -1650,7 +1649,7 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
             </div>
           </div>
           {msg&&<div style={AUTH.errorBanner}>{msg}</div>}
-          {ok&&<div style={{...AUTH.infoBanner,marginBottom:10,fontSize:11}}>✓ {t("msg.passwordChanged")}</div>}
+          {ok&&<div style={{...AUTH.infoBanner,marginBottom:10,fontSize:11}}>{t("msg.passwordChanged")}</div>}
           <button style={AUTH.btnPrimary} onClick={doChange} disabled={ok}>
             {t("forceChange.submit")}
           </button>
@@ -2181,7 +2180,7 @@ function ExpenseFormFields({
   const amountNum=parseMoney(form.amount);
   const amountOk=amountNum>0;
   const isInv=form.expenseType==="invoice";
-  const duePickOk=!isInv||!form.paymentDeferred||(String(form.paymentTermMode||"0")!=="custom")||String(form.invoiceDueDateDirect||"").trim().length>=10;
+  const duePickOk=!isInv||!form.deferredPayment||(String(form.paymentTermMode||"0")!=="custom")||String(form.invoiceDueDateDirect||"").trim().length>=10;
   const nextPrevISO=nextCadencePreviewISO(form.date,form);
   const nextPrevLbl=nextPrevISO?formatDMYFromISO(nextPrevISO):"";
   const hasLocalPrev=!!recPrev;
@@ -2297,12 +2296,12 @@ function ExpenseFormFields({
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",margin:0}}>
                 <input type="checkbox"
                   style={{width:14,height:14,margin:0,flexShrink:0,accentColor:actionColor}}
-                  checked={form.paymentDeferred||false}
+                  checked={form.deferredPayment||false}
                   onChange={e=>{
                     const on=e.target.checked;
                     setForm(p=>({
                       ...p,
-                      paymentDeferred:on,
+                      deferredPayment:on,
                       paymentTermMode:on?(p.paymentTermMode==="0"||!p.paymentTermMode?"30":p.paymentTermMode):"0",
                     }));
                   }}/>
@@ -2311,7 +2310,7 @@ function ExpenseFormFields({
                 </span>
               </label>
 
-              {form.paymentDeferred&&(
+              {form.deferredPayment&&(
                 <select className="inp" style={{marginTop:8}}
                   value={String(form.paymentTermMode||"30")}
                   onChange={e=>setForm(p=>({...p,paymentTermMode:e.target.value}))}>
@@ -2322,7 +2321,7 @@ function ExpenseFormFields({
                 </select>
               )}
             </div>
-            {form.paymentDeferred&&form.paymentTermMode==="custom"&&(
+            {form.deferredPayment&&form.paymentTermMode==="custom"&&(
               <div style={{gridColumn:"1/-1",fontSize:12,color:"#4B5E52"}}>
                 <label className="lbl">{t("expenses.dueDate")}</label>
                 <input
@@ -2400,7 +2399,7 @@ function NewPanel(){
   const submitHoverBg=isInv?"#B45309":GH;
   const vendorOk=!isInv||String(form.vendor||"").trim().length>0;
   const proveedorOk=!isInv||String(form.proveedor||"").trim().length>0;
-  const duePickOk=!isInv||!form.paymentDeferred||(String(form.paymentTermMode||"0")!=="custom")||String(form.invoiceDueDateDirect||"").trim().length>=10;
+  const duePickOk=!isInv||!form.deferredPayment||(String(form.paymentTermMode||"0")!=="custom")||String(form.invoiceDueDateDirect||"").trim().length>=10;
   const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId&&vendorOk&&proveedorOk&&duePickOk;
   const [submitAttempt,setSubmitAttempt]=useState(false);
   useEffect(()=>{
@@ -2456,7 +2455,7 @@ function NewPanel(){
     draftTimer.current=setTimeout(()=>{
       try{
         const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate===""?"":(form.ivaRate??ivaRateToFormString(readIvaDefault())),departmentId:form.departmentId||"",ownerId:form.ownerId||"",
-          expenseType:form.expenseType||"expense",vendor:form.vendor||"",paymentDeferred:!!form.paymentDeferred,paymentTermMode:form.paymentTermMode||"0",paymentTermCustomDays:form.paymentTermCustomDays||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once",cadenceCustomMonths:form.cadenceCustomMonths||"1",cadenceCustomAmount:form.cadenceCustomAmount||"1",cadenceCustomUnit:form.cadenceCustomUnit||"months",proveedor:form.proveedor||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
+          expenseType:form.expenseType||"expense",vendor:form.vendor||"",deferredPayment:!!form.deferredPayment,paymentTermMode:form.paymentTermMode||"0",paymentTermCustomDays:form.paymentTermCustomDays||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once",cadenceCustomMonths:form.cadenceCustomMonths||"1",cadenceCustomAmount:form.cadenceCustomAmount||"1",cadenceCustomUnit:form.cadenceCustomUnit||"months",proveedor:form.proveedor||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
         sessionStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
       }catch(e){}
     },500);
@@ -2598,6 +2597,8 @@ function DetailPanel(){
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const approverIds=effectiveExpenseApproverIds(e,cats,users);
   const st=getItemStatus(e,cats,users);
+  const isInvDetail = e && e.expenseType === 'invoice';
+  const detailAccent = isInvDetail ? '#C4622D' : '#3C0A37';
   const canEdit=user.id===e.submittedBy||isAdmin;
   const ivaRowLabel=(()=>{
     if(e.ivaRate===null)return formatIvaOptionLabel(IVA_RATE_SIN_IVA);
@@ -2607,6 +2608,64 @@ function DetailPanel(){
     }
     return t("expense.ivaNotTracked");
   })();
+  const allEvents = React.useMemo(() => {
+    const events = [];
+
+    // auditTrail entries
+    (e.auditTrail || []).forEach(tr => {
+      events.push({
+        id: tr.id || tr.at,
+        at: tr.at,
+        type: 'audit',
+        action: tr.action,
+        by: tr.by,
+        note: tr.note || null,
+      });
+    });
+
+    // comments
+    (e.comments || []).forEach(c => {
+      events.push({
+        id: c.id,
+        at: c.at || c.createdAt,
+        type: 'comment',
+        action: 'comment_added',
+        by: c.by || c.userId,
+        note: c.text,
+      });
+    });
+
+    // synthesize from known fields if auditTrail is sparse
+    if (e.createdAt && !events.some(ev => ev.action === 'created' || ev.action === 'submitted')) {
+      events.push({ id: 'created', at: e.createdAt, type: 'audit', action: 'created', by: e.submittedBy || e.userId });
+    }
+    if (e.approvedAt && !events.some(ev => ev.action === 'approved')) {
+      events.push({ id: 'approved', at: e.approvedAt, type: 'audit', action: 'approved', by: e.approvedBy });
+    }
+    if (e.rejectedAt && !events.some(ev => ev.action === 'rejected')) {
+      events.push({ id: 'rejected', at: e.rejectedAt, type: 'audit', action: 'rejected', by: e.rejectedBy, note: e.rejectionNote });
+    }
+    if (e.paidAt && !events.some(ev => ev.action === 'paid' || ev.action === 'mark_paid')) {
+      events.push({ id: 'paid', at: e.paidAt, type: 'audit', action: 'paid', by: e.paidConfirmedBy });
+    }
+
+    return events.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  }, [e]);
+
+  const actionLabel = (action) => ({
+    created: 'Enviado',
+    submitted: 'Enviado',
+    approved: 'Aprobado',
+    rejected: 'Rechazado',
+    resubmitted: 'Reenviado',
+    paid: 'Marcado como pagado',
+    mark_paid: 'Marcado como pagado',
+    edited: 'Editado',
+    updated: 'Editado',
+    attachment_removed: 'Adjunto eliminado',
+    comment_added: 'Nota añadida',
+    exported: 'Exportado',
+  })[action] || action;
   const startEdit=()=>{
     const defIva=e.ivaRate===null?"":(e.ivaRate!==undefined&&e.ivaRate!==null?String(e.ivaRate):ivaRateToFormString(readIvaDefault()));
     const fromRule=recurrenceRuleToCadenceForForm(e.recurrenceRule);
@@ -2616,7 +2675,7 @@ function DetailPanel(){
     const cadenceCustomAmount=(ckStored&&ckStored!=="once"&&e.cadenceCustomAmount!=null)?String(e.cadenceCustomAmount):fromRule.cadenceCustomAmount;
     const cadenceCustomUnit=(ckStored&&ckStored!=="once"&&e.cadenceCustomUnit!=null)?String(e.cadenceCustomUnit):fromRule.cadenceCustomUnit;
     const invTerms=e.expenseType==="invoice"?expenseInvoiceTermsFromEntity(e):{paymentTermMode:"0",invoiceDueDateDirect:""};
-    const paymentDeferred=e.expenseType==="invoice"&&String(invTerms.paymentTermMode||"0")!=="0";
+    const deferredPayment=e.expenseType==="invoice"&&String(invTerms.paymentTermMode||"0")!=="0";
     const prov=String((e.proveedor!=null&&String(e.proveedor).trim()!=="")?e.proveedor:(e.vendor||"")).trim();
     setEf({description:e.description,amount:String(e.amount),category:e.category,
       date:e.date,notes:e.notes||"",receipt:e.receipt||null,receiptType:e.receiptType||null,
@@ -2631,7 +2690,7 @@ function DetailPanel(){
       expenseType:e.expenseType||"expense",
       proveedor:prov,
       vendor:String(e.vendor||prov).trim(),
-      paymentDeferred,
+      deferredPayment,
       paymentTermMode:invTerms.paymentTermMode,
       invoiceDueDateDirect:invTerms.invoiceDueDateDirect,
       paymentTermCustomDays:e.paymentTermCustomDays!=null?String(e.paymentTermCustomDays):"30"});
@@ -2741,7 +2800,7 @@ function DetailPanel(){
   const editIsInv=ef.expenseType==="invoice";
   const editVendorOk=!editIsInv||String(ef.vendor||"").trim().length>0;
   const editProveedorOk=!editIsInv||String(ef.proveedor||"").trim().length>0;
-  const editDuePickOk=!editIsInv||!ef.paymentDeferred||(String(ef.paymentTermMode||"0")!=="custom")||String(ef.invoiceDueDateDirect||"").trim().length>=10;
+  const editDuePickOk=!editIsInv||!ef.deferredPayment||(String(ef.paymentTermMode||"0")!=="custom")||String(ef.invoiceDueDateDirect||"").trim().length>=10;
   const editExpenseValid=editAmountOk&&String(ef.description||"").trim()&&String(ef.category||"").trim()&&String(ef.date||"").trim()&&!!String(ef.departmentId||"").trim()&&!!editOwnerId&&editVendorOk&&editProveedorOk&&editDuePickOk;
   const editTotVal=efSplits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
   const editCheckedSplit=efSplits.filter(s=>s.checked).length;
@@ -2823,7 +2882,7 @@ function DetailPanel(){
           fontSize:9,
           fontWeight:700,
           marginBottom:7,
-          ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
+          ...(statusToneClass(st)?{}:{background:(st==="approved"?detailAccent:(ST[st]||ST.pending).bg),color:(ST[st]||ST.pending).color}),
         }}
       >{t("status."+st).toUpperCase()}</div>
       <div style={{fontSize:15,fontWeight:700,marginBottom:2}}>{e.description}</div>
@@ -2854,7 +2913,7 @@ function DetailPanel(){
              e.status === "approved" &&
              (e.paymentStatus === "unpaid" || e.paymentStatus === "overdue") && (
               !detailPayOpen?(
-                <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px",fontWeight:600}}
+                <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px",fontWeight:600,background:detailAccent}}
                   onClick={()=>{setDetailPayDate(new Date().toISOString().slice(0,10));setDetailPayOpen(true);}}>
                   Marcar como pagada
                 </button>
@@ -2871,21 +2930,38 @@ function DetailPanel(){
             )}
           </div>
         </div>
-        {e.expenseType === 'invoice' && e.status === 'approved' &&
-         e.paymentStatus !== 'paid' && e.dueDate && (() => {
+        {e.expenseType === 'invoice' &&
+         e.status === 'approved' &&
+         e.paymentStatus !== 'paid' &&
+         e.dueDate && (() => {
           const today = new Date().toISOString().slice(0, 10);
           const due = String(e.dueDate).slice(0, 10);
-          if (due > today) return null; // not yet due, no reminder
+          if (due > today) return null;
+          const isOverdue = due < today;
           return (
             <div style={{
-              marginTop: 8, padding: '8px 12px',
-              background: due < today ? '#FEE2E2' : '#FEF3C7',
+              marginTop: 8, padding: '12px',
+              background: isOverdue ? '#FEE2E2' : '#FEF3C7',
               borderRadius: 8, fontSize: 12,
-              color: due < today ? '#991B1B' : '#78350F'
+              color: isOverdue ? '#991B1B' : '#78350F'
             }}>
-              {due < today
-                ? `⚠️ Esta factura venció el ${fmtDate(due)}. Confirma si fue pagada.`
-                : `⚠️ Esta factura vence hoy. Confirma el pago.`}
+              <div style={{marginBottom: 8}}>
+                {isOverdue
+                  ? `Esta factura venció el ${fmtDate(due)}. Confirma si fue pagada.`
+                  : `Esta factura vence hoy. Confirma el pago.`}
+              </div>
+              <button
+                className="btn-primary"
+                style={{
+                  fontSize: 12, padding: '6px 16px',
+                  background: '#C4622D', border: 'none'
+                }}
+                onClick={() => {
+                  setDetailPayOpen(true);
+                }}
+              >
+                Marcar como pagada
+              </button>
             </div>
           );
         })()}
@@ -2907,9 +2983,9 @@ function DetailPanel(){
       </div>
       {((AUTH_URL&&e._apiType==="expense"&&(e.status==="submitted"||e.status==="pending")&&approverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved")||(!AUTH_URL&&approverIds.includes(user.id)&&st==="pending"&&approvalVoteFor(e.approvals,user.id,users)!=="approved"))&&(
         <div style={{marginTop:9}}>
-          <label className="lbl" style={{marginBottom:3}}>{t("label.decision")}</label>
+          <label className="lbl" style={{marginBottom:3,color:detailAccent}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
-          <div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:e.expenseType==="invoice"?"#C4622D":"#3C0A37"}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13,borderColor:e.expenseType==="invoice"?"#C4622D":"#3C0A37"}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button></div>
+          <div style={{display:"flex",gap:6}}><button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:detailAccent}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button><button className="btn-danger" style={{flex:1,padding:"7px",fontSize:13,borderColor:e.expenseType==="invoice"?"#C4622D":"#3C0A37"}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button></div>
         </div>
       )}
       {e._apiType==="expense"&&e.status==="rejected"&&e.rejectionNote&&(
@@ -2938,54 +3014,22 @@ function DetailPanel(){
       <div style={{marginTop:12}}>
         <label className="lbl" style={{marginBottom:6}}>{t("timeline.sectionTitle")}</label>
         <div>
-          {buildExpenseTimelineEntries(e).map((entry,i)=>{
-            const u=getU(entry.by);
-            const time=expenseTimelineTimeAgo(entry.at,t);
-            let actionVerb="";
-            let detail=null;
-            if(entry.action==="comment_added"){
-              actionVerb=t("timeline.noteAdded");
-              detail=entry.text;
-            }else if(entry.action==="approved"){
-              actionVerb=t("timeline.approved");
-              if(entry.note&&String(entry.note).trim())detail=String(entry.note).trim();
-            }else if(entry.action==="rejected"){
-              actionVerb=t("timeline.rejected");
-              if(entry.note&&String(entry.note).trim())detail=String(entry.note).trim();
-            }else if(entry.action==="edited"){
-              actionVerb=t("timeline.edited");
-              const fl=expenseTimelineEditedFieldLabels(entry.meta,t);
-              if(fl)detail=t("timeline.editedFields",{fields:fl});
-            }else if(entry.action==="attachment_uploaded"){
-              actionVerb=t("timeline.receiptUploaded");
-              const mt=(entry.meta&&entry.meta.type)||"";
-              if(mt)detail=mt.includes("pdf")?t("timeline.attachmentDetailPdf"):t("timeline.attachmentDetailImage");
-            }else if(entry.action==="attachment_removed"){
-              actionVerb=t("timeline.receiptRemoved");
-            }else if(entry.action==="reapproval_required"){
-              actionVerb=t("timeline.askedReapproval");
-            }else if(entry.action==="auto_approved"){
-              actionVerb=t("timeline.autoApproved");
-              if(entry.meta&&entry.meta.reason==="submitter_is_approver")detail=t("audit.autoApprovedDetail");
-            }else if(entry.action==="submitted"){
-              actionVerb=t("timeline.submitted");
-            }else if(entry.action==="resubmitted"){
-              actionVerb=t("timeline.resubmitted");
-            }else{
-              actionVerb=t("audit."+entry.action)||entry.action;
-            }
-            const key=entry.id||`tl-${i}-${entry.at}-${entry.action}`;
-            return(
-              <div key={key} style={{display:"flex",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA"}}>
-                <UserAvatar user={u} size={20} fontSize={6}/>
+          {allEvents.map((ev,i)=>{
+            const action = ev.action;
+            return (
+              <div key={ev.id || `ev-${i}`} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
+                <div style={{
+                  width:8,height:8,borderRadius:"50%",flexShrink:0,marginTop:4,
+                  background: action==="approved"?"#166534":action==="rejected"?"#991B1B":
+                              action==="paid"?"#065F46":"#9CAA9F"
+                }}/>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:11,color:"#6B7B72"}}>
-                    <span style={{fontWeight:600,color:"#1A0E18"}}>{u.name}</span>
-                    {" "}{actionVerb}{" · "}{time}
+                  <div style={{fontSize:12,fontWeight:600,color:"#3C0A37"}}>
+                    {actionLabel(ev.action)}
+                    {ev.by && <span style={{fontWeight:400,color:"#6B7B72"}}> · {getU(ev.by).name}</span>}
                   </div>
-                  {detail&&(
-                    <div style={{fontSize:12,color:"#4B5E52",marginTop:4,lineHeight:1.4}}>{detail}</div>
-                  )}
+                  {ev.note && <div style={{fontSize:11,color:"#6B7B72",marginTop:2}}>{ev.note}</div>}
+                  <div style={{fontSize:10,color:"#C4B8C0",marginTop:1}}>{fmtDate(ev.at)}</div>
                 </div>
               </div>
             );
@@ -3397,7 +3441,7 @@ export function DashboardView(){
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <div style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{short}</div>
-                  {(e.paidBy||[]).length>1&&<span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:10,fontWeight:700,color:"#4B5E52",background:"#EDE8E0",padding:"1px 5px",borderRadius:6,flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-hidden="true">👥 {(e.paidBy||[]).length}</span>}
+                  {(e.paidBy||[]).length>1&&<span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:10,fontWeight:700,color:"#4B5E52",background:"#EDE8E0",padding:"1px 5px",borderRadius:6,flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-hidden="true">{(e.paidBy||[]).length}</span>}
                 </div>
                 <div style={{fontSize:11,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.date)} · {t("filter.submitter")}: {sub} · {e.category}</div>
               </div>
@@ -3430,6 +3474,7 @@ export function ExpensesView(){
         detailId,setDetailId,panel,setPanel,openNew,resetForm,isAdmin,user,aNote,setANote,approve,clearMyExpenseFilter,totApproved,
         expKindFlt,setExpKindFlt,markExpensePaid,recurringFlt,setRecurringFlt}=useApp();
   const [payOpenId,setPayOpenId]=useState(null);
+  const [filtersOpen,setFiltersOpen]=useState(false);
   const [payDate,setPayDate]=useState(()=>new Date().toISOString().slice(0,10));
   const pendingTotal=expenses.filter(e=>getItemStatus(e,cats)==="pending").reduce((s,e)=>s+eurForExpense(e),0);
   const naturalFrom = expenses.length
@@ -3447,51 +3492,50 @@ export function ExpensesView(){
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
         <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G}}>{t("nav.expenses")}</h1>
-        <button className="btn-primary" style={{fontSize:13,padding:"7px 14px"}} onClick={openNew}>{t("action.newExpense")}</button>
       </div>
       <div style={{fontSize:12,color:"#6B7B72",marginBottom:11,background:"#F5F0EA",borderRadius:7,padding:"7px 11px"}}>
         {t("page.expensesDefBody")}
       </div>
-      {/* ── Status pills */}
-      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
-        {["all","pending","approved","rejected"].map(f=>(
-          <button key={f} style={{padding:"3px 10px",borderRadius:18,fontSize:11,fontWeight:500,border:"1.5px solid",borderColor:expFlt===f?G:"#DDD6CC",background:expFlt===f?G:"#fff",color:expFlt===f?"#fff":"#4B5E52",cursor:"pointer"}} onClick={()=>setExpFlt(f)}>
-            {t("filter."+f)} ({byStatus[f]?.length||0})
-          </button>
-        ))}
-      </div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
-        <span style={{fontSize:11,color:"#4B5E52",fontWeight:600,whiteSpace:"nowrap"}}>Todos · Gastos · Facturas</span>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
-          {[
-            ["all",t("expenses.filterAll")],
-            ["expense",t("expenses.filterExpenses")],
-            ["invoice",t("expenses.filterInvoices")],
-          ].map(([k,lb])=>{
-            const active=expKindFlt===k;
-            const fill=k==="invoice"&&active?"#C4622D":active?"#3C0A37":"#fff";
-            const border=active?(k==="invoice"?"#C4622D":"#3C0A37"):"#DDD6CC";
-            const color=active?"#fff":"#4B5E52";
-            return(
-              <button key={k} type="button" style={{padding:"3px 12px",borderRadius:18,fontSize:11,fontWeight:600,border:`1.5px solid ${border}`,background:fill,color,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setExpKindFlt(k)}>
-                {lb}
-              </button>
-            );
-          })}
-        </div>
-        <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
-          value={recurringFlt} onChange={e => setRecurringFlt(e.target.value)}>
-          <option value="all">Todos los gastos</option>
-          <option value="recurring">Costes fijos</option>
-          <option value="recurring_pending">Costes fijos · pendientes</option>
-          <option value="recurring_paid">Costes fijos · pagados</option>
-        </select>
-      </div>
-      {/* ── Search + extended filters */}
-      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:9}}>
-        <input className="inp" style={{flex:1,minWidth:140,maxWidth:220,padding:"5px 9px",fontSize:12}}
+      {(() => {
+        const cPending=byStatus.pending?.length||0;
+        const cApproved=byStatus.approved?.length||0;
+        const cRejected=byStatus.rejected?.length||0;
+        return (
+          <>
+      <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
+        <input className="inp" style={{flex:1,minWidth:200,padding:"5px 9px",fontSize:12}}
           placeholder={t("filter.codeSearch")} value={expSrc}
           onChange={e=>setExpSrc(e.target.value)}/>
+        <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:140,cursor:"pointer"}}
+          value={expFlt} onChange={e=>setExpFlt(e.target.value)}>
+          <option value="all">Estado: Todos</option>
+          <option value="pending">Pendiente</option>
+          <option value="approved">Aprobado</option>
+          <option value="rejected">Rechazado</option>
+        </select>
+        <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:130,cursor:"pointer"}}
+          value={expKindFlt} onChange={e=>setExpKindFlt(e.target.value)}>
+          <option value="all">Tipo: Todos</option>
+          <option value="expense">Gastos</option>
+          <option value="invoice">Facturas</option>
+        </select>
+        <button className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} onClick={openNew}>{t("action.newExpense")}</button>
+      </div>
+      <div style={{fontSize:11,color:"#9CAA9F",marginBottom:6}}>
+        {cPending} pendiente{cPending!==1?"s":""} · {cApproved} aprobado{cApproved!==1?"s":""}
+        {cRejected>0 ? ` · ${cRejected} rechazado${cRejected!==1?"s":""}` : ""}
+      </div>
+      <div style={{marginBottom:7}}>
+        <button
+          style={{fontSize:11,color:"#6B7B72",background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit"}}
+          onClick={()=>setFiltersOpen(p=>!p)}
+        >
+          {filtersOpen ? "Menos filtros" : "Mas filtros"}
+          {activeFilterCount > 0 && ` (${activeFilterCount})`}
+        </button>
+      </div>
+      {filtersOpen&&(
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:9}}>
         <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
           value={catFlt} onChange={e=>setCatFlt(e.target.value)}>
           <option value="">{t("filter.category")}: {t("filter.all")}</option>
@@ -3501,6 +3545,13 @@ export function ExpensesView(){
           value={submFlt} onChange={e=>setSubmFlt(e.target.value)}>
           <option value="">{t("filter.submitter")}: {t("filter.all")}</option>
           {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+        </select>
+        <select className="inp" style={{width:"auto",fontSize:11,padding:"5px 8px",minWidth:140}}
+          value={recurringFlt} onChange={e => setRecurringFlt(e.target.value)}>
+          <option value="all">Costes fijos: Todos</option>
+          <option value="recurring">Costes fijos</option>
+          <option value="recurring_pending">Costes fijos · pendientes</option>
+          <option value="recurring_paid">Costes fijos · pagados</option>
         </select>
         <div style={{display:"flex",alignItems:"center",border:"1.5px solid",
           borderColor:isDefaultRange?"#DDD6CC":"#3C0A37",borderRadius:7,
@@ -3544,27 +3595,29 @@ export function ExpensesView(){
             </span>
           )}
         </button>
-        {activeFilterCount>0&&(
-          <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
-            onClick={()=>{
-              try{
-                ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
-              }catch(e){}
-              setExpFlt("all");
-              setCatFlt("");
-              setSubmFlt("");
-              setDateFrom("");
-              setDateTo("");
-              setExpSrc("");
-              setExpKindFlt("all");
-              setRecurringFlt("all");
-              setPendingFrom(naturalFrom);
-              setPendingTo(naturalTo);
-            }}>
-            {t("filter.clearFilters")} ({activeFilterCount + (expSrc?1:0)})
-          </button>
-        )}
+        <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
+          onClick={()=>{
+            try{
+              ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
+            }catch(e){}
+            setExpFlt("all");
+            setCatFlt("");
+            setSubmFlt("");
+            setDateFrom("");
+            setDateTo("");
+            setExpSrc("");
+            setExpKindFlt("all");
+            setRecurringFlt("all");
+            setPendingFrom(naturalFrom);
+            setPendingTo(naturalTo);
+          }}>
+          {t("filter.clearFilters")} ({activeFilterCount + (expSrc?1:0)})
+        </button>
       </div>
+      )}
+          </>
+        );
+      })()}
       <div className="card" style={{padding:0,overflow:"hidden"}}>
         {filtered.length===0&&<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{t("empty.expenses")}</div>}
         {filtered.map((e,idx)=>{
@@ -3588,7 +3641,7 @@ export function ExpensesView(){
           const metaDate=isInvRow&&e.dueDate?`${t("expenses.vence")} ${fmtDate(e.dueDate)} · `:fmtDate(e.date)+" · ";
           return(
             <div key={e.id}>
-              <div className="row-hover" style={{padding:"9px 13px",borderBottom:(payOpenId===e.id||idx<filtered.length-1)?"1px solid #F5F0EA":"none",cursor:"pointer",background: isOverdue ? "#FFF1F2" : isDueToday ? "#FFFBEB" : undefined,borderLeft: isOverdue ? "3px solid #DC2626" : isDueToday ? "3px solid #F59E0B" : undefined,display:"flex",alignItems:"flex-start",gap:8}}
+              <div className="row-hover" style={{padding:"9px 13px",borderBottom:(payOpenId===e.id||idx<filtered.length-1)?"1px solid #F5F0EA":"none",cursor:"pointer",background: isOverdue ? "#FFF1F2" : isDueToday ? "#FFFBEB" : undefined,borderLeft: isOverdue ? "3px solid #DC2626" : undefined,display:"flex",alignItems:"flex-start",gap:8}}
                 onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
@@ -3611,7 +3664,7 @@ export function ExpensesView(){
                       }}
                     >{t("status."+st)}</span>
                     {payBadge&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:10,background:payBadge.bg,color:payBadge.color}}>{payBadge.text}</span>}
-                    {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span aria-hidden="true">👥</span><span>{(e.paidBy||[]).length}</span></span>}
+                    {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span>{(e.paidBy||[]).length}</span></span>}
                   </div>
                   <div style={{fontSize:10,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                     {isOverdue && (
@@ -4331,43 +4384,62 @@ export function ReportsView(){
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {personInvestmentRows.map(u=>{
             const open=!!openPersonLog[u.id];
+            const userRows=u.logItems||[];
+            const userTotal=u.filteredTotal||0;
+            const allApproved=userRows.length>0&&userRows.every(row=>getItemStatus(row,cats,users)==="approved");
             return(
-              <div key={u.id} style={{border:"1px solid #EDE8E0",borderRadius:10,overflow:"hidden",background:"#FAF7F2"}}>
-                <button type="button" onClick={()=>setOpenPersonLog(p=>({...p,[u.id]:!p[u.id]}))} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 12px",border:"none",background:open?"#F5F0EA":"transparent",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                  <UserAvatar user={u} size={36} fontSize={12}/>
+              <div key={u.id} style={{background:"#fff",borderRadius:12,border:"1px solid #EDE8E0",marginBottom:12,overflow:"hidden"}}>
+                <div
+                  style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:"#FAF7F4",borderBottom:"1px solid #EDE8E0",cursor:"pointer"}}
+                  onClick={()=>setOpenPersonLog(p=>({...p,[u.id]:!p[u.id]}))}
+                >
+                  <UserAvatar user={u} size={36} fontSize={14}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:13,color:G}}>{u.name}</div>
-                    <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>{u.role}{u.title?` · ${u.title}`:""}</div>
-                    <div style={{fontSize:10,color:"#9CAA9F",marginTop:4}}>{t("reports.submittedCount",{count:String(u.submittedCount)})}</div>
+                    <div style={{fontWeight:700,fontSize:14,color:"#1a1a1a"}}>{u.name}</div>
+                    <div style={{fontSize:11,color:"#9CAA9F"}}>
+                      {u.role} · {userRows.length} movimiento{userRows.length!==1?"s":""}
+                    </div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontWeight:800,fontSize:14,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(u.filteredTotal)}</div>
-                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:2}}>{statusFilter==="pending" ? t("status.pending") : t("filter.approved")}</div>
+                    <div style={{fontWeight:700,fontSize:16,color:"#3C0A37"}}>{fmt(userTotal)}</div>
+                    <div style={{fontSize:10,fontWeight:600,color:allApproved?"#065F46":"#78350F",background:allApproved?"#D1FAE5":"#FEF3C7",padding:"2px 7px",borderRadius:8,display:"inline-block",marginTop:2}}>
+                      {allApproved?"Aprobado":"Pendiente"}
+                    </div>
                   </div>
-                  <span style={{fontSize:14,color:"#9CAA9F",flexShrink:0,width:18}}>{open?"▼":"▶"}</span>
-                </button>
+                  <span style={{fontSize:10,color:"#9CAA9F",marginLeft:4}}>
+                    {open?"▲":"▼"}
+                  </span>
+                </div>
                 {open&&(
-                  <div style={{padding:"0 12px 12px",borderTop:"1px solid #EDE8E0"}}>
-                    {u.logItems.length===0
+                  <div style={{padding:"0 16px"}}>
+                    {userRows.length===0
                       ?<div style={{fontSize:11,color:"#9CAA9F",padding:"10px 0"}}>{t("reports.personNoSplitExpenses")}</div>
-                      :u.logItems.map(item=>{
-                        const isInv=item.__kind==="invoice";
-                        const st=getItemStatus(item,cats,users);
-                        const share=shareEurInExpense(item,u.id);
-                        const pend=st==="pending";
-                        const subN=(users.find(x=>x.id===item.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
+                      :userRows.map((row,i)=>{
+                        const kind=row.expenseType||row.__kind||"expense";
+                        const rowStatus=getItemStatus(row,cats,users);
+                        const rowAmount=shareEurInExpense(row,u.id);
                         return(
-                          <div key={`${item.__kind}-${item.id}`} className="row-hover" role="button" tabIndex={0} onKeyDown={ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();setView("expenses");setDetailId(item.id);setPanel("detail");}}} onClick={()=>{setView("expenses");setDetailId(item.id);setPanel("detail");}} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 0",borderBottom:"1px solid #F0EBE3",cursor:"pointer"}}>
+                          <div
+                            key={row.id}
+                            style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:i<userRows.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}}
+                            onClick={()=>{setView("expenses");setDetailId(row.id);setPanel("detail");}}
+                          >
+                            <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#FEE2CC":"#EDE9F6",color:kind==="invoice"?"#C4622D":"#3C0A37"}}>
+                              {kind==="invoice"?"FACTURA":"GASTO"}
+                            </span>
                             <div style={{flex:1,minWidth:0}}>
-                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                <span style={{fontWeight:600,fontSize:12,lineHeight:1.35}}>{isInv?(item.vendor||item.description||"Sin descripción"):(item.description||"Sin descripción")}</span>
-                                <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:isInv?"#FEF0E7":"#EDE8E0",color:isInv?"#92400E":"#4B5E52"}}>{isInv?"FACTURA":"GASTO"}</span>
+                              <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                {row.description||"Sin descripción"}
                               </div>
-                              <div style={{fontSize:10,color:"#9CAA9F",marginTop:3}}>{fmtDate(isInv?(item.dueDate||item.date):item.date)} · {t("filter.submitter")}: {subN} · {item.category}</div>
+                              <div style={{fontSize:10,color:"#9CAA9F"}}>
+                                {fmtDate(row.date)} · {row.category}
+                              </div>
                             </div>
                             <div style={{textAlign:"right",flexShrink:0}}>
-                              <div style={{fontWeight:700,fontSize:12,fontVariantNumeric:"tabular-nums",color:G}}>{fmt(share)}</div>
-                              <span style={{display:"inline-block",marginTop:4,fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:4,background:pend?"#FEF3C7":"#DCFCE7",color:pend?"#92400E":"#166534"}}>{pend?t("status.pending"):t("status.approved")}</span>
+                              <div style={{fontSize:13,fontWeight:700,color:"#3C0A37"}}>{fmt(rowAmount)}</div>
+                              <div style={{fontSize:9,fontWeight:600,color:rowStatus==="approved"?"#065F46":"#78350F"}}>
+                                {t("status."+rowStatus)}
+                              </div>
                             </div>
                           </div>
                         );
@@ -4929,7 +5001,7 @@ function IvaRatesEditorBlock({t,ivaRates,onSave}){
           </div>
         ))}
       </div>
-      <button type="button" className="btn-primary" style={{marginTop:10,fontSize:12,padding:"6px 12px",background:saved?"#16A34A":G}} onClick={doSave}>{saved?"✓ Guardado":t("settings.saveIvaTypes")}</button>
+      <button type="button" className="btn-primary" style={{marginTop:10,fontSize:12,padding:"6px 12px",background:saved?"#16A34A":G}} onClick={doSave}>{saved?"Guardado":t("settings.saveIvaTypes")}</button>
     </div>
   );
 }
@@ -5356,7 +5428,7 @@ export function SettingsView(){
       API.ensureSessionToken();
       if(!API.token){setBackupsError(t("msg.sessionExpired"));return;}
       const d=await API.post("/admin/backups/run",{});
-      setBackupsMsg("✓ Copia creada: "+(d.filename||""));
+      setBackupsMsg("Copia creada: "+(d.filename||""));
       await loadBackups();
     }catch(e){setBackupsError(e.message||t("signup.serverDown"));}
   };
@@ -5793,7 +5865,7 @@ export function SettingsView(){
         {backupsMsg&&<div style={{padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",fontSize:11,marginBottom:8}}>{backupsMsg}</div>}
         {backupsError&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{backupsError}</div>}
         <div style={{padding:"8px 10px",borderRadius:8,background:"#FFFBEB",border:"1px solid #FDE68A",fontSize:11,color:"#92400E",lineHeight:1.45,marginBottom:10}}>
-          ⚠ Las copias se guardan en el mismo disco. Descarga semanalmente a Google Drive como copia externa.
+          Las copias se guardan en el mismo disco. Descarga semanalmente a Google Drive como copia externa.
         </div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
           <div style={{fontSize:11,color:"#6B7B72"}}>{backupsLoading?"Cargando copias...":"Copias disponibles: "+backups.length}</div>
@@ -6497,15 +6569,18 @@ export default function App(){
     const cadSubmit=cadenceToRecurringPayload(form);
     const ptdSubmit=paymentTermDaysFromForm(form);
     const computedDueIso=computeInvoiceDueISO(form);
+    const deferredPaymentSubmit = form.expenseType === "invoice" ? (form.deferredPayment === true) : false;
     const invExtras=isInvSubmit?{
       expenseType:"invoice",
       vendor:String(form.vendor||"").trim(),
       paymentTermDays:ptdSubmit,
-      paymentStatus:"unpaid",
+      paymentStatus:deferredPaymentSubmit?"pending_approval":"paid",
       dueDate:computedDueIso||null,
+      deferredPayment:deferredPaymentSubmit,
     }:{
       expenseType:"expense",
       paymentStatus:"na",
+      deferredPayment:false,
     };
     const facturaExtras={
       proveedor:proveedorSubmit,
@@ -6550,6 +6625,7 @@ export default function App(){
             notes:form.notes||undefined,status:"submitted",
             departmentId:form.departmentId,
             ownerId,
+            deferredPayment: form.expenseType === 'invoice' ? (form.deferredPayment === true) : false,
             approvalRequired:approvalRequiredForSubmit,
             paidBy,
             ivaRate:ivaRateAuth,
