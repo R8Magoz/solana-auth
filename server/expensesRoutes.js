@@ -1127,6 +1127,13 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (!canAccessExpense(req, exp)) {
       return res.status(403).json({ error: 'No autorizado.' });
     }
+    console.log('[receipt] upload attempt:', {
+      expenseId: req.params.id,
+      userId: req.userId,
+      b64Length: typeof req.body?.b64 === 'string' ? req.body.b64.length : 'missing',
+      mediaType: req.body?.mediaType,
+      contentLength: req.headers['content-length'],
+    });
     if (exp.status === 'deleted') {
       return res.status(400).json({ error: 'Gasto eliminado.' });
     }
@@ -1146,11 +1153,18 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       return res.json({ ok: true, receiptPath });
     } catch (e) {
       const code = e.statusCode || 500;
+      console.error('[receipt] upload error:', {
+        message: e.message,
+        stack: e.stack,
+        statusCode: e.statusCode,
+        b64Length: typeof b64 === 'string' ? b64.length : 'not a string',
+        mediaType,
+        expenseId: req.params.id,
+      });
       if (code >= 400 && code < 500) {
         return res.status(code).json({ error: e.message || 'Solicitud inválida.' });
       }
-      console.error('[receipt] upload', e.message || e);
-      return res.status(500).json({ error: 'No se pudo guardar el recibo.' });
+      return res.status(500).json({ error: 'No se pudo guardar el recibo: ' + (e.message || 'error desconocido') });
     }
   });
 

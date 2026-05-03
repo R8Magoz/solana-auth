@@ -6897,6 +6897,12 @@ export default function App(){
           let exp=expenseFromApi(d.expense);
           if(receipt?.b64){
             try{
+              console.log('[receipt upload] starting:', {
+                expenseId: exp.id,
+                b64Length: receipt.b64?.length,
+                mediaType: receipt.type,
+                hasToken: !!API.token,
+              });
               const receiptResult = await API.post(
                 "/expenses/"+encodeURIComponent(exp.id)+"/receipt",
                 {b64:receipt.b64, mediaType:receipt.type||"image/jpeg"}
@@ -6907,10 +6913,6 @@ export default function App(){
                   x.id === exp.id ? { ...x, receiptPath: receiptResult.receiptPath } : x
                 ));
               }
-              const full=await API.get("/expenses");
-              const row=(full.expenses||[]).find(x=>x.id===exp.id);
-              exp=row?expenseFromApi(row):exp;
-              saveExp((full.expenses||[]).map(expenseFromApi));
             }catch(e2){
               if(isOfflineQueuedError(e2)){
                 saveExp([exp,...expenses]);
@@ -6926,9 +6928,19 @@ export default function App(){
                 appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
                 return;
               }
-              dispatchSolanaToast("No se pudo guardar el recibo","error");
+              console.error('[receipt upload] failed:', e2?.message, e2);
+              dispatchSolanaToast("No se pudo guardar el recibo: " + (e2?.message || "error"), "error");
               saveExp([exp,...expenses]);
             }
+            // After the receipt try/catch, always refresh expenses list
+            try{
+              const full = await API.get("/expenses");
+              if (full && full.expenses) {
+                const row = full.expenses.find(x => x.id === exp.id);
+                exp = row ? expenseFromApi(row) : exp;
+                saveExp(full.expenses.map(expenseFromApi));
+              }
+            } catch(_) {}
           }else{
             saveExp([exp,...expenses]);
             try{
