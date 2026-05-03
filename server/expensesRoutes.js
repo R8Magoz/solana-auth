@@ -366,7 +366,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     let resolvedOwner = null;
 
     if (ownerRaw) {
-      const allUsers = userStore.listUsers ? userStore.listUsers() : [];
+      const allUsers = db.prepare(
+        "SELECT * FROM users WHERE id != 'system'"
+      ).all();
       resolvedOwner =
         allUsers.find(u => u.id === ownerRaw) ||
         allUsers.find(u => u.id === resolveApproverTokenToUserId(ownerRaw, userStore)) ||
@@ -382,7 +384,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     if (!resolvedOwner) {
-      const _allUsersDebug = userStore.listUsers ? userStore.listUsers() : [];
+      const _allUsersDebug = db.prepare(
+        "SELECT * FROM users WHERE id != 'system'"
+      ).all();
       console.error('[TITULAR DEBUG] ownerRaw received:', JSON.stringify(ownerRaw));
       console.error('[TITULAR DEBUG] req.body.ownerId:', JSON.stringify(req.body.ownerId));
       console.error('[TITULAR DEBUG] req.userId:', JSON.stringify(req.userId));
