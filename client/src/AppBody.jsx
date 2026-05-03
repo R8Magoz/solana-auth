@@ -2510,7 +2510,7 @@ function ExpenseFormFields({
 function NewPanel(){
   const{t,user,cats,form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
         receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,handleReceiptFile,fileRef,
-        startCam,
+        startCam,submitting,
         submitExp,resetForm,setPanel,users,calcEqual,ivaRates,departments}=useApp();
   const activeCats=cats.filter(c=>!c.archived);
   const ownerRaw=(form.ownerId&&String(form.ownerId).trim())?String(form.ownerId).trim():"";
@@ -2634,10 +2634,11 @@ function NewPanel(){
       />
       {formError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{formError}</div>}
       <div style={{position:"relative",width:"100%"}}>
-        <button type="button" className="btn-primary" style={{width:"100%",padding:11,background:actionColor,opacity:(!expenseValid||splitSubmitBlocked)?0.5:1,cursor:(!expenseValid||splitSubmitBlocked)?"not-allowed":"pointer",transition:"color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease"}}
-          onMouseEnter={e=>{if(!expenseValid||splitSubmitBlocked)return;e.currentTarget.style.background=submitHoverBg;}}
+        <button type="button" className="btn-primary" disabled={submitting} style={{width:"100%",padding:11,background:actionColor,opacity:submitting?0.6:((!expenseValid||splitSubmitBlocked)?0.5:1),cursor:submitting?"not-allowed":((!expenseValid||splitSubmitBlocked)?"not-allowed":"pointer"),transition:"color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease"}}
+          onMouseEnter={e=>{if(submitting||!expenseValid||splitSubmitBlocked)return;e.currentTarget.style.background=submitHoverBg;}}
           onMouseLeave={e=>{e.currentTarget.style.background=actionColor;}}
           onClick={()=>{
+            if(submitting)return;
             setFormError("");
             if(splitSubmitBlocked){
               setFormError("Revisa el reparto antes de enviar.");
@@ -2647,7 +2648,7 @@ function NewPanel(){
               setSubmitAttempt(true);setFormError("Completa los campos obligatorios marcados con *");return;
             }
             submitExp();
-          }}>{isInv ? t("action.submitBill") : t("action.submit")}</button>
+          }}>{submitting ? "Enviando..." : (isInv ? t("action.submitBill") : t("action.submit"))}</button>
         {!expenseValid&&!splitSubmitBlocked&&(
           <button type="button" aria-label="Completar campos obligatorios" style={{position:"absolute",inset:0,opacity:0.001,width:"100%",height:"100%",cursor:"pointer"}}
             onClick={()=>setSubmitAttempt(true)}/>)}
@@ -6320,6 +6321,7 @@ export default function App(){
   const [receipt, setReceipt] =useState(null);
   const [recPrev, setRecPrev] =useState(null);
   const [formError, setFormError] =useState("");
+  const [submitting, setSubmitting] =useState(false);
   const [sessionExpired, setSessionExpired]=useState(false);
   const [idleTrackingEnabled,setIdleTrackingEnabled]=useState(false);
   const [online,setOnline]=useState(()=>typeof navigator!=="undefined"&&navigator.onLine);
@@ -6434,7 +6436,20 @@ export default function App(){
       return n;
     });
   };
-  const saveExp     =d=>{const n=d.map(e=>normalizeItem(e,"expense"));setExpenses(n);if(!AUTH_URL)lsSet("sol-exp",n);};
+  const saveExp     =(dataOrFn)=>{
+    setExpenses(prev=>{
+      const next=typeof dataOrFn==="function"
+        ? dataOrFn(prev)
+        : dataOrFn;
+      if(!Array.isArray(next)){
+        console.error('[saveExp] received non-array:', typeof next, next);
+        return Array.isArray(prev)?prev:[];
+      }
+      const n=next.map(e=>normalizeItem(e,"expense"));
+      if(!AUTH_URL)lsSet("sol-exp",n);
+      return n;
+    });
+  };
   const saveCats    =d=>{const n=d.map(c=>normalizeItem(c,"cat"));setCats(n);lsSet("sol-cats",n);};
   const savePasswords=d=>{setPasswords(d);if(!AUTH_URL)lsSet("sol-pwd",d);};
 
@@ -6782,6 +6797,8 @@ export default function App(){
 
   /* ── SUBMIT EXPENSE ─────────────────────────────────────────────────────── */
   const submitExp=()=>{
+    if (submitting) return;
+    setSubmitting(true);
     const ownerId = String(form.ownerId || user?.id || "").trim();
     const ownerExists = users.find(u => u.id === ownerId);
     if (!ownerExists) {
@@ -6895,65 +6912,43 @@ export default function App(){
             throw new Error(serverError);
           }
           const d = responseBody;
-          let exp=expenseFromApi(d.expense);
-          if(receipt?.b64){
-            try{
+          const newExp = expenseFromApi(d.expense);
+          saveExp(prev => [newExp, ...(Array.isArray(prev) ? prev.filter(x => x.id !== newExp.id) : [])]);
+
+          let finalExp = newExp;
+          if (receipt?.b64) {
+            try {
               console.log('[receipt upload] starting:', {
-                expenseId: exp.id,
+                expenseId: newExp.id,
                 b64Length: receipt.b64?.length,
                 mediaType: receipt.type,
                 hasToken: !!API.token,
               });
               const receiptResult = await API.post(
-                "/expenses/"+encodeURIComponent(exp.id)+"/receipt",
-                {b64:receipt.b64, mediaType:receipt.type||"image/jpeg"}
+                "/expenses/" + encodeURIComponent(newExp.id) + "/receipt",
+                { b64: receipt.b64, mediaType: receipt.type || "image/jpeg" }
               );
-              if (receiptResult && receiptResult.receiptPath) {
-                exp = { ...exp, receiptPath: receiptResult.receiptPath };
+              if (receiptResult?.receiptPath) {
+                finalExp = { ...newExp, receiptPath: receiptResult.receiptPath };
                 saveExp(prev => Array.isArray(prev)
-                  ? prev.map(x => x.id === exp.id ? exp : x)
-                  : [exp]
+                  ? prev.map(x => x.id === finalExp.id ? finalExp : x)
+                  : [finalExp]
                 );
               }
-            }catch(e2){
-              if(isOfflineQueuedError(e2)){
-                saveExp([exp,...expenses]);
-                try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
-                const submittedAmt = fmt(parseMoney(form.amount) || 0);
-                const submittedDesc = String(form.description || "").trim().slice(0, 40);
-                const isInvoice = form.expenseType === "invoice";
-                const typeLabel = isInvoice ? "Factura" : "Gasto";
-                const msg = `${typeLabel} registrado correctamente · ${submittedAmt}${submittedDesc ? " · " + submittedDesc : ""}`;
-                dispatchSolanaToast(msg, "success");
-                resetForm();setDetailId(exp.id);setPanel("detail");
-                try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
-                appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
-                return;
-              }
-              // Receipt upload succeeded but saveExp failed — don't show error
-              // The expense was already created, just the local state update failed
-              console.error('[receipt upload] saveExp error:', e2?.message);
-              dispatchSolanaToast("Recibo guardado. Recarga si no ves el adjunto.", "success");
+            } catch (uploadErr) {
+              console.error('[receipt upload] failed:', uploadErr?.message);
             }
           }
-          saveExp(prev => {
-            if (!Array.isArray(prev)) return [exp];
-            if (prev.find(x => x.id === exp.id)) {
-              return prev.map(x => x.id === exp.id ? exp : x);
-            }
-            return [exp, ...prev];
-          });
-          // Always refresh from server after expense creation
-          try {
-            const full = await API.get("/expenses");
+
+          API.get("/expenses").then(full => {
             if (full && Array.isArray(full.expenses)) {
               saveExp(full.expenses.map(expenseFromApi));
             }
-          } catch(_) {}
-          console.log('[submitExp] done:', {
-            expId: exp.id,
-            hasReceiptPath: !!exp.receiptPath,
-            receiptPath: exp.receiptPath,
+          }).catch(() => {});
+
+          console.log('[submitExp] opening detail:', {
+            id: finalExp.id,
+            receiptPath: finalExp.receiptPath,
           });
           try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
           const submittedAmt = fmt(parseMoney(form.amount) || 0);
@@ -6962,9 +6957,12 @@ export default function App(){
           const typeLabel = isInvoice ? "Factura" : "Gasto";
           const msg = `${typeLabel} registrado correctamente · ${submittedAmt}${submittedDesc ? " · " + submittedDesc : ""}`;
           dispatchSolanaToast(msg, "success");
-          resetForm();setDetailId(exp.id);setPanel("detail");
+          resetForm();
+          setDetailId(finalExp.id);
+          setPanel("detail");
           try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
-          appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
+          appLog("info","expense_submitted",{itemCode:newExp.itemCode,amount:newExp.amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
+          return;
         }catch(err){
           if(isOfflineQueuedError(err)){
             const baseTrailOff=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
@@ -7003,7 +7001,7 @@ export default function App(){
               ...invExtras,
               ...recExtras,
             },"expense");
-            saveExp([optimistic,...expenses]);
+            saveExp(prev => [optimistic, ...(Array.isArray(prev) ? prev.filter(x => x.id !== optimistic.id) : [])]);
             try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
             const submittedAmt = fmt(parseMoney(form.amount) || 0);
             const submittedDesc = String(form.description || "").trim().slice(0, 40);
@@ -7017,35 +7015,41 @@ export default function App(){
             return;
           }
           setFormError(err?.message||"No se pudo guardar el gasto. Revisa los datos e inténtalo de nuevo.");
+        }finally{
+          setSubmitting(false);
         }
       })();
       return;
     }
-    const expApproverIds=effectiveExpenseApproverIds({category:form.category},cats,users);
-    const baseTrail=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
-    const approvalRequiredLocal=expApproverIds.filter(id=>id!==user.id);
-    const shouldAutoApproveSubmitterLocal=canSubmitterAutoApprove&&approvalRequiredLocal.includes(user.id);
-    const{approvals:expApprovals,auditTrail:expTrail}=shouldAutoApproveSubmitterLocal
-      ? autoApprove(user.id,approvalRequiredLocal,{},baseTrail)
-      : {approvals:{},auditTrail:baseTrail};
-    const expReceiptTrail=receipt?[...expTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:receipt.type}}]:expTrail;
-    const ivaRate=parseFormIvaRateString(form.ivaRate);
-    const ivaAmount=calcIvaParts(amount,ivaRate).iva;
-    const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID,
-      ...facturaExtras,
-      ...invExtras,
-      ...recExtras,
-    };
-    appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
-    try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
-    const submittedAmt = fmt(parseMoney(form.amount) || 0);
-    const submittedDesc = String(form.description || "").trim().slice(0, 40);
-    const isInvoice = form.expenseType === "invoice";
-    const typeLabel = isInvoice ? "Factura" : "Gasto";
-    const msg = `${typeLabel} registrado correctamente · ${submittedAmt}${submittedDesc ? " · " + submittedDesc : ""}`;
-    dispatchSolanaToast(msg, "success");
-    saveExp([exp,...expenses]);resetForm();setPanel("detail");setDetailId(exp.id);
-    try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
+    try{
+      const expApproverIds=effectiveExpenseApproverIds({category:form.category},cats,users);
+      const baseTrail=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
+      const approvalRequiredLocal=expApproverIds.filter(id=>id!==user.id);
+      const shouldAutoApproveSubmitterLocal=canSubmitterAutoApprove&&approvalRequiredLocal.includes(user.id);
+      const{approvals:expApprovals,auditTrail:expTrail}=shouldAutoApproveSubmitterLocal
+        ? autoApprove(user.id,approvalRequiredLocal,{},baseTrail)
+        : {approvals:{},auditTrail:baseTrail};
+      const expReceiptTrail=receipt?[...expTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:receipt.type}}]:expTrail;
+      const ivaRate=parseFormIvaRateString(form.ivaRate);
+      const ivaAmount=calcIvaParts(amount,ivaRate).iva;
+      const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID,
+        ...facturaExtras,
+        ...invExtras,
+        ...recExtras,
+      };
+      appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
+      try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
+      const submittedAmt = fmt(parseMoney(form.amount) || 0);
+      const submittedDesc = String(form.description || "").trim().slice(0, 40);
+      const isInvoice = form.expenseType === "invoice";
+      const typeLabel = isInvoice ? "Factura" : "Gasto";
+      const msg = `${typeLabel} registrado correctamente · ${submittedAmt}${submittedDesc ? " · " + submittedDesc : ""}`;
+      dispatchSolanaToast(msg, "success");
+      saveExp(prev => [exp, ...(Array.isArray(prev) ? prev.filter(x => x.id !== exp.id) : [])]);resetForm();setPanel("detail");setDetailId(exp.id);
+      try { sessionStorage.removeItem(DRAFT_KEY); } catch(e) {}
+    } finally {
+      setSubmitting(false);
+    }
   };
   const removeAttachment=(expId)=>{
     if(AUTH_URL){dispatchSolanaToast("Quitar el recibo no está disponible en modo servidor. Sube uno nuevo al editar el gasto.","error");return;}
@@ -7544,7 +7548,7 @@ export default function App(){
     view,setView,go,panel,setPanel,openNew,openNewInvoice,
     detailId,setDetailId,
     form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
-    receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,
+    receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,submitting,
     handleReceiptFile,calcEqual,fileRef,startCam,capturePhoto,stopCam,receiptAltHandlerRef,
     submitExp,resetForm,
     aNote,setANote,approve,

@@ -426,6 +426,29 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (!DATE_RE.test(dateStr)) {
       return res.status(400).json({ error: 'date debe ser YYYY-MM-DD.' });
     }
+    // Idempotency: reject duplicate submissions within 10 seconds
+    const recentDuplicate = db.prepare(`
+      SELECT id FROM expenses
+      WHERE userId = ?
+        AND description = ?
+        AND amount = ?
+        AND date = ?
+        AND createdAt > ?
+        AND status != 'deleted'
+      LIMIT 1
+    `).get(
+      req.userId,
+      desc,
+      amount,
+      dateStr,
+      Date.now() - 10000
+    );
+
+    if (recentDuplicate) {
+      console.warn('[POST /expenses] duplicate submission blocked:', recentDuplicate.id);
+      const existing = getExpenseById(recentDuplicate.id);
+      return res.json({ expense: existing });
+    }
     let resolvedDueDate = typeof dueDate === 'string' ? dueDate.trim().slice(0, 10) : '';
     if (expenseType === 'invoice') {
       if (!vendorStr) {
