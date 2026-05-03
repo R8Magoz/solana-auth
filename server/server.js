@@ -397,7 +397,7 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({ origin: CORS_ORIGIN || false, credentials: true }));
-app.use(express.json({ limit: '35mb' }));
+app.use(express.json({ limit: '100mb' }));
 app.use(sanitizeRequestBody);
 app.use('/expenses', expensesApiLimiter, createExpensesRouter({
   audit,
