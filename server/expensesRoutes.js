@@ -643,64 +643,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     ).run(Date.now(), exp.id);
     audit('expense_marked_paid', { userId: req.userId, targetId: exp.id });
 
-    const rec = Number(exp.recurring) === 1;
-    const rule = exp.recurrenceRule;
-    if (rec && rule) {
-      const base = exp.dueDate || exp.date;
-      const next = nextDueDate(base, rule);
-      if (next) {
-        const newId = 'exp_' + crypto.randomBytes(8).toString('hex');
-        db.prepare(`UPDATE expenses SET recurring = 0, updatedAt = ? WHERE id = ?`).run(now, exp.id);
-        insertExp.run({
-          id: newId,
-          userId: exp.userId,
-          amount: exp.amount,
-          currency: exp.currency || 'EUR',
-          amountEUR: exp.amountEUR != null ? exp.amountEUR : null,
-          description: exp.description,
-          category: exp.category,
-          date: next,
-          status: 'submitted',
-          approvedBy: null,
-          approvedAt: null,
-          rejectedBy: null,
-          rejectedAt: null,
-          rejectionNote: null,
-          receiptPath: null,
-          notes: exp.notes || null,
-          createdAt: now,
-          updatedAt: now,
-          departmentId: exp.departmentId || null,
-          approversJson: exp.approversJson || '[]',
-          approvalVotesJson: '{}',
-          paidByJson: exp.paidByJson || null,
-          splitMode: exp.splitMode || null,
-          ivaRate: exp.ivaRate != null ? exp.ivaRate : null,
-          ivaAmount: exp.ivaAmount != null ? exp.ivaAmount : null,
-          commentsJson: '[]',
-          ownerId: exp.ownerId || exp.userId,
-          expenseType: 'invoice',
-          vendor: exp.vendor || exp.description,
-          dueDate: next,
-          paymentStatus: 'unpaid',
-          paidAt: null,
-          paidConfirmedBy: null,
-          paymentTermDays: exp.paymentTermDays != null ? exp.paymentTermDays : 0,
-          deferredPayment: 1,
-          recurring: 1,
-          recurrenceRule: rule,
-          originBillId: null,
-          cadenceKey: exp.cadenceKey != null ? String(exp.cadenceKey) : 'once',
-          cadenceCustomMonths: exp.cadenceCustomMonths != null ? String(exp.cadenceCustomMonths) : '1',
-        });
-        audit('expense_recurring_spawned', {
-          sourceId: exp.id,
-          newId,
-          dueDate: next,
-        });
-      }
-    }
-
     const out = getExpenseById(exp.id);
     res.json({ ok: true, expense: out });
   });
