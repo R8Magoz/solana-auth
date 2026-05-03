@@ -4080,7 +4080,7 @@ function DetailPanel(){
           receipt={e.receipt}
           receiptType={e.receiptType}
           receiptPath={e.receiptPath}
-          apiExpenseId={e._apiType==="expense"&&e.receiptPath&&!e.receipt?e.id:null}
+          apiExpenseId={e._apiType==="expense"&&!e.receipt&&e.id?e.id:null}
           itemCode={e.itemCode}
           attachmentDescription={e.description}
           label={t("label.receipt")}
@@ -7722,6 +7722,15 @@ function SolanaExpenses(){
           if(receipt?.b64){
             try{
               await API.post("/expenses/"+encodeURIComponent(exp.id)+"/receipt",{b64:receipt.b64,mediaType:receipt.type||"image/jpeg"});
+              try{
+                const refreshed=await API.get("/expenses/"+encodeURIComponent(exp.id));
+                if(refreshed&&refreshed.expense){
+                  const updated=expenseFromApi(refreshed.expense);
+                  saveExp(prev => prev.map(x => x.id === updated.id ? updated : x)
+                    .concat(prev.find(x => x.id === updated.id) ? [] : [updated]));
+                  exp=updated;
+                }
+              }catch(_){}
               const full=await API.get("/expenses");
               const row=(full.expenses||[]).find(x=>x.id===exp.id);
               exp=row?expenseFromApi(row):exp;
