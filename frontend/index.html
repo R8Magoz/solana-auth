@@ -2087,13 +2087,31 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
   const [blobLoad,setBlobLoad]=useState(false);
   const [blobErr,setBlobErr]=useState(null);
   const [reloadNonce,setReloadNonce]=useState(0);
-  const [pdfOpen,setPdfOpen]=useState(false);
   const [imgZoom,setImgZoom]=useState(false);
+  const blobUrlRef = useRef(null);
+
+  const setBlobUrlSafe = (newUrl) => {
+    if (blobUrlRef.current && blobUrlRef.current !== newUrl &&
+        blobUrlRef.current.startsWith("blob:")) {
+      URL.revokeObjectURL(blobUrlRef.current);
+    }
+    blobUrlRef.current = newUrl;
+    setBlobUrl(newUrl);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current && blobUrlRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(blobUrlRef.current);
+      }
+    };
+  }, []);
 
   useEffect(()=>{
     if (receiptPath && /^https?:\/\//i.test(receiptPath)) {
-      setBlobUrl(receiptPath);
-      setBlobMime(guessMimeFromReceiptPath(receiptPath));
+      const inferredMime = guessMimeFromReceiptPath(receiptPath);
+      setBlobUrlSafe(receiptPath);
+      setBlobMime(inferredMime || "image/jpeg");
       setBlobLoad(false);
       setBlobErr(null);
       return;
@@ -2104,7 +2122,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
       : null;
 
     if(receipt||!apiEntityPath||!AUTH_URL){
-      setBlobUrl(u=>{safeRevokeBlobUrl(u);return null;});
+      setBlobUrlSafe(null);
       setBlobMime(null);
       setBlobErr(null);
       return;
@@ -2120,7 +2138,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
         objUrl=URL.createObjectURL(blob);
         const fromBlob=blob.type && blob.type !== "application/octet-stream" ? blob.type : "";
         const guess=guessMimeFromReceiptPath(receiptPath);
-        setBlobUrl(objUrl);
+        setBlobUrlSafe(objUrl);
         setBlobMime(fromBlob || guess || "application/octet-stream");
       }catch(e){
         if(!cancelled)setBlobErr(e.message||"Sin recibo");
@@ -2130,7 +2148,6 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
     })();
     return()=>{
       cancelled=true;
-      if(objUrl)safeRevokeBlobUrl(objUrl);
     };
   },[apiExpenseId,receipt,receiptPath,reloadNonce]);
 
@@ -2142,26 +2159,14 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
   },[imgZoom]);
 
   const srcUrl=receipt?`data:${receiptType||"image/jpeg"};base64,${receipt}`:blobUrl;
-  const mimeRaw=receipt?(receiptType||"image/jpeg"):blobMime;
-  const mimeBase=String(mimeRaw||"").split(";")[0].trim().toLowerCase();
-  const pathGuess=String(guessMimeFromReceiptPath(receiptPath)||"").split(";")[0].trim().toLowerCase();
-  const effMime=receipt?(receiptType||"image/jpeg"):(mimeBase&&mimeBase!=="application/octet-stream"?mimeBase:pathGuess)||"application/octet-stream";
+  const mime=receipt?(receiptType||"image/jpeg"):blobMime;
+  const isPdf=(mime||"").includes("pdf")||(receiptPath||"").toLowerCase().endsWith(".pdf");
+  const isImage=(mime||"").startsWith("image/")||/\.(jpe?g|png|webp|gif|heic|heif|tiff?)$/i.test(receiptPath||"");
   const pathLower=(receiptPath?String(receiptPath).toLowerCase():"").split("?")[0];
-  const isPdf=effMime.includes("pdf")||pathLower.endsWith(".pdf");
-  const mimeLooksOffice=/(spreadsheet|ms-excel|wordprocessing|msword|^text\/csv|\/zip\b)/i.test(effMime);
-  const mimeLooksImg=/^image\//i.test(effMime)||/^image\//i.test(String(receiptType||""));
-  const pathSuggestsImage=/\.(jpe?g|png|webp|gif|tif|tiff|bmp|heic|heif)(?:[\?#]|$)/i.test(pathLower);
-  const isImgSrc=!!srcUrl&&!isPdf&&!mimeLooksOffice&&(mimeLooksImg||(!receipt&&pathSuggestsImage));
-  const isGenericBinary=!!srcUrl&&!isPdf&&!isImgSrc;
 
-  if(!receipt&&apiExpenseId&&AUTH_URL&&blobLoad){
-    return(
-      <div style={{padding:"8px 10px",background:"#FAFAF8",borderRadius:7,border:"1px dashed #DDD6CC",fontSize:11,color:"#6B7B72"}}>
-        {t?t("msg.receiptLoading"):"Cargando recibo…"}
-      </div>
-    );
-  }
-  if(!srcUrl){
+  const isGenericBinary=!!srcUrl&&!isPdf&&!isImage;
+
+  if(!srcUrl && !blobLoad){
     const canRetry=!receipt&&!!blobErr&&!!apiExpenseId&&!!AUTH_URL&&!!receiptPath&&!/^https?:\/\//i.test(String(receiptPath));
     return(
       <div style={{padding:"8px 10px",background:"#FAFAF8",borderRadius:7,border:"1px dashed #DDD6CC",
@@ -2193,17 +2198,17 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
         const m=pathLower.match(/\.([a-z0-9]{1,8})(?:[\?#]|$)/i);
         if(m) return "."+m[1].toLowerCase();
       }
-      if (effMime.includes("pdf")) return ".pdf";
-      if (effMime.includes("png")) return ".png";
-      if (effMime.includes("webp")) return ".webp";
-      if (effMime.includes("gif")) return ".gif";
-      if (effMime.includes("tiff")) return ".tif";
-      if (effMime.includes("spreadsheet")||effMime.includes("officedocument.spreadsheet")) return ".xlsx";
-      if (effMime.includes("ms-excel")) return ".xls";
-      if (effMime.includes("wordprocessingml")||effMime.includes("openxmlformats-officedocument.wordprocessing")) return ".docx";
-      if (effMime.includes("msword")&&!effMime.includes("openxml")) return ".doc";
-      if (effMime.includes("csv")) return ".csv";
-      if (effMime.includes("zip")) return ".zip";
+      if ((mime||"").includes("pdf")) return ".pdf";
+      if ((mime||"").includes("png")) return ".png";
+      if ((mime||"").includes("webp")) return ".webp";
+      if ((mime||"").includes("gif")) return ".gif";
+      if ((mime||"").includes("tiff")) return ".tif";
+      if ((mime||"").includes("spreadsheet")||(mime||"").includes("officedocument.spreadsheet")) return ".xlsx";
+      if ((mime||"").includes("ms-excel")) return ".xls";
+      if ((mime||"").includes("wordprocessingml")||(mime||"").includes("openxmlformats-officedocument.wordprocessing")) return ".docx";
+      if ((mime||"").includes("msword")&&!(mime||"").includes("openxml")) return ".doc";
+      if ((mime||"").includes("csv")) return ".csv";
+      if ((mime||"").includes("zip")) return ".zip";
       return ".bin";
     })();
     const code = itemCode || apiExpenseId || "doc";
@@ -2222,11 +2227,17 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
   return(
     <div>
       {label&&<label className="lbl" style={{marginBottom:5}}>{label}</label>}
-      {isImgSrc&&(
+      {blobLoad&&(
+        <div style={{width:"100%",height:200,background:"#F5F0EA",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",color:"#9CAA9F",fontSize:12}}>
+          Cargando archivo...
+        </div>
+      )}
+      {!blobLoad&&!blobErr&&srcUrl&&isImage&&(
         <div style={{position:"relative"}}>
           <div style={{display:"flex",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"hidden",border:"1px solid #EDE8E0"}}>
-            <img src={srcUrl} alt=""
-              style={{maxHeight:140,maxWidth:"100%",width:"auto",objectFit:"contain",display:"block",cursor:"zoom-in"}}
+            <img src={srcUrl} alt={label||"Recibo"}
+              style={{width:"100%",maxHeight:300,objectFit:"contain",borderRadius:6,cursor:"zoom-in",display:"block"}}
+              onError={()=>setBlobErr("No se pudo cargar la imagen.")}
               onClick={()=>setImgZoom(true)}/>
           </div>
           <div style={{fontSize:10,color:"#9CAA9F",marginTop:4,textAlign:"center"}}>{t?t("receipt.tapEnlarge"):"Toca para ver a tamaño completo"}</div>
@@ -2255,24 +2266,29 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
           </div>
         </div>
       )}
-      {isPdf&&(
-        <div style={{background:"#F5E8F4",borderRadius:7,border:"1px solid #D4AED0"}}>
-          {pdfOpen&&(
-            <embed src={srcUrl} type="application/pdf"
-              style={{width:"100%",height:320,borderRadius:"7px 7px 0 0",display:"block"}}/>
-          )}
-          <div style={{padding:"8px 11px",display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-            <span style={{fontSize:11,color:"#5C1057",fontWeight:600}}>PDF</span>
-            <button type="button" onClick={()=>setPdfOpen(v=>!v)} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #D4AED0",background:"#fff",color:"#5C1057",cursor:"pointer",fontFamily:"inherit"}}>
-              {pdfOpen?"Ocultar":"Ver PDF"}
+      {isPdf&&srcUrl&&(
+        <div style={{padding:20,textAlign:"center",background:"#F5F0EA",borderRadius:8,border:"1px solid #DDD6CC"}}>
+          <div style={{fontSize:32,marginBottom:8}}>PDF</div>
+          <div style={{fontSize:12,color:"#4B5E52",marginBottom:16,fontWeight:500}}>
+            {label||"Documento PDF"}
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+            <button className="btn-outline" style={{fontSize:12,padding:"6px 16px"}}
+              onClick={()=>{
+                const a=document.createElement("a");
+                a.href=srcUrl;
+                a.target="_blank";
+                a.rel="noopener noreferrer";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              }}>
+              Abrir PDF
             </button>
-            <button type="button" onClick={openDataUrl} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
-              {t?t("action.openFile"):"Abrir"}
+            <button className="btn-outline" style={{fontSize:12,padding:"6px 16px"}} onClick={downloadFile}>
+              Descargar PDF
             </button>
-            <button type="button" onClick={downloadFile} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
-              {t?t("action.downloadFile"):"Descargar"}
-            </button>
-            {onRemove&&<button type="button" onClick={onRemove} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit",marginLeft:"auto"}}>
+            {onRemove&&<button type="button" onClick={onRemove} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}}>
               ✕ {t?t("action.remove"):"Eliminar"}
             </button>}
           </div>
@@ -2280,7 +2296,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
       )}
       {isGenericBinary&&(
         <div style={{background:"#F5F0EA",borderRadius:7,border:"1px solid #EDE8E0",padding:"10px 12px"}}>
-          <div style={{fontSize:11,color:"#4B5E52",marginBottom:6}}>Adjunto (sin vista previa) · {effMime}</div>
+          <div style={{fontSize:11,color:"#4B5E52",marginBottom:6}}>Adjunto (sin vista previa) · {(mime||"application/octet-stream")}</div>
           <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
             <button type="button" onClick={openDataUrl} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
               {t?t("action.openFile"):"Abrir"}
