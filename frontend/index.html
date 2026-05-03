@@ -7721,16 +7721,16 @@ function SolanaExpenses(){
           let exp=expenseFromApi(d.expense);
           if(receipt?.b64){
             try{
-              await API.post("/expenses/"+encodeURIComponent(exp.id)+"/receipt",{b64:receipt.b64,mediaType:receipt.type||"image/jpeg"});
-              try{
-                const refreshed=await API.get("/expenses/"+encodeURIComponent(exp.id));
-                if(refreshed&&refreshed.expense){
-                  const updated=expenseFromApi(refreshed.expense);
-                  saveExp(prev => prev.map(x => x.id === updated.id ? updated : x)
-                    .concat(prev.find(x => x.id === updated.id) ? [] : [updated]));
-                  exp=updated;
-                }
-              }catch(_){}
+              const receiptResult = await API.post(
+                "/expenses/"+encodeURIComponent(exp.id)+"/receipt",
+                {b64:receipt.b64, mediaType:receipt.type||"image/jpeg"}
+              );
+              if (receiptResult && receiptResult.receiptPath) {
+                exp = { ...exp, receiptPath: receiptResult.receiptPath };
+                saveExp(prev => prev.map(x =>
+                  x.id === exp.id ? { ...x, receiptPath: receiptResult.receiptPath } : x
+                ));
+              }
               const full=await API.get("/expenses");
               const row=(full.expenses||[]).find(x=>x.id===exp.id);
               exp=row?expenseFromApi(row):exp;
