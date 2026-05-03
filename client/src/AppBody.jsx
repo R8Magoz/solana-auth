@@ -2906,9 +2906,7 @@ function DetailPanel(){
       )}
 
       {/* READ MODE */}
-      {!editMode&&<div style={{display:"flex",alignItems:"stretch",gap:0}}>
-      {e.expenseType==="invoice"&&<div style={{width:3,flexShrink:0,background:T,alignSelf:"stretch",borderRadius:"2px 0 0 2px"}} aria-hidden/>}
-      <div style={{flex:1,minWidth:0}}>
+      {!editMode&&<div style={{minWidth:0}}>
       <div
         style={{
           display:"inline-block",
@@ -3093,7 +3091,6 @@ function DetailPanel(){
             {t("expense.addNote")}
           </button>
         </div>
-      </div>
       </div>
       </div>}
     </div>
@@ -4437,7 +4434,6 @@ export function ReportsView(){
             const open=!!openPersonLog[u.id];
             const userRows=u.logItems||[];
             const userTotal=u.filteredTotal||0;
-            const allApproved=userRows.length>0&&userRows.every(row=>getItemStatus(row,cats,users)==="approved");
             return(
               <div key={u.id} style={{background:"#fff",borderRadius:12,border:"1px solid #EDE8E0",marginBottom:12,overflow:"hidden"}}>
                 <div
@@ -4453,9 +4449,6 @@ export function ReportsView(){
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontWeight:700,fontSize:16,color:"#3C0A37"}}>{fmt(userTotal)}</div>
-                    <div style={{fontSize:10,fontWeight:600,color:allApproved?"#065F46":"#78350F",background:allApproved?"#D1FAE5":"#FEF3C7",padding:"2px 7px",borderRadius:8,display:"inline-block",marginTop:2}}>
-                      {allApproved?"Aprobado":"Pendiente"}
-                    </div>
                   </div>
                   <span style={{fontSize:10,color:"#9CAA9F",marginLeft:4}}>
                     {open?"▲":"▼"}
@@ -5650,10 +5643,59 @@ export function SettingsView(){
 
   return(
     <div style={{maxWidth:540}}>
-      <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:12}}>{t("settings.title")}</h1>
+      <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:12}}>{isSA?t("settings.title"):"Mi perfil"}</h1>
 
+      {/* ── Mi perfil (all users) ── */}
+      <AccordionSection title="Mi perfil">
+        {/* Avatar upload */}
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+          {sf.avatar
+            ?<img src={sf.avatar} alt="" style={{width:52,height:52,borderRadius:"50%",objectFit:"cover",border:"2px solid #EDE8E0",flexShrink:0}}/>
+            :<div style={{width:52,height:52,borderRadius:"50%",background:user.color||T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:700,color:"#fff",flexShrink:0}}>{inits(user.name)}</div>
+          }
+          <div>
+            <label style={{display:"inline-block",padding:"5px 10px",borderRadius:6,border:"1.5px solid #DDD6CC",fontSize:11,fontWeight:600,color:G,cursor:"pointer",fontFamily:"inherit",background:"transparent"}}>
+              {sf.avatar?t("action.changePhoto"):t("action.upload")}
+              <input type="file" accept="image/jpeg,image/png,image/webp" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const err=validateUpload(f,UPLOAD_RULES.avatar);if(err){dispatchSolanaToast(err,"error");e.target.value="";return;}const r=new FileReader();r.onload=ev=>setSf(p=>({...p,avatar:ev.target.result}));r.readAsDataURL(f);e.target.value="";}}/>
+            </label>
+            {sf.avatar&&<button style={{marginLeft:7,fontSize:10,color:"#991B1B",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setSf(p=>({...p,avatar:null}))}>✕</button>}
+          </div>
+        </div>
+        <div style={{display:"grid",gap:8}}>
+          <div><label className="lbl">{t("label.name")}</label><input className="inp" value={sf.name} onChange={e=>setSf(p=>({...p,name:e.target.value}))}/></div>
+          <div><label className="lbl">{t("label.email")}</label><input className="inp" type="email" value={sf.email} onChange={e=>setSf(p=>({...p,email:e.target.value}))}/></div>
+          <div><label className="lbl">{t("label.phone")}</label><input className="inp" value={sf.phone} onChange={e=>setSf(p=>({...p,phone:e.target.value}))}/></div>
+          <div style={{marginTop:2}}>
+            <label className="lbl">Rol</label>
+            <div style={{fontSize:14,fontWeight:600,color:G}}>{user?.role==="superadmin"?t("role.superadmin"):user?.role==="admin"?t("role.admin"):t("role.user")}</div>
+          </div>
+        </div>
+        <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={profileSaving} onClick={()=>void saveProfile()}>{profileSaving?"…":t("action.saveChanges")}</button>
+        <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #EDE8E0"}}>
+          <div style={{fontWeight:600,fontSize:12,color:"#991B1B",marginBottom:4}}>{t("settings.deleteAccount")}</div>
+          {!dSelf?<button className="btn-danger" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setDSelf(true)}>{t("settings.requestDeletion")}</button>:(
+            <div style={{background:"#FEE2E2",borderRadius:7,padding:"8px 10px"}}><div style={{fontSize:11,color:"#7F1D1D",marginBottom:6}}>{t("msg.removeAccount")}</div><div style={{display:"flex",gap:6}}><button className="btn-danger" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>{saveUsers(users.filter(u=>u.id!==user.id));onSignOut();}}>{t("action.confirm")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setDSelf(false)}>{t("action.cancel")}</button></div></div>
+          )}
+        </div>
+      </AccordionSection>
+
+      {/* ── Password ── */}
+      <AccordionSection title="Cambiar contraseña">
+        <p style={{fontSize:11,color:"#6B7B72",marginBottom:9}}>{t("settings.passwordDesc")}</p>
+        {!AUTH_URL&&!passwords?.[user.id]&&<div style={{background:"#FEF3C7",borderRadius:6,padding:"6px 9px",fontSize:10,color:"#92400E",marginBottom:8}}>{t("msg.passwordNoExisting")}</div>}
+        <div style={{display:"grid",gap:7}}>
+          {(AUTH_URL||passwords?.[user.id])&&<div><label className="lbl">{t("label.currentPassword")}</label><input className="inp" type="password" value={pwForm.cur} onChange={e=>setPwForm(p=>({...p,cur:e.target.value}))} autoComplete="current-password"/></div>}
+          <div><label className="lbl">{t("label.newPassword")}</label><input className="inp" type="password" value={pwForm.nw} onChange={e=>setPwForm(p=>({...p,nw:e.target.value}))}/></div>
+          <div><label className="lbl">{t("label.confirmPassword")}</label><input className="inp" type="password" value={pwForm.cn} onChange={e=>setPwForm(p=>({...p,cn:e.target.value}))}/></div>
+        </div>
+        {pwMsg&&<div style={{marginTop:7,fontSize:11,padding:"5px 8px",borderRadius:6,background:pwOk?"#D1FAE5":"#FEE2E2",color:pwOk?"#065F46":"#7F1D1D"}}>{pwMsg}</div>}
+        <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={pwSaving} onClick={()=>void savePw()}>{pwSaving?"…":(passwords?.[user.id]?t("action.changePassword"):t("action.setPassword"))}</button>
+      </AccordionSection>
+
+      {isSA&&(
+      <>
       {/* ── Team members ── */}
-      {isSA&&<AccordionSection title={t("settings.accordion.team")}>
+      <AccordionSection title={t("settings.accordion.team")}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <button className="btn-sm" style={{fontSize:10}} onClick={()=>{setAddU(v=>!v);setEditId(null);}}>{t("action.addUser")}</button>
           </div>
@@ -5834,58 +5876,16 @@ export function SettingsView(){
               )}
             </div>
           ))}
-      </AccordionSection>}
-
-      {/* ── Profile ── */}
-      <AccordionSection title={t("settings.accordion.profile")}>
-        {/* Avatar upload */}
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-          {sf.avatar
-            ?<img src={sf.avatar} alt="" style={{width:52,height:52,borderRadius:"50%",objectFit:"cover",border:"2px solid #EDE8E0",flexShrink:0}}/>
-            :<div style={{width:52,height:52,borderRadius:"50%",background:user.color||T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:700,color:"#fff",flexShrink:0}}>{inits(user.name)}</div>
-          }
-          <div>
-            <label style={{display:"inline-block",padding:"5px 10px",borderRadius:6,border:"1.5px solid #DDD6CC",fontSize:11,fontWeight:600,color:G,cursor:"pointer",fontFamily:"inherit",background:"transparent"}}>
-              {sf.avatar?t("action.changePhoto"):t("action.upload")}
-              <input type="file" accept="image/jpeg,image/png,image/webp" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const err=validateUpload(f,UPLOAD_RULES.avatar);if(err){dispatchSolanaToast(err,"error");e.target.value="";return;}const r=new FileReader();r.onload=ev=>setSf(p=>({...p,avatar:ev.target.result}));r.readAsDataURL(f);e.target.value="";}}/>
-            </label>
-            {sf.avatar&&<button style={{marginLeft:7,fontSize:10,color:"#991B1B",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setSf(p=>({...p,avatar:null}))}>✕</button>}
-          </div>
-        </div>
-        <div style={{display:"grid",gap:8}}>
-          <div><label className="lbl">{t("label.name")}</label><input className="inp" value={sf.name} onChange={e=>setSf(p=>({...p,name:e.target.value}))}/></div>
-          <div><label className="lbl">{t("label.email")}</label><input className="inp" type="email" value={sf.email} onChange={e=>setSf(p=>({...p,email:e.target.value}))}/></div>
-          <div><label className="lbl">{t("label.phone")}</label><input className="inp" value={sf.phone} onChange={e=>setSf(p=>({...p,phone:e.target.value}))}/></div>
-        </div>
-        <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={profileSaving} onClick={()=>void saveProfile()}>{profileSaving?"…":t("action.saveChanges")}</button>
-        <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #EDE8E0"}}>
-          <div style={{fontWeight:600,fontSize:12,color:"#991B1B",marginBottom:4}}>{t("settings.deleteAccount")}</div>
-          {!dSelf?<button className="btn-danger" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setDSelf(true)}>{t("settings.requestDeletion")}</button>:(
-            <div style={{background:"#FEE2E2",borderRadius:7,padding:"8px 10px"}}><div style={{fontSize:11,color:"#7F1D1D",marginBottom:6}}>{t("msg.removeAccount")}</div><div style={{display:"flex",gap:6}}><button className="btn-danger" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>{saveUsers(users.filter(u=>u.id!==user.id));onSignOut();}}>{t("action.confirm")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setDSelf(false)}>{t("action.cancel")}</button></div></div>
-          )}
-        </div>
       </AccordionSection>
 
-      {/* ── Password ── */}
-      <AccordionSection title={t("settings.accordion.password")}>
-        <p style={{fontSize:11,color:"#6B7B72",marginBottom:9}}>{t("settings.passwordDesc")}</p>
-        {!AUTH_URL&&!passwords?.[user.id]&&<div style={{background:"#FEF3C7",borderRadius:6,padding:"6px 9px",fontSize:10,color:"#92400E",marginBottom:8}}>{t("msg.passwordNoExisting")}</div>}
-        <div style={{display:"grid",gap:7}}>
-          {(AUTH_URL||passwords?.[user.id])&&<div><label className="lbl">{t("label.currentPassword")}</label><input className="inp" type="password" value={pwForm.cur} onChange={e=>setPwForm(p=>({...p,cur:e.target.value}))} autoComplete="current-password"/></div>}
-          <div><label className="lbl">{t("label.newPassword")}</label><input className="inp" type="password" value={pwForm.nw} onChange={e=>setPwForm(p=>({...p,nw:e.target.value}))}/></div>
-          <div><label className="lbl">{t("label.confirmPassword")}</label><input className="inp" type="password" value={pwForm.cn} onChange={e=>setPwForm(p=>({...p,cn:e.target.value}))}/></div>
-        </div>
-        {pwMsg&&<div style={{marginTop:7,fontSize:11,padding:"5px 8px",borderRadius:6,background:pwOk?"#D1FAE5":"#FEE2E2",color:pwOk?"#065F46":"#7F1D1D"}}>{pwMsg}</div>}
-        <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={pwSaving} onClick={()=>void savePw()}>{pwSaving?"…":(passwords?.[user.id]?t("action.changePassword"):t("action.setPassword"))}</button>
-      </AccordionSection>
 
-      {(isSA||isAdmin)&&<DepartmentsSettingsBlock t={t}/>}
+      <DepartmentsSettingsBlock t={t}/>
 
-      {isSA&&<AccordionSection title="Parámetros del sistema">
+      <AccordionSection title="Parámetros del sistema">
         <ServerSettingsView/>
-      </AccordionSection>}
+      </AccordionSection>
 
-      {isSA&&<AccordionSection title="Ajustes de aplicación">
+      <AccordionSection title="Ajustes de aplicación">
         {appSetMsg&&<div style={{padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",fontSize:11,marginBottom:8}}>{appSetMsg}</div>}
         {appSetErr&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{appSetErr}</div>}
 
@@ -5959,15 +5959,15 @@ export function SettingsView(){
         <input className="inp" style={{maxWidth:120,fontSize:13,marginBottom:6,textTransform:"uppercase"}} maxLength={3} value={appCurrency} onChange={e=>setAppCurrency(String(e.target.value||"").toUpperCase().replace(/[^A-Z]/g,"").slice(0,3))}/>
         <div style={{fontSize:10,color:"#9CAA9F",marginBottom:8}}>Solo afecta a etiquetas visuales. Los importes ya registrados no se convierten.</div>
         <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void saveAppCurrency()}>Guardar moneda</button>
-      </AccordionSection>}
+      </AccordionSection>
 
-      {isSA&&AUTH_URL&&<PendingUsersPanel/>}
+      {AUTH_URL&&<PendingUsersPanel/>}
 
-      {isSA&&<AccordionSection title={t("settings.accordion.appLog")}>
+      <AccordionSection title={t("settings.accordion.appLog")}>
         <AppLogPanelBody/>
-      </AccordionSection>}
+      </AccordionSection>
 
-      {isSA&&<AccordionSection title={t("settings.accordion.backups")}>
+      <AccordionSection title={t("settings.accordion.backups")}>
         {backupsMsg&&<div style={{padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",fontSize:11,marginBottom:8}}>{backupsMsg}</div>}
         {backupsError&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{backupsError}</div>}
         <div style={{padding:"8px 10px",borderRadius:8,background:"#FFFBEB",border:"1px solid #FDE68A",fontSize:11,color:"#92400E",lineHeight:1.45,marginBottom:10}}>
@@ -5993,18 +5993,20 @@ export function SettingsView(){
           })}
           {!backupsLoading&&backups.length===0&&<div style={{fontSize:11,color:"#9CAA9F"}}>No hay copias de seguridad.</div>}
         </div>
-      </AccordionSection>}
+      </AccordionSection>
 
       {/* ── Danger zone (superadmin only) ── */}
-      {isSA&&<AccordionSection title={t("settings.accordion.danger")} accent={"#991B1B"}>
+      <AccordionSection title={t("settings.accordion.danger")} accent={"#991B1B"}>
         <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #EDE8E0"}}>
           <div style={{fontWeight:600,fontSize:12,color:"#991B1B",marginBottom:4}}>{t("settings.deleteAccount")}</div>
           {!dSelf?<button className="btn-danger" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setDSelf(true)}>{t("settings.requestDeletion")}</button>:(
             <div style={{background:"#FEE2E2",borderRadius:7,padding:"8px 10px"}}><div style={{fontSize:11,color:"#7F1D1D",marginBottom:6}}>{t("msg.removeAccount")}</div><div style={{display:"flex",gap:6}}><button className="btn-danger" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>{saveUsers(users.filter(u=>u.id!==user.id));onSignOut();}}>{t("action.confirm")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setDSelf(false)}>{t("action.cancel")}</button></div></div>
           )}
         </div>
-      </AccordionSection>}
+      </AccordionSection>
 
+      </>
+      )}
       <div style={{marginTop:12,padding:"8px 12px",background:"#F5F0EA",borderRadius:8,fontSize:10,color:"#9CAA9F",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <span>Data schema v{DATA_VERSION} · {new Date().getFullYear()}</span>
       </div>
@@ -7339,14 +7341,14 @@ export default function App(){
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
     {id:"reports",label:t("nav.reports")},
-    // Settings (profile) — accessed via profile avatar
+    {id:"settings",label:"Mi perfil",badge:0},
   ];
   const mobNav=[
     {id:"dashboard",label:t("nav.dashboard"),badge:0},
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
     {id:"reports",label:t("nav.reports"),badge:0},
-    // Ajustes (profile) — mobile header avatar
+    {id:"settings",label:"Mi perfil",badge:0},
   ];
 
   /* ── CONTEXT VALUE ──────────────────────────────────────────────────────── */
@@ -7506,7 +7508,7 @@ export default function App(){
           ))}
           <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
-              <div onClick={()=>{if(isSA)go("settings");}} title={t("login.profile")} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,cursor:isSA?"pointer":"default",borderRadius:7,padding:"4px 6px",transition:"background 0.15s",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent"}}
+              <div onClick={()=>go("settings")} title={t("login.profile")} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,cursor:"pointer",borderRadius:7,padding:"4px 6px",transition:"background 0.15s",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent"}}
                 onMouseEnter={e=>e.currentTarget.style.background="rgba(250,247,242,0.12)"}
                 onMouseLeave={e=>e.currentTarget.style.background=view==="settings"?"rgba(250,247,242,0.12)":"transparent"}>
                 {user.avatar
@@ -7530,7 +7532,7 @@ export default function App(){
           <div className="mob-only" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="light" size="sm"/></div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div onClick={()=>{if(isSA)go("settings");}} title={t("login.profile")} style={{cursor:isSA?"pointer":"default",flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%"}}>
+              <div onClick={()=>go("settings")} title={t("login.profile")} style={{cursor:"pointer",flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%"}}>
                 {user.avatar
                   ?<img src={user.avatar} alt="" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(250,247,242,0.5)"}}/>
                   :<div style={{width:34,height:34,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>{inits(user.name)}</div>
@@ -7545,7 +7547,7 @@ export default function App(){
               {view==="expenses" &&<ErrorBoundary><ExpensesView/></ErrorBoundary>}
               {view==="approvals"&&<ErrorBoundary><ApprovalsView/></ErrorBoundary>}
               {view==="reports"  &&<ErrorBoundary><ReportsView/></ErrorBoundary>}
-              {view==="settings" && isSA &&<ErrorBoundary><SettingsView/></ErrorBoundary>}
+              {view==="settings" &&<ErrorBoundary><SettingsView/></ErrorBoundary>}
             </div>
             {rpOpen&&(
               <div className="dt-only panel-slide" style={{width:350,borderLeft:"1px solid #E5DDD2",overflowY:"auto",padding:16,flexShrink:0,background:"#fff"}}>
