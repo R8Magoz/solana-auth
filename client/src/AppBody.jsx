@@ -431,15 +431,27 @@ const shareEurInExpense=(e,userId)=>{
 };
 const fmtExpenseAmt=e=>fmt(Number(e?.amount)||0);
 function guessMimeFromReceiptPath(p){
-  if(!p) return 'image/jpeg';
-  const ext = (String(p).split('.').pop() || '').toLowerCase();
+  if(!p) return 'application/octet-stream';
+  let stem = String(p);
+  try {
+    if(/^https?:\/\//i.test(stem)) stem = new URL(stem).pathname;
+  } catch { /* keep stem */ }
+  const extRaw = stem.includes('.') ? stem.split('.').pop() : '';
+  const ext = String(extRaw || '').toLowerCase().replace(/[#?].*$/, '');
   if(ext === 'pdf')  return 'application/pdf';
   if(ext === 'png')  return 'image/png';
   if(ext === 'webp') return 'image/webp';
   if(ext === 'gif')  return 'image/gif';
   if(ext === 'tiff' || ext === 'tif') return 'image/tiff';
   if(ext === 'heic' || ext === 'heif') return 'image/heic';
-  return 'image/jpeg';
+  if(ext === 'jpg' || ext === 'jpeg' || ext === 'jpe') return 'image/jpeg';
+  if(ext === 'xlsx') return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if(ext === 'xls')  return 'application/vnd.ms-excel';
+  if(ext === 'docx') return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if(ext === 'doc')  return 'application/msword';
+  if(ext === 'csv')  return 'text/csv';
+  if(ext === 'zip')  return 'application/zip';
+  return 'application/octet-stream';
 }
 function expenseFromApi(row){
   if(!row)return null;
@@ -1114,24 +1126,44 @@ function SolanaLogo({theme="light", size="md", variant:_v}){
 /* ── REAPPROVAL_FIELDS ─────────────────────────────────────────────────────── */
 const REAPPROVAL_FIELDS = ["amount","description","category","date","paidBy","splitMode","receipt","receiptType","ivaRate","ivaAmount","departmentId"];
 
+function safeRevokeBlobUrl(u){
+  if(u==null)return;
+  try{const s=String(u);if(s.startsWith("blob:"))URL.revokeObjectURL(s);}catch(_){}
+}
+function slugForReceiptDownload(description,maxLen){
+  const s=String(description||"").trim();
+  if(!s)return"";
+  return s.slice(0,maxLen||40).replace(/[/\\?"*:|<>\x00-\x1f]/g,"").replace(/\s+/g,"_").replace(/_+/g,"_").replace(/^_|_$/g,"");
+}
+
 /* ── ATTACHMENT VIEWER ─────────────────────────────────────────────────────────
    Receipt preview: inline image/PDF, server fetch via apiExpenseId + Bearer, empty state.
 ─────────────────────────────────────────────────────────────────────────────── */
-function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, label, onRemove, t}){
+function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, itemCode, attachmentDescription, label, onRemove, t}){
   const [blobUrl,setBlobUrl]=useState(null);
   const [blobMime,setBlobMime]=useState(null);
   const [blobLoad,setBlobLoad]=useState(false);
   const [blobErr,setBlobErr]=useState(null);
+  const [reloadNonce,setReloadNonce]=useState(0);
   const [pdfOpen,setPdfOpen]=useState(false);
   const [imgZoom,setImgZoom]=useState(false);
 
   useEffect(()=>{
+    // If receiptPath is already a remote URL, use it directly
+    if (receiptPath && /^https?:\/\//i.test(receiptPath)) {
+      setBlobUrl(receiptPath);
+      setBlobMime(guessMimeFromReceiptPath(receiptPath));
+      setBlobLoad(false);
+      setBlobErr(null);
+      return;
+    }
+
     const apiEntityPath = apiExpenseId
       ? "/expenses/"+encodeURIComponent(apiExpenseId)+"/receipt"
       : null;
 
     if(receipt||!apiEntityPath||!AUTH_URL){
-      setBlobUrl(u=>{if(u)URL.revokeObjectURL(u);return null;});
+      setBlobUrl(u=>{safeRevokeBlobUrl(u);return null;});
       setBlobMime(null);
       setBlobErr(null);
       return;
@@ -1145,8 +1177,10 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, labe
         const blob=await API.fetchBinary(apiEntityPath);
         if(cancelled)return;
         objUrl=URL.createObjectURL(blob);
+        const fromBlob=blob.type && blob.type !== "application/octet-stream" ? blob.type : "";
+        const guess=guessMimeFromReceiptPath(receiptPath);
         setBlobUrl(objUrl);
-        setBlobMime(blob.type && blob.type !== 'application/octet-stream' ? blob.type : guessMimeFromReceiptPath(receiptPath));
+        setBlobMime(fromBlob || guess || "application/octet-stream");
       }catch(e){
         if(!cancelled)setBlobErr(e.message||"Sin recibo");
       }finally{
@@ -1155,9 +1189,9 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, labe
     })();
     return()=>{
       cancelled=true;
-      if(objUrl)URL.revokeObjectURL(objUrl);
+      if(objUrl)safeRevokeBlobUrl(objUrl);
     };
-  },[apiExpenseId, receipt, receiptPath]);
+  },[apiExpenseId,receipt,receiptPath,reloadNonce]);
 
   useEffect(()=>{
     if(!imgZoom)return;
@@ -1167,9 +1201,19 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, labe
   },[imgZoom]);
 
   const srcUrl=receipt?`data:${receiptType||"image/jpeg"};base64,${receipt}`:blobUrl;
-  const mime=receipt?(receiptType||"image/jpeg"):blobMime;
-  const isPdf=mime?.includes("pdf");
-  const isImg=srcUrl&&!isPdf;
+  const mimeRaw=receipt?(receiptType||"image/jpeg"):blobMime;
+  const mimeBase=String(mimeRaw||"").split(";")[0].trim().toLowerCase();
+  const pathGuess=String(guessMimeFromReceiptPath(receiptPath)||"").split(";")[0].trim().toLowerCase();
+  const effMime=receipt?(receiptType||"image/jpeg"):(mimeBase&&mimeBase!=="application/octet-stream"?mimeBase:pathGuess)||"application/octet-stream";
+  const pathLower=(receiptPath?String(receiptPath).toLowerCase():"").split("?")[0];
+  const isPdf=effMime.includes("pdf")||pathLower.endsWith(".pdf");
+  const mimeLooksOffice=/(spreadsheet|ms-excel|wordprocessing|msword|^text\/csv|\/zip\b)/i.test(effMime);
+  const mimeLooksImg=/^image\//i.test(effMime)||/^image\//i.test(String(receiptType||""));
+  const pathSuggestsImage=/\.(jpe?g|png|webp|gif|tif|tiff|bmp|heic|heif)(?:[\?#]|$)/i.test(pathLower);
+  const isImgSrc=!!srcUrl&&!isPdf&&!mimeLooksOffice&&(mimeLooksImg||(!receipt&&pathSuggestsImage));
+
+  /** Non-PDF/non-image blobs (office, zip…) — preview as file card, not `<img>` */
+  const isGenericBinary=!!srcUrl&&!isPdf&&!isImgSrc;
 
   if(!receipt&&apiExpenseId&&AUTH_URL&&blobLoad){
     return(
@@ -1179,38 +1223,54 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, labe
     );
   }
   if(!srcUrl){
+    const canRetry=!receipt&&!!blobErr&&!!apiExpenseId&&!!AUTH_URL&&!!receiptPath&&!/^https?:\/\//i.test(String(receiptPath));
     return(
       <div style={{padding:"8px 10px",background:"#FAFAF8",borderRadius:7,border:"1px dashed #DDD6CC",
-        fontSize:11,color:"#B5C0B8",display:"flex",alignItems:"center",gap:6}}>
-        <span>{blobErr||(t?t("expenses.noAttachment"):"Sin adjunto")}</span>
+        fontSize:11,color:"#B5C0B8",display:"flex",flexWrap:"wrap",alignItems:"center",gap:8}}>
+        <span style={{flex:"1 1 100%"}}>
+          {blobErr?<>
+            <span style={{display:"block",color:"#991B1B",fontWeight:600,marginBottom:4}}>No se pudo cargar el archivo.</span>
+            <span>{blobErr}</span>
+          </>:(t?t("expenses.noAttachment"):"Sin adjunto")}
+        </span>
+        {canRetry&&(
+          <button type="button" onClick={()=>{setBlobErr(null);setReloadNonce(n=>n+1);}}
+            style={{fontSize:10,padding:"4px 10px",borderRadius:6,border:"1px solid #DDD6CC",background:"#fff",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>
+            Reintentar
+          </button>
+        )}
       </div>
     );
   }
 
   const openDataUrl = () => {
-    if(srcUrl) window.open(srcUrl, '_blank', 'noopener');
+    if(srcUrl) window.open(srcUrl, "_blank", "noopener,noreferrer");
   };
   const downloadFile = () => {
     const url = srcUrl;
     if (!url) return;
     const ext = (() => {
-      if (mime?.includes("pdf")) return ".pdf";
-      if (mime?.includes("png")) return ".png";
-      if (mime?.includes("webp")) return ".webp";
-      if (mime?.includes("gif")) return ".gif";
-      if (mime?.includes("tiff")) return ".tif";
-      if (mime?.includes("xlsx") || mime?.includes("spreadsheet")) return ".xlsx";
-      if (mime?.includes("word")) return ".docx";
-      if (mime?.includes("csv")) return ".csv";
-      if (receiptPath) {
-        const dot = receiptPath.lastIndexOf(".");
-        if (dot !== -1) return receiptPath.slice(dot);
+      if (/\.[a-z0-9]{1,8}(?:[\?#]|$)/i.test(pathLower)){
+        const m=pathLower.match(/\.([a-z0-9]{1,8})(?:[\?#]|$)/i);
+        if(m) return "."+m[1].toLowerCase();
       }
+      if (effMime.includes("pdf")) return ".pdf";
+      if (effMime.includes("png")) return ".png";
+      if (effMime.includes("webp")) return ".webp";
+      if (effMime.includes("gif")) return ".gif";
+      if (effMime.includes("tiff")) return ".tif";
+      if (effMime.includes("spreadsheet")||effMime.includes("officedocument.spreadsheet")) return ".xlsx";
+      if (effMime.includes("ms-excel")) return ".xls";
+      if (effMime.includes("wordprocessingml")||effMime.includes("openxmlformats-officedocument.wordprocessing")) return ".docx";
+      if (effMime.includes("msword")&&!effMime.includes("openxml")) return ".doc";
+      if (effMime.includes("csv")) return ".csv";
+      if (effMime.includes("zip")) return ".zip";
       return ".bin";
     })();
-    const code = apiExpenseId || "doc";
+    const code = itemCode || apiExpenseId || "doc";
     const dateStr = new Date().toISOString().slice(0, 10);
-    const filename = `${code}_${dateStr}${ext}`;
+    const descSlug=slugForReceiptDownload(attachmentDescription,40);
+    const filename=`${code}_${dateStr}${descSlug?"_"+descSlug:""}${ext}`;
     const a = Object.assign(document.createElement("a"), {
       href: url,
       download: filename,
@@ -1223,7 +1283,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, labe
   return(
     <div>
       {label&&<label className="lbl" style={{marginBottom:5}}>{label}</label>}
-      {isImg&&(
+      {isImgSrc&&(
         <div style={{position:"relative"}}>
           <div style={{display:"flex",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"hidden",border:"1px solid #EDE8E0"}}>
             <img src={srcUrl} alt=""
@@ -1267,6 +1327,22 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, labe
             <button type="button" onClick={()=>setPdfOpen(v=>!v)} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #D4AED0",background:"#fff",color:"#5C1057",cursor:"pointer",fontFamily:"inherit"}}>
               {pdfOpen?"Ocultar":"Ver PDF"}
             </button>
+            <button type="button" onClick={openDataUrl} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
+              {t?t("action.openFile"):"Abrir"}
+            </button>
+            <button type="button" onClick={downloadFile} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
+              {t?t("action.downloadFile"):"Descargar"}
+            </button>
+            {onRemove&&<button type="button" onClick={onRemove} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit",marginLeft:"auto"}}>
+              ✕ {t?t("action.remove"):"Eliminar"}
+            </button>}
+          </div>
+        </div>
+      )}
+      {isGenericBinary&&(
+        <div style={{background:"#F5F0EA",borderRadius:7,border:"1px solid #EDE8E0",padding:"10px 12px"}}>
+          <div style={{fontSize:11,color:"#4B5E52",marginBottom:6}}>Adjunto (sin vista previa) · {effMime}</div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
             <button type="button" onClick={openDataUrl} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #DDD6CC",background:"#FAFAF8",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit"}}>
               {t?t("action.openFile"):"Abrir"}
             </button>
@@ -3033,7 +3109,7 @@ function DetailPanel(){
           <div style={{display:"flex",gap:6}}>
             <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:detailAccent}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button>
             {isAdmin && st !== 'rejected' && st !== 'deleted' && (
-              <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,background:"#DC2626",borderColor:"#DC2626"}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
+              <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,background:"transparent",color:"#DC2626",border:"2px solid #DC2626",fontWeight:700}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
             )}
           </div>
         </div>
@@ -3047,6 +3123,8 @@ function DetailPanel(){
           receiptType={e.receiptType}
           receiptPath={e.receiptPath}
           apiExpenseId={e._apiType==="expense"&&e.receiptPath&&!e.receipt?e.id:null}
+          itemCode={e.itemCode}
+          attachmentDescription={e.description}
           label={t("label.receipt")}
           t={t}
           onRemove={(user.id===e.submittedBy||approverIds.includes(user.id))&&st!=="approved"&&!AUTH_URL

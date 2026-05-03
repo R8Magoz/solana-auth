@@ -140,8 +140,12 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
   }
 
   if (ensureCloudinary()) {
-    const result = await uploadReceiptToCloudinary(buf, mime, entityId);
-    return { receiptPath: result.secure_url };
+    try {
+      const result = await uploadReceiptToCloudinary(buf, mime, entityId);
+      return { receiptPath: result.secure_url };
+    } catch (e) {
+      console.warn('[receipt] Cloudinary upload failed, falling back to disk:', e && e.message ? e.message : e);
+    }
   }
 
   const RECEIPTS_DIR = path.join(DATA_DIR, 'receipts');

@@ -1115,7 +1115,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     res.json({ ok: true, expense: updated });
   });
 
-  const receiptJson = express.json({ limit: '8mb' });
+  const receiptJson = express.json({ limit: '35mb' });
 
   router.post('/:id/receipt', receiptLimit, receiptJson, async (req, res) => {
     const exp = getExpenseById(req.params.id);
@@ -1161,17 +1161,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     if (receiptStorage.isRemoteReceiptPath(exp.receiptPath)) {
-      try {
-        const r = await fetch(exp.receiptPath);
-        if (!r.ok) return res.status(502).json({ error: 'No se pudo cargar el recibo.' });
-        const ct = (r.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim();
-        res.setHeader('Content-Type', ct);
-        res.send(Buffer.from(await r.arrayBuffer()));
-      } catch (e) {
-        console.error('[receipt] proxy', e.message || e);
-        return res.status(502).json({ error: 'No se pudo cargar el recibo.' });
-      }
-      return;
+      return res.redirect(302, exp.receiptPath);
     }
 
     const abs = path.join(DATA_DIR, exp.receiptPath);
@@ -1193,7 +1183,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       '.xls':  'application/vnd.ms-excel',
       '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.doc':  'application/msword',
       '.csv':  'text/csv',
+      '.zip':  'application/zip',
+      '.bin':  'application/octet-stream',
     };
     const type = MIME_MAP[ext] || 'application/octet-stream';
     res.setHeader('Content-Type', type);
