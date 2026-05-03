@@ -299,7 +299,7 @@ export const TR = {
     "reports.sparklineTitle": "Actividad mensual (12 meses)",
     "reports.byCategory": "Gasto total por categoría",
     "reports.perPerson": "Inversión por persona",
-    "reports.personLogHint": "Total aprobado según tu parte en el reparto. La lista incluye gastos aprobados y pendientes.",
+    "reports.personLogHint": "Total de gastos y facturas por titular, aprobados y pendientes.",
     "reports.submittedCount": "{{count}} movimientos",
     "reports.personNoSplitExpenses": "Sin gastos en el reparto aprobados o pendientes.",
     "reports.forecast": "Previsión de costes",
