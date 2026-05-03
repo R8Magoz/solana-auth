@@ -280,17 +280,15 @@ function departmentIdFromBody(body, required) {
 
 function listExpenses(req) {
   const { status, from, to, category, userId: qUser, includeDeleted, expenseType, paymentStatus } = req.query;
-  const parts = ['1=1'];
+  void includeDeleted;
+  const parts = ["status != 'deleted'"];
   const vals = [];
 
   if (qUser) {
-    parts.push('userId = ?');
-    vals.push(String(qUser).trim().slice(0, 128));
+    const u = String(qUser).trim().slice(0, 128);
+    parts.push('(userId = ? OR ownerId = ?)');
+    vals.push(u, u);
   }
-
-  const _includeDeletedRequested = includeDeleted === '1' || includeDeleted === 'true';
-  void _includeDeletedRequested;
-  parts.push("status != 'deleted'");
 
   if (status) {
     parts.push('status = ?');

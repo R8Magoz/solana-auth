@@ -254,7 +254,11 @@ const normalizeItem=(item,type)=>{
     return merged;
   }
   if(type==="bill")    return{active:false,notes:"",description:"",receipt:null,receiptType:null,...item,approvals:item.approvals||{},auditTrail:item.auditTrail||[],submittedBy:item.submittedBy||"unknown",seenBy:Array.isArray(item.seenBy)?item.seenBy:[],departmentId:item.departmentId??null};
-  if(type==="user")    return{color:"#6B7280",title:"",email:"",phone:"",role:"user",avatar:null,...item};
+  if(type==="user"){
+    const merged={color:"#6B7280",title:"",email:"",phone:"",role:"user",avatar:null,...item};
+    if(merged.accountStatus==null||merged.accountStatus==="")merged.accountStatus="active";
+    return merged;
+  }
   if(type==="cat"){
     const merged={archived:false,budget:null,...item,approverIds:Array.isArray(item.approverIds)&&item.approverIds.length>0?item.approverIds:[]};
     if(merged.budget===undefined||merged.budget===""||merged.budget===null)merged.budget=null;
@@ -1283,8 +1287,9 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, labe
    Displays the immutable item code with a one-click copy-to-clipboard button.
    inline=true renders a smaller inline version for list rows / bill detail.
 ─────────────────────────────────────────────────────────────────────────── */
-function ItemCodeBadge({code, inline=false}){
+function ItemCodeBadge({code, inline=false, copyHoverAccent}){
   const[copied,setCopied]=useState(false);
+  const copyBtnBaseColor="#9CAA9F";
   const copy=()=>{
     navigator.clipboard?.writeText(code)
       .then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1500);})
@@ -1308,8 +1313,10 @@ function ItemCodeBadge({code, inline=false}){
       </div>
       <button onClick={copy}
         style={{padding:"2px 7px",borderRadius:5,border:"1px solid #DDD6CC",background:"transparent",
-          color:"#9CAA9F",fontSize:9,cursor:"pointer",fontFamily:"inherit",fontWeight:600,
+          color:copyBtnBaseColor,fontSize:9,cursor:"pointer",fontFamily:"inherit",fontWeight:600,
           transition:"background 0.15s,color 0.15s"}}
+        onMouseEnter={e=>{if(copyHoverAccent)e.currentTarget.style.color=copyHoverAccent;}}
+        onMouseLeave={e=>{e.currentTarget.style.color=copyBtnBaseColor;}}
         title="Copy item code">
         {copied?"Copiado":"⌘ Copiar"}
       </button>
@@ -2613,13 +2620,12 @@ function DetailPanel(){
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const approverIds=effectiveExpenseApproverIds(e,cats,users);
   const st=getItemStatus(e,cats,users);
-  const isInvDetail = e && e.expenseType === 'invoice';
-  const detailAccent = isInvDetail ? '#C4622D' : '#3C0A37';
+  const detailAccent = e && e.expenseType === 'invoice' ? '#C4622D' : '#3C0A37';
   const detailSublistStatusTone = (s) =>
     ST[s] || (s === 'deleted' ? { bg: '#F3F4F6', color: '#6B7280' } : ST.pending);
   const detailTopStatusTone =
     st === 'approved'
-      ? { bg: '#D1FAE5', color: '#065F46' }
+      ? { bg: detailAccent, color: '#FAF7F2' }
       : detailSublistStatusTone(st);
   const canEdit=user.id===e.submittedBy||isAdmin;
   const ivaRowLabel=(()=>{
@@ -2846,7 +2852,7 @@ function DetailPanel(){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11}}>
         <div style={{fontWeight:700,fontSize:editMode?15:14,color:(editMode?editActionColor:G),transition:"color 0.2s ease"}}>{editMode?(isEditInv?"Editar gasto · Factura":"Editar gasto"):"Detalle de gasto"}</div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          {!editMode&&canEdit&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit"}} onClick={startEdit}>{t("action.editItem")}</button>}
+          {!editMode&&canEdit&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:`1px solid ${detailAccent}`,background:"transparent",color:detailAccent,cursor:"pointer",fontFamily:"inherit"}} onClick={startEdit}>{t("action.editItem")}</button>}
           {!editMode&&(user.id===e.submittedBy||isAdmin)&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>deleteExp(e.id)}>{t("action.deleteItem")}</button>}
           <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:19,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{void (async()=>{if(editMode&&efDirty&&!(await confirmUI(t("expense.unsaved"))))return;receiptAltHandlerRef.current=null;setEditApiReceipt(prev=>{if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}return null;});setEditMode(false);setDetailId(null);setPanel(null);})();}}>×</button>
         </div>
@@ -2923,7 +2929,7 @@ function DetailPanel(){
       <div style={{fontSize:15,fontWeight:700,marginBottom:2}}>{e.description}</div>
       <div style={{fontSize:24,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",marginBottom:11}}>{fmtExpenseAmt(e)}</div>
       {e.itemCode&&(
-        <ItemCodeBadge code={e.itemCode}/>
+        <ItemCodeBadge code={e.itemCode} copyHoverAccent={detailAccent}/>
       )}
       {[{l:t("label.date"),v:fmtDate(e.date)},{l:t("label.category"),v:e.category},{l:t("label.department"),v:(e.departmentId&&(departments.find(d=>d.id===e.departmentId)||{}).name)||t("detail.noDepartment")},{l:"Titular",v:getU(e.ownerId||e.submittedBy).name},{l:"Enviado por",v:getU(e.submittedBy).name}].map(({l,v})=>(
         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}><span style={{color:"#9CAA9F"}}>{l}</span><span style={{fontWeight:500}}>{v}</span></div>
@@ -2993,7 +2999,7 @@ function DetailPanel(){
                 className="btn-primary"
                 style={{
                   fontSize: 12, padding: '6px 16px',
-                  background: '#C4622D', border: 'none'
+                  background: detailAccent, border: 'none'
                 }}
                 onClick={() => {
                   setDetailPayOpen(true);
@@ -3021,13 +3027,13 @@ function DetailPanel(){
         );})}
       </div>
       {((AUTH_URL&&e._apiType==="expense"&&(e.status==="submitted"||e.status==="pending"||(isAdmin&&e.status==="approved"))&&isAdmin&&approverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved")||(!AUTH_URL&&isAdmin&&approverIds.includes(user.id)&&(st==="pending"||(isAdmin&&st==="approved"))&&approvalVoteFor(e.approvals,user.id,users)!=="approved"))&&(
-        <div style={{marginTop:9}}>
+        <div style={{marginTop:9,borderTop:`1px solid ${detailAccent}`,paddingTop:9}}>
           <label className="lbl" style={{marginBottom:3,color:detailAccent}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
           <div style={{display:"flex",gap:6}}>
             <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:detailAccent}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button>
             {isAdmin && st !== 'rejected' && st !== 'deleted' && (
-              <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,borderColor:e.expenseType==="invoice"?"#C4622D":"#3C0A37"}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
+              <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,background:"#DC2626",borderColor:"#DC2626"}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
             )}
           </div>
         </div>
@@ -3055,8 +3061,8 @@ function DetailPanel(){
           <button type="button" style={{width:"100%",marginTop:8,background:"transparent",color:G,border:`1.5px solid ${G}`,borderRadius:8,padding:"8px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={startEdit}>{t("expense.editThenResubmit")}</button>
         </div>
       )}
-      <div style={{marginTop:12}}>
-        <label className="lbl" style={{marginBottom:6}}>{t("timeline.sectionTitle")}</label>
+      <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${detailAccent}`}}>
+        <label className="lbl" style={{marginBottom:6,color:detailAccent}}>{t("timeline.sectionTitle")}</label>
         <div>
           {allEvents.map((ev,i)=>{
             const action = ev.action;
@@ -3086,7 +3092,7 @@ function DetailPanel(){
             onChange={ev=>setCommentText(ev.target.value)}
             onKeyDown={ev=>{if(ev.key==="Enter"&&commentText.trim()){addExpenseComment(e.id,commentText);setCommentText("");}}}
           />
-          <button type="button" className="btn-secondary" style={{fontSize:11,padding:"6px 12px",flexShrink:0}}
+          <button type="button" className="btn-secondary" style={{fontSize:11,padding:"6px 12px",flexShrink:0,background:detailAccent,color:"#FAF7F2",border:`1px solid ${detailAccent}`}}
             onClick={()=>{if(commentText.trim()){addExpenseComment(e.id,commentText);setCommentText("");}}}>
             {t("expense.addNote")}
           </button>
@@ -3440,13 +3446,14 @@ export function DashboardView(){
       )}
       <div className="card" style={{marginBottom:11}}>
         <div style={{fontWeight:600,fontSize:13,marginBottom:9}}>{t("dash.investByPerson")}</div>
-        {perPerson.map(u=>(
+        <p style={{fontSize:10,color:"#9CAA9F",marginBottom:9,lineHeight:1.45}}>{t("reports.personLogHint")}</p>
+        {(()=>{const denom=perPerson.reduce((s,u)=>s+(Number(u.total)||0),0);return perPerson.map(u=>(
           <div key={u.id} className="row-hover" style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,cursor:"pointer",borderRadius:7,padding:"3px 4px",margin:"0 -4px 7px"}} onClick={()=>setDrillPerson(u.id)}>
             <UserAvatar user={u} size={24} fontSize={7}/>
-            <div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:2,fontSize:11}}><span style={{fontWeight:500}}>{u.name}</span><span style={{fontWeight:700,color:G}}>{fmt(u.total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:u.color,width:totApproved>0?`${Math.min(100,u.total/totApproved*100)}%`:"0%",transition:"width 0.4s"}}/></div></div>
+            <div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:2,fontSize:11}}><span style={{fontWeight:500}}>{u.name}</span><span style={{fontWeight:700,color:G}}>{fmt(u.total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:u.color,width:denom>0?`${Math.min(100,u.total/denom*100)}%`:"0%",transition:"width 0.4s"}}/></div></div>
             <div style={{fontSize:9,color:"#9CAA9F"}}>›</div>
           </div>
-        ))}
+        ));})()}
       </div>
       {/* Upcoming invoices · 15 days */}
       <div className="card" style={{marginBottom:11}}>
@@ -3474,11 +3481,11 @@ export function DashboardView(){
       </div>
 
       <div className="card">
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}><div style={{fontWeight:600,fontSize:13}}>{isAdmin?t("dash.recentAll"):t("dash.recentMine")}</div><button style={{background:"none",border:"none",color:T,fontSize:11,fontWeight:500,cursor:"pointer"}} onClick={()=>go("expenses")}>{t("action.viewAll")}</button></div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}><div style={{fontWeight:600,fontSize:13}}>{t("dash.recentAll")}</div><button style={{background:"none",border:"none",color:T,fontSize:11,fontWeight:500,cursor:"pointer"}} onClick={()=>go("expenses")}>{t("action.viewAll")}</button></div>
         {(()=>{
-          const pool=expenses.slice();
+          const pool=expenses.filter(e=>getItemStatus(e,cats,users)!=="deleted");
           const sorted=[...pool].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
-          if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{isAdmin?"Sin datos":t("dash.recentEmpty")}</div>;
+          if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{t("empty.expenses")}</div>;
           return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const sub=(users.find(x=>x.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;return(
             <div key={e.id} className="row-hover" style={{display:"flex",alignItems:"flex-start",padding:"7px 3px",borderBottom:i<sorted.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}} onClick={()=>{go("expenses");setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);}}>
               <div style={{flex:1,minWidth:0}}>
@@ -3584,10 +3591,14 @@ export function ExpensesView(){
           <option value="">{t("filter.category")}: {t("filter.all")}</option>
           {cats.filter(c=>!c.archived).map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
         </select>
-        <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:120,cursor:"pointer"}}
-          value={submFlt} onChange={e=>setSubmFlt(e.target.value)}>
-          <option value="">{t("filter.submitter")}: {t("filter.all")}</option>
-          {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+        <select className="inp"
+          style={{width:"auto",fontSize:11,padding:"4px 8px",minWidth:120,cursor:"pointer"}}
+          value={submFlt}
+          onChange={e=>setSubmFlt(e.target.value)}>
+          <option value="">Enviado por: Todos</option>
+          {(users||[])
+            .filter(u=>u.accountStatus==="active"&&u.id!=="system")
+            .map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
         <select className="inp" style={{width:"auto",fontSize:11,padding:"5px 8px",minWidth:140}}
           value={recurringFlt} onChange={e => setRecurringFlt(e.target.value)}>
@@ -4149,20 +4160,33 @@ export function ReportsView(){
     : statusFilter==="approved" ? ` — ${t("reports.approvedOnly")}`
     : ` — ${t("reports.pendingOnly")}`;
   const [openPersonLog,setOpenPersonLog]=useState({});
-  const personInvestmentRows=useMemo(()=>users.map(u=>{
-    const filteredTotal=displayExpenses.reduce((s,e)=>s+shareEurInExpense(e,u.id),0);
-    const submittedCount=displayExpenses.filter(e=>e.submittedBy===u.id&&getItemStatus(e,cats,users)!=="deleted").length;
-    const logItems=displayExpenses.filter(e=>{
-      const st=getItemStatus(e,cats,users);
-      if(st==="deleted"||st==="rejected")return false;
-      if(st!=="approved"&&st!=="pending")return false;
-      const ownerId=e.ownerId||e.submittedBy;
-      const inPaidBy=(e.paidBy||[]).some(p=>p&&p.userId===u.id);
-      return ownerId===u.id||inPaidBy;
-    }).map(e=>({...e,__kind:e.expenseType==="invoice"?"invoice":"expense",__sortDate:(e.expenseType==="invoice"?(e.dueDate||e.date):e.date)||""}))
-      .sort((a,b)=>String(b.__sortDate||"").localeCompare(String(a.__sortDate||"")));
-    return{...u,filteredTotal,submittedCount,logItems};
-  }).sort((a,b)=>b.filteredTotal-a.filteredTotal),[users,displayExpenses,cats]);
+  const personInvestmentRows=useMemo(()=>(users||[])
+    .filter(u=>u.accountStatus==="active"&&u.id!=="system")
+    .map(u=>{
+      const userExps=displayExpenses.filter(e=>{
+        if(getItemStatus(e,cats,users)==="deleted")return false;
+        const isOwner=e.userId===u.id||e.ownerId===u.id||e.submittedBy===u.id;
+        const inSplit=Array.isArray(e.paidBy)&&e.paidBy.some(p=>p&&p.userId===u.id);
+        return isOwner||inSplit;
+      });
+      if(userExps.length===0)return null;
+      const filteredTotal=userExps.reduce((sum,e)=>{
+        const split=Array.isArray(e.paidBy)&&e.paidBy.find(p=>p&&p.userId===u.id);
+        const amount=split?(Number(split.amount)||0):(Number(e.amount)||0);
+        return sum+amount;
+      },0);
+      const submittedCount=displayExpenses.filter(e=>e.submittedBy===u.id&&getItemStatus(e,cats,users)!=="deleted").length;
+      const logItems=userExps.filter(e=>{
+        const st=getItemStatus(e,cats,users);
+        if(st==="deleted"||st==="rejected")return false;
+        if(st!=="approved"&&st!=="pending")return false;
+        return true;
+      }).map(e=>({...e,__kind:e.expenseType==="invoice"?"invoice":"expense",__sortDate:(e.expenseType==="invoice"?(e.dueDate||e.date):e.date)||""}))
+        .sort((a,b)=>String(b.__sortDate||"").localeCompare(String(a.__sortDate||"")));
+      return{...u,filteredTotal,submittedCount,logItems};
+    })
+    .filter(Boolean)
+    .sort((a,b)=>b.filteredTotal-a.filteredTotal),[users,displayExpenses,cats]);
   const catTotals=cats.filter(c=>!c.archived).map(c=>({
     cat:c.name,
     total:displayExpenses.filter(e=>e.category===c.name&&expenseCountsTowardDeptSpend(e,cats,users)).reduce((s,e)=>s+eurForExpense(e),0),
@@ -4461,7 +4485,8 @@ export function ReportsView(){
                       :userRows.map((row,i)=>{
                         const kind=row.expenseType||row.__kind||"expense";
                         const rowStatus=getItemStatus(row,cats,users);
-                        const rowAmount=shareEurInExpense(row,u.id);
+                        const splitPb=Array.isArray(row.paidBy)&&row.paidBy.find(p=>p&&p.userId===u.id);
+                        const rowAmount=splitPb?(Number(splitPb.amount)||0):(Number(row.amount)||0);
                         return(
                           <div
                             key={row.id}
@@ -7261,7 +7286,11 @@ export default function App(){
       if(!matchDesc&&!matchCode&&!matchVendor)return false;
     }
     if(catFlt&&e.category!==catFlt)return false;
-    if(submFlt&&e.submittedBy!==submFlt)return false;
+    if(submFlt){
+      const matchesSubm=e.submittedBy===submFlt;
+      const matchesOwner=e.ownerId===submFlt;
+      if(!matchesSubm&&!matchesOwner)return false;
+    }
     if(dateFrom&&e.date<dateFrom)return false;
     if(dateTo&&e.date>dateTo)return false;
     if(expKindFlt==="invoice"&&e.expenseType!=="invoice")return false;
@@ -7299,13 +7328,28 @@ export default function App(){
       const ids=effectiveExpenseApproverIds(e,cats,users);
       return ids.includes(user.id)&&getItemStatus(e,cats,users)==="pending"&&approvalVoteFor(e.approvals,user.id,users)!=="approved";
     });
-  /* Approved: totApproved = sum EUR per ítem aprobado (all expenseType); per-person = reparto paidBy */
+  /* Approved: totApproved = sum EUR per ítem aprobado (all expenseType); per-person = titular/owner + paidBy share */
   const approvedForTot=expenses.filter(e=>getItemStatus(e,cats,users)==="approved");
   const totApproved=approvedForTot.reduce((s,e)=>s+eurForExpense(e),0);
-  const perPerson=users.map(u=>({
-    ...u,
-    total:approvedForTot.reduce((sum,e)=>sum+shareEurInExpense(e,u.id),0),
-  })).sort((a,b)=>b.total-a.total);
+  const perPerson=(users||[])
+    .filter(u=>u.accountStatus==="active"&&u.id!=="system")
+    .map(u=>{
+      const userExps=expenses.filter(e=>{
+        if(getItemStatus(e,cats,users)==="deleted")return false;
+        const isOwner=e.userId===u.id||e.ownerId===u.id||e.submittedBy===u.id;
+        const inSplit=Array.isArray(e.paidBy)&&e.paidBy.some(p=>p&&p.userId===u.id);
+        return isOwner||inSplit;
+      });
+      if(userExps.length===0)return null;
+      const total=userExps.reduce((sum,e)=>{
+        const split=Array.isArray(e.paidBy)&&e.paidBy.find(p=>p&&p.userId===u.id);
+        const amount=split?(Number(split.amount)||0):(Number(e.amount)||0);
+        return sum+amount;
+      },0);
+      return{...u,total};
+    })
+    .filter(Boolean)
+    .sort((a,b)=>b.total-a.total);
   const totFixed=expenses.reduce((s,e)=>{
     if(!e.cadenceKey||e.cadenceKey==="once")return s;
     if(getItemStatus(e,cats,users)!=="approved")return s;
@@ -7508,9 +7552,7 @@ export default function App(){
           ))}
           <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
-              <div onClick={()=>go("settings")} title={t("login.profile")} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,cursor:"pointer",borderRadius:7,padding:"4px 6px",transition:"background 0.15s",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent"}}
-                onMouseEnter={e=>e.currentTarget.style.background="rgba(250,247,242,0.12)"}
-                onMouseLeave={e=>e.currentTarget.style.background=view==="settings"?"rgba(250,247,242,0.12)":"transparent"}>
+              <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,borderRadius:7,padding:"4px 6px",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent"}}>
                 {user.avatar
                   ?<img src={user.avatar} alt="" style={{width:28,height:28,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1.5px solid rgba(250,247,242,0.25)"}}/>
                   :<div style={{width:28,height:28,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0}}>{inits(user.name)}</div>
@@ -7532,7 +7574,7 @@ export default function App(){
           <div className="mob-only" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="light" size="sm"/></div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div onClick={()=>go("settings")} title={t("login.profile")} style={{cursor:"pointer",flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%"}}>
+              <div style={{flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%"}}>
                 {user.avatar
                   ?<img src={user.avatar} alt="" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(250,247,242,0.5)"}}/>
                   :<div style={{width:34,height:34,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>{inits(user.name)}</div>
