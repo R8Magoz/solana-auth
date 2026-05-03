@@ -1184,6 +1184,11 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
     }
 
     let cancelled = false;
+    if (!API.token) {
+      if (!cancelled) setBlobErr("No hay sesión activa.");
+      if (!cancelled) setBlobLoad(false);
+      return;
+    }
     setBlobLoad(true);
     setBlobErr(null);
 
@@ -1206,7 +1211,12 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
         );
         setBlobErr(null);
       } catch (e) {
-        if (!cancelled) setBlobErr(e.message || "No se pudo cargar el archivo.");
+        if (!cancelled) {
+          console.error("[AttachmentViewer] fetch failed:", e.message,
+            "| expenseId:", apiExpenseId,
+            "| receiptPath:", receiptPath);
+          setBlobErr(e.message || "No se pudo cargar el archivo.");
+        }
       } finally {
         if (!cancelled) setBlobLoad(false);
       }
