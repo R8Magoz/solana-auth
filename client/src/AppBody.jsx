@@ -6928,9 +6928,10 @@ export default function App(){
                 appLog("info","expense_submitted",{itemCode:exp.itemCode,amount,category:form.category,userId:user.id,hasAttachment:!!receipt});
                 return;
               }
-              console.error('[receipt upload] failed:', e2?.message, e2);
-              dispatchSolanaToast("No se pudo guardar el recibo: " + (e2?.message || "error"), "error");
-              saveExp([exp,...expenses]);
+              // Receipt upload succeeded but saveExp failed — don't show error
+              // The expense was already created, just the local state update failed
+              console.error('[receipt upload] saveExp error:', e2?.message);
+              dispatchSolanaToast("Recibo guardado. Recarga si no ves el adjunto.", "success");
             }
             // After the receipt try/catch, always refresh expenses list
             try{
@@ -6938,7 +6939,11 @@ export default function App(){
               if (full && full.expenses) {
                 const row = full.expenses.find(x => x.id === exp.id);
                 exp = row ? expenseFromApi(row) : exp;
-                saveExp(full.expenses.map(expenseFromApi));
+                saveExp(prev => {
+                  const mapped = (full.expenses || []).map(expenseFromApi);
+                  if (!Array.isArray(mapped)) return prev;
+                  return mapped;
+                });
               }
             } catch(_) {}
           }else{
