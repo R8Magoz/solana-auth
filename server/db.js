@@ -173,6 +173,21 @@ addColumnIfMissing('app_settings', 'description', 'TEXT');
 
 addColumnIfMissing('bills', 'migratedAt', 'INTEGER');
 
+// Remove duplicate expenses (keep earliest, delete rest)
+try {
+  db.prepare(`
+    DELETE FROM expenses
+    WHERE id NOT IN (
+      SELECT MIN(id) FROM expenses
+      GROUP BY userId, description, amount, date, createdAt / 10000
+    )
+    AND status != 'deleted'
+    AND createdAt > (SELECT MIN(createdAt) FROM expenses)
+  `).run();
+} catch(e) {
+  console.warn('[cleanup] duplicate removal skipped:', e.message);
+}
+
 /**
  * Creates query indexes if absent, then refreshes planner statistics.
  * @returns {void}
