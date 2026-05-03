@@ -264,23 +264,23 @@ const API = {
   },
 
   async fetchBinary(path) {
-    if (!this.base) throw new Error("API no configurada.");
     this.ensureSessionToken();
-    const opts = { method: "GET", headers: {} };
-    if (this.token) opts.headers.Authorization = "Bearer " + this.token;
-    let res = await fetch(this.base + path, opts);
-    if (res.status === 401) {
-      const ok = await this.refresh();
-      if (ok) {
-        opts.headers.Authorization = "Bearer " + this.token;
-        res = await fetch(this.base + path, opts);
-      } else {
-        window.dispatchEvent(new Event("solana-session-expired"));
-        throw new Error("Sesión expirada");
-      }
-    }
+    const res = await fetch(this.base + path, {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer " + (this.token || ""),
+      },
+    });
     if (!res.ok) {
-      throw new Error(`Error ${res.status} al cargar el archivo.`);
+      let msg = "Error " + res.status;
+      try {
+        const ct = res.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+          const j = await res.json();
+          if (j && j.error) msg = j.error;
+        }
+      } catch (_) {}
+      throw new Error(msg);
     }
     return res.blob();
   },
