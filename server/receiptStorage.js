@@ -118,8 +118,10 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
     err.statusCode = 400;
     throw err;
   }
-  if (b64.length > 28_000_000) {
-    const err = new Error('Archivo demasiado grande (máx. 20 MB).');
+  // Strip data URI prefix if present (e.g. "data:image/jpeg;base64,")
+  const cleanB64 = b64.replace(/^data:[^;]+;base64,/, '');
+  if (cleanB64.length > 140_000_000) {
+    const err = new Error('Archivo demasiado grande (máx. 100 MB).');
     err.statusCode = 413;
     throw err;
   }
@@ -127,14 +129,14 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
   let ext = mimeToExt(mime) || 'bin';
   let buf;
   try {
-    buf = Buffer.from(b64, 'base64');
+    buf = Buffer.from(cleanB64, 'base64');
   } catch {
     const err = new Error('Base64 inválido.');
     err.statusCode = 400;
     throw err;
   }
-  if (buf.length > 20 * 1024 * 1024) {
-    const err = new Error('Archivo demasiado grande (máx. 20 MB).');
+  if (buf.length > 100 * 1024 * 1024) {
+    const err = new Error('Archivo demasiado grande (máx. 100 MB).');
     err.statusCode = 413;
     throw err;
   }

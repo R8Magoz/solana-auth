@@ -345,7 +345,7 @@ const insertExp = db.prepare(`
 function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DIR, receiptUploadLimiter, userStore }) {
   if (!userStore) throw new Error('createExpensesRouter: userStore is required');
   const router = express.Router();
-  const receiptLimit = receiptUploadLimiter || ((req, res, next) => next());
+  const receiptLimit = receiptUploadLimiter || express.json({ limit: '100mb' });
 
   router.use(requireAuth);
 
@@ -1119,7 +1119,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     res.json({ ok: true, expense: updated });
   });
 
-  const receiptJson = express.json({ limit: '35mb' });
+  const receiptJson = express.json({ limit: '100mb' });
 
   router.post('/:id/receipt', receiptLimit, receiptJson, async (req, res) => {
     const exp = getExpenseById(req.params.id);
