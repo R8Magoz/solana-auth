@@ -279,7 +279,9 @@ const API = {
         throw new Error("Sesión expirada");
       }
     }
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    if (!res.ok) {
+      throw new Error(`Error ${res.status} al cargar el archivo.`);
+    }
     return res.blob();
   },
 
