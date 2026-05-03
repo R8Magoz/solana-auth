@@ -1146,68 +1146,75 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
   const [blobErr,setBlobErr]=useState(null);
   const [reloadNonce,setReloadNonce]=useState(0);
   const [imgZoom,setImgZoom]=useState(false);
-  const blobUrlRef = useRef(null);
-
-  const setBlobUrlSafe = (newUrl) => {
-    if (blobUrlRef.current && blobUrlRef.current !== newUrl &&
-        blobUrlRef.current.startsWith("blob:")) {
-      URL.revokeObjectURL(blobUrlRef.current);
-    }
-    blobUrlRef.current = newUrl;
-    setBlobUrl(newUrl);
-  };
+  const objUrlRef = useRef(null);
 
   useEffect(() => {
     return () => {
-      if (blobUrlRef.current && blobUrlRef.current.startsWith("blob:")) {
-        URL.revokeObjectURL(blobUrlRef.current);
+      if (objUrlRef.current) {
+        URL.revokeObjectURL(objUrlRef.current);
+        objUrlRef.current = null;
       }
     };
   }, []);
 
-  useEffect(()=>{
-    if (receiptPath && /^https?:\/\//i.test(receiptPath)) {
-      const inferredMime = guessMimeFromReceiptPath(receiptPath);
-      setBlobUrlSafe(receiptPath);
-      setBlobMime(inferredMime || "image/jpeg");
-      setBlobLoad(false);
-      setBlobErr(null);
-      return;
-    }
-
-    const apiEntityPath = apiExpenseId
-      ? "/expenses/"+encodeURIComponent(apiExpenseId)+"/receipt"
-      : null;
-
-    if(receipt||!apiEntityPath||!AUTH_URL){
-      setBlobUrlSafe(null);
+  useEffect(() => {
+    // Case 1: inline base64 receipt (no fetch needed)
+    if (receipt) {
+      setBlobUrl(null);
       setBlobMime(null);
       setBlobErr(null);
+      setBlobLoad(false);
       return;
     }
-    let cancelled=false;
-    let objUrl=null;
+
+    // Case 2: remote URL (Cloudinary) — use directly
+    if (receiptPath && /^https?:\/\//i.test(receiptPath)) {
+      setBlobUrl(receiptPath);
+      setBlobMime(guessMimeFromReceiptPath(receiptPath) || "image/jpeg");
+      setBlobErr(null);
+      setBlobLoad(false);
+      return;
+    }
+
+    // Case 3: needs server fetch
+    if (!AUTH_URL || !apiExpenseId) {
+      setBlobUrl(null);
+      setBlobLoad(false);
+      return;
+    }
+
+    let cancelled = false;
     setBlobLoad(true);
     setBlobErr(null);
-    (async()=>{
-      try{
-        const blob=await API.fetchBinary(apiEntityPath);
-        if(cancelled)return;
-        objUrl=URL.createObjectURL(blob);
-        const fromBlob=blob.type && blob.type !== "application/octet-stream" ? blob.type : "";
-        const guess=guessMimeFromReceiptPath(receiptPath);
-        setBlobUrlSafe(objUrl);
-        setBlobMime(fromBlob || guess || "application/octet-stream");
-      }catch(e){
-        if(!cancelled)setBlobErr(e.message||"Sin recibo");
-      }finally{
-        if(!cancelled)setBlobLoad(false);
+
+    (async () => {
+      try {
+        const blob = await API.fetchBinary(
+          "/expenses/" + encodeURIComponent(apiExpenseId) + "/receipt"
+        );
+        if (cancelled) return;
+
+        const url = URL.createObjectURL(blob);
+        objUrlRef.current = url;
+
+        // Set state — do NOT revoke this URL anywhere else
+        setBlobUrl(url);
+        setBlobMime(
+          blob.type && blob.type !== "application/octet-stream"
+            ? blob.type
+            : guessMimeFromReceiptPath(receiptPath)
+        );
+        setBlobErr(null);
+      } catch (e) {
+        if (!cancelled) setBlobErr(e.message || "No se pudo cargar el archivo.");
+      } finally {
+        if (!cancelled) setBlobLoad(false);
       }
     })();
-    return()=>{
-      cancelled=true;
-    };
-  },[apiExpenseId,receipt,receiptPath,reloadNonce]);
+
+    return () => { cancelled = true; };
+
+  }, [apiExpenseId, receipt, receiptPath, reloadNonce]);
 
   useEffect(()=>{
     if(!imgZoom)return;
@@ -1216,7 +1223,9 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
     return()=>window.removeEventListener("keydown",onKey);
   },[imgZoom]);
 
-  const srcUrl=receipt?`data:${receiptType||"image/jpeg"};base64,${receipt}`:blobUrl;
+  const srcUrl = receipt
+    ? "data:" + (receiptType || "image/jpeg") + ";base64," + receipt
+    : blobUrl;
   const mime=receipt?(receiptType||"image/jpeg"):blobMime;
   const isPdf=(mime||"").includes("pdf")||(receiptPath||"").toLowerCase().endsWith(".pdf");
   const isImage=(mime||"").startsWith("image/")||/\.(jpe?g|png|webp|gif|heic|heif|tiff?)$/i.test(receiptPath||"");
