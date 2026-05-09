@@ -479,8 +479,8 @@ async function createExpenseViaUi(page: Page, description: string, amount: strin
   const departmentSelect = wrap.locator('label:has-text("Departamento") + select').first();
   await departmentSelect.selectOption({ index: 1 });
 
-  await page.getByRole('button', { name: 'Enviar gasto' }).click();
-  await expect(page.getByText(description)).toBeVisible();
+  await page.locator('.panel-slide').getByRole('button', { name: 'Enviar gasto' }).click();
+  await expect(page.getByText(description).first()).toBeVisible();
 }
 
 async function createBillViaUi(page: Page, name: string, amount: string) {
@@ -495,7 +495,7 @@ async function createBillViaUi(page: Page, name: string, amount: string) {
   const billDepartment = wrap.locator('label:has-text("Departamento") + select').first();
   await billDepartment.selectOption({ index: 1 });
 
-  await page.getByRole('button', { name: 'Enviar factura' }).click();
+  await page.locator('.panel-slide').getByRole('button', { name: 'Enviar factura' }).click();
   await expect(page.getByText(name).first()).toBeVisible();
 }
 
