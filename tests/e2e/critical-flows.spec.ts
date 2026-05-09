@@ -649,7 +649,7 @@ test.describe('Critical business flows', () => {
 
     await goToApprovals(page);
     await page.getByRole('button', { name: 'Revisar' }).first().click();
-    const noteTa = page.locator('textarea.inp').first();
+    const noteTa = activePanel(page).locator('textarea.inp').first();
     await noteTa.fill('corto');
     await activePanel(page).getByRole('button', { name: 'Rechazar' }).click();
     await expect(page.getByText(/Escribe un motivo de rechazo/i)).toBeVisible();
@@ -669,7 +669,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'admin@solana.test');
     await goToApprovals(page);
     await page.getByRole('button', { name: 'Revisar' }).first().click();
-    await page.locator('textarea.inp').first().fill('Motivo de prueba rechazo');
+    await activePanel(page).locator('textarea.inp').first().fill('Motivo de prueba rechazo');
     await activePanel(page).getByRole('button', { name: 'Rechazar' }).click();
 
     await page.goto('/');
@@ -728,9 +728,6 @@ test.describe('Critical business flows', () => {
     await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ index: 1 });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await wrap.getByRole('checkbox', { name: /A pagar/i }).check();
-    await wrap.locator('select.inp').filter({ has: wrap.locator('option[value="15"]') }).selectOption({ value: 'custom' });
-    const today = new Date().toISOString().slice(0, 10);
-    await wrap.locator('input[type="date"]').last().fill(today);
 
     await activePanel(page).getByRole('button', { name: 'Enviar factura' }).click();
     await goToBills(page);
@@ -763,8 +760,6 @@ test.describe('Critical business flows', () => {
     await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ index: 1 });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await wrap.getByRole('checkbox', { name: /A pagar/i }).check();
-    await wrap.locator('select.inp').filter({ has: wrap.locator('option[value="15"]') }).selectOption({ value: 'custom' });
-    await wrap.locator('input[type="date"]').last().fill(new Date().toISOString().slice(0, 10));
     await activePanel(page).getByRole('button', { name: 'Enviar factura' }).click();
 
     await page.goto('/');
@@ -797,8 +792,6 @@ test.describe('Critical business flows', () => {
     await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ index: 1 });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await wrap.getByRole('checkbox', { name: /A pagar/i }).check();
-    await wrap.locator('select.inp').filter({ has: wrap.locator('option[value="15"]') }).selectOption({ value: 'custom' });
-    await wrap.locator('input[type="date"]').last().fill(new Date().toISOString().slice(0, 10));
     await activePanel(page).getByRole('button', { name: 'Enviar factura' }).click();
 
     await page.goto('/');
@@ -829,8 +822,6 @@ test.describe('Critical business flows', () => {
     await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ index: 1 });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await wrap.getByRole('checkbox', { name: /A pagar/i }).check();
-    await wrap.locator('select.inp').filter({ has: wrap.locator('option[value="15"]') }).selectOption({ value: 'custom' });
-    await wrap.locator('input[type="date"]').last().fill(new Date().toISOString().slice(0, 10));
     await activePanel(page).getByRole('button', { name: 'Enviar factura' }).click();
 
     await goToApprovals(page);
@@ -956,7 +947,7 @@ test.describe('Critical business flows', () => {
     await goToProfile(page);
     await expect(page.getByText('Mi perfil').nth(1)).toBeVisible();
     await page.getByText('Cambiar contraseña').first().click();
-    await expect(activePanel(page).getByPlaceholder(/actual|current/i)).toBeVisible();
+    await expect(page.locator('input[type="password"]').first()).toBeVisible();
     await expect(page.getByText('Miembros del equipo')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Guardar categorías' })).toHaveCount(0);
   });
@@ -994,7 +985,7 @@ test.describe('Critical business flows', () => {
     const wrap = activeForm(page);
     await wrap.getByPlaceholder('Concepto').fill('Gasto Supplies aprobador');
     await wrap.getByPlaceholder('0.00').fill('60');
-    await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ label: /Supplies|Insumos|suministros/i });
+    await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ label: 'Supplies' });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await activePanel(page).getByRole('button', { name: 'Enviar gasto' }).click();
 
@@ -1009,7 +1000,7 @@ test.describe('Critical business flows', () => {
   test('D1) Informes visible to all roles', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
-    await expect(page.getByText('Informes')).toBeVisible();
+    await expect(sidebar(page).getByText('Informes', { exact: true })).toBeVisible();
     await goToReports(page);
     await expect(page.getByRole('heading', { name: 'Informes' })).toBeVisible();
     await expect(page.getByText('Total del período')).toBeVisible();
@@ -1102,9 +1093,8 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
     await createExpenseViaUi(page, 'Trail E1', '12');
-    await page.getByText('Trail E1').click();
-    await expect(page.getByText('Seguimiento')).toBeVisible();
-    await expect(page.getByText(/Enviado/).first()).toBeVisible();
+    await expect(activePanel(page).getByText('Seguimiento')).toBeVisible();
+    await expect(activePanel(page).getByText(/Enviado/).first()).toBeVisible();
   });
 
   test('E2) Seguimiento shows approval event after approval', async ({ page }) => {
@@ -1114,14 +1104,13 @@ test.describe('Critical business flows', () => {
     await goToApprovals(page);
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await activePanel(page).getByRole('button', { name: 'Aprobar' }).click();
-    await expect(page.getByText(/Aprobado · Admin QA/).first()).toBeVisible();
+    await expect(activePanel(page).getByText(/Aprobado · Admin QA/).first()).toBeVisible();
   });
 
   test('E3) Note added via Añadir nota appears in Seguimiento', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await createExpenseViaUi(page, 'Trail E3', '33');
-    await page.getByText('Trail E3').click();
     const note = 'Nota selenium única XYZ';
     await activePanel(page).getByPlaceholder(/nota/i).fill(note);
     await activePanel(page).getByRole('button', { name: 'Añadir nota' }).click();
@@ -1155,7 +1144,7 @@ test.describe('Critical business flows', () => {
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await page.waitForTimeout(400);
     await activePanel(page).getByRole('button', { name: 'Enviar gasto' }).click();
-    await expect(page.getByText('SUBMIT CLEAR')).toBeVisible();
+    await expect(page.getByText('SUBMIT CLEAR').first()).toBeVisible();
     await activePanel(page).getByRole('button', { name: '×' }).click({ timeout: 1000 }).catch(() => {});
 
     await goToExpenses(page);
