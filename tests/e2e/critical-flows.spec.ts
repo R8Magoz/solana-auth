@@ -698,10 +698,10 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'user@solana.test');
     await goToExpenses(page);
     await page.getByText('Original A4').click();
-    await page.getByRole('button', { name: 'Editar' }).click();
-    await page.locator('input[placeholder="Concepto"]').first().fill('Editado A4');
-    await page.locator('input[placeholder="0.00"]').first().fill('55');
-    await page.getByRole('button', { name: 'Guardar cambios' }).click();
+    await activePanel(page).getByRole('button', { name: 'Editar', exact: true }).click();
+    await activePanel(page).locator('input[placeholder="Concepto"]').first().fill('Editado A4');
+    await activePanel(page).locator('input[placeholder="0.00"]').first().fill('55');
+    await activePanel(page).getByRole('button', { name: 'Guardar cambios' }).click();
     await activePanel(page).getByRole('button', { name: 'Confirmar' }).click();
 
     await expect(activePanel(page).getByText('PENDIENTE').first()).toBeVisible();
