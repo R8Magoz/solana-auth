@@ -417,10 +417,12 @@ async function setupMockApi(
 
 async function loginAs(page: Page, email: string) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.evaluate(() => sessionStorage.removeItem('sol-session-token')).catch(() => {});
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('input[type="email"]')).toBeVisible();
-  await page.locator('input[type="email"]').fill(email);
+  const emailInput = page.locator('input[type="email"]');
+  if (!(await emailInput.isVisible({ timeout: 2000 }).catch(() => false))) {
+    await page.getByRole('button', { name: 'Cerrar sesión' }).click({ timeout: 5000 }).catch(() => {});
+  }
+  await expect(emailInput).toBeVisible();
+  await emailInput.fill(email);
   await page.locator('input[type="password"]').first().fill(PASSWORDS[email.toLowerCase()] ?? '');
   await page.getByRole('button', { name: /iniciar sesi|sign in|entrar/i }).click();
   await expect(page.getByRole('heading', { name: 'Panel' })).toBeVisible();
@@ -614,7 +616,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'user@solana.test');
     await createExpenseViaUi(page, 'Flow A2 gasto', '88');
 
-    await page.getByRole('button', { name: '×' }).nth(1).click().catch(() => {});
+    await page.locator('.panel-slide').getByRole('button', { name: '×' }).click({ timeout: 1000 }).catch(() => {});
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
     await goToView(page, 'Aprobaciones');
@@ -635,7 +637,7 @@ test.describe('Critical business flows', () => {
 
     await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
-    const noteTa = page.locator('textarea.inp').first();
+    const noteTa = page.locator('.panel-slide textarea.inp:visible').first();
     await noteTa.fill('corto');
     await page.getByRole('button', { name: 'Rechazar' }).click();
     await expect(page.getByText(/Escribe un motivo de rechazo/i)).toBeVisible();
@@ -655,7 +657,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'admin@solana.test');
     await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
-    await page.locator('textarea.inp').first().fill('Motivo de prueba rechazo');
+    await page.locator('.panel-slide textarea.inp:visible').first().fill('Motivo de prueba rechazo');
     await page.getByRole('button', { name: 'Rechazar' }).click();
 
     await page.goto('/');
@@ -680,7 +682,7 @@ test.describe('Critical business flows', () => {
     await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
-    await expect(page.getByText('APROBADO')).toBeVisible();
+    await expect(page.locator('.panel-slide').getByText('APROBADO')).toBeVisible();
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
@@ -829,7 +831,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'admin@solana.test');
     await goToView(page, 'Gastos');
     await expenseRow(page, v).click();
-    await page.locator('.panel-slide textarea').first().fill('rechazo factura después de ok');
+    await page.locator('.panel-slide textarea:visible').first().fill('rechazo factura después de ok');
     await page.getByRole('button', { name: 'Rechazar' }).click();
     await page.getByRole('button', { name: 'Confirmar' }).click();
 
