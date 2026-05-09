@@ -35,7 +35,7 @@ async function attachMockApi(page: Page, state: {
     const url = new URL(req.url());
     const path = url.pathname;
     const method = req.method();
-    const auth = req.headerValue('authorization') || '';
+    const auth = (await req.headerValue('authorization')) || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     const session = token ? state.tokens.get(token) : null;
     const body = safeJson(req.postData());

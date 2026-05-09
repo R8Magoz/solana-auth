@@ -123,7 +123,7 @@ async function setupMockApi(
     const url = new URL(req.url());
     let path = url.pathname;
     const method = req.method();
-    const auth = req.headerValue('authorization') || '';
+    const auth = (await req.headerValue('authorization')) || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     const session = token ? state.tokens.get(token) : null;
 
@@ -903,7 +903,7 @@ test.describe('Critical business flows', () => {
     await page.getByText('Mi perfil').first().click();
     await expect(page.getByText('Mi perfil').nth(1)).toBeVisible();
     await page.getByText('Cambiar contraseña').first().click();
-    await expect(page.locator('.panel-slide')).getByPlaceholderText(/actual|current/i)).toBeVisible();
+    await expect(page.locator('.panel-slide').getByPlaceholder(/actual|current/i)).toBeVisible();
     await expect(page.getByText('Miembros del equipo')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Guardar categorías' })).toHaveCount(0);
   });
