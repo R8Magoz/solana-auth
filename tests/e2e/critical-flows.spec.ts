@@ -18,6 +18,10 @@ const PASSWORDS: Record<string, string> = {
 };
 
 const AUTH_BASE = 'https://solana-auth.onrender.com';
+const E2E_TOKENS: Record<string, string> = {
+  'admin@solana.test': 'e2e-token-admin',
+  'user@solana.test': 'e2e-token-user',
+};
 
 function makeUsers(): User[] {
   return [
@@ -119,6 +123,12 @@ async function setupMockApi(
   };
 
   const authBase = AUTH_BASE;
+  for (const user of state.users) {
+    const staticToken = E2E_TOKENS[user.email.toLowerCase()];
+    if (staticToken) {
+      state.tokens.set(staticToken, { userId: user.id, role: user.role });
+    }
+  }
 
   await page.route(`${authBase}/**`, async (route) => {
     const req = route.request();
@@ -418,24 +428,19 @@ async function setupMockApi(
 }
 
 async function loginAs(page: Page, email: string) {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  if (!page.url().startsWith('http://127.0.0.1:4173')) {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+  }
   const emailInput = page.locator('input[type="email"]');
   if (!(await emailInput.isVisible({ timeout: 1200 }).catch(() => false))) {
+    const token = E2E_TOKENS[email.toLowerCase()];
+    if (!token) throw new Error(`No static e2e token configured for ${email}`);
     await page.evaluate(
-      async ({ authBase, loginEmail, password }) => {
-        const response = await fetch(`${authBase}/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: loginEmail, password }),
-        });
-        const data = await response.json();
-        if (!response.ok || !data.sessionToken) {
-          throw new Error(data.error || 'Mock login failed.');
-        }
-        sessionStorage.setItem('sol-session-token', data.sessionToken);
+      ({ sessionToken }) => {
+        sessionStorage.setItem('sol-session-token', sessionToken);
         localStorage.setItem('sol-last-activity', String(Date.now()));
       },
-      { authBase: AUTH_BASE, loginEmail: email, password: PASSWORDS[email.toLowerCase()] ?? '' },
+      { sessionToken: token },
     );
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: /panel|dashboard/i })).toBeVisible();
