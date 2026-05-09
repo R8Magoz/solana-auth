@@ -421,7 +421,7 @@ async function loginAs(page: Page, email: string) {
     sessionStorage.removeItem('sol-session-token');
     localStorage.removeItem('sol-last-activity');
   });
-  await page.reload();
+  await page.goto('/');
   await page.locator('input[type="email"]').fill(email);
   await page.locator('input[type="password"]').first().fill(PASSWORDS[email.toLowerCase()] ?? '');
   await page.getByRole('button', { name: /iniciar sesi|sign in|entrar/i }).click();
