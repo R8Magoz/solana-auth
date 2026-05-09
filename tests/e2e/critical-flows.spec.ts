@@ -419,11 +419,17 @@ async function loginAs(page: Page, email: string) {
   await page.goto('/');
   const emailInput = page.locator('input[type="email"]');
   if (!(await emailInput.isVisible({ timeout: 1200 }).catch(() => false))) {
-    await page.evaluate(() => {
-      sessionStorage.removeItem('sol-session-token');
-      localStorage.removeItem('sol-last-activity');
+    await page.addInitScript(() => {
+      if (window.name === 'solana-e2e-clear-session') {
+        sessionStorage.removeItem('sol-session-token');
+        localStorage.removeItem('sol-last-activity');
+        window.name = '';
+      }
     });
     await page.goto('about:blank');
+    await page.evaluate(() => {
+      window.name = 'solana-e2e-clear-session';
+    });
     await page.goto('/');
   }
   await expect(emailInput).toBeVisible();
