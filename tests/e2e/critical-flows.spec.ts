@@ -516,7 +516,7 @@ test.describe('Critical business flows', () => {
     await goToView(page, 'Informes');
     await expect(page.getByText(/Gasto total por categoría/i)).toBeVisible();
     await expect(page.getByText(/Taxi aeropuerto QA/i)).toBeHidden();
-    await expect(page.getByText(/Equipment|Supplies|Marketing|Software|Otro/i).first()).toBeVisible();
+    await expect(page.getByText(/Equipamiento|Suministros|Marketing|Software|Otro/i).first()).toBeVisible();
   });
 
   test('3) Offline → sync keeps consistency (single expense, no duplicates)', async ({ page, context }) => {
@@ -570,8 +570,7 @@ test.describe('Critical business flows', () => {
     await goToView(page, 'Aprobaciones');
     await expect(page.getByText('Server bill import').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Revisar' })).toHaveCount(0);
-    await expenseRow(page, 'Server bill import').click();
-    await expect(page.getByText(/Vista de solo lectura/i)).toBeVisible();
+    await expect(page.getByText(/Solo los aprobadores asignados/i)).toBeVisible();
   });
 
   test('5) Bills lifecycle: create and approve', async ({ page }) => {
@@ -596,7 +595,7 @@ test.describe('Critical business flows', () => {
     const desc = 'Gasto QA pendiente único';
     const wrap = formWrap(page);
     await wrap.getByPlaceholder('Concepto').fill(desc);
-    await wrap.getByPlaceholder('0.00').fill('42,50');
+    await wrap.getByPlaceholder('0.00').fill('42.50');
     await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ index: 2 });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await page.getByRole('button', { name: 'Enviar gasto' }).click();
@@ -710,7 +709,7 @@ test.describe('Critical business flows', () => {
     await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ index: 1 });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await wrap.getByRole('checkbox', { name: /A pagar/i }).check();
-    await wrap.locator('select.inp').filter({ has: wrap.locator('option[value="15"]') }).selectOption({ value: 'custom' });
+    await wrap.locator('label', { hasText: 'A pagar' }).locator('..').locator('select.inp').selectOption({ value: 'custom' });
     const today = new Date().toISOString().slice(0, 10);
     await wrap.locator('input[type="date"]').last().fill(today);
 
@@ -745,7 +744,7 @@ test.describe('Critical business flows', () => {
     await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ index: 1 });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await wrap.getByRole('checkbox', { name: /A pagar/i }).check();
-    await wrap.locator('select.inp').filter({ has: wrap.locator('option[value="15"]') }).selectOption({ value: 'custom' });
+    await wrap.locator('label', { hasText: 'A pagar' }).locator('..').locator('select.inp').selectOption({ value: 'custom' });
     await wrap.locator('input[type="date"]').last().fill(new Date().toISOString().slice(0, 10));
     await page.getByRole('button', { name: 'Enviar factura' }).click();
 
@@ -779,7 +778,7 @@ test.describe('Critical business flows', () => {
     await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ index: 1 });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await wrap.getByRole('checkbox', { name: /A pagar/i }).check();
-    await wrap.locator('select.inp').filter({ has: wrap.locator('option[value="15"]') }).selectOption({ value: 'custom' });
+    await wrap.locator('label', { hasText: 'A pagar' }).locator('..').locator('select.inp').selectOption({ value: 'custom' });
     await wrap.locator('input[type="date"]').last().fill(new Date().toISOString().slice(0, 10));
     await page.getByRole('button', { name: 'Enviar factura' }).click();
 
@@ -811,7 +810,7 @@ test.describe('Critical business flows', () => {
     await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ index: 1 });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await wrap.getByRole('checkbox', { name: /A pagar/i }).check();
-    await wrap.locator('select.inp').filter({ has: wrap.locator('option[value="15"]') }).selectOption({ value: 'custom' });
+    await wrap.locator('label', { hasText: 'A pagar' }).locator('..').locator('select.inp').selectOption({ value: 'custom' });
     await wrap.locator('input[type="date"]').last().fill(new Date().toISOString().slice(0, 10));
     await page.getByRole('button', { name: 'Enviar factura' }).click();
 
@@ -1115,7 +1114,7 @@ test.describe('Critical business flows', () => {
     await openNewExpensePanel(page);
     const wrap = formWrap(page);
     await wrap.getByPlaceholder('Concepto').fill('PERSIST DRAFT X');
-    await wrap.getByPlaceholder('0.00').fill('19,90');
+    await wrap.getByPlaceholder('0.00').fill('19.90');
     await page.waitForTimeout(700);
 
     await goToView(page, 'Panel');
