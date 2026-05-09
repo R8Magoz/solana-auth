@@ -658,7 +658,7 @@ test.describe('Critical business flows', () => {
     await noteTa.fill(longNote);
     await activePanel(page).getByRole('button', { name: 'Rechazar' }).click();
     await expect(activePanel(page).getByText('RECHAZADO').first()).toBeVisible();
-    await expect(page.getByText(longNote)).toBeVisible();
+    await expect(activePanel(page).getByText(longNote).first()).toBeVisible();
   });
 
   test('A4) User edits rejected gasto — all fields changeable — resubmits', async ({ page }) => {
@@ -972,8 +972,8 @@ test.describe('Critical business flows', () => {
 
   test('C5) Assigned approver sees Aprobar/Rechazar buttons', async ({ page }) => {
     const seededCats = [
-      { id: 'c2', name: 'Supplies', archived: false, approverIds: ['user-1'] },
-      { id: 'c1', name: 'Equipment', archived: false, approverIds: [] },
+      { id: 'c1', name: 'Equipment', archived: false, approverIds: ['user-1'] },
+      { id: 'c2', name: 'Supplies', archived: false, approverIds: [] },
       { id: 'c3', name: 'Marketing', archived: false, approverIds: [] },
       { id: 'c9', name: 'Otro', archived: false, approverIds: [] },
     ];
@@ -983,9 +983,9 @@ test.describe('Critical business flows', () => {
     await goToExpenses(page);
     await page.getByRole('button', { name: 'Nuevo gasto' }).click();
     const wrap = activeForm(page);
-    await wrap.getByPlaceholder('Concepto').fill('Gasto Supplies aprobador');
+    await wrap.getByPlaceholder('Concepto').fill('Gasto Equipment aprobador');
     await wrap.getByPlaceholder('0.00').fill('60');
-    await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ label: 'Supplies' });
+    await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ index: 1 });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await activePanel(page).getByRole('button', { name: 'Enviar gasto' }).click();
 
@@ -1112,7 +1112,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'admin@solana.test');
     await createExpenseViaUi(page, 'Trail E3', '33');
     const note = 'Nota selenium única XYZ';
-    await activePanel(page).getByPlaceholder(/nota/i).fill(note);
+    await activePanel(page).getByPlaceholder('Añadir una nota…').fill(note);
     await activePanel(page).getByRole('button', { name: 'Añadir nota' }).click();
     await expect(page.getByText(note)).toBeVisible();
   });
