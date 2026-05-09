@@ -420,12 +420,43 @@ async function loginAs(page: Page, email: string) {
   await page.locator('input[type="email"]').fill(email);
   await page.locator('input[type="password"]').first().fill(PASSWORDS[email.toLowerCase()] ?? '');
   await page.getByRole('button', { name: /iniciar sesi|sign in|entrar/i }).click();
-  await expect(page.getByRole('heading', { name: /panel|dashboard/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Panel' })).toBeVisible();
+}
+
+function sidebar(page: Page) {
+  return page.locator('.dt-only').filter({ hasText: 'Cerrar sesión' }).first();
+}
+
+async function goToView(page: Page, name: 'Panel' | 'Gastos' | 'Aprobaciones' | 'Informes') {
+  await sidebar(page).getByText(name, { exact: true }).click();
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading', { name })).toBeVisible();
+}
+
+async function goToProfile(page: Page) {
+  await sidebar(page).getByText('Mi perfil', { exact: true }).click();
+  await page.waitForLoadState('networkidle');
+}
+
+async function openNewExpensePanel(page: Page) {
+  await goToView(page, 'Gastos');
+  const newExpenseButton = page.getByRole('button', { name: 'Nuevo gasto' });
+  await expect(newExpenseButton).toBeVisible();
+  await newExpenseButton.click();
+  await expect(page.locator('.panel-slide .expense-form-fields-wrap').last()).toBeVisible();
+}
+
+async function openNewInvoicePanel(page: Page) {
+  await goToView(page, 'Panel');
+  const newInvoiceCard = page.getByText('Nueva factura', { exact: true }).first();
+  await expect(newInvoiceCard).toBeVisible();
+  await newInvoiceCard.click();
+  await expect(page.getByRole('heading', { name: 'Gastos' })).toBeVisible();
+  await expect(page.locator('.panel-slide').getByText('Nueva factura', { exact: true })).toBeVisible();
 }
 
 async function createExpenseViaUi(page: Page, description: string, amount: string) {
-  await page.getByText('Gastos').first().click();
-  await page.getByRole('button', { name: 'Nuevo gasto' }).click();
+  await openNewExpensePanel(page);
   const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
   await wrap.getByPlaceholder('Concepto').fill(description);
   await wrap.getByPlaceholder('0.00').fill(amount);
@@ -440,8 +471,7 @@ async function createExpenseViaUi(page: Page, description: string, amount: strin
 }
 
 async function createBillViaUi(page: Page, name: string, amount: string) {
-  await page.getByText('Facturas').first().click();
-  await page.getByRole('button', { name: 'Nueva factura' }).click();
+  await openNewInvoicePanel(page);
   const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
   await wrap.locator('input[placeholder="Concepto"]').first().fill(name);
   await wrap.locator('label:has-text("Proveedor")').locator('..').locator('input.inp').first().fill(name);
@@ -461,7 +491,7 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await page.reload();
-    await expect(page.getByRole('heading', { name: /panel|dashboard/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Panel' })).toBeVisible();
   });
 
   test('2) Create → approve → report expense flow', async ({ page }) => {
@@ -470,11 +500,11 @@ test.describe('Critical business flows', () => {
 
     await createExpenseViaUi(page, 'Taxi aeropuerto QA', '120');
 
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).first().click();
 
-    await page.getByText('Informes').first().click();
+    await goToView(page, 'Informes');
     await expect(page.getByText(/Gasto total por categoría/i)).toBeVisible();
     await expect(page.getByText(/Taxi aeropuerto QA/i)).toBeHidden();
     await expect(page.getByText(/Equipment|Supplies|Marketing|Software|Otro/i).first()).toBeVisible();
@@ -528,7 +558,7 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page, { expenses: [pendingExpense] });
     await loginAs(page, 'user@solana.test');
 
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await expect(page.getByText('Server bill import')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Revisar' })).toHaveCount(0);
     await page.getByText('Server bill import').click();
@@ -541,11 +571,11 @@ test.describe('Critical business flows', () => {
 
     await createBillViaUi(page, 'Factura AWS QA', '260');
 
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).first().click();
 
-    await page.getByText('Facturas').first().click();
+    await goToView(page, 'Gastos');
     await expect(page.getByText('Factura AWS QA')).toBeVisible();
     await expect(page.getByText(/Aprobado/i).first()).toBeVisible();
   });
@@ -553,8 +583,7 @@ test.describe('Critical business flows', () => {
   test('A1) Submit plain gasto — appears in Gastos as Pendiente', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
-    await page.getByRole('button', { name: 'Nuevo gasto' }).click();
+    await openNewExpensePanel(page);
     const desc = 'Gasto QA pendiente único';
     await page.getByPlaceholder('Concepto').fill(desc);
     await page.getByPlaceholder('0.00').fill('42,50');
@@ -574,7 +603,7 @@ test.describe('Critical business flows', () => {
     await page.getByRole('button', { name: '×' }).nth(1).click().catch(() => {});
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
 
@@ -590,7 +619,7 @@ test.describe('Critical business flows', () => {
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
 
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     const noteTa = page.locator('textarea.inp').first();
     await noteTa.fill('corto');
@@ -610,14 +639,14 @@ test.describe('Critical business flows', () => {
     await createExpenseViaUi(page, 'Original A4', '40');
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.locator('textarea.inp').first().fill('Motivo de prueba rechazo');
     await page.getByRole('button', { name: 'Rechazar' }).click();
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await goToView(page, 'Gastos');
     await page.getByText('Original A4').click();
     await page.getByRole('button', { name: 'Editar' }).click();
     await page.locator('input[placeholder="Concepto"]').first().fill('Editado A4');
@@ -634,14 +663,14 @@ test.describe('Critical business flows', () => {
     await createExpenseViaUi(page, 'Flow A5 aprobado', '33');
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
     await expect(page.getByText('APROBADO')).toBeVisible();
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await goToView(page, 'Gastos');
     await page.getByText('Flow A5 aprobado').click();
     await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
   });
@@ -650,10 +679,10 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await createBillViaUi(page, 'Factura B1 sin defer', '100');
-    await page.getByText('Facturas').first().click();
+    await goToView(page, 'Gastos');
     await page.getByText('Factura B1 sin defer').first().click();
     await expect(page.getByText('A pagar')).toHaveCount(0);
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
     await expect(page.locator('.panel-slide').getByRole('button', { name: 'Marcar como pagada' })).toHaveCount(0);
@@ -662,7 +691,7 @@ test.describe('Critical business flows', () => {
   test('B2) Submit factura with A pagar — payment tracking activates after approval', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Facturas').first().click();
+    await goToView(page, 'Gastos');
     await page.getByRole('button', { name: 'Nueva factura' }).click();
     const vendor = 'Proveedor defer B2';
     const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
@@ -677,20 +706,20 @@ test.describe('Critical business flows', () => {
     await wrap.locator('input[type="date"]').last().fill(today);
 
     await page.getByRole('button', { name: 'Enviar factura' }).click();
-    await page.getByText('Facturas').first().click();
+    await goToView(page, 'Gastos');
     await page.getByText(vendor).first().click();
     await expect(page.getByText('A pagar')).toHaveCount(0);
 
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).filter({ visible: true }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
     await expect(page.getByText('A pagar').first()).toBeVisible();
 
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Gastos').first().click();
+    await goToView(page, 'Gastos');
     await page.getByText(vendor).first().click();
     await expect(page.getByRole('button', { name: 'Marcar como pagada' })).toBeVisible();
   });
@@ -698,7 +727,7 @@ test.describe('Critical business flows', () => {
   test('B3) Owner marks deferred factura as paid', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Facturas').first().click();
+    await goToView(page, 'Gastos');
     await page.getByRole('button', { name: 'Nueva factura' }).click();
     const v = 'Proveedor B3 pago';
     const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
@@ -714,13 +743,13 @@ test.describe('Critical business flows', () => {
 
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await goToView(page, 'Gastos');
     await page.getByText(v).first().click();
     await page.getByRole('button', { name: 'Marcar como pagada' }).first().click();
     await page.locator('.panel-slide input[type="date"]').first().fill(new Date().toISOString().slice(0, 10));
@@ -733,7 +762,7 @@ test.describe('Critical business flows', () => {
   test('B4) Invoice does NOT duplicate on mark-paid', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Facturas').first().click();
+    await goToView(page, 'Gastos');
     await page.getByRole('button', { name: 'Nueva factura' }).click();
     const v = 'Dup test vendor';
     const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
@@ -749,13 +778,13 @@ test.describe('Critical business flows', () => {
 
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await goToView(page, 'Gastos');
     await page.getByText(v).first().click();
     await page.getByRole('button', { name: 'Marcar como pagada' }).first().click();
     await page.locator('.panel-slide').getByRole('button', { name: 'Confirmar' }).click();
@@ -766,7 +795,7 @@ test.describe('Critical business flows', () => {
   test('B5) Rejected invoice resets paymentStatus to pending_approval', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Facturas').first().click();
+    await goToView(page, 'Gastos');
     await page.getByRole('button', { name: 'Nueva factura' }).click();
     const v = 'Inv B5 reject';
     const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
@@ -780,7 +809,7 @@ test.describe('Critical business flows', () => {
     await wrap.locator('input[type="date"]').last().fill(new Date().toISOString().slice(0, 10));
     await page.getByRole('button', { name: 'Enviar factura' }).click();
 
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
 
@@ -788,7 +817,7 @@ test.describe('Critical business flows', () => {
 
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Gastos').first().click();
+    await goToView(page, 'Gastos');
     await page.getByText(v).first().click();
     await page.locator('.panel-slide textarea').first().fill('rechazo factura después de ok');
     await page.getByRole('button', { name: 'Rechazar' }).click();
@@ -853,7 +882,7 @@ test.describe('Critical business flows', () => {
     };
     await setupMockApi(page, { expenses: [e1, e2] });
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await goToView(page, 'Gastos');
     await expect(page.getByText('Gasto admin only')).toBeVisible();
     await expect(page.getByText('Gasto usuario only')).toBeVisible();
   });
@@ -889,21 +918,21 @@ test.describe('Critical business flows', () => {
 
     await setupMockApi(page, { expenses: [pendingExpense] });
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await goToView(page, 'Gastos');
     await page.getByText('C2 pendiente otros').click();
     await expect(page.locator('.panel-slide').getByRole('button', { name: 'Aprobar' })).toHaveCount(0);
     await expect(page.locator('.panel-slide').getByRole('button', { name: 'Rechazar' })).toHaveCount(0);
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await expect(page.getByText(/Solo los aprobadores asignados/i)).toBeVisible();
   });
 
   test('C3) Regular user can access Mi perfil and change password', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Mi perfil').first().click();
+    await goToProfile(page);
     await expect(page.getByText('Mi perfil').nth(1)).toBeVisible();
-    await page.getByText('Cambiar contraseña').first().click();
-    await expect(page.locator('.panel-slide')).getByPlaceholderText(/actual|current/i)).toBeVisible();
+    await page.getByText('Cambiar contraseña', { exact: true }).first().click();
+    await expect(page.getByText('Contraseña actual', { exact: true }).locator('..').locator('input')).toBeVisible();
     await expect(page.getByText('Miembros del equipo')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Guardar categorías' })).toHaveCount(0);
   });
@@ -911,7 +940,7 @@ test.describe('Critical business flows', () => {
   test('C4) Superadmin can assign approvers to categories in Settings', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Mi perfil').first().click();
+    await goToProfile(page);
     await page.locator('div.card', { hasText: 'Ajustes de aplicación' }).locator(':scope > div').first().click();
     await page.evaluate(() => {
       const btns = [...document.querySelectorAll('button')] as HTMLElement[];
@@ -936,8 +965,7 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page, { settingsCategories: seededCats });
 
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Gastos').first().click();
-    await page.getByRole('button', { name: 'Nuevo gasto' }).click();
+    await openNewExpensePanel(page);
     const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
     await wrap.getByPlaceholder('Concepto').fill('Gasto Supplies aprobador');
     await wrap.getByPlaceholder('0.00').fill('60');
@@ -947,7 +975,7 @@ test.describe('Critical business flows', () => {
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).filter({ visible: true }).click();
     await expect(page.locator('.panel-slide').getByRole('button', { name: 'Aprobar' })).toBeVisible();
     await expect(page.locator('.panel-slide').getByRole('button', { name: 'Rechazar' })).toBeVisible();
@@ -956,8 +984,8 @@ test.describe('Critical business flows', () => {
   test('D1) Informes visible to all roles', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
-    await expect(page.getByText('Informes')).toBeVisible();
-    await page.getByText('Informes').first().click();
+    await expect(sidebar(page).getByText('Informes', { exact: true })).toBeVisible();
+    await goToView(page, 'Informes');
     await expect(page.getByRole('heading', { name: 'Informes' })).toBeVisible();
     await expect(page.getByText('Total del período')).toBeVisible();
   });
@@ -1017,7 +1045,7 @@ test.describe('Critical business flows', () => {
     };
     await setupMockApi(page, { expenses: [jan, mar] });
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Informes').first().click();
+    await goToView(page, 'Informes');
     await page.getByRole('heading', { name: 'Informes' }).scrollIntoViewIfNeeded();
     const rangos = page.locator('.card').filter({ hasText: 'Desde' }).filter({ hasText: 'Hasta' }).first();
     await rangos.locator('input[type="date"]').nth(0).fill('2026-03-01');
@@ -1039,7 +1067,7 @@ test.describe('Critical business flows', () => {
   test('D3) Export dropdown shows CSV and PDF options', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Informes').first().click();
+    await goToView(page, 'Informes');
     const exportSelect = page.locator('select.inp').filter({ has: page.locator('option[value="csv"]') }).first();
     await expect(exportSelect.locator('option[value="csv"]')).toHaveText(/Exportar CSV/);
     await expect(exportSelect.locator('option[value="pdf"]')).toHaveText(/Exportar PDF/);
@@ -1058,7 +1086,7 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await createExpenseViaUi(page, 'Trail E2', '44');
-    await page.getByText('Aprobaciones').first().click();
+    await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
     await expect(page.getByText(/Aprobado · Admin QA/).first()).toBeVisible();
@@ -1078,23 +1106,20 @@ test.describe('Critical business flows', () => {
   test('F1) Draft persists when navigating away mid-form', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Gastos').first().click();
-    await page.getByRole('button', { name: 'Nuevo gasto' }).click();
+    await openNewExpensePanel(page);
     await page.getByPlaceholder('Concepto').fill('PERSIST DRAFT X');
     await page.getByPlaceholder('0.00').fill('19,90');
     await page.waitForTimeout(700);
 
-    await page.getByText('Panel').first().click();
-    await page.getByText('Gastos').first().click();
-    await page.getByRole('button', { name: 'Nuevo gasto' }).click();
+    await goToView(page, 'Panel');
+    await openNewExpensePanel(page);
     await expect(page.getByPlaceholder('Concepto')).toHaveValue('PERSIST DRAFT X');
   });
 
   test('F2) Draft clears on successful submit', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Gastos').first().click();
-    await page.getByRole('button', { name: 'Nuevo gasto' }).click();
+    await openNewExpensePanel(page);
     await page.getByPlaceholder('Concepto').fill('SUBMIT CLEAR');
     await page.getByPlaceholder('0.00').fill('21');
     await page.locator('label:has-text("Categoría") + select').first().selectOption({ index: 1 });
@@ -1104,8 +1129,7 @@ test.describe('Critical business flows', () => {
     await expect(page.getByText('SUBMIT CLEAR')).toBeVisible();
     await page.getByRole('button', { name: '×' }).click().catch(() => {});
 
-    await page.getByText('Gastos').first().click();
-    await page.getByRole('button', { name: 'Nuevo gasto' }).click();
+    await openNewExpensePanel(page);
     await expect(page.getByPlaceholder('Concepto')).toHaveValue('');
   });
 });
