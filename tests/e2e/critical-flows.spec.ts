@@ -123,7 +123,7 @@ async function setupMockApi(
     const url = new URL(req.url());
     let path = url.pathname;
     const method = req.method();
-    const auth = req.headerValue('authorization') || '';
+    const auth = (await req.headerValue('authorization')) || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     const session = token ? state.tokens.get(token) : null;
 
