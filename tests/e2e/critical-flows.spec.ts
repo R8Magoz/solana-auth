@@ -416,7 +416,10 @@ async function setupMockApi(
 }
 
 async function loginAs(page: Page, email: string) {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => sessionStorage.removeItem('sol-session-token')).catch(() => {});
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('input[type="email"]')).toBeVisible();
   await page.locator('input[type="email"]').fill(email);
   await page.locator('input[type="password"]').first().fill(PASSWORDS[email.toLowerCase()] ?? '');
   await page.getByRole('button', { name: /iniciar sesi|sign in|entrar/i }).click();
@@ -529,7 +532,9 @@ test.describe('Critical business flows', () => {
 
     await context.setOffline(false);
     await page.waitForTimeout(1500);
-    await page.reload();
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.goto('/');
+    await goToView(page, 'Gastos');
     await expect(expenseRow(page, 'Offline sync expense')).toBeVisible();
     expect(state.expenses.filter((e) => e.description === 'Offline sync expense')).toHaveLength(1);
   });
@@ -1094,7 +1099,8 @@ test.describe('Critical business flows', () => {
     await goToView(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
-    await expect(page.getByText(/Aprobado · Admin QA/).first()).toBeVisible();
+    await expect(page.locator('.panel-slide').getByText('Aprobado').last()).toBeVisible();
+    await expect(page.locator('.panel-slide').getByText('· Admin QA').last()).toBeVisible();
   });
 
   test('E3) Note added via Añadir nota appears in Seguimiento', async ({ page }) => {
@@ -1103,7 +1109,7 @@ test.describe('Critical business flows', () => {
     await createExpenseViaUi(page, 'Trail E3', '33');
     await expenseRow(page, 'Trail E3').click();
     const note = 'Nota selenium única XYZ';
-    await page.locator('.panel-slide').getByPlaceholder(/nota/i).fill(note);
+    await page.locator('.panel-slide').getByPlaceholder('Añadir una nota…').fill(note);
     await page.locator('.panel-slide').getByRole('button', { name: 'Añadir nota' }).click();
     await expect(page.getByText(note)).toBeVisible();
   });
@@ -1133,7 +1139,7 @@ test.describe('Critical business flows', () => {
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await page.waitForTimeout(400);
     await page.getByRole('button', { name: 'Enviar gasto' }).click();
-    await expect(page.getByText('SUBMIT CLEAR')).toBeVisible();
+    await expect(expenseRow(page, 'SUBMIT CLEAR')).toBeVisible();
     await page.getByRole('button', { name: '×' }).click().catch(() => {});
 
     await openNewExpensePanel(page);
