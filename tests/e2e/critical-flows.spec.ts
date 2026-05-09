@@ -419,17 +419,12 @@ async function loginAs(page: Page, email: string) {
   await page.goto('/');
   const emailInput = page.locator('input[type="email"]');
   if (!(await emailInput.isVisible({ timeout: 1200 }).catch(() => false))) {
-    const logout = page.getByRole('button', { name: 'Cerrar sesión' }).first();
-    if (await logout.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await logout.click();
-    }
-    if (!(await emailInput.isVisible({ timeout: 3000 }).catch(() => false))) {
-      await page.evaluate(() => {
-        sessionStorage.removeItem('sol-session-token');
-        localStorage.removeItem('sol-last-activity');
-      });
-      await page.goto('/');
-    }
+    await page.evaluate(() => {
+      sessionStorage.removeItem('sol-session-token');
+      localStorage.removeItem('sol-last-activity');
+    });
+    await page.goto('about:blank');
+    await page.goto('/');
   }
   await expect(emailInput).toBeVisible();
   await emailInput.fill(email);
