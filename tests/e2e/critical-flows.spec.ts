@@ -422,7 +422,8 @@ async function loginAs(page: Page, email: string) {
     const logout = page.getByRole('button', { name: 'Cerrar sesión' }).first();
     if (await logout.isVisible({ timeout: 5000 }).catch(() => false)) {
       await logout.click();
-    } else {
+    }
+    if (!(await emailInput.isVisible({ timeout: 3000 }).catch(() => false))) {
       await page.evaluate(() => {
         sessionStorage.removeItem('sol-session-token');
         localStorage.removeItem('sol-last-activity');
