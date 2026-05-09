@@ -562,7 +562,7 @@ test.describe('Critical business flows', () => {
     await page.locator('label:has-text("Categoría") + select').first().selectOption({ index: 2 });
     await page.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await page.getByRole('button', { name: 'Enviar gasto' }).click();
-    await expect(page.getByText(/Gasto registrado correctamente/ui)).toBeVisible();
+    await expect(page.getByText(/Gasto registrado correctamente/ui).first()).toBeVisible();
     await expect(page.getByText(desc).first()).toBeVisible();
     await expect(page.getByText('PENDIENTE').first()).toBeVisible();
   });
@@ -579,8 +579,8 @@ test.describe('Critical business flows', () => {
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
 
-    await expect(page.getByText('APROBADO')).toBeVisible();
-    await expect(page.getByText('Seguimiento')).toBeVisible();
+    await expect(page.getByText('APROBADO').first()).toBeVisible();
+    await expect(page.getByText('Seguimiento').first()).toBeVisible();
     await expect(page.getByText(/Aprobado/).first()).toBeVisible();
   });
 
@@ -601,7 +601,7 @@ test.describe('Critical business flows', () => {
     const longNote = 'Motivo de prueba rechazo suficiente';
     await noteTa.fill(longNote);
     await page.getByRole('button', { name: 'Rechazar' }).click();
-    await expect(page.getByText('RECHAZADO')).toBeVisible();
+    await expect(page.getByText('RECHAZADO').first()).toBeVisible();
     await expect(page.getByText(longNote)).toBeVisible();
   });
 
@@ -626,7 +626,7 @@ test.describe('Critical business flows', () => {
     await page.getByRole('button', { name: 'Guardar cambios' }).click();
     await page.getByRole('button', { name: 'Confirmar' }).click();
 
-    await expect(page.getByText('PENDIENTE')).toBeVisible();
+    await expect(page.getByText('PENDIENTE').first()).toBeVisible();
   });
 
   test('A5) Approved gasto cannot be edited by regular user', async ({ page }) => {
@@ -638,7 +638,7 @@ test.describe('Critical business flows', () => {
     await page.getByText('Aprobaciones').first().click();
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).click();
-    await expect(page.getByText('APROBADO')).toBeVisible();
+    await expect(page.getByText('APROBADO').first()).toBeVisible();
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
@@ -795,7 +795,7 @@ test.describe('Critical business flows', () => {
     await page.getByRole('button', { name: 'Rechazar' }).click();
     await page.getByRole('button', { name: 'Confirmar' }).click();
 
-    await expect(page.getByText('RECHAZADO')).toBeVisible();
+    await expect(page.getByText('RECHAZADO').first()).toBeVisible();
     await expect(page.getByText('A pagar')).toHaveCount(0);
   });
 
@@ -957,7 +957,7 @@ test.describe('Critical business flows', () => {
   test('D1) Informes visible to all roles', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
-    await expect(page.getByText('Informes')).toBeVisible();
+    await expect(page.getByText('Informes').first()).toBeVisible();
     await page.getByText('Informes').first().click();
     await expect(page.getByRole('heading', { name: 'Informes' })).toBeVisible();
     await expect(page.getByText('Total del período')).toBeVisible();
@@ -1051,7 +1051,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'user@solana.test');
     await createExpenseViaUi(page, 'Trail E1', '12');
     await page.getByText('Trail E1').first().click();
-    await expect(page.getByText('Seguimiento')).toBeVisible();
+    await expect(page.getByText('Seguimiento').first()).toBeVisible();
     await expect(page.getByText(/Enviado/).first()).toBeVisible();
   });
 
