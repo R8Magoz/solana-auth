@@ -1109,4 +1109,115 @@ test.describe('Critical business flows', () => {
     await page.getByRole('button', { name: 'Nuevo gasto' }).click();
     await expect(page.getByPlaceholder('Concepto').first()).toHaveValue('');
   });
+
+  test('G1) Receipt with Cloudinary URL displays in AttachmentViewer', async ({ page }) => {
+    const receiptUrl = 'https://mock-cloudinary.test/receipt_g1_test.jpg';
+    const seededExpense: ExpenseRow = {
+      id: 'exp_receipt_g1',
+      userId: 'admin-1',
+      date: '2026-05-01',
+      description: 'Receipt display test',
+      amount: 99,
+      amountEUR: 99,
+      currency: 'EUR',
+      category: 'Software',
+      status: 'submitted',
+      expenseType: 'expense',
+      approversJson: JSON.stringify(['admin-1']),
+      approvalVotesJson: '{}',
+      ownerId: 'admin-1',
+      paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 99, pct: 100 }]),
+      splitMode: null,
+      notes: '',
+      receiptPath: receiptUrl,
+      departmentId: 'dept_ops',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      paymentStatus: 'na',
+      deferredPayment: false,
+      paymentTermDays: 0,
+      auditTrailJson: JSON.stringify([{ action: 'submitted', by: 'admin-1', at: new Date().toISOString() }]),
+      commentsJson: JSON.stringify([]),
+      rejectionNote: null,
+    };
+
+    await page.route('https://mock-cloudinary.test/**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        body: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+          'base64',
+        ),
+      }),
+    );
+
+    await setupMockApi(page, { expenses: [seededExpense] });
+    await loginAs(page, 'admin@solana.test');
+
+    await page.getByText('Gastos', { exact: true }).first().click();
+    await page.getByText('Receipt display test').first().click();
+
+    const detail = page.locator('.panel-slide');
+    await expect(detail).toBeVisible();
+
+    const viewer = detail.locator('img[alt]').first();
+    await expect(viewer).toBeVisible({ timeout: 5000 });
+    const imgSrc = await viewer.getAttribute('src');
+    expect(imgSrc).toBe(receiptUrl);
+  });
+
+  test('G2) Receipt upload via POST stores Cloudinary URL and displays', async ({ page }) => {
+    const state = await setupMockApi(page);
+    await loginAs(page, 'admin@solana.test');
+
+    await createExpenseViaUi(page, 'Upload receipt QA', '75');
+
+    const exp = state.expenses.find((e) => e.description === 'Upload receipt QA');
+    expect(exp).toBeTruthy();
+    expect(exp!.receiptPath).toBeNull();
+
+    const uploadB64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const expId = exp!.id;
+
+    const receiptResp = await page.evaluate(
+      async ({ id, b64 }) => {
+        const w = window as any;
+        const api = w.API;
+        if (!api) return { error: 'API object not found on window' };
+        try {
+          const res = await api.post(
+            '/expenses/' + encodeURIComponent(id) + '/receipt',
+            { b64, mediaType: 'image/png' },
+          );
+          return { receiptPath: res?.receiptPath };
+        } catch (e: any) {
+          return { error: e?.message || 'upload failed' };
+        }
+      },
+      { id: expId, b64: uploadB64 },
+    );
+
+    expect(receiptResp.error).toBeUndefined();
+    expect(receiptResp.receiptPath).toBeTruthy();
+    expect(receiptResp.receiptPath).toMatch(/^https:\/\/mock-cloudinary\.test\//);
+
+    expect(exp!.receiptPath).toBe(receiptResp.receiptPath);
+
+    await page.waitForTimeout(300);
+
+    await page.getByText('Gastos', { exact: true }).first().click();
+    await page.getByText('Upload receipt QA').first().click();
+
+    const detail = page.locator('.panel-slide');
+    await expect(detail).toBeVisible();
+
+    const imgBadge = detail.locator('span[title="Tiene adjunto"]');
+    await expect(imgBadge).toBeVisible({ timeout: 5000 });
+
+    const viewer = detail.locator('img[alt]').first();
+    await expect(viewer).toBeVisible({ timeout: 5000 });
+    const imgSrc = await viewer.getAttribute('src');
+    expect(imgSrc).toMatch(/^https:\/\/mock-cloudinary\.test\//);
+  });
 });

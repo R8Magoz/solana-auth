@@ -1311,6 +1311,18 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
           Cargando archivo...
         </div>
       )}
+      {!blobLoad&&blobErr&&srcUrl&&(
+        <div style={{padding:"8px 10px",background:"#FAFAF8",borderRadius:7,border:"1px dashed #DDD6CC",fontSize:11,color:"#B5C0B8",display:"flex",flexWrap:"wrap",alignItems:"center",gap:8}}>
+          <span style={{flex:"1 1 100%"}}>
+            <span style={{display:"block",color:"#991B1B",fontWeight:600,marginBottom:4}}>No se pudo cargar el archivo.</span>
+            <span>{blobErr}</span>
+          </span>
+          <button type="button" onClick={()=>{setBlobErr(null);setReloadNonce(n=>n+1);}}
+            style={{fontSize:10,padding:"4px 10px",borderRadius:6,border:"1px solid #DDD6CC",background:"#fff",color:"#4B5E52",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>
+            Reintentar
+          </button>
+        </div>
+      )}
       {!blobLoad&&!blobErr&&srcUrl&&isImage&&(
         <div style={{position:"relative"}}>
           <div style={{display:"flex",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"hidden",border:"1px solid #EDE8E0"}}>
