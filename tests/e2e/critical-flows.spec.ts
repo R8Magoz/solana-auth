@@ -994,7 +994,6 @@ test.describe('Critical business flows', () => {
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await activePanel(page).getByRole('button', { name: 'Enviar gasto' }).click();
 
-    await page.goto('/');
     await loginAs(page, 'user@solana.test');
     await goToApprovals(page);
     await page.getByRole('button', { name: 'Revisar' }).filter({ visible: true }).click();
