@@ -590,7 +590,7 @@ test.describe('Critical business flows', () => {
 
     await goToView(page, 'Gastos');
     await expect(expenseRow(page, 'Factura AWS QA')).toBeVisible();
-    await expect(page.getByText(/Aprobado/i).first()).toBeVisible();
+    await expect(expenseRow(page, 'Factura AWS QA').getByText('Aprobado')).toBeVisible();
   });
 
   test('A1) Submit plain gasto — appears in Gastos as Pendiente', async ({ page }) => {
@@ -734,7 +734,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'admin@solana.test');
     await goToView(page, 'Gastos');
     await expenseRow(page, vendor).click();
-    await expect(page.getByRole('button', { name: 'Marcar como pagada' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Marcar como pagada' }).first()).toBeVisible();
   });
 
   test('B3) Owner marks deferred factura as paid', async ({ page }) => {
@@ -1088,7 +1088,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'user@solana.test');
     await createExpenseViaUi(page, 'Trail E1', '12');
     await expenseRow(page, 'Trail E1').click();
-    await expect(page.getByText('Seguimiento')).toBeVisible();
+    await expect(page.locator('.panel-slide').getByText('Seguimiento').last()).toBeVisible();
     await expect(page.getByText(/Enviado/).first()).toBeVisible();
   });
 
@@ -1111,7 +1111,7 @@ test.describe('Critical business flows', () => {
     const note = 'Nota selenium única XYZ';
     await page.locator('.panel-slide').getByPlaceholder('Añadir una nota…').fill(note);
     await page.locator('.panel-slide').getByRole('button', { name: 'Añadir nota' }).click();
-    await expect(page.getByText(note)).toBeVisible();
+    await expect(page.locator('.panel-slide').getByText(note).first()).toBeVisible();
   });
 
   test('F1) Draft persists when navigating away mid-form', async ({ page }) => {
