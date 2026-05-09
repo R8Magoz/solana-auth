@@ -635,9 +635,9 @@ test.describe('Critical business flows', () => {
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await activePanel(page).getByRole('button', { name: 'Aprobar' }).click();
 
-    await expect(page.getByText('APROBADO')).toBeVisible();
-    await expect(page.getByText('Seguimiento')).toBeVisible();
-    await expect(page.getByText(/Aprobado/).first()).toBeVisible();
+    await expect(activePanel(page).getByText('APROBADO').first()).toBeVisible();
+    await expect(activePanel(page).getByText('Seguimiento')).toBeVisible();
+    await expect(activePanel(page).getByText(/Aprobado/).first()).toBeVisible();
   });
 
   test('A3) Admin rejects with note — status turns Rechazado', async ({ page }) => {
@@ -657,7 +657,7 @@ test.describe('Critical business flows', () => {
     const longNote = 'Motivo de prueba rechazo suficiente';
     await noteTa.fill(longNote);
     await activePanel(page).getByRole('button', { name: 'Rechazar' }).click();
-    await expect(page.getByText('RECHAZADO')).toBeVisible();
+    await expect(activePanel(page).getByText('RECHAZADO').first()).toBeVisible();
     await expect(page.getByText(longNote)).toBeVisible();
   });
 
@@ -682,7 +682,7 @@ test.describe('Critical business flows', () => {
     await page.getByRole('button', { name: 'Guardar cambios' }).click();
     await activePanel(page).getByRole('button', { name: 'Confirmar' }).click();
 
-    await expect(page.getByText('PENDIENTE')).toBeVisible();
+    await expect(activePanel(page).getByText('PENDIENTE').first()).toBeVisible();
   });
 
   test('A5) Approved gasto cannot be edited by regular user', async ({ page }) => {
@@ -694,7 +694,7 @@ test.describe('Critical business flows', () => {
     await goToApprovals(page);
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await activePanel(page).getByRole('button', { name: 'Aprobar' }).click();
-    await expect(page.getByText('APROBADO')).toBeVisible();
+    await expect(activePanel(page).getByText('APROBADO').first()).toBeVisible();
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
@@ -847,7 +847,7 @@ test.describe('Critical business flows', () => {
     await activePanel(page).getByRole('button', { name: 'Rechazar' }).click();
     await activePanel(page).getByRole('button', { name: 'Confirmar' }).click();
 
-    await expect(page.getByText('RECHAZADO')).toBeVisible();
+    await expect(activePanel(page).getByText('RECHAZADO').first()).toBeVisible();
     await expect(page.getByText('A pagar')).toHaveCount(0);
   });
 
