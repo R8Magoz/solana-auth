@@ -669,7 +669,6 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
     await createExpenseViaUi(page, 'Flow A3 rechazo', '50');
-    await page.goto('/');
     await loginAs(page, 'admin@solana.test');
 
     await goToApprovals(page);
@@ -690,14 +689,12 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
     await createExpenseViaUi(page, 'Original A4', '40');
-    await page.goto('/');
     await loginAs(page, 'admin@solana.test');
     await goToApprovals(page);
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await activePanel(page).locator('textarea.inp').first().fill('Motivo de prueba rechazo');
     await activePanel(page).getByRole('button', { name: 'Rechazar' }).click();
 
-    await page.goto('/');
     await loginAs(page, 'user@solana.test');
     await goToExpenses(page);
     await page.getByText('Original A4').click();
@@ -714,14 +711,12 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
     await createExpenseViaUi(page, 'Flow A5 aprobado', '33');
-    await page.goto('/');
     await loginAs(page, 'admin@solana.test');
     await goToApprovals(page);
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await activePanel(page).getByRole('button', { name: 'Aprobar' }).click();
     await expect(activePanel(page).getByText('APROBADO').first()).toBeVisible();
 
-    await page.goto('/');
     await loginAs(page, 'user@solana.test');
     await goToExpenses(page);
     await page.getByText('Flow A5 aprobado').click();
@@ -759,14 +754,12 @@ test.describe('Critical business flows', () => {
     await page.getByText(vendor).first().click();
     await expect(page.getByText('A pagar')).toHaveCount(0);
 
-    await page.goto('/');
     await loginAs(page, 'admin@solana.test');
     await goToApprovals(page);
     await page.getByRole('button', { name: 'Revisar' }).filter({ visible: true }).first().click();
     await activePanel(page).getByRole('button', { name: 'Aprobar' }).click();
     await expect(page.getByText('A pagar').first()).toBeVisible();
 
-    await page.goto('/');
     await loginAs(page, 'admin@solana.test');
     await goToExpenses(page);
     await page.getByText(vendor).first().click();
@@ -787,13 +780,11 @@ test.describe('Critical business flows', () => {
     await wrap.getByRole('checkbox', { name: /A pagar/i }).check();
     await activePanel(page).getByRole('button', { name: 'Enviar factura' }).click();
 
-    await page.goto('/');
     await loginAs(page, 'admin@solana.test');
     await goToApprovals(page);
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await activePanel(page).getByRole('button', { name: 'Aprobar' }).click();
 
-    await page.goto('/');
     await loginAs(page, 'user@solana.test');
     await goToExpenses(page);
     await page.getByText(v).first().click();
@@ -819,13 +810,11 @@ test.describe('Critical business flows', () => {
     await wrap.getByRole('checkbox', { name: /A pagar/i }).check();
     await activePanel(page).getByRole('button', { name: 'Enviar factura' }).click();
 
-    await page.goto('/');
     await loginAs(page, 'admin@solana.test');
     await goToApprovals(page);
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await activePanel(page).getByRole('button', { name: 'Aprobar' }).click();
 
-    await page.goto('/');
     await loginAs(page, 'user@solana.test');
     await goToExpenses(page);
     await page.getByText(v).first().click();
@@ -855,7 +844,6 @@ test.describe('Critical business flows', () => {
 
     await expect(page.getByText('A pagar').first()).toBeVisible();
 
-    await page.goto('/');
     await loginAs(page, 'admin@solana.test');
     await goToExpenses(page);
     await page.getByText(v).first().click();
