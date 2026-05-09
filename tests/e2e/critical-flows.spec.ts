@@ -417,12 +417,21 @@ async function setupMockApi(
 
 async function loginAs(page: Page, email: string) {
   await page.goto('/');
-  await page.evaluate(() => {
-    sessionStorage.removeItem('sol-session-token');
-    localStorage.removeItem('sol-last-activity');
-  });
-  await page.goto('/');
-  await page.locator('input[type="email"]').fill(email);
+  const emailInput = page.locator('input[type="email"]');
+  if (!(await emailInput.isVisible({ timeout: 1200 }).catch(() => false))) {
+    const logout = page.getByRole('button', { name: 'Cerrar sesión' }).first();
+    if (await logout.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await logout.click();
+    } else {
+      await page.evaluate(() => {
+        sessionStorage.removeItem('sol-session-token');
+        localStorage.removeItem('sol-last-activity');
+      });
+      await page.goto('/');
+    }
+  }
+  await expect(emailInput).toBeVisible();
+  await emailInput.fill(email);
   await page.locator('input[type="password"]').first().fill(PASSWORDS[email.toLowerCase()] ?? '');
   await page.getByRole('button', { name: /iniciar sesi|sign in|entrar/i }).click();
   await expect(page.getByRole('heading', { name: /panel|dashboard/i })).toBeVisible();
@@ -1114,7 +1123,7 @@ test.describe('Critical business flows', () => {
     const note = 'Nota selenium única XYZ';
     await activePanel(page).getByPlaceholder('Añadir una nota…').fill(note);
     await activePanel(page).getByRole('button', { name: 'Añadir nota' }).click();
-    await expect(page.getByText(note)).toBeVisible();
+    await expect(activePanel(page).getByText(note).first()).toBeVisible();
   });
 
   test('F1) Draft persists when navigating away mid-form', async ({ page }) => {
