@@ -605,7 +605,7 @@ test.describe('Critical business flows', () => {
 
     await goToBills(page);
     await expect(page.getByText('Factura AWS QA').first()).toBeVisible();
-    await expect(page.getByText(/Aprobado/i).first()).toBeVisible();
+    await expect(activePanel(page).getByText(/Aprobado/i).first()).toBeVisible();
   });
 
   test('A1) Submit plain gasto — appears in Gastos as Pendiente', async ({ page }) => {
@@ -616,7 +616,7 @@ test.describe('Critical business flows', () => {
     const desc = 'Gasto QA pendiente único';
     const wrap = activeForm(page);
     await wrap.getByPlaceholder('Concepto').fill(desc);
-    await wrap.getByPlaceholder('0.00').fill('42,50');
+    await wrap.getByPlaceholder('0.00').fill('42.50');
     await wrap.locator('label:has-text("Categoría") + select').first().selectOption({ index: 2 });
     await wrap.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await activePanel(page).getByRole('button', { name: 'Enviar gasto' }).click();
@@ -1134,7 +1134,7 @@ test.describe('Critical business flows', () => {
     await goToExpenses(page);
     await page.getByRole('button', { name: 'Nuevo gasto' }).click();
     await activeForm(page).getByPlaceholder('Concepto').fill('PERSIST DRAFT X');
-    await activeForm(page).getByPlaceholder('0.00').fill('19,90');
+    await activeForm(page).getByPlaceholder('0.00').fill('19.90');
     await page.waitForTimeout(700);
 
     await goToDashboard(page);
