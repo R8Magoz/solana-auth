@@ -903,7 +903,7 @@ test.describe('Critical business flows', () => {
     await page.getByText('Mi perfil').first().click();
     await expect(page.getByText('Mi perfil').nth(1)).toBeVisible();
     await page.getByText('Cambiar contraseña').first().click();
-    await expect(page.locator('.panel-slide')).getByPlaceholderText(/actual|current/i)).toBeVisible();
+    await expect(page.locator('.panel-slide').getByPlaceholderText(/actual|current/i)).toBeVisible();
     await expect(page.getByText('Miembros del equipo')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Guardar categorías' })).toHaveCount(0);
   });

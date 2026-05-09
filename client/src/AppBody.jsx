@@ -7066,6 +7066,7 @@ export default function App(){
     try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
     try{sessionStorage.removeItem(DRAFT_KEY);}catch(e){}
   },[user?.id,defaultDeptId,departments]);
+  const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
   const openNew  =()=>{
     receiptAltHandlerRef.current=null;
     const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
@@ -7500,7 +7501,6 @@ export default function App(){
     return s+invoiceForecastMonthlyEUR(e);
   },0);
 
-  const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
   const rpOpen=view==="expenses"&&(panel==="new"||(panel==="detail"&&detailId));
   const totalBadge=myPending.length;
   const expenseNavBadge=expenses.filter(e=>{
