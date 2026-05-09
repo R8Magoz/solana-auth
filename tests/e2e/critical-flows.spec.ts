@@ -702,7 +702,7 @@ test.describe('Critical business flows', () => {
     await activePanel(page).locator('input[placeholder="Concepto"]').first().fill('Editado A4');
     await activePanel(page).locator('input[placeholder="0.00"]').first().fill('55');
     await activePanel(page).getByRole('button', { name: 'Guardar cambios' }).click();
-    await activePanel(page).getByRole('button', { name: 'Confirmar' }).click();
+    await page.getByRole('button', { name: 'Confirmar' }).click();
 
     await expect(activePanel(page).getByText('PENDIENTE').first()).toBeVisible();
   });
