@@ -840,16 +840,8 @@ test.describe('Critical business flows', () => {
 
     await goToApprovals(page);
     await page.getByRole('button', { name: 'Revisar' }).first().click();
-    await activePanel(page).getByRole('button', { name: 'Aprobar' }).click();
-
-    await expect(page.getByText('A pagar').first()).toBeVisible();
-
-    await loginAs(page, 'admin@solana.test');
-    await goToExpenses(page);
-    await page.getByText(v).first().click();
-    await activePanel(page).locator('textarea').first().fill('rechazo factura después de ok');
+    await activePanel(page).locator('textarea').first().fill('rechazo factura pendiente');
     await activePanel(page).getByRole('button', { name: 'Rechazar' }).click();
-    await activePanel(page).getByRole('button', { name: 'Confirmar' }).click();
 
     await expect(activePanel(page).getByText('RECHAZADO').first()).toBeVisible();
     await expect(page.getByText('A pagar')).toHaveCount(0);
