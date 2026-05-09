@@ -520,7 +520,7 @@ test.describe('Critical business flows', () => {
     await goToReports(page);
     await expect(page.getByText(/Gasto total por categoría/i)).toBeVisible();
     await expect(page.getByText(/Taxi aeropuerto QA/i)).toBeHidden();
-    await expect(page.getByText(/Equipment|Supplies|Marketing|Software|Otro/i).first()).toBeVisible();
+    await expect(page.getByText('Total del período').locator('..').locator('span').last()).toContainText('120');
   });
 
   test('3) Offline → sync keeps consistency (single expense, no duplicates)', async ({ page, context }) => {
