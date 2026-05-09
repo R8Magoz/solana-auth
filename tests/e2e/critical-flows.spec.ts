@@ -17,6 +17,8 @@ const PASSWORDS: Record<string, string> = {
   'user@solana.test': 'test',
 };
 
+const AUTH_BASE = 'https://solana-auth.onrender.com';
+
 function makeUsers(): User[] {
   return [
     {
@@ -116,7 +118,7 @@ async function setupMockApi(
     },
   };
 
-  const authBase = 'https://solana-auth.onrender.com';
+  const authBase = AUTH_BASE;
 
   await page.route(`${authBase}/**`, async (route) => {
     const req = route.request();
@@ -419,18 +421,25 @@ async function loginAs(page: Page, email: string) {
   await page.goto('/');
   const emailInput = page.locator('input[type="email"]');
   if (!(await emailInput.isVisible({ timeout: 1200 }).catch(() => false))) {
-    await page.addInitScript(() => {
-      if (window.name === 'solana-e2e-clear-session') {
-        sessionStorage.removeItem('sol-session-token');
-        localStorage.removeItem('sol-last-activity');
-        window.name = '';
-      }
-    });
-    await page.goto('about:blank');
-    await page.evaluate(() => {
-      window.name = 'solana-e2e-clear-session';
-    });
+    await page.evaluate(
+      async ({ authBase, loginEmail, password }) => {
+        const response = await fetch(`${authBase}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: loginEmail, password }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.sessionToken) {
+          throw new Error(data.error || 'Mock login failed.');
+        }
+        sessionStorage.setItem('sol-session-token', data.sessionToken);
+        localStorage.setItem('sol-last-activity', String(Date.now()));
+      },
+      { authBase: AUTH_BASE, loginEmail: email, password: PASSWORDS[email.toLowerCase()] ?? '' },
+    );
     await page.goto('/');
+    await expect(page.getByRole('heading', { name: /panel|dashboard/i })).toBeVisible();
+    return;
   }
   await expect(emailInput).toBeVisible();
   await emailInput.fill(email);
