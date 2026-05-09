@@ -442,7 +442,7 @@ async function createExpenseViaUi(page: Page, description: string, amount: strin
 
 async function createBillViaUi(page: Page, name: string, amount: string) {
   await page.getByText('Facturas', { exact: true }).first().click();
-  await page.getByRole('button', { name: 'Nueva factura' }).click();
+  await page.getByText('Nueva factura', { exact: true }).first().click();
   const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
   await wrap.locator('input[placeholder="Concepto"]').first().fill(name);
   await wrap.locator('label:has-text("Proveedor")').locator('..').locator('input.inp').first().fill(name);
@@ -532,7 +532,7 @@ test.describe('Critical business flows', () => {
     await page.getByText('Aprobaciones').first().click();
     await expect(page.getByText('Server bill import')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Revisar' })).toHaveCount(0);
-    await page.getByText('Server bill import').click();
+    await page.getByText('Server bill import').first().click();
     await expect(page.getByText('Solo lectura')).toBeVisible();
   });
 
@@ -619,7 +619,7 @@ test.describe('Critical business flows', () => {
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
     await page.getByText('Gastos', { exact: true }).first().click();
-    await page.getByText('Original A4').click();
+    await page.getByText('Original A4').first().click();
     await page.getByRole('button', { name: 'Editar' }).click();
     await page.locator('input[placeholder="Concepto"]').first().fill('Editado A4');
     await page.locator('input[placeholder="0.00"]').first().fill('55');
@@ -643,7 +643,7 @@ test.describe('Critical business flows', () => {
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
     await page.getByText('Gastos', { exact: true }).first().click();
-    await page.getByText('Flow A5 aprobado').click();
+    await page.getByText('Flow A5 aprobado').first().click();
     await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
   });
 
@@ -891,7 +891,7 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page, { expenses: [pendingExpense] });
     await loginAs(page, 'user@solana.test');
     await page.getByText('Gastos', { exact: true }).first().click();
-    await page.getByText('C2 pendiente otros').click();
+    await page.getByText('C2 pendiente otros').first().click();
     await expect(page.locator('.panel-slide').getByRole('button', { name: 'Aprobar' })).toHaveCount(0);
     await expect(page.locator('.panel-slide').getByRole('button', { name: 'Rechazar' })).toHaveCount(0);
     await page.getByText('Aprobaciones').first().click();
@@ -1050,7 +1050,7 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
     await createExpenseViaUi(page, 'Trail E1', '12');
-    await page.getByText('Trail E1').click();
+    await page.getByText('Trail E1').first().click();
     await expect(page.getByText('Seguimiento')).toBeVisible();
     await expect(page.getByText(/Enviado/).first()).toBeVisible();
   });
@@ -1069,7 +1069,7 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await createExpenseViaUi(page, 'Trail E3', '33');
-    await page.getByText('Trail E3').click();
+    await page.getByText('Trail E3').first().click();
     const note = 'Nota selenium única XYZ';
     await page.locator('.panel-slide').getByPlaceholder(/nota/i).fill(note);
     await page.locator('.panel-slide').getByRole('button', { name: 'Añadir nota' }).click();
