@@ -418,7 +418,7 @@ async function setupMockApi(
 }
 
 async function loginAs(page: Page, email: string) {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   const emailInput = page.locator('input[type="email"]');
   if (!(await emailInput.isVisible({ timeout: 1200 }).catch(() => false))) {
     await page.evaluate(
@@ -437,7 +437,7 @@ async function loginAs(page: Page, email: string) {
       },
       { authBase: AUTH_BASE, loginEmail: email, password: PASSWORDS[email.toLowerCase()] ?? '' },
     );
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: /panel|dashboard/i })).toBeVisible();
     return;
   }
