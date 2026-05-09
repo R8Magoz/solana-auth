@@ -123,7 +123,8 @@ async function setupMockApi(
     const url = new URL(req.url());
     let path = url.pathname;
     const method = req.method();
-    const auth = req.headerValue('authorization') || '';
+    const allH = await req.allHeaders();
+    const auth = allH['authorization'] ?? '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     const session = token ? state.tokens.get(token) : null;
 
@@ -424,7 +425,7 @@ async function loginAs(page: Page, email: string) {
 }
 
 async function createExpenseViaUi(page: Page, description: string, amount: string) {
-  await page.getByText('Gastos').first().click();
+  await page.getByText('Gastos', { exact: true }).first().click();
   await page.getByRole('button', { name: 'Nuevo gasto' }).click();
   const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
   await wrap.getByPlaceholder('Concepto').fill(description);
@@ -436,11 +437,11 @@ async function createExpenseViaUi(page: Page, description: string, amount: strin
   await departmentSelect.selectOption({ index: 1 });
 
   await page.getByRole('button', { name: 'Enviar gasto' }).click();
-  await expect(page.getByText(description)).toBeVisible();
+  await expect(page.getByText(description).first()).toBeVisible();
 }
 
 async function createBillViaUi(page: Page, name: string, amount: string) {
-  await page.getByText('Facturas').first().click();
+  await page.getByText('Facturas', { exact: true }).first().click();
   await page.getByRole('button', { name: 'Nueva factura' }).click();
   const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
   await wrap.locator('input[placeholder="Concepto"]').first().fill(name);
@@ -553,11 +554,11 @@ test.describe('Critical business flows', () => {
   test('A1) Submit plain gasto — appears in Gastos as Pendiente', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByRole('button', { name: 'Nuevo gasto' }).click();
     const desc = 'Gasto QA pendiente único';
-    await page.getByPlaceholder('Concepto').fill(desc);
-    await page.getByPlaceholder('0.00').fill('42,50');
+    await page.getByPlaceholder('Concepto').first().fill(desc);
+    await page.getByPlaceholder('0.00').first().fill('42,50');
     await page.locator('label:has-text("Categoría") + select').first().selectOption({ index: 2 });
     await page.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await page.getByRole('button', { name: 'Enviar gasto' }).click();
@@ -617,7 +618,7 @@ test.describe('Critical business flows', () => {
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByText('Original A4').click();
     await page.getByRole('button', { name: 'Editar' }).click();
     await page.locator('input[placeholder="Concepto"]').first().fill('Editado A4');
@@ -641,7 +642,7 @@ test.describe('Critical business flows', () => {
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByText('Flow A5 aprobado').click();
     await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
   });
@@ -690,7 +691,7 @@ test.describe('Critical business flows', () => {
 
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByText(vendor).first().click();
     await expect(page.getByRole('button', { name: 'Marcar como pagada' })).toBeVisible();
   });
@@ -720,7 +721,7 @@ test.describe('Critical business flows', () => {
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByText(v).first().click();
     await page.getByRole('button', { name: 'Marcar como pagada' }).first().click();
     await page.locator('.panel-slide input[type="date"]').first().fill(new Date().toISOString().slice(0, 10));
@@ -755,7 +756,7 @@ test.describe('Critical business flows', () => {
 
     await page.goto('/');
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByText(v).first().click();
     await page.getByRole('button', { name: 'Marcar como pagada' }).first().click();
     await page.locator('.panel-slide').getByRole('button', { name: 'Confirmar' }).click();
@@ -788,7 +789,7 @@ test.describe('Critical business flows', () => {
 
     await page.goto('/');
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByText(v).first().click();
     await page.locator('.panel-slide textarea').first().fill('rechazo factura después de ok');
     await page.getByRole('button', { name: 'Rechazar' }).click();
@@ -853,7 +854,7 @@ test.describe('Critical business flows', () => {
     };
     await setupMockApi(page, { expenses: [e1, e2] });
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await expect(page.getByText('Gasto admin only')).toBeVisible();
     await expect(page.getByText('Gasto usuario only')).toBeVisible();
   });
@@ -889,7 +890,7 @@ test.describe('Critical business flows', () => {
 
     await setupMockApi(page, { expenses: [pendingExpense] });
     await loginAs(page, 'user@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByText('C2 pendiente otros').click();
     await expect(page.locator('.panel-slide').getByRole('button', { name: 'Aprobar' })).toHaveCount(0);
     await expect(page.locator('.panel-slide').getByRole('button', { name: 'Rechazar' })).toHaveCount(0);
@@ -903,7 +904,7 @@ test.describe('Critical business flows', () => {
     await page.getByText('Mi perfil').first().click();
     await expect(page.getByText('Mi perfil').nth(1)).toBeVisible();
     await page.getByText('Cambiar contraseña').first().click();
-    await expect(page.locator('.panel-slide')).getByPlaceholderText(/actual|current/i)).toBeVisible();
+    await expect(page.locator('.panel-slide').getByPlaceholder(/actual|current/i)).toBeVisible();
     await expect(page.getByText('Miembros del equipo')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Guardar categorías' })).toHaveCount(0);
   });
@@ -936,7 +937,7 @@ test.describe('Critical business flows', () => {
     await setupMockApi(page, { settingsCategories: seededCats });
 
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByRole('button', { name: 'Nuevo gasto' }).click();
     const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
     await wrap.getByPlaceholder('Concepto').fill('Gasto Supplies aprobador');
@@ -1078,34 +1079,34 @@ test.describe('Critical business flows', () => {
   test('F1) Draft persists when navigating away mid-form', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByRole('button', { name: 'Nuevo gasto' }).click();
-    await page.getByPlaceholder('Concepto').fill('PERSIST DRAFT X');
-    await page.getByPlaceholder('0.00').fill('19,90');
+    await page.getByPlaceholder('Concepto').first().fill('PERSIST DRAFT X');
+    await page.getByPlaceholder('0.00').first().fill('19,90');
     await page.waitForTimeout(700);
 
-    await page.getByText('Panel').first().click();
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Panel', { exact: true }).first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByRole('button', { name: 'Nuevo gasto' }).click();
-    await expect(page.getByPlaceholder('Concepto')).toHaveValue('PERSIST DRAFT X');
+    await expect(page.getByPlaceholder('Concepto').first()).toHaveValue('PERSIST DRAFT X');
   });
 
   test('F2) Draft clears on successful submit', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByRole('button', { name: 'Nuevo gasto' }).click();
-    await page.getByPlaceholder('Concepto').fill('SUBMIT CLEAR');
-    await page.getByPlaceholder('0.00').fill('21');
+    await page.getByPlaceholder('Concepto').first().fill('SUBMIT CLEAR');
+    await page.getByPlaceholder('0.00').first().fill('21');
     await page.locator('label:has-text("Categoría") + select').first().selectOption({ index: 1 });
     await page.locator('label:has-text("Departamento") + select').first().selectOption({ index: 1 });
     await page.waitForTimeout(400);
     await page.getByRole('button', { name: 'Enviar gasto' }).click();
-    await expect(page.getByText('SUBMIT CLEAR')).toBeVisible();
+    await expect(page.getByText('SUBMIT CLEAR').first()).toBeVisible();
     await page.getByRole('button', { name: '×' }).click().catch(() => {});
 
-    await page.getByText('Gastos').first().click();
+    await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByRole('button', { name: 'Nuevo gasto' }).click();
-    await expect(page.getByPlaceholder('Concepto')).toHaveValue('');
+    await expect(page.getByPlaceholder('Concepto').first()).toHaveValue('');
   });
 });
