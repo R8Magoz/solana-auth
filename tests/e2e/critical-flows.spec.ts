@@ -554,7 +554,7 @@ test.describe('Critical business flows', () => {
   test('A1) Submit plain gasto — appears in Gastos as Pendiente', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
-    await createExpenseViaUi(page, 'Gasto QA pendiente único', '42,50');
+    await createExpenseViaUi(page, 'Gasto QA pendiente único', '42.50');
     await expect(page.getByText(/Gasto registrado correctamente/ui).first()).toBeVisible();
     await expect(page.getByText('Gasto QA pendiente único').first()).toBeVisible();
     await expect(page.getByText('PENDIENTE').first()).toBeVisible();
@@ -1075,7 +1075,7 @@ test.describe('Critical business flows', () => {
     await page.getByText('Gastos', { exact: true }).first().click();
     await page.getByRole('button', { name: 'Nuevo gasto' }).click();
     await page.getByPlaceholder('Concepto').first().fill('PERSIST DRAFT X');
-    await page.getByPlaceholder('0.00').first().fill('19,90');
+    await page.getByPlaceholder('0.00').first().fill('19.90');
     await page.waitForTimeout(700);
 
     await page.getByText('Panel', { exact: true }).first().click();
