@@ -665,46 +665,6 @@ async function rejectExpenseViaUi(page: Page, note = 'No procede QA') {
 }
 
 test.describe('Critical business flows', () => {
-  test('DEBUG-A) what is behind ··· menu', async ({ page }) => {
-    await setupMockApi(page);
-    await loginAs(page, 'admin@solana.test');
-    // Try clicking ···
-    await page.getByText('···').first().click();
-    await page.waitForTimeout(1000);
-    const afterDots = await page.evaluate(() => document.body.innerText.slice(0, 1200));
-    console.log('[debug-a] after ··· click:\n' + afterDots);
-    // Also dump all clickable text elements in page
-    const clickables = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('a,button,[onclick],[role="menuitem"],[role="button"]'))
-        .map((el) => el.textContent?.trim().slice(0, 40))
-        .filter(Boolean),
-    );
-    console.log('[debug-a] clickables:', JSON.stringify(clickables));
-  });
-
-  test('DEBUG-B) Mi perfil page content', async ({ page }) => {
-    await setupMockApi(page);
-    await loginAs(page, 'admin@solana.test');
-    await page.getByText('Mi perfil', { exact: true }).first().click();
-    await page.waitForTimeout(1500);
-    const lines = await page.evaluate(() =>
-      document.body.innerText
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .slice(0, 40),
-    );
-    lines.forEach((l, i) => console.log(`[debug-b:${i}] ${l}`));
-    const inputs = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('input,textarea')).map((el) => ({
-        type: el.getAttribute('type'),
-        placeholder: el.getAttribute('placeholder'),
-        name: el.getAttribute('name'),
-      })),
-    );
-    console.log('[debug-b:inputs]', JSON.stringify(inputs));
-  });
-
   test('1) Login + session handling survives reload', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
@@ -959,6 +919,9 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await createBillViaUi(page, 'Factura contado QA', '180');
     await clickSidebarGastos(page);
     await filterExpenseListToInvoices(page);
+    // Invoices are shown in Gastos — may need to wait for list to load
+    await page.waitForTimeout(1000);
+    await expect(page.getByText('Factura contado QA').first()).toBeVisible({ timeout: 15000 });
     const row = page.locator('[class*="row"], [class*="card"], li').filter({ hasText: 'Factura contado QA' }).first();
     await expect(row.getByText(/Pagada|Paid|Al contado/i).first()).toBeVisible();
   });
@@ -1021,6 +984,9 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await loginAs(page, 'admin@solana.test');
     await clickSidebarGastos(page);
     await filterExpenseListToInvoices(page);
+    // Invoices are shown in Gastos — may need to wait for list to load
+    await page.waitForTimeout(1000);
+    await expect(page.getByText('Factura a marcar pagada QA').first()).toBeVisible({ timeout: 15000 });
     await openExpenseDetail(page, 'Factura a marcar pagada QA');
     const detailPanel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
     await detailPanel.getByRole('button', { name: /Marcar pagada|Mark paid/i }).first().click({ force: true });
@@ -1077,6 +1043,9 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await loginAs(page, 'admin@solana.test');
     await clickSidebarGastos(page);
     await filterExpenseListToInvoices(page);
+    // Invoices are shown in Gastos — may need to wait for list to load
+    await page.waitForTimeout(1000);
+    await expect(page.getByText('Factura sin duplicar QA').first()).toBeVisible({ timeout: 15000 });
     await openExpenseDetail(page, 'Factura sin duplicar QA');
     const detailPanel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
     await detailPanel.getByRole('button', { name: /Marcar pagada|Mark paid/i }).first().click({ force: true });
@@ -1086,6 +1055,8 @@ test.describe('B — Invoice (factura) lifecycle', () => {
       await confirmBtn.first().click();
       await page.waitForTimeout(400);
     }
+    // Invoices are shown in Gastos — may need to wait for list to load
+    await page.waitForTimeout(1000);
     const rows = page.getByText('Factura sin duplicar QA');
     await expect(rows).toHaveCount(1);
     expect(state.expenses.filter((e) => e.description === 'Factura sin duplicar QA')).toHaveLength(1);
@@ -1220,8 +1191,7 @@ test.describe('C — Permissions and profile', () => {
   test('C4) Superadmin can assign approvers to categories in Settings', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('···').first().click();
-    await page.getByText(/Ajustes|Configuraci|Settings/i).first().click();
+    await page.getByText('Ajustes', { exact: true }).first().click();
     // Settings page must load
     await expect(page.getByText(/Ajustes|Configuración|Settings/i).first()).toBeVisible();
     // Approver assignment section
@@ -1243,13 +1213,15 @@ test.describe('C — Permissions and profile', () => {
       await page.getByText(/Mi perfil|Perfil/i).first().click();
     }
     await page.waitForTimeout(400);
-    const pwSection = page.getByText(/Cambiar contraseña|Change password|Nueva contraseña/i).first();
-    await expect(pwSection).toBeVisible();
-    const newPwField = page.locator('input[type="password"]').first();
-    await newPwField.fill('newpassword456');
-    await page.getByRole('button', { name: /Guardar|Cambiar|Save/i }).first().click({ force: true });
-    await page.waitForTimeout(600);
-    await expect(page.getByText(/Guardado|Contraseña cambiada|Password changed|ok/i).first()).toBeVisible();
+    // Expand "Cambiar contraseña" accordion
+    await page.getByText('Cambiar contraseña').first().click();
+    await page.waitForTimeout(500);
+    const pwInputs = page.locator('input[type="password"]');
+    await pwInputs.nth(0).fill('OldPass1!');
+    await pwInputs.nth(1).fill('NewPass1!');
+    await pwInputs.nth(2).fill('NewPass1!');
+    await page.getByRole('button', { name: /Guardar|Cambiar|Save|Update/i }).first().click();
+    await expect(page.getByText(/Guardado|Contraseña cambiada|ok/i).first()).toBeVisible({ timeout: 8000 });
   });
 
   test('C5) Assigned approver sees Aprobar/Rechazar buttons', async ({ page }) => {
