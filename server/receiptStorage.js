@@ -4,6 +4,18 @@ const fs = require('fs');
 const path = require('path');
 const cloudinary = require('cloudinary').v2;
 
+/**
+ * MIME types we send to Cloudinary for receipts. PDFs are included (never reject with
+ * `if (m.includes('pdf')) return false` — Cloudinary uses resource_type: 'auto' on upload).
+ */
+function receiptMimeOkForServerUpload(mediaType) {
+  const m = String(mediaType || '').toLowerCase();
+  if (!m || m === 'application/octet-stream') return true;
+  if (m.startsWith('image/')) return true;
+  if (m === 'application/pdf' || m.includes('pdf')) return true;
+  return mimeToExt(mediaType) !== 'bin';
+}
+
 function mimeToExt(mime) {
   const m = (mime || '').toLowerCase();
   if (m === 'image/jpeg' || m === 'image/jpg') return 'jpg';
@@ -72,8 +84,8 @@ function uploadReceiptToCloudinary(buf, mime, entityId) {
       {
         folder,
         public_id: publicId,
+        resource_type: 'auto', // images + PDF (and other auto-detected types)
         overwrite: true,
-        resource_type: 'auto',
         unique_filename: false,
         use_filename: false,
       },
@@ -87,10 +99,14 @@ function uploadReceiptToCloudinary(buf, mime, entityId) {
 
 function destroyCloudinaryPublicId(publicId) {
   return new Promise((resolve) => {
-    cloudinary.uploader.destroy(publicId, (err, result) => {
-      if (err) console.warn('[receipt] cloudinary destroy:', err.message || err);
-      resolve(result);
-    });
+    cloudinary.uploader.destroy(
+      publicId,
+      (err, result) => {
+        if (err) console.warn('[receipt] cloudinary destroy:', err.message || err);
+        resolve(result);
+      },
+      { resource_type: 'auto' },
+    );
   });
 }
 
@@ -161,6 +177,7 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
 
 module.exports = {
   mimeToExt,
+  receiptMimeOkForServerUpload,
   isRemoteReceiptPath,
   removeReceiptAsset,
   saveReceiptB64ToStorage,
