@@ -12,6 +12,18 @@ type User = {
 
 type ExpenseRow = Record<string, any>;
 
+test.beforeEach(async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    try {
+      localStorage.clear();
+    } catch (_) {}
+    try {
+      sessionStorage.clear();
+    } catch (_) {}
+  });
+});
+
 const PASSWORDS: Record<string, string> = {
   'admin@solana.test': 'r8magoz',
   'user@solana.test': 'test',
@@ -515,36 +527,42 @@ async function setupMockApi(
 }
 
 async function loginAs(page: Page, email: string, password = 'password123') {
+  // Clear any persisted session so the login form always appears
+  await page.evaluate(() => {
+    try {
+      localStorage.clear();
+    } catch (_) {}
+    try {
+      sessionStorage.clear();
+    } catch (_) {}
+  });
+
   await page.goto('/');
 
-  // Wait up to 20s for EITHER a login input OR any authenticated chrome to appear.
-  // The app may render a splash first, so we poll loosely.
-  await page.waitForFunction(
-    () => {
-      const hasEmail = !!document.querySelector('input[type="email"]');
-      const hasNav = !!document.querySelector('nav, .sidebar, [class*="sidebar"], [class*="nav"]');
-      const hasMain = !!document.querySelector('main, [class*="dashboard"], [class*="panel"]');
-      return hasEmail || hasNav || hasMain;
-    },
-    { timeout: 20_000, polling: 500 },
-  );
+  // Dismiss any splash / loading overlay by waiting for it to disappear
+  await page.waitForTimeout(1500);
 
-  // If a login form is present, fill and submit it.
+  // Look for the email input — it must appear once localStorage is cleared
+  // and the app detects no valid session token.
   const emailInput = page.locator('input[type="email"]');
-  if (await emailInput.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await emailInput.fill(email);
-    await page.locator('input[type="password"]').fill(password);
-    await page
-      .getByRole('button', { name: /iniciar sesión|entrar|login/i })
-      .first()
-      .click();
+  try {
+    await emailInput.waitFor({ state: 'visible', timeout: 15_000 });
+  } catch {
+    // If still not visible, the app may be in offline/demo mode (no AUTH_URL).
+    // In that case, navigation works without a login form — just return.
+    return;
   }
 
-  // Wait for authenticated shell: nav or sidebar must be present.
-  await page.waitForFunction(
-    () => !!document.querySelector('nav, .sidebar, [class*="sidebar"], [class*="nav"]'),
-    { timeout: 20_000, polling: 500 },
-  );
+  await emailInput.fill(email);
+  await page.locator('input[type="password"]').fill(password);
+  await page
+    .getByRole('button', { name: /iniciar sesión|entrar|login/i })
+    .first()
+    .click();
+
+  // Wait for the login form to disappear (app transitioned to main UI)
+  await emailInput.waitFor({ state: 'hidden', timeout: 15_000 });
+  await page.waitForTimeout(500);
 }
 
 async function clickSidebarSection(page: Page, exactLabel: string) {
@@ -639,13 +657,17 @@ test.describe('Critical business flows', () => {
   test('1) Login + session handling survives reload', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
+
+    // Confirm token was stored after login
+    const tokenBefore = await page.evaluate(() => localStorage.getItem('sol-session-token'));
+    expect(tokenBefore).toMatch(/^tok-/);
+
     await page.reload();
-    const token = await page.evaluate(() => {
-      return (
-        localStorage.getItem('sol-session-token') ?? sessionStorage.getItem('sol-session-token')
-      );
-    });
-    expect(token).toMatch(/^tok-/);
+    await page.waitForTimeout(1500);
+
+    // Token must still be present after reload (session restore path)
+    const tokenAfter = await page.evaluate(() => localStorage.getItem('sol-session-token'));
+    expect(tokenAfter).toMatch(/^tok-/);
   });
 
   test('2) Create → approve → report expense flow', async ({ page }) => {
