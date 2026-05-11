@@ -687,8 +687,22 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'admin@solana.test');
     await page.getByText('Mi perfil', { exact: true }).first().click();
     await page.waitForTimeout(1500);
-    const body = await page.evaluate(() => document.body.innerText.slice(0, 1500));
-    console.log('[debug-b] Mi perfil body:\n' + body);
+    const lines = await page.evaluate(() =>
+      document.body.innerText
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .slice(0, 40),
+    );
+    lines.forEach((l, i) => console.log(`[debug-b:${i}] ${l}`));
+    const inputs = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('input,textarea')).map((el) => ({
+        type: el.getAttribute('type'),
+        placeholder: el.getAttribute('placeholder'),
+        name: el.getAttribute('name'),
+      })),
+    );
+    console.log('[debug-b:inputs]', JSON.stringify(inputs));
   });
 
   test('1) Login + session handling survives reload', async ({ page }) => {
