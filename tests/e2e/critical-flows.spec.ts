@@ -513,6 +513,32 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       return json(200, { ok: true, expense: e });
     }
 
+    // GET /expenses — return seeded list
+    if (path === '/expenses' && method === 'GET') {
+      if (!session) return json(401, { error: 'No autorizado.' });
+      return json(200, { ok: true, expenses: state.expenses });
+    }
+
+    // GET /departments
+    if (path === '/departments' && method === 'GET') {
+      return json(200, { ok: true, departments: state.departments });
+    }
+
+    // GET /auth/team (users list loaded on app init)
+    if (path === '/auth/team' && method === 'GET') {
+      return json(200, { ok: true, users: state.users });
+    }
+
+    // GET /auth/me or /auth/session
+    if ((path === '/auth/me' || path === '/auth/session') && method === 'GET') {
+      if (!session) return json(401, { error: 'No autorizado.' });
+      const u = state.users.find((x) => x.id === session.userId);
+      return json(200, { ok: true, user: u ?? null });
+    }
+
+    // Log any unhandled route so we can add it if needed
+    console.warn(`[mock] unhandled: ${method} ${path}`);
+    // (existing catch-all stays below)
     return json(404, { error: 'No encontrado.' });
   });
 }
@@ -526,75 +552,26 @@ async function setupMockApi(
   return state;
 }
 
-async function loginAs(page: Page, email: string, password = 'password123') {
-  // Clear persisted session
-  await page.evaluate(() => {
-    try {
-      localStorage.clear();
-    } catch (_) {}
-    try {
-      sessionStorage.clear();
-    } catch (_) {}
+async function loginAs(page: Page, email: string, password = 'Pass1234!') {
+  const consoleErrors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
   });
+  page.on('pageerror', (err) => consoleErrors.push(`[pageerror] ${err.message}`));
 
   await page.goto('/');
+  await page.locator('input[type="email"]').fill(email);
+  await page.locator('input[type="password"]').first().fill(password);
+  await page.getByRole('button', { name: /iniciar sesi|sign in|entrar/i }).click();
 
-  // Give the app time to initialise (splash, seed data, session restore)
-  await page.waitForTimeout(2000);
-
-  // Diagnostic: log page title and first 200 chars of body text
-  const _dbg = await page.evaluate(() => ({
-    title: document.title,
-    body: document.body?.innerText?.slice(0, 200) ?? '',
-  }));
-  console.log('[loginAs] page state after 2s:', JSON.stringify(_dbg));
-
-  // Log what AUTH_URL the app has compiled in
-  const _authUrl = await page.evaluate(() => {
-    // The app exposes AUTH_URL as a top-level const in the bundle
-    // Try to read it from window or find it in the page source
-    return (window as any).AUTH_URL ?? (window as any).__AUTH_URL ?? 'NOT_FOUND_ON_WINDOW';
-  });
-  console.log('[loginAs] AUTH_URL on window:', _authUrl);
-
-  // Intercept all outgoing requests after the button click
-  const _requests: string[] = [];
-  const _reqHandler = (req: any) => _requests.push(`${req.method()} ${req.url()}`);
-  page.on('request', _reqHandler);
-
-  const emailInput = page.locator('input[type="email"]');
-  const hasLoginForm = await emailInput.isVisible({ timeout: 5_000 }).catch(() => false);
-
-  if (!hasLoginForm) {
-    // App is in offline/demo mode — no login form. Already authenticated.
-    return;
+  // Wait up to 15s; on timeout, dump errors to help diagnose
+  try {
+    await expect(page.getByRole('heading', { name: /panel|dashboard/i })).toBeVisible({ timeout: 15_000 });
+  } catch (e) {
+    console.error('[loginAs] JS console errors collected:', consoleErrors);
+    console.error('[loginAs] page HTML snapshot:', await page.content().then((h) => h.slice(0, 3000)));
+    throw e;
   }
-
-  await emailInput.fill(email);
-  await page.locator('input[type="password"]').fill(password);
-  await page
-    .getByRole('button', { name: /iniciar sesión|entrar|login/i })
-    .first()
-    .click();
-
-  await page.waitForTimeout(3000);
-  page.off('request', _reqHandler);
-  console.log('[loginAs] requests after click:', JSON.stringify(_requests));
-
-  // Wait for EITHER the login form to disappear OR the main nav to appear.
-  // Use waitForFunction so we don't depend on a single selector.
-  await page.waitForFunction(
-    () => {
-      const emailStillVisible =
-        document.querySelector('input[type="email"]') !== null &&
-        (document.querySelector('input[type="email"]') as HTMLElement).offsetParent !== null;
-      const navVisible = document.querySelector('nav, .sidebar, [class*="sidebar"], [class*="Sidebar"]') !== null;
-      return !emailStillVisible || navVisible;
-    },
-    { timeout: 20_000, polling: 400 },
-  );
-
-  await page.waitForTimeout(500);
 }
 
 async function clickSidebarSection(page: Page, exactLabel: string) {
