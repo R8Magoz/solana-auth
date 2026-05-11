@@ -923,6 +923,15 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await page.waitForTimeout(1000);
     await expect(page.getByText('Factura contado QA').first()).toBeVisible({ timeout: 15000 });
     const row = page.locator('[class*="row"], [class*="card"], li').filter({ hasText: 'Factura contado QA' }).first();
+    const bodyB1 = await page.evaluate(() =>
+      document.body.innerText
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .join(' | ')
+        .slice(0, 400),
+    );
+    console.log('[b1-before-status]', bodyB1);
     await expect(row.getByText(/Pagada|Paid|Al contado/i).first()).toBeVisible();
   });
 
@@ -1191,6 +1200,15 @@ test.describe('C — Permissions and profile', () => {
   test('C4) Superadmin can assign approvers to categories in Settings', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
+    const bodyC4 = await page.evaluate(() =>
+      document.body.innerText
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .join(' | ')
+        .slice(0, 400),
+    );
+    console.log('[c4-before-ajustes]', bodyC4);
     await page.getByText('Ajustes', { exact: true }).first().click();
     // Settings page must load
     await expect(page.getByText(/Ajustes|Configuración|Settings/i).first()).toBeVisible();
@@ -1220,6 +1238,15 @@ test.describe('C — Permissions and profile', () => {
     await pwInputs.nth(0).fill('OldPass1!');
     await pwInputs.nth(1).fill('NewPass1!');
     await pwInputs.nth(2).fill('NewPass1!');
+    const bodyC3 = await page.evaluate(() =>
+      document.body.innerText
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .join(' | ')
+        .slice(0, 400),
+    );
+    console.log('[c3-before-save]', bodyC3);
     await page.getByRole('button', { name: /Guardar|Cambiar|Save|Update/i }).first().click();
     await expect(page.getByText(/Guardado|Contraseña cambiada|ok/i).first()).toBeVisible({ timeout: 8000 });
   });
@@ -1298,6 +1325,15 @@ test.describe('D — Informes (Reports)', () => {
     await loginAs(page, 'admin@solana.test');
     await clickSidebarSection(page, 'Informes');
     // Open export dropdown/button
+    const bodyD3 = await page.evaluate(() =>
+      document.body.innerText
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .join(' | ')
+        .slice(0, 400),
+    );
+    console.log('[d3-before-export]', bodyD3);
     await page.getByRole('button', { name: /Exportar|Export/i }).first().click({ force: true });
     await page.waitForTimeout(300);
     await expect(page.getByText(/CSV/i).first()).toBeVisible();
@@ -1368,6 +1404,15 @@ test.describe('F — Draft persistence', () => {
     await page.waitForTimeout(400);
     await clickSidebarGastos(page);
     await page.waitForTimeout(400);
+    const bodyF1 = await page.evaluate(() =>
+      document.body.innerText
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .join(' | ')
+        .slice(0, 400),
+    );
+    console.log('[f1-before-draft]', bodyF1);
     const draftIndicator = page.getByText(/Borrador persistente QA|Recuperar borrador|Recuperar|borrador/i).first();
     await expect(draftIndicator).toBeVisible();
   });
