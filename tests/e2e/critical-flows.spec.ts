@@ -554,10 +554,14 @@ async function setupMockApi(
 
 async function loginAs(page: Page, email: string, password = 'Pass1234!') {
   const consoleErrors: string[] = [];
+  const responses401: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') consoleErrors.push(msg.text());
   });
   page.on('pageerror', (err) => consoleErrors.push(`[pageerror] ${err.message}`));
+  page.on('response', (res) => {
+    if (res.status() === 401) responses401.push(`401 ${res.request().method()} ${res.url()}`);
+  });
 
   await page.goto('/');
   await page.locator('input[type="email"]').fill(email);
@@ -568,6 +572,7 @@ async function loginAs(page: Page, email: string, password = 'Pass1234!') {
   try {
     await expect(page.getByRole('heading', { name: /panel|dashboard/i })).toBeVisible({ timeout: 15_000 });
   } catch (e) {
+    console.error('[loginAs] 401 responses:', responses401);
     console.error('[loginAs] JS console errors collected:', consoleErrors);
     console.error('[loginAs] page HTML snapshot:', await page.content().then((h) => h.slice(0, 3000)));
     throw e;
