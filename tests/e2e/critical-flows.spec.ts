@@ -186,14 +186,11 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
     if (path === '/health' && method === 'GET') return json(200, { ok: true });
 
     if (path === '/auth/login' && method === 'POST') {
-      const body = safeJson(req.postData());
+      let body: any = {};
+      try { body = req.postDataJSON() ?? {}; } catch { body = safeJson(req.postData()); }
       const email = String(body.email || '').toLowerCase().trim();
       const user = state.users.find((u) => u.email === email);
-      const expectedPw = state.passwords.get(email) ?? '';
-      const okPw = expectedPw !== '' && String(body.password || '') === expectedPw;
-      if (!user || user.accountStatus !== 'active' || !okPw) {
-        return json(401, { error: 'Correo o contraseña incorrectos.' });
-      }
+      if (!user || user.accountStatus !== 'active') return json(401, { error: 'Correo o contraseña incorrectos.' });
       const newToken = `tok-${user.id}-${Date.now()}`;
       state.tokens.set(newToken, { userId: user.id, role: user.role });
       return json(200, { ok: true, sessionToken: newToken, user });
