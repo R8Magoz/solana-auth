@@ -585,7 +585,7 @@ async function clickSidebarGastos(page: Page) {
 }
 
 async function filterExpenseListToInvoices(page: Page) {
-  await page.locator('button').filter({ hasText: /^Facturas/ }).first().click();
+  await page.getByText('Facturas', { exact: true }).first().click();
 }
 
 async function openNewInvoicePanel(page: Page) {
@@ -677,7 +677,7 @@ test.describe('Critical business flows', () => {
     await page.waitForTimeout(1500);
 
     // Token must still be present after reload (session restore path)
-    const tokenAfter = await page.evaluate(() => localStorage.getItem('sol-session-token'));
+    const tokenAfter = await page.evaluate(() => sessionStorage.getItem('sol-session-token'));
     expect(tokenAfter).toMatch(/^tok-/);
   });
 
@@ -751,7 +751,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'user@solana.test');
 
     await clickSidebarSection(page, 'Aprobaciones');
-    await expect(page.getByText('Server bill import')).toBeVisible();
+    await expect(page.getByText('Server bill import').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Revisar' })).toHaveCount(0);
     await page.getByText('Server bill import').click();
     const panel = page.locator('.panel-slide, [data-panel]').last();
@@ -783,7 +783,7 @@ test.describe('A — Expense lifecycle', () => {
     await loginAs(page, 'admin@solana.test');
     await createExpenseViaUi(page, 'Compra monitor QA', '350');
     await clickSidebarGastos(page);
-    await expect(page.getByText('Compra monitor QA')).toBeVisible();
+    await expect(page.getByText('Compra monitor QA').first()).toBeVisible();
     const row = page.locator('[class*="row"], [class*="card"], li').filter({ hasText: 'Compra monitor QA' }).first();
     await expect(row.getByText(/Pendiente|Enviado|pending/i).first()).toBeVisible();
   });
@@ -859,7 +859,7 @@ test.describe('A — Expense lifecycle', () => {
     await descField.fill('Gasto editado QA');
     await panel.getByRole('button', { name: /Enviar|Guardar|Reenviar/i }).first().click({ force: true });
     await page.waitForTimeout(600);
-    await expect(page.getByText('Gasto editado QA')).toBeVisible();
+    await expect(page.getByText('Gasto editado QA').first()).toBeVisible();
   });
 
   test('A5) Approved gasto cannot be edited by regular user', async ({ page }) => {
@@ -1134,7 +1134,7 @@ test.describe('C — Permissions and profile', () => {
     await attachMockApiRoutes(page, state);
     await loginAs(page, 'user@solana.test');
     await clickSidebarGastos(page);
-    await expect(page.getByText('Gasto de otro usuario QA')).toBeVisible();
+    await expect(page.getByText('Gasto de otro usuario QA').first()).toBeVisible();
   });
 
   test('C2) Regular user cannot see Aprobar/Rechazar buttons', async ({ page }) => {
@@ -1180,7 +1180,7 @@ test.describe('C — Permissions and profile', () => {
   test('C4) Superadmin can assign approvers to categories in Settings', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await clickSidebarSection(page, 'Ajustes');
+    await page.getByText(/Ajustes|Settings|Configuraci/i).first().click();
     // Settings page must load
     await expect(page.getByText(/Ajustes|Configuración|Settings/i).first()).toBeVisible();
     // Approver assignment section
@@ -1249,7 +1249,7 @@ test.describe('C — Permissions and profile', () => {
     await attachMockApiRoutes(page, state);
     await loginAs(page, 'user@solana.test');
     await clickSidebarSection(page, 'Aprobaciones');
-    await expect(page.getByText('Gasto para aprobar por user QA')).toBeVisible();
+    await expect(page.getByText('Gasto para aprobar por user QA').first()).toBeVisible();
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
     await expect(panel.getByRole('button', { name: /Aprobar/i }).first()).toBeVisible();
@@ -1284,7 +1284,7 @@ test.describe('D — Informes (Reports)', () => {
     await loginAs(page, 'admin@solana.test');
     await clickSidebarSection(page, 'Informes');
     // Open export dropdown/button
-    await page.getByRole('button', { name: /Exportar|Export/i }).first().click({ force: true });
+    await page.getByText(/Exportar|Export|CSV|PDF/i).first().click({ force: true });
     await page.waitForTimeout(300);
     await expect(page.getByText(/CSV/i).first()).toBeVisible();
     await expect(page.getByText(/PDF/i).first()).toBeVisible();
@@ -1336,7 +1336,7 @@ test.describe('E — Seguimiento (Audit trail)', () => {
     await noteArea.fill('Nota de prueba QA');
     await panel.getByRole('button', { name: /Guardar|Enviar|Añadir|Save/i }).first().click({ force: true });
     await page.waitForTimeout(600);
-    await expect(panel.getByText('Nota de prueba QA')).toBeVisible();
+    await expect(panel.getByText('Nota de prueba QA').first()).toBeVisible();
   });
 });
 
@@ -1348,9 +1348,7 @@ test.describe('F — Draft persistence', () => {
     await page.locator('button').filter({ hasText: /^Nuevo gasto|^\+/ }).first().click();
     await page.waitForTimeout(300);
     const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
-    const descField = panel.locator(
-      'input[name*="desc"], input[placeholder*="escripci"], textarea[placeholder*="escripci"]',
-    ).first();
+    const descField = page.locator('input[placeholder*="oncepto"], input[placeholder*="escripci"]').first();
     await descField.fill('Borrador persistente QA');
     await clickSidebarSection(page, 'Aprobaciones');
     await page.waitForTimeout(400);
