@@ -665,6 +665,33 @@ async function rejectExpenseViaUi(page: Page, note = 'No procede QA') {
 }
 
 test.describe('Critical business flows', () => {
+  test('DEBUG-A) what is behind ··· menu', async ({ page }) => {
+    await setupMockApi(page);
+    await loginAs(page, 'admin@solana.test');
+    await page.getByText('···').first().click();
+    await page.waitForTimeout(800);
+    const body = await page.evaluate(() => document.body.innerText.slice(0, 600));
+    console.log('[debug-a] after clicking ···:', body);
+  });
+
+  test('DEBUG-B) Mi perfil page content', async ({ page }) => {
+    await setupMockApi(page);
+    await loginAs(page, 'admin@solana.test');
+    await page.getByText('Mi perfil', { exact: true }).first().click();
+    await page.waitForTimeout(800);
+    const body = await page.evaluate(() => document.body.innerText.slice(0, 800));
+    const inputs = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('input,button')).map((el) => ({
+        tag: el.tagName,
+        type: el.getAttribute('type'),
+        placeholder: el.getAttribute('placeholder'),
+        text: el.textContent?.trim().slice(0, 30),
+      })),
+    );
+    console.log('[debug-b] Mi perfil body:', body);
+    console.log('[debug-b] inputs/buttons:', JSON.stringify(inputs));
+  });
+
   test('1) Login + session handling survives reload', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
