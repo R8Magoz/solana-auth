@@ -6716,11 +6716,14 @@ export default function App(){
     setCamOn(false);
   };
   const capturePhoto=()=>{
-    const v=videoRef.current,c=canvasRef.current;
-    if(!v||!c)return;
-    c.width=v.videoWidth||1280;
-    c.height=v.videoHeight||720;
-    c.getContext("2d").drawImage(v,0,0);
+    const v=videoRef.current;
+    if(!v)return;
+    const c=document.createElement("canvas");
+    c.width=v.videoWidth||v.offsetWidth;
+    c.height=v.videoHeight||v.offsetHeight;
+    const ctx=c.getContext("2d");
+    if(!ctx||!c.width||!c.height)return;
+    ctx.drawImage(v,0,0,c.width,c.height);
     const url=c.toDataURL("image/jpeg",0.85);
     stopCam();
     if(receiptAltHandlerRef.current){
