@@ -1205,10 +1205,11 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
 
         // Set state — do NOT revoke this URL anywhere else
         setBlobUrl(url);
+        const guessed = receiptPath ? guessMimeFromReceiptPath(receiptPath) : null;
         setBlobMime(
           blob.type && blob.type !== "application/octet-stream"
             ? blob.type
-            : guessMimeFromReceiptPath(receiptPath)
+            : guessed || "image/jpeg"
         );
         setBlobErr(null);
       } catch (e) {
@@ -1315,7 +1316,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
         <div style={{position:"relative"}}>
           <div style={{display:"flex",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"hidden",border:"1px solid #EDE8E0"}}>
             <img src={srcUrl} alt={label||"Recibo"}
-              style={{width:"100%",maxHeight:300,objectFit:"contain",borderRadius:6,cursor:"zoom-in",display:"block"}}
+              style={{maxWidth:"100%",maxHeight:"420px",width:"auto",height:"auto",display:"block",objectFit:"contain",borderRadius:8,cursor:"zoom-in"}}
               onError={()=>setBlobErr("No se pudo cargar la imagen.")}
               onClick={()=>setImgZoom(true)}/>
           </div>
@@ -1346,30 +1347,36 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
         </div>
       )}
       {isPdf&&srcUrl&&(
-        <div style={{padding:20,textAlign:"center",background:"#F5F0EA",borderRadius:8,border:"1px solid #DDD6CC"}}>
-          <div style={{fontSize:32,marginBottom:8}}>PDF</div>
-          <div style={{fontSize:12,color:"#4B5E52",marginBottom:16,fontWeight:500}}>
-            {label||"Documento PDF"}
-          </div>
-          <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-            <button className="btn-outline" style={{fontSize:12,padding:"6px 16px"}}
-              onClick={()=>{
-                const a=document.createElement("a");
-                a.href=srcUrl;
-                a.target="_blank";
-                a.rel="noopener noreferrer";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-              }}>
-              Abrir PDF
-            </button>
-            <button className="btn-outline" style={{fontSize:12,padding:"6px 16px"}} onClick={downloadFile}>
-              Descargar PDF
-            </button>
-            {onRemove&&<button type="button" onClick={onRemove} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}}>
-              ✕ {t?t("action.remove"):"Eliminar"}
-            </button>}
+        <div style={{background:"#F5F0EA",borderRadius:8,border:"1px solid #DDD6CC",overflow:"hidden"}}>
+          <iframe
+            title={label ? String(label) : "Documento PDF"}
+            src={srcUrl}
+            style={{width:"100%",height:"480px",border:"none",borderRadius:8}}
+          />
+          <div style={{padding:12,textAlign:"center",borderTop:"1px solid #EDE8E0"}}>
+            <div style={{fontSize:12,color:"#4B5E52",marginBottom:10,fontWeight:500}}>
+              {label||"Documento PDF"}
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
+              <button className="btn-outline" style={{fontSize:12,padding:"6px 16px"}}
+                onClick={()=>{
+                  const a=document.createElement("a");
+                  a.href=srcUrl;
+                  a.target="_blank";
+                  a.rel="noopener noreferrer";
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                }}>
+                Abrir PDF
+              </button>
+              <button className="btn-outline" style={{fontSize:12,padding:"6px 16px"}} onClick={downloadFile}>
+                Descargar PDF
+              </button>
+              {onRemove&&<button type="button" onClick={onRemove} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}}>
+                ✕ {t?t("action.remove"):"Eliminar"}
+              </button>}
+            </div>
           </div>
         </div>
       )}
