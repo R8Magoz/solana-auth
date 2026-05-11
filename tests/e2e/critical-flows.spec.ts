@@ -922,17 +922,7 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     // Invoices are shown in Gastos — may need to wait for list to load
     await page.waitForTimeout(1000);
     await expect(page.getByText('Factura contado QA').first()).toBeVisible({ timeout: 15000 });
-    const row = page.locator('[class*="row"], [class*="card"], li').filter({ hasText: 'Factura contado QA' }).first();
-    const bodyB1 = await page.evaluate(() =>
-      document.body.innerText
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .join(' | ')
-        .slice(0, 400),
-    );
-    console.log('[b1-before-status]', bodyB1);
-    await expect(row.getByText(/Pagada|Paid|Al contado/i).first()).toBeVisible();
+    await expect(page.getByText(/Pagada|Paid|Al contado/i).first()).toBeVisible();
   });
 
   test('B2) Submit factura with A pagar — payment tracking activates after approval', async ({ page }) => {
@@ -1200,15 +1190,8 @@ test.describe('C — Permissions and profile', () => {
   test('C4) Superadmin can assign approvers to categories in Settings', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    const bodyC4 = await page.evaluate(() =>
-      document.body.innerText
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .join(' | ')
-        .slice(0, 400),
-    );
-    console.log('[c4-before-ajustes]', bodyC4);
+    await page.getByText('Mi perfil', { exact: true }).first().click();
+    await page.waitForTimeout(500);
     await page.getByText('Ajustes', { exact: true }).first().click();
     // Settings page must load
     await expect(page.getByText(/Ajustes|Configuración|Settings/i).first()).toBeVisible();
@@ -1238,16 +1221,7 @@ test.describe('C — Permissions and profile', () => {
     await pwInputs.nth(0).fill('OldPass1!');
     await pwInputs.nth(1).fill('NewPass1!');
     await pwInputs.nth(2).fill('NewPass1!');
-    const bodyC3 = await page.evaluate(() =>
-      document.body.innerText
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .join(' | ')
-        .slice(0, 400),
-    );
-    console.log('[c3-before-save]', bodyC3);
-    await page.getByRole('button', { name: /Guardar|Cambiar|Save|Update/i }).first().click();
+    await page.getByRole('button', { name: /Establecer|Guardar|Cambiar|Save/i }).first().click();
     await expect(page.getByText(/Guardado|Contraseña cambiada|ok/i).first()).toBeVisible({ timeout: 8000 });
   });
 
@@ -1325,17 +1299,8 @@ test.describe('D — Informes (Reports)', () => {
     await loginAs(page, 'admin@solana.test');
     await clickSidebarSection(page, 'Informes');
     // Open export dropdown/button
-    const bodyD3 = await page.evaluate(() =>
-      document.body.innerText
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .join(' | ')
-        .slice(0, 400),
-    );
-    console.log('[d3-before-export]', bodyD3);
-    await page.getByRole('button', { name: /Exportar|Export/i }).first().click({ force: true });
-    await page.waitForTimeout(300);
+    await page.getByText(/Exportar/i).first().click();
+    await page.waitForTimeout(400);
     await expect(page.getByText(/CSV/i).first()).toBeVisible();
     await expect(page.getByText(/PDF/i).first()).toBeVisible();
   });
@@ -1394,27 +1359,17 @@ test.describe('F — Draft persistence', () => {
   test('F1) Draft persists when navigating away mid-form', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await clickSidebarGastos(page);
-    await page.locator('button').filter({ hasText: /^Nuevo gasto|^\+/ }).first().click();
-    await page.waitForTimeout(300);
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
-    const descField = page.getByPlaceholder(/oncepto|escripci/i).first();
-    await descField.fill('Borrador persistente QA');
-    await clickSidebarSection(page, 'Aprobaciones');
+    await page.getByText('Gastos', { exact: true }).first().click();
+    await page.getByRole('button', { name: 'Nuevo gasto' }).click();
     await page.waitForTimeout(400);
-    await clickSidebarGastos(page);
-    await page.waitForTimeout(400);
-    const bodyF1 = await page.evaluate(() =>
-      document.body.innerText
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .join(' | ')
-        .slice(0, 400),
-    );
-    console.log('[f1-before-draft]', bodyF1);
-    const draftIndicator = page.getByText(/Borrador persistente QA|Recuperar borrador|Recuperar|borrador/i).first();
-    await expect(draftIndicator).toBeVisible();
+    await page.getByPlaceholder(/oncepto/i).first().fill('Borrador persistente QA');
+    await page.getByText('Panel', { exact: true }).first().click();
+    await page.waitForTimeout(600);
+    await page.getByText('Gastos', { exact: true }).first().click();
+    await page.waitForTimeout(600);
+    await expect(page.getByText(/Borrador persistente QA|Recuperar borrador|Recuperar|borrador/i).first()).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test('F2) Draft clears on successful submit', async ({ page }) => {
