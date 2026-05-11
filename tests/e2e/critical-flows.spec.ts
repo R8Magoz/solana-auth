@@ -549,6 +549,19 @@ async function loginAs(page: Page, email: string, password = 'password123') {
   }));
   console.log('[loginAs] page state after 2s:', JSON.stringify(_dbg));
 
+  // Log what AUTH_URL the app has compiled in
+  const _authUrl = await page.evaluate(() => {
+    // The app exposes AUTH_URL as a top-level const in the bundle
+    // Try to read it from window or find it in the page source
+    return (window as any).AUTH_URL ?? (window as any).__AUTH_URL ?? 'NOT_FOUND_ON_WINDOW';
+  });
+  console.log('[loginAs] AUTH_URL on window:', _authUrl);
+
+  // Intercept all outgoing requests after the button click
+  const _requests: string[] = [];
+  const _reqHandler = (req: any) => _requests.push(`${req.method()} ${req.url()}`);
+  page.on('request', _reqHandler);
+
   const emailInput = page.locator('input[type="email"]');
   const hasLoginForm = await emailInput.isVisible({ timeout: 5_000 }).catch(() => false);
 
@@ -563,6 +576,10 @@ async function loginAs(page: Page, email: string, password = 'password123') {
     .getByRole('button', { name: /iniciar sesión|entrar|login/i })
     .first()
     .click();
+
+  await page.waitForTimeout(3000);
+  page.off('request', _reqHandler);
+  console.log('[loginAs] requests after click:', JSON.stringify(_requests));
 
   // Wait for EITHER the login form to disappear OR the main nav to appear.
   // Use waitForFunction so we don't depend on a single selector.
