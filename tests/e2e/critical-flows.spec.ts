@@ -527,7 +527,7 @@ async function setupMockApi(
 }
 
 async function loginAs(page: Page, email: string, password = 'password123') {
-  // Clear any persisted session so the login form always appears
+  // Clear persisted session
   await page.evaluate(() => {
     try {
       localStorage.clear();
@@ -539,17 +539,21 @@ async function loginAs(page: Page, email: string, password = 'password123') {
 
   await page.goto('/');
 
-  // Dismiss any splash / loading overlay by waiting for it to disappear
-  await page.waitForTimeout(1500);
+  // Give the app time to initialise (splash, seed data, session restore)
+  await page.waitForTimeout(2000);
 
-  // Look for the email input — it must appear once localStorage is cleared
-  // and the app detects no valid session token.
+  // Diagnostic: log page title and first 200 chars of body text
+  const _dbg = await page.evaluate(() => ({
+    title: document.title,
+    body: document.body?.innerText?.slice(0, 200) ?? '',
+  }));
+  console.log('[loginAs] page state after 2s:', JSON.stringify(_dbg));
+
   const emailInput = page.locator('input[type="email"]');
-  try {
-    await emailInput.waitFor({ state: 'visible', timeout: 15_000 });
-  } catch {
-    // If still not visible, the app may be in offline/demo mode (no AUTH_URL).
-    // In that case, navigation works without a login form — just return.
+  const hasLoginForm = await emailInput.isVisible({ timeout: 5_000 }).catch(() => false);
+
+  if (!hasLoginForm) {
+    // App is in offline/demo mode — no login form. Already authenticated.
     return;
   }
 
@@ -560,8 +564,19 @@ async function loginAs(page: Page, email: string, password = 'password123') {
     .first()
     .click();
 
-  // Wait for the login form to disappear (app transitioned to main UI)
-  await emailInput.waitFor({ state: 'hidden', timeout: 15_000 });
+  // Wait for EITHER the login form to disappear OR the main nav to appear.
+  // Use waitForFunction so we don't depend on a single selector.
+  await page.waitForFunction(
+    () => {
+      const emailStillVisible =
+        document.querySelector('input[type="email"]') !== null &&
+        (document.querySelector('input[type="email"]') as HTMLElement).offsetParent !== null;
+      const navVisible = document.querySelector('nav, .sidebar, [class*="sidebar"], [class*="Sidebar"]') !== null;
+      return !emailStillVisible || navVisible;
+    },
+    { timeout: 20_000, polling: 400 },
+  );
+
   await page.waitForTimeout(500);
 }
 
