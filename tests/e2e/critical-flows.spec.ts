@@ -665,6 +665,13 @@ async function rejectExpenseViaUi(page: Page, note = 'No procede QA') {
 }
 
 test.describe('Critical business flows', () => {
+  test('0) SIDEBAR DUMP — delete after debugging', async ({ page }) => {
+    await setupMockApi(page);
+    await loginAs(page, 'admin@solana.test');
+    const bodyText = await page.evaluate(() => document.body.innerText.slice(0, 800));
+    console.log('[sidebar-dump] body:', bodyText);
+  });
+
   test('1) Login + session handling survives reload', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
