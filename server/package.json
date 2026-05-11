@@ -22,5 +22,5 @@
     "exceljs": "^4.4.0",
     "pdfkit": "^0.15.0"
   },
-  "engines": { "node": ">=18" }
+  "engines": { "node": ">=20.19.0 <21" }
 }
