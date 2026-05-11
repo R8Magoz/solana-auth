@@ -577,7 +577,7 @@ async function loginAs(page: Page, email: string, password = 'Pass1234!') {
 }
 
 async function clickSidebarSection(page: Page, exactLabel: string) {
-  await page.locator('nav').getByText(exactLabel, { exact: true }).first().click();
+  await page.getByText(exactLabel, { exact: true }).first().click();
 }
 
 async function clickSidebarGastos(page: Page) {
@@ -670,7 +670,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'admin@solana.test');
 
     // Confirm token was stored after login
-    const tokenBefore = await page.evaluate(() => localStorage.getItem('sol-session-token'));
+    const tokenBefore = await page.evaluate(() => sessionStorage.getItem('sol-session-token'));
     expect(tokenBefore).toMatch(/^tok-/);
 
     await page.reload();
