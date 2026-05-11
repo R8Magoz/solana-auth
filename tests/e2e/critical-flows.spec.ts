@@ -668,28 +668,27 @@ test.describe('Critical business flows', () => {
   test('DEBUG-A) what is behind ··· menu', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
+    // Try clicking ···
     await page.getByText('···').first().click();
-    await page.waitForTimeout(800);
-    const body = await page.evaluate(() => document.body.innerText.slice(0, 600));
-    console.log('[debug-a] after clicking ···:', body);
+    await page.waitForTimeout(1000);
+    const afterDots = await page.evaluate(() => document.body.innerText.slice(0, 1200));
+    console.log('[debug-a] after ··· click:\n' + afterDots);
+    // Also dump all clickable text elements in page
+    const clickables = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('a,button,[onclick],[role="menuitem"],[role="button"]'))
+        .map((el) => el.textContent?.trim().slice(0, 40))
+        .filter(Boolean),
+    );
+    console.log('[debug-a] clickables:', JSON.stringify(clickables));
   });
 
   test('DEBUG-B) Mi perfil page content', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await page.getByText('Mi perfil', { exact: true }).first().click();
-    await page.waitForTimeout(800);
-    const body = await page.evaluate(() => document.body.innerText.slice(0, 800));
-    const inputs = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('input,button')).map((el) => ({
-        tag: el.tagName,
-        type: el.getAttribute('type'),
-        placeholder: el.getAttribute('placeholder'),
-        text: el.textContent?.trim().slice(0, 30),
-      })),
-    );
-    console.log('[debug-b] Mi perfil body:', body);
-    console.log('[debug-b] inputs/buttons:', JSON.stringify(inputs));
+    await page.waitForTimeout(1500);
+    const body = await page.evaluate(() => document.body.innerText.slice(0, 1500));
+    console.log('[debug-b] Mi perfil body:\n' + body);
   });
 
   test('1) Login + session handling survives reload', async ({ page }) => {
