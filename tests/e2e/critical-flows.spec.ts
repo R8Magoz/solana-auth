@@ -585,7 +585,7 @@ async function clickSidebarGastos(page: Page) {
 }
 
 async function filterExpenseListToInvoices(page: Page) {
-  await page.getByText('Facturas', { exact: true }).first().click();
+  await page.getByText('Gastos', { exact: true }).first().click();
 }
 
 async function openNewInvoicePanel(page: Page) {
@@ -665,13 +665,6 @@ async function rejectExpenseViaUi(page: Page, note = 'No procede QA') {
 }
 
 test.describe('Critical business flows', () => {
-  test('0) SIDEBAR DUMP — delete after debugging', async ({ page }) => {
-    await setupMockApi(page);
-    await loginAs(page, 'admin@solana.test');
-    const bodyText = await page.evaluate(() => document.body.innerText.slice(0, 800));
-    console.log('[sidebar-dump] body:', bodyText);
-  });
-
   test('1) Login + session handling survives reload', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
@@ -1187,7 +1180,8 @@ test.describe('C — Permissions and profile', () => {
   test('C4) Superadmin can assign approvers to categories in Settings', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await page.getByText(/Ajustes|Settings|Configuraci/i).first().click();
+    await page.getByText('···').first().click();
+    await page.getByText(/Ajustes|Configuraci|Settings/i).first().click();
     // Settings page must load
     await expect(page.getByText(/Ajustes|Configuración|Settings/i).first()).toBeVisible();
     // Approver assignment section
@@ -1211,7 +1205,7 @@ test.describe('C — Permissions and profile', () => {
     await page.waitForTimeout(400);
     const pwSection = page.getByText(/Cambiar contraseña|Change password|Nueva contraseña/i).first();
     await expect(pwSection).toBeVisible();
-    const newPwField = page.locator('input[type="password"]').last();
+    const newPwField = page.locator('input[type="password"]').first();
     await newPwField.fill('newpassword456');
     await page.getByRole('button', { name: /Guardar|Cambiar|Save/i }).first().click({ force: true });
     await page.waitForTimeout(600);
@@ -1257,6 +1251,7 @@ test.describe('C — Permissions and profile', () => {
     await loginAs(page, 'user@solana.test');
     await clickSidebarSection(page, 'Aprobaciones');
     await expect(page.getByText('Gasto para aprobar por user QA').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Revisar' }).first()).toBeVisible({ timeout: 15000 });
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
     await expect(panel.getByRole('button', { name: /Aprobar/i }).first()).toBeVisible();
@@ -1291,7 +1286,7 @@ test.describe('D — Informes (Reports)', () => {
     await loginAs(page, 'admin@solana.test');
     await clickSidebarSection(page, 'Informes');
     // Open export dropdown/button
-    await page.getByText(/Exportar|Export|CSV|PDF/i).first().click({ force: true });
+    await page.getByRole('button', { name: /Exportar|Export/i }).first().click({ force: true });
     await page.waitForTimeout(300);
     await expect(page.getByText(/CSV/i).first()).toBeVisible();
     await expect(page.getByText(/PDF/i).first()).toBeVisible();
@@ -1355,7 +1350,7 @@ test.describe('F — Draft persistence', () => {
     await page.locator('button').filter({ hasText: /^Nuevo gasto|^\+/ }).first().click();
     await page.waitForTimeout(300);
     const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
-    const descField = page.locator('input[placeholder*="oncepto"], input[placeholder*="escripci"]').first();
+    const descField = page.getByPlaceholder(/oncepto|escripci/i).first();
     await descField.fill('Borrador persistente QA');
     await clickSidebarSection(page, 'Aprobaciones');
     await page.waitForTimeout(400);
