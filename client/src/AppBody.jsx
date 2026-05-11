@@ -1314,7 +1314,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
       )}
       {!blobLoad&&!blobErr&&srcUrl&&isImage&&(
         <div style={{position:"relative"}}>
-          <div style={{display:"flex",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"hidden",border:"1px solid #EDE8E0"}}>
+          <div style={{display:"flex",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"visible",border:"1px solid #EDE8E0",minHeight:0}}>
             <img src={srcUrl} alt={label||"Recibo"}
               style={{maxWidth:"100%",maxHeight:"420px",width:"auto",height:"auto",display:"block",objectFit:"contain",borderRadius:8,cursor:"zoom-in"}}
               onError={()=>setBlobErr("No se pudo cargar la imagen.")}
@@ -1348,11 +1348,19 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
       )}
       {isPdf&&srcUrl&&(
         <div style={{background:"#F5F0EA",borderRadius:8,border:"1px solid #DDD6CC",overflow:"hidden"}}>
-          <iframe
-            title={label ? String(label) : "Documento PDF"}
-            src={srcUrl}
-            style={{width:"100%",height:"480px",border:"none",borderRadius:8}}
-          />
+          <object
+            data={srcUrl}
+            type="application/pdf"
+            style={{width:"100%",height:"480px",border:"none",display:"block"}}
+          >
+            <div style={{padding:24,textAlign:"center"}}>
+              <p style={{marginBottom:12,color:"#6B7280"}}>Vista previa no disponible en este navegador.</p>
+              <a href={srcUrl} download="recibo.pdf"
+                style={{padding:"8px 16px",background:"#3C0A37",color:"white",borderRadius:6,textDecoration:"none",fontSize:13}}>
+                Descargar PDF
+              </a>
+            </div>
+          </object>
           <div style={{padding:12,textAlign:"center",borderTop:"1px solid #EDE8E0"}}>
             <div style={{fontSize:12,color:"#4B5E52",marginBottom:10,fontWeight:500}}>
               {label||"Documento PDF"}
