@@ -1167,6 +1167,15 @@ function cloudinaryPdfUrl(url) {
   return url || '';
 }
 
+/** Infer application/pdf from base64 when client sent wrong MIME (e.g. image/jpeg). */
+function receiptUploadMediaType(b64, declaredType) {
+  const t = String(declaredType || '').trim().toLowerCase();
+  if (t && t !== 'application/octet-stream') return t;
+  const b = String(b64 || '').replace(/\s/g, '');
+  if (b.startsWith('JVBERi')) return 'application/pdf';
+  return t || 'image/jpeg';
+}
+
 /* ── ATTACHMENT VIEWER ─────────────────────────────────────────────────────────
    Receipt preview: inline image/PDF, server fetch via apiExpenseId + Bearer, empty state.
 ─────────────────────────────────────────────────────────────────────────────── */
@@ -1374,12 +1383,27 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
               border:"none",borderRadius:6,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>
             Ver PDF
           </button>
-          <a href={cloudinaryPdfUrl(srcUrl)} download="recibo.pdf"
+          <button
+            type="button"
+            onClick={async ()=>{
+              try{
+                const resp=await fetch(cloudinaryPdfUrl(srcUrl));
+                if(!resp.ok)throw new Error("fetch failed");
+                const blob=await resp.blob();
+                const a=document.createElement("a");
+                a.href=URL.createObjectURL(blob);
+                a.download="recibo.pdf";
+                a.click();
+                setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+              }catch(e){
+                window.open(cloudinaryPdfUrl(srcUrl),"_blank");
+              }
+            }}
             style={{padding:"8px 16px",background:"#F5F0EA",color:"#3C0A37",
               border:"1px solid #3C0A37",borderRadius:6,cursor:"pointer",
-              fontSize:13,textDecoration:"none",display:"inline-block",fontFamily:"inherit"}}>
-            Descargar PDF
-          </a>
+              fontSize:13,fontFamily:"inherit"}}>
+            {t?t("action.downloadPdf"):"Descargar PDF"}
+          </button>
           {onRemove&&<button type="button" onClick={onRemove} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}}>
             ✕ {t?t("action.remove"):"Eliminar"}
           </button>}
@@ -7028,7 +7052,7 @@ export default function App(){
             try {
               const receiptResult = await API.post(
                 "/expenses/" + encodeURIComponent(newExp.id) + "/receipt",
-                { b64: receipt.b64, mediaType: receipt.type || "image/jpeg" }
+                { b64: receipt.b64, mediaType: receiptUploadMediaType(receipt.b64, receipt.type) }
               );
               if (receiptResult?.receiptPath) {
                 finalExp = { ...newExp, receiptPath: receiptResult.receiptPath };
@@ -7263,7 +7287,7 @@ export default function App(){
           if(updates.receipt){
             await API.post("/expenses/"+encodeURIComponent(expId)+"/receipt",{
               b64:updates.receipt,
-              mediaType:updates.receiptType||"image/jpeg",
+              mediaType:receiptUploadMediaType(updates.receipt,updates.receiptType),
             });
           }
           const full=await API.get("/expenses");

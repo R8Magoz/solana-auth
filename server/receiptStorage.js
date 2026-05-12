@@ -74,13 +74,21 @@ function isRemoteReceiptPath(p) {
   return typeof p === 'string' && /^https?:\/\//i.test(p);
 }
 
+/** First bytes of a real PDF file are "%PDF" (0x25 0x50 0x44 0x46). */
+function bufferLooksLikePdf(buf) {
+  return Buffer.isBuffer(buf) && buf.length >= 4
+    && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46;
+}
+
 function uploadReceiptToCloudinary(buf, mime, entityId) {
   const folder = (process.env.CLOUDINARY_RECEIPTS_FOLDER || 'solana-receipts').replace(/^\/+|\/+$/g, '');
   const publicId = String(entityId).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const isPdf = mimeToExt(mime) === 'pdf' || bufferLooksLikePdf(buf);
   const opts = {
     folder,
     public_id: publicId,
-    resource_type: 'auto', // images + PDF (and other auto-detected types)
+    // PDFs must use raw upload; auto+wrong client MIME ("image/jpeg") yields Invalid PDF file.
+    resource_type: isPdf ? 'raw' : 'auto',
     overwrite: true,
     unique_filename: false,
     use_filename: false,
@@ -153,6 +161,7 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
     err.statusCode = 400;
     throw err;
   }
+  if (ext !== 'pdf' && bufferLooksLikePdf(buf)) ext = 'pdf';
   if (buf.length > 100 * 1024 * 1024) {
     const err = new Error('Archivo demasiado grande (máx. 100 MB).');
     err.statusCode = 413;
