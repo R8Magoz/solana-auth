@@ -1328,9 +1328,9 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
       )}
       {!blobLoad&&!blobErr&&srcUrl&&isImage&&(
         <div style={{position:"relative"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"visible",border:"1px solid #EDE8E0",minHeight:60}}>
+          <div style={{display:"block",background:"#F5F0EA",borderRadius:7,overflow:"visible",border:"1px solid #EDE8E0",minHeight:60,width:"100%"}}>
             <img src={srcUrl} alt={label||"Recibo"}
-              style={{maxWidth:"100%",maxHeight:"420px",width:"auto",height:"auto",display:"block",objectFit:"contain",borderRadius:8,cursor:"zoom-in"}}
+              style={{width:"100%",height:"auto",display:"block",objectFit:"contain",borderRadius:8,cursor:"zoom-in"}}
               onError={()=>setBlobErr("No se pudo cargar la imagen.")}
               onClick={()=>setImgZoom(true)}/>
           </div>
