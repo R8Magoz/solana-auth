@@ -2165,7 +2165,13 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
     ? "data:" + (receiptType || "image/jpeg") + ";base64," + receipt
     : (remoteUrl || blobUrl);
   console.log('[AttachmentViewer] srcUrl:', srcUrl ? srcUrl.slice(0, 80) : 'NULL');
-  const mime=receipt?(receiptType||"image/jpeg"):blobMime;
+  const mime = receipt
+    ? (receiptType || "image/jpeg")
+    : blobMime || (receiptPath && /\.pdf$/i.test(receiptPath)
+        ? "application/pdf"
+        : receiptPath && /\.(jpe?g|png|webp|gif|heic|heif|tiff?)$/i.test(receiptPath)
+          ? "image/jpeg"
+          : null);
   const isPdf=(mime||"").includes("pdf")||(receiptPath||"").toLowerCase().endsWith(".pdf");
   const isImage=(mime||"").startsWith("image/")||/\.(jpe?g|png|webp|gif|heic|heif|tiff?)$/i.test(receiptPath||"");
   const pathLower=(receiptPath?String(receiptPath).toLowerCase():"").split("?")[0];
