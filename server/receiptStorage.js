@@ -80,9 +80,18 @@ function bufferLooksLikePdf(buf) {
     && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46;
 }
 
-function uploadReceiptToCloudinary(buf, mime, publicId) {
+/** Strip one or more nested `data:*;base64,` prefixes (first-create PDF payloads). */
+function stripDataUriB64Prefixes(s) {
+  let x = String(s || '').trim();
+  for (let i = 0; i < 4 && /^data:/i.test(x); i++) {
+    x = x.replace(/^data:[^;]+;base64,/, '').trim();
+  }
+  return x;
+}
+
+function uploadReceiptToCloudinary(buf, mime, humanId) {
   const folder = (process.env.CLOUDINARY_RECEIPTS_FOLDER || 'solana-receipts').replace(/^\/+|\/+$/g, '');
-  const safePublicId = String(publicId).replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 200);
+  const safePublicId = String(humanId).replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 200);
   const isPdf = mimeToExt(mime) === 'pdf' || bufferLooksLikePdf(buf);
   const opts = {
     folder,
@@ -144,14 +153,28 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR, dat
     err.statusCode = 400;
     throw err;
   }
-  // Strip data URI prefix if present (e.g. "data:image/jpeg;base64,")
-  const cleanB64 = b64.replace(/^data:[^;]+;base64,/, '');
+  const cleanB64 = stripDataUriB64Prefixes(b64);
   if (cleanB64.length > 140_000_000) {
     const err = new Error('Archivo demasiado grande (máx. 100 MB).');
     err.statusCode = 413;
     throw err;
   }
   const mime = String(mediaType || 'application/octet-stream').trim().toLowerCase().slice(0, 128);
+  const dateStr = date
+    ? String(date).replace(/-/g, '').slice(0, 8)
+    : new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const amountStr = amount != null ? `${Math.round(Number(amount))}EUR` : null;
+  const humanId = amountStr ? `${dateStr}_${amountStr}` : entityId;
+
+  console.log(
+    '[receipt-save] mime:',
+    mime,
+    'cleanB64 first 20:',
+    cleanB64.slice(0, 20),
+    'buf length after decode:',
+    'TBD',
+  );
+
   let ext = mimeToExt(mime) || 'bin';
   let buf;
   try {
@@ -161,22 +184,18 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR, dat
     err.statusCode = 400;
     throw err;
   }
+  console.log(
+    '[receipt-save] buf length:',
+    buf.length,
+    'looksLikePdf:',
+    bufferLooksLikePdf(buf),
+  );
   if (ext !== 'pdf' && bufferLooksLikePdf(buf)) ext = 'pdf';
   if (buf.length > 100 * 1024 * 1024) {
     const err = new Error('Archivo demasiado grande (máx. 100 MB).');
     err.statusCode = 413;
     throw err;
   }
-
-  const dateStr = date
-    ? String(date).trim().slice(0, 10).replace(/-/g, '')
-    : new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const amountStr = amount ? `${Math.round(Number(amount))}EUR` : String(entityId);
-  const humanId = `${dateStr}_${amountStr}`
-    .replace(/[^a-zA-Z0-9_-]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-    .slice(0, 200);
 
   if (ensureCloudinary()) {
     try {
@@ -189,10 +208,9 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR, dat
 
   const RECEIPTS_DIR = path.join(DATA_DIR, 'receipts');
   if (!fs.existsSync(RECEIPTS_DIR)) fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
-  const safeEntity = String(entityId).replace(/[^a-zA-Z0-9_-]/g, '_');
-  const diskBase = `${humanId}_${safeEntity}`.replace(/_+/g, '_').slice(0, 220);
-  const rel = path.join('receipts', `${diskBase}.${ext}`).replace(/\\/g, '/');
-  const abs = path.join(DATA_DIR, 'receipts', `${diskBase}.${ext}`);
+  const safeId = String(humanId).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const rel = path.join('receipts', `${safeId}.${ext}`).replace(/\\/g, '/');
+  const abs = path.join(DATA_DIR, 'receipts', `${safeId}.${ext}`);
   fs.writeFileSync(abs, buf);
   return { receiptPath: rel };
 }

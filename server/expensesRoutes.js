@@ -511,16 +511,15 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         req.body && typeof req.body.mediaType === 'string' ? req.body.mediaType.trim() : '';
       const mediaType = mediaTypeRaw || 'application/octet-stream';
       try {
-        const receiptAmountEur = amountEUR != null && Number.isFinite(Number(amountEUR))
-          ? Number(amountEUR)
-          : amount;
         const saved = await receiptStorage.saveReceiptB64ToStorage({
           b64: b64Inline,
           mediaType,
           entityId: id,
           DATA_DIR,
           date: dateStr,
-          amount: receiptAmountEur,
+          amount: amountEUR != null && Number.isFinite(Number(amountEUR))
+            ? Number(amountEUR)
+            : amount,
         });
         receiptPathVal = saved.receiptPath;
       } catch (e) {
@@ -1168,9 +1167,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         entityId: exp.id,
         DATA_DIR,
         date: exp.date,
-        amount: exp.amountEUR != null && Number.isFinite(Number(exp.amountEUR))
-          ? Number(exp.amountEUR)
-          : exp.amount,
+        amount: exp.amountEUR,
       });
       const now = Date.now();
       db.prepare(`UPDATE expenses SET receiptPath = ?, updatedAt = ? WHERE id = ?`).run(receiptPath, now, exp.id);
