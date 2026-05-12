@@ -1158,20 +1158,18 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
   }, []);
 
   useEffect(() => {
-    // Case 1: inline base64 receipt (no fetch needed)
-    if (receipt) {
-      setBlobUrl(null);
-      setBlobMime(null);
-      setBlobErr(null);
+    // If receiptPath is a remote URL (Cloudinary), use it directly
+    if (receiptPath && /^https?:\/\//.test(receiptPath)) {
+      setBlobUrl(receiptPath);
+      setBlobMime(receiptPath.includes('.pdf') ? 'application/pdf' : 'image/jpeg');
       setBlobLoad(false);
       return;
     }
 
-    // Case 2: remote URL (Cloudinary) — use directly
-    if (receiptPath && /^https?:\/\//i.test(receiptPath)) {
-      console.log('[AttachmentViewer] using remote URL:', receiptPath);
-      setBlobUrl(receiptPath);
-      setBlobMime(guessMimeFromReceiptPath(receiptPath) || "image/jpeg");
+    // Case 1: inline base64 receipt (no fetch needed)
+    if (receipt) {
+      setBlobUrl(null);
+      setBlobMime(null);
       setBlobErr(null);
       setBlobLoad(false);
       return;
@@ -1235,9 +1233,10 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
     return()=>window.removeEventListener("keydown",onKey);
   },[imgZoom]);
 
+  const remoteUrl = receiptPath && /^https?:\/\//.test(receiptPath) ? receiptPath : null;
   const srcUrl = receipt
     ? "data:" + (receiptType || "image/jpeg") + ";base64," + receipt
-    : blobUrl;
+    : (remoteUrl || blobUrl);
   const mime=receipt?(receiptType||"image/jpeg"):blobMime;
   const isPdf=(mime||"").includes("pdf")||(receiptPath||"").toLowerCase().endsWith(".pdf");
   const isImage=(mime||"").startsWith("image/")||/\.(jpe?g|png|webp|gif|heic|heif|tiff?)$/i.test(receiptPath||"");
@@ -4316,14 +4315,20 @@ export function ReportsView(){
     }
     return months;
   }, [expenses]);
-  const BAR_W = 18;
+  const SLOT_COUNT = 12;
+  const CHART_W = 960;
+  const SIDE_PAD = 8;
   const BAR_GAP = 4;
-  const GROUP_W = BAR_W * 2 + BAR_GAP + 14;
+  const SLOT_W = CHART_W / SLOT_COUNT;
+  const GROUP_W = SLOT_W;
+  const BAR_CLUSTER_W = GROUP_W * 0.7; // manual equivalent of categoryPercentage: 1.0 + barPercentage: 0.7
+  const BAR_W = Math.max(3, (BAR_CLUSTER_W - BAR_GAP) / 2);
+  const BAR_OFFSET = (GROUP_W - (BAR_W * 2 + BAR_GAP)) / 2;
   const CHART_H = 160;
   const TOP_PAD = 24;
   const LABEL_H = 20;
   const SVG_H = TOP_PAD + CHART_H + LABEL_H;
-  const SVG_W = 12 * GROUP_W + 16;
+  const SVG_W = CHART_W + SIDE_PAD * 2;
   const maxVal = Math.max(...monthlyData.map(m => m.total), 1);
   const exportCSV=(includeIva=true)=>{
     const ivaM=includeIva ? (ivaFilter==="with" ? "with_iva" : "both") : "without_iva";
@@ -4492,11 +4497,11 @@ export function ReportsView(){
             <span style={{fontSize:11,color:"#4B5E52"}}>Facturas</span>
           </div>
         </div>
-        <div style={{width:"100%",overflowX:"auto"}}>
-          <svg width={SVG_W} height={SVG_H}
+        <div style={{width:'100%', minHeight:200, display:'block'}}>
+          <svg width="100%" height={SVG_H}
             viewBox={`0 0 ${SVG_W} ${SVG_H}`}
             xmlns="http://www.w3.org/2000/svg"
-            style={{display:"block",minWidth:320}}>
+            style={{width:'100%', minHeight:200, display:'block'}}>
 
             {/* 4 gridlines */}
             {[0.25,0.5,0.75,1].map(f=>{
@@ -4509,7 +4514,7 @@ export function ReportsView(){
               stroke="#E5E0D8" strokeWidth="1.5"/>
 
             {monthlyData.map((m,i)=>{
-              const x = i * GROUP_W + 8;
+              const x = SIDE_PAD + i * GROUP_W + BAR_OFFSET;
               const gH = m.gastos>0 ? Math.max(3,(m.gastos/maxVal)*CHART_H) : 0;
               const fH = m.facturas>0 ? Math.max(3,(m.facturas/maxVal)*CHART_H) : 0;
               const gY = TOP_PAD + CHART_H - gH;
@@ -4532,7 +4537,7 @@ export function ReportsView(){
                     textAnchor="middle" fontSize="8" fill="#C4622D" fontWeight="600">
                     {m.facturas>=1000?(m.facturas/1000).toFixed(1)+"k":m.facturas.toFixed(0)}
                   </text>}
-                  <text x={x+BAR_W+BAR_GAP/2} y={TOP_PAD+CHART_H+14}
+                  <text x={SIDE_PAD + i * GROUP_W + GROUP_W / 2} y={TOP_PAD+CHART_H+14}
                     textAnchor="middle" fontSize="9" fill="#9CAA9F">
                     {m.label}
                   </text>
