@@ -2082,6 +2082,12 @@ function slugForReceiptDownload(description,maxLen){
    Receipt preview: inline image/PDF, server fetch via apiExpenseId + Bearer, empty state.
 ─────────────────────────────────────────────────────────────────────────────── */
 function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, itemCode, attachmentDescription, label, onRemove, t}){
+  console.log('[AttachmentViewer] props:', {
+    hasReceipt: !!receipt,
+    receiptPath,
+    apiExpenseId,
+    receiptPathIsRemote: receiptPath && /^https?:\/\//.test(receiptPath),
+  });
   const [blobUrl,setBlobUrl]=useState(null);
   const [blobMime,setBlobMime]=useState(null);
   const [blobLoad,setBlobLoad]=useState(false);
