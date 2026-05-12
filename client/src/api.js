@@ -44,6 +44,10 @@ function shouldQueueWrite(method, path) {
   if (m !== "POST" && m !== "PUT" && m !== "DELETE") return false;
   const p = path || "";
   if (p.indexOf("/expenses") !== 0) return false;
+  // Never queue receipt uploads — b64 payloads are too large for localStorage
+  if (p.indexOf("/receipt") !== -1) return false;
+  // Never queue approve/reject/mark-paid — these are small idempotent actions
+  if (/\/(approve|reject|mark-paid|comment)/.test(p)) return false;
   return true;
 }
 
