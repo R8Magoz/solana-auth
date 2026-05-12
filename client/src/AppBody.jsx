@@ -4341,7 +4341,7 @@ export function ReportsView(){
     total:displayExpenses.filter(e=>e.category===c.name&&expenseCountsTowardDeptSpend(e,cats,users)).reduce((s,e)=>s+eurForExpense(e),0),
   })).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
   const maxC=catTotals[0]?.total||1;
-  const monthlyData = React.useMemo(()=>{
+  const fullMonthlyData = React.useMemo(()=>{
     const months = [];
     const now = new Date();
     for(let i=11; i>=0; i--){
@@ -4359,13 +4359,37 @@ export function ReportsView(){
     }
     return months;
   }, [expenses]);
-  const SLOT_COUNT = 12;
-  const CHART_W = 960;
+  const monthlyChart = React.useMemo(()=>{
+    const dataMonthCount = fullMonthlyData.filter(m=>m.total>0).length;
+    if(dataMonthCount===0){
+      return{months:fullMonthlyData,sparse:false,dataMonthCount:0};
+    }
+    if(dataMonthCount<=3){
+      let first=-1,last=-1;
+      for(let i=0;i<fullMonthlyData.length;i++){
+        if(fullMonthlyData[i].total>0){
+          if(first===-1)first=i;
+          last=i;
+        }
+      }
+      const start=Math.max(0,first-2);
+      const end=Math.min(11,last+1);
+      return{months:fullMonthlyData.slice(start,end+1),sparse:true,dataMonthCount};
+    }
+    return{months:fullMonthlyData,sparse:false,dataMonthCount};
+  },[fullMonthlyData]);
+  const chartMonths = monthlyChart.months;
+  const SLOT_COUNT = chartMonths.length;
   const SIDE_PAD = 8;
   const BAR_GAP = 4;
-  const SLOT_W = CHART_W / SLOT_COUNT;
-  const GROUP_W = SLOT_W;
-  const BAR_CLUSTER_W = GROUP_W * 0.7; // manual equivalent of categoryPercentage: 1.0 + barPercentage: 0.7
+  const useWideBars = monthlyChart.dataMonthCount>0 && monthlyChart.dataMonthCount<4;
+  const barClusterFrac = useWideBars ? 0.5 : 0.3;
+  const MIN_BAR_USER = 40;
+  const minBarForSizing = useWideBars ? MIN_BAR_USER : 3;
+  const minChartWForBars = SLOT_COUNT*(2*minBarForSizing+BAR_GAP)/barClusterFrac;
+  const CHART_W = Math.max(960, minChartWForBars);
+  const GROUP_W = CHART_W / SLOT_COUNT;
+  const BAR_CLUSTER_W = GROUP_W * barClusterFrac;
   const BAR_W = Math.max(3, (BAR_CLUSTER_W - BAR_GAP) / 2);
   const BAR_OFFSET = (GROUP_W - (BAR_W * 2 + BAR_GAP)) / 2;
   const CHART_H = 160;
@@ -4373,7 +4397,8 @@ export function ReportsView(){
   const LABEL_H = 20;
   const SVG_H = TOP_PAD + CHART_H + LABEL_H;
   const SVG_W = CHART_W + SIDE_PAD * 2;
-  const maxVal = Math.max(...monthlyData.map(m => m.total), 1);
+  const maxVal = Math.max(...chartMonths.map(m => m.total), 1);
+  const chartMinWidthPx = Math.ceil(SVG_W);
   const exportCSV=(includeIva=true)=>{
     const ivaM=includeIva ? (ivaFilter==="with" ? "with_iva" : "both") : "without_iva";
     const data=statusFilter;
@@ -4530,7 +4555,14 @@ export function ReportsView(){
       </div>
       )}
       <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:10}}>Actividad mensual (12 meses)</div>
+        <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:10}}>
+          {monthlyChart.sparse ? "Actividad mensual" : "Actividad mensual (12 meses)"}
+        </div>
+        {monthlyChart.sparse && (
+          <div style={{fontSize:10,color:"#9CAA9F",marginBottom:8,lineHeight:1.35}}>
+            Mostrando {chartMonths.length} meses (incluye meses de contexto sin movimientos)
+          </div>
+        )}
         <div style={{display:"flex",gap:16,marginBottom:12,alignItems:"center"}}>
           <div style={{display:"flex",alignItems:"center",gap:5}}>
             <div style={{width:10,height:10,borderRadius:2,background:"#3C0A37"}}/>
@@ -4541,11 +4573,12 @@ export function ReportsView(){
             <span style={{fontSize:11,color:"#4B5E52"}}>Facturas</span>
           </div>
         </div>
-        <div style={{width:'100%', minHeight:200, display:'block'}}>
+        <div style={{width:"100%",minHeight:200,display:"block",overflowX:"auto"}}>
+          <div style={{minWidth:chartMinWidthPx,width:"100%"}}>
           <svg width="100%" height={SVG_H}
             viewBox={`0 0 ${SVG_W} ${SVG_H}`}
             xmlns="http://www.w3.org/2000/svg"
-            style={{width:'100%', minHeight:200, display:'block'}}>
+            style={{width:"100%",minHeight:200,display:"block",minWidth:chartMinWidthPx}}>
 
             {/* 4 gridlines */}
             {[0.25,0.5,0.75,1].map(f=>{
@@ -4557,7 +4590,7 @@ export function ReportsView(){
             <line x1="0" y1={TOP_PAD+CHART_H} x2={SVG_W} y2={TOP_PAD+CHART_H}
               stroke="#E5E0D8" strokeWidth="1.5"/>
 
-            {monthlyData.map((m,i)=>{
+            {chartMonths.map((m,i)=>{
               const x = SIDE_PAD + i * GROUP_W + BAR_OFFSET;
               const gH = m.gastos>0 ? Math.max(3,(m.gastos/maxVal)*CHART_H) : 0;
               const fH = m.facturas>0 ? Math.max(3,(m.facturas/maxVal)*CHART_H) : 0;
@@ -4565,6 +4598,17 @@ export function ReportsView(){
               const fY = TOP_PAD + CHART_H - fH;
               return (
                 <g key={m.ym}>
+                  {m.total===0&&(
+                    <text
+                      x={SIDE_PAD + i * GROUP_W + GROUP_W / 2}
+                      y={TOP_PAD + CHART_H / 2}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontSize="9"
+                      fill="#B8C4BC"
+                      opacity="0.85"
+                    >No hay datos</text>
+                  )}
                   {gH>0&&<rect x={x} y={gY} width={BAR_W} height={gH}
                     fill="#3C0A37" rx="2" opacity="0.9">
                     <title>{m.label} Gastos: {fmt(m.gastos)}</title>
@@ -4589,6 +4633,7 @@ export function ReportsView(){
               );
             })}
           </svg>
+          </div>
         </div>
       </div>
       {/* By category */}
