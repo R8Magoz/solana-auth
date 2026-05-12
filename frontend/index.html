@@ -7559,15 +7559,16 @@ function SolanaExpenses(){
       if(!ctx)return;
       ctx.drawImage(v,0,0,w,h);
       const url=c.toDataURL("image/jpeg",0.85);
-      stopCam();
       if(receiptAltHandlerRef.current){
         receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
         appLog("info","receipt_captured",{source:"camera"});
+        stopCam();
         return;
       }
       setRecPrev(url);
       setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
       appLog("info","receipt_captured",{source:"camera"});
+      stopCam();
     },800);
   };
 
