@@ -1301,6 +1301,24 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
   const downloadFile = () => {
     const url = srcUrl;
     if (!url) return;
+    let urlFilename = '';
+    if (/^https?:\/\//i.test(url)) {
+      try {
+        urlFilename = decodeURIComponent(url.split('/').pop().split('?')[0] || '');
+      } catch {
+        urlFilename = url.split('/').pop().split('?')[0] || '';
+      }
+    }
+    if (urlFilename) {
+      const a = Object.assign(document.createElement("a"), {
+        href: url,
+        download: urlFilename,
+      });
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
     const ext = (() => {
       if (/\.[a-z0-9]{1,8}(?:[\?#]|$)/i.test(pathLower)){
         const m=pathLower.match(/\.([a-z0-9]{1,8})(?:[\?#]|$)/i);
@@ -1392,7 +1410,8 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
                 const blob=await resp.blob();
                 const a=document.createElement("a");
                 a.href=URL.createObjectURL(blob);
-                a.download="recibo.pdf";
+                const urlFilename=srcUrl.split("/").pop().split("?")[0]||"recibo.pdf";
+                a.download=urlFilename;
                 a.click();
                 setTimeout(()=>URL.revokeObjectURL(a.href),10000);
               }catch(e){
