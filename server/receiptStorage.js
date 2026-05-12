@@ -75,25 +75,23 @@ function isRemoteReceiptPath(p) {
 }
 
 function uploadReceiptToCloudinary(buf, mime, entityId) {
-  const dataUri = `data:${mime};base64,${buf.toString('base64')}`;
   const folder = (process.env.CLOUDINARY_RECEIPTS_FOLDER || 'solana-receipts').replace(/^\/+|\/+$/g, '');
   const publicId = String(entityId).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const opts = {
+    folder,
+    public_id: publicId,
+    resource_type: 'auto', // images + PDF (and other auto-detected types)
+    overwrite: true,
+    unique_filename: false,
+    use_filename: false,
+  };
   return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload(
-      dataUri,
-      {
-        folder,
-        public_id: publicId,
-        resource_type: 'auto', // images + PDF (and other auto-detected types)
-        overwrite: true,
-        unique_filename: false,
-        use_filename: false,
-      },
-      (err, result) => {
-        if (err) reject(err);
-        else resolve(result);
-      },
-    );
+    const stream = cloudinary.uploader.upload_stream(opts, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+    stream.on('error', reject);
+    stream.end(buf);
   });
 }
 

@@ -6724,29 +6724,75 @@ export default function App(){
       captureTimeoutRef.current=null;
     }
     const MAX_TRIES=50;
-    const commitFrame=(v,w,h)=>{
+    const MAX_EDGE=4096;
+    const MAX_PIXELS=12*1024*1024;
+    const scaleDims=(w,h)=>{
+      let tw=w,th=h;
+      let scale=1;
+      if(w*h>MAX_PIXELS)scale=Math.min(scale,Math.sqrt(MAX_PIXELS/(w*h)));
+      if(w>MAX_EDGE)scale=Math.min(scale,MAX_EDGE/w);
+      if(h>MAX_EDGE)scale=Math.min(scale,MAX_EDGE/h);
+      if(scale<1){
+        tw=Math.max(1,Math.round(w*scale));
+        th=Math.max(1,Math.round(h*scale));
+      }
+      return{tw,th};
+    };
+    const finishJpeg=(url)=>{
+      if(receiptAltHandlerRef.current){
+        receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
+        appLog("info","receipt_captured",{source:"camera"});
+        stopCam();
+        return;
+      }
+      setRecPrev(url);
+      setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
+      appLog("info","receipt_captured",{source:"camera"});
+      stopCam();
+    };
+    const paintVideoToJpeg=(v,w,h)=>{
       requestAnimationFrame(()=>{
         if(!videoRef.current||videoRef.current!==v)return;
+        const {tw,th}=scaleDims(w,h);
         const c=document.createElement("canvas");
-        c.width=w;
-        c.height=h;
+        c.width=tw;
+        c.height=th;
         const ctx=c.getContext("2d");
         if(!ctx)return;
         ctx.fillStyle="#FFFFFF";
-        ctx.fillRect(0,0,w,h);
-        ctx.drawImage(v,0,0,w,h);
-        const url=c.toDataURL("image/jpeg",0.92);
-        if(receiptAltHandlerRef.current){
-          receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
-          appLog("info","receipt_captured",{source:"camera"});
-          stopCam();
-          return;
-        }
-        setRecPrev(url);
-        setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
-        appLog("info","receipt_captured",{source:"camera"});
-        stopCam();
+        ctx.fillRect(0,0,tw,th);
+        ctx.drawImage(v,0,0,w,h,0,0,tw,th);
+        finishJpeg(c.toDataURL("image/jpeg",0.92));
       });
+    };
+    const commitFrame=async(v,w,h)=>{
+      if(camStr&&typeof ImageCapture!=="undefined"){
+        try{
+          const track=camStr.getVideoTracks()[0];
+          if(track&&track.readyState==="live"){
+            const ic=new ImageCapture(track);
+            const bitmap=await ic.grabFrame();
+            const bw=bitmap.width,bh=bitmap.height;
+            const {tw,th}=scaleDims(bw,bh);
+            const c=document.createElement("canvas");
+            c.width=tw;
+            c.height=th;
+            const ctx=c.getContext("2d");
+            if(ctx){
+              ctx.fillStyle="#FFFFFF";
+              ctx.fillRect(0,0,tw,th);
+              ctx.drawImage(bitmap,0,0,bw,bh,0,0,tw,th);
+              try{bitmap.close();}catch(e){}
+              finishJpeg(c.toDataURL("image/jpeg",0.92));
+              return;
+            }
+            try{bitmap.close();}catch(e){}
+          }
+        }catch(e){
+          appLog("warn","receipt_capture_grabFrame",{error:String(e&&e.message||e)});
+        }
+      }
+      paintVideoToJpeg(v,w,h);
     };
     let tries=0;
     const tick=()=>{
@@ -6759,7 +6805,7 @@ export default function App(){
       const h=v.videoHeight;
       if(w>0&&h>0){
         captureTimeoutRef.current=null;
-        commitFrame(v,w,h);
+        void commitFrame(v,w,h);
         return;
       }
       if(++tries>=MAX_TRIES){
