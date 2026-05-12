@@ -2246,7 +2246,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
       )}
       {!blobLoad&&!blobErr&&srcUrl&&isImage&&(
         <div style={{position:"relative"}}>
-          <div style={{display:"flex",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"visible",border:"1px solid #EDE8E0",minHeight:0}}>
+          <div style={{display:"flex",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"visible",border:"1px solid #EDE8E0",minHeight:60}}>
             <img src={srcUrl} alt={label||"Recibo"}
               style={{maxWidth:"100%",maxHeight:"420px",width:"auto",height:"auto",display:"block",objectFit:"contain",borderRadius:8,cursor:"zoom-in"}}
               onError={()=>setBlobErr("No se pudo cargar la imagen.")}
@@ -3400,9 +3400,9 @@ function ExpenseFormFields({
       </div>
       <div style={{marginBottom:10}}>
         <label className="lbl">{t("form.receiptOptional")}</label>
-        {recPrev&&recPrev!=="PDF"&&<div style={{marginBottom:6,position:"relative"}}><img src={recPrev} alt="" style={{width:"100%",maxHeight:130,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button type="button" style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={clearAllReceipt}>×</button></div>}
+        {recPrev&&recPrev!=="PDF"&&<div style={{marginBottom:6,position:"relative"}}><img src={recPrev} alt="" style={{width:"100%",maxHeight:420,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button type="button" style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={clearAllReceipt}>×</button></div>}
         {recPrev==="PDF"&&<div style={{background:"#F5F0EA",borderRadius:7,padding:"6px 9px",marginBottom:6,display:"flex",justifyContent:"space-between",fontSize:11,color:"#4B5E52"}}><span>{t("msg.pdfUploaded")}</span><button type="button" style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={clearAllReceipt}>{t("action.remove")}</button></div>}
-        {!recPrev&&apiReceiptPreview?.kind==="img"&&apiReceiptPreview.url&&<div style={{marginBottom:6,position:"relative"}}><img src={apiReceiptPreview.url} alt="" style={{width:"100%",maxHeight:130,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button type="button" style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={clearAllReceipt}>×</button></div>}
+        {!recPrev&&apiReceiptPreview?.kind==="img"&&apiReceiptPreview.url&&<div style={{marginBottom:6,position:"relative"}}><img src={apiReceiptPreview.url} alt="" style={{width:"100%",maxHeight:420,objectFit:"contain",borderRadius:7,background:"#F5F0EA",display:"block"}}/><button type="button" style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={clearAllReceipt}>×</button></div>}
         {!recPrev&&apiReceiptPreview?.kind==="pdf"&&<div style={{background:"#F5F0EA",borderRadius:7,padding:"6px 9px",marginBottom:6,display:"flex",justifyContent:"space-between",fontSize:11,color:"#4B5E52"}}><span>{t("msg.pdfUploaded")}</span><button type="button" style={{background:"none",border:"none",color:"#991B1B",cursor:"pointer",fontSize:11}} onClick={clearAllReceipt}>{t("action.remove")}</button></div>}
         <div style={{display:"flex",gap:6}}>
           <button type="button" className="btn-sm" style={{flex:1,fontSize:11,padding:"5px 7px",background:actionColor}} onClick={startCam}>{t("action.scanCamera")}</button>
@@ -3944,7 +3944,7 @@ function DetailPanel(){
       )}
 
       {/* READ MODE */}
-      {!editMode&&<div style={{minWidth:0,overflow:"visible",minHeight:0}}>
+      {!editMode&&<div style={{minWidth:0,overflow:"visible",minHeight:"auto"}}>
       <div style={{display:"inline-block",background:detailTopStatusTone.bg,color:detailTopStatusTone.color,fontWeight:700,fontSize:11,padding:"3px 10px",borderRadius:20,letterSpacing:"0.06em",marginBottom:7}}>{t("status."+st).toUpperCase()}</div>
       <div style={{fontSize:15,fontWeight:700,marginBottom:2}}>{e.description}</div>
       <div style={{fontSize:24,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",marginBottom:11}}>{fmtExpenseAmt(e)}</div>
@@ -4061,7 +4061,7 @@ function DetailPanel(){
       {e._apiType==="expense"&&e.status==="rejected"&&e.rejectionNote&&(
         <div style={{marginTop:9,padding:"8px 10px",background:"#FEE2E2",borderRadius:8,fontSize:11,color:"#991B1B"}}><strong>Motivo:</strong> {e.rejectionNote}</div>
       )}
-      <div style={{marginTop:9,overflow:"visible",minHeight:0}}>
+      <div style={{marginTop:9,overflow:"visible",minHeight:"auto"}}>
         <AttachmentViewer
           receipt={e.receipt}
           receiptType={e.receiptType}
