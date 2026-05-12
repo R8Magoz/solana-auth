@@ -6354,6 +6354,7 @@ export default function App(){
   const [camOn,setCamOn]=useState(false);
   const [camStr,setCamStr]=useState(null);
   const videoRef=useRef(null);
+  const captureTimeoutRef = React.useRef(null);
   const canvasRef=useRef(null);
   const fileRef  =useRef(null);
   /** When set, receipt file/camera targets edit form (DetailPanel) instead of new expense. */
@@ -6711,6 +6712,10 @@ export default function App(){
     }
   },[user]);
   const stopCam=()=>{
+    if (captureTimeoutRef.current) {
+      clearTimeout(captureTimeoutRef.current);
+      captureTimeoutRef.current = null;
+    }
     camStr?.getTracks().forEach(tr=>tr.stop());
     setCamStr(null);
     setCamOn(false);
@@ -6718,13 +6723,19 @@ export default function App(){
   const capturePhoto=()=>{
     const v=videoRef.current;
     if(!v)return;
+    if (captureTimeoutRef.current) {
+      clearTimeout(captureTimeoutRef.current);
+      captureTimeoutRef.current = null;
+    }
     const doCapture=()=>{
+      if (!videoRef.current || videoRef.current !== v) return;
       const w=v.videoWidth;
       const h=v.videoHeight;
       if(!w||!h){
-        setTimeout(doCapture,100);
+        captureTimeoutRef.current = setTimeout(doCapture,100);
         return;
       }
+      captureTimeoutRef.current = null;
       const c=document.createElement("canvas");
       c.width=w;
       c.height=h;
