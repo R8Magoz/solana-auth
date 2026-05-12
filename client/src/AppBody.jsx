@@ -6351,6 +6351,7 @@ export default function App(){
   const [camOn,setCamOn]=useState(false);
   const [camStr,setCamStr]=useState(null);
   const videoRef=useRef(null);
+  const captureTimeoutRef=useRef(null);
   const canvasRef=useRef(null);
   const fileRef  =useRef(null);
   /** When set, receipt file/camera targets edit form (DetailPanel) instead of new expense. */
@@ -6708,6 +6709,10 @@ export default function App(){
     }
   },[user]);
   const stopCam=()=>{
+    if(captureTimeoutRef.current){
+      clearTimeout(captureTimeoutRef.current);
+      captureTimeoutRef.current=null;
+    }
     camStr?.getTracks().forEach(tr=>tr.stop());
     setCamStr(null);
     setCamOn(false);
@@ -6715,13 +6720,16 @@ export default function App(){
   const capturePhoto=()=>{
     const v=videoRef.current;
     if(!v)return;
-    const doCapture=()=>{
-      const w=v.videoWidth;
-      const h=v.videoHeight;
-      if(!w||!h){
-        setTimeout(doCapture,100);
-        return;
-      }
+    if(captureTimeoutRef.current){
+      clearTimeout(captureTimeoutRef.current);
+      captureTimeoutRef.current=null;
+    }
+    captureTimeoutRef.current=setTimeout(()=>{
+      captureTimeoutRef.current=null;
+      if(!videoRef.current)return;
+      const w=v.videoWidth||v.offsetWidth;
+      const h=v.videoHeight||v.offsetHeight;
+      if(!w||!h)return;
       const c=document.createElement("canvas");
       c.width=w;
       c.height=h;
@@ -6738,9 +6746,7 @@ export default function App(){
       setRecPrev(url);
       setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
       appLog("info","receipt_captured",{source:"camera"});
-      return;
-    };
-    doCapture();
+    },800);
   };
 
   /* ── SESSION IDLE TIMEOUT ─────────────────────────────────────────────────
