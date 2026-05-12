@@ -101,11 +101,11 @@ function destroyCloudinaryPublicId(publicId) {
   return new Promise((resolve) => {
     cloudinary.uploader.destroy(
       publicId,
+      { resource_type: 'auto' },
       (err, result) => {
         if (err) console.warn('[receipt] cloudinary destroy:', err.message || err);
         resolve(result);
       },
-      { resource_type: 'auto' },
     );
   });
 }
