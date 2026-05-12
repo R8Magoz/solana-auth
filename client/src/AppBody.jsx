@@ -1165,8 +1165,9 @@ function cloudinaryDeliveryUrlOriginal(url){
 function cloudinaryPdfUrl(url) {
   if (!url || typeof url !== 'string') return url;
   if (!url.includes('res.cloudinary.com')) return url;
-  // Add fl_attachment flag to force correct PDF content-type on delivery
-  return url.replace('/upload/', '/upload/fl_attachment/');
+  // PDFs uploaded with resource_type:'auto' are stored under /raw/upload/
+  // Replace /image/upload/ with /raw/upload/ for PDF URLs
+  return url.replace('/image/upload/', '/raw/upload/');
 }
 
 /* ── ATTACHMENT VIEWER ─────────────────────────────────────────────────────────
