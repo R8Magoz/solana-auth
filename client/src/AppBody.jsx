@@ -1136,22 +1136,49 @@ function slugForReceiptDownload(description,maxLen){
   return s.slice(0,maxLen||40).replace(/[/\\?"*:|<>\x00-\x1f]/g,"").replace(/\s+/g,"_").replace(/_+/g,"_").replace(/^_|_$/g,"");
 }
 
+/** Strip Cloudinary URL segments before `/v…/` so we load the stored original, not a cropped/transformed delivery URL. */
+function cloudinaryDeliveryUrlOriginal(url){
+  if(!url||typeof url!=="string")return url;
+  const trimmed=url.trim();
+  try{
+    const u=new URL(trimmed);
+    if(!/cloudinary\.com/i.test(u.hostname))return trimmed;
+    const pathname=u.pathname;
+    const lower=pathname.toLowerCase();
+    const imageUpload="/image/upload/";
+    const rawUpload="/raw/upload/";
+    let idx=lower.indexOf(imageUpload);
+    let len=imageUpload.length;
+    if(idx===-1){idx=lower.indexOf(rawUpload);len=rawUpload.length;}
+    if(idx===-1)return trimmed;
+    const after=pathname.slice(idx+len);
+    const parts=after.split("/");
+    const vIdx=parts.findIndex(seg=>/^v\d+$/i.test(seg));
+    if(vIdx<=0)return trimmed;
+    u.pathname=pathname.slice(0,idx+len)+parts.slice(vIdx).join("/");
+    return u.toString();
+  }catch(_){
+    return trimmed;
+  }
+}
+
 /* ── ATTACHMENT VIEWER ─────────────────────────────────────────────────────────
    Receipt preview: inline image/PDF, server fetch via apiExpenseId + Bearer, empty state.
 ─────────────────────────────────────────────────────────────────────────────── */
 function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, itemCode, attachmentDescription, label, onRemove, t}){
-  console.log('[AttachmentViewer] props:', {
-    hasReceipt: !!receipt,
-    receiptPath,
-    apiExpenseId,
-    receiptPathIsRemote: receiptPath && /^https?:\/\//.test(receiptPath),
-  });
   const [blobUrl,setBlobUrl]=useState(null);
   const [blobMime,setBlobMime]=useState(null);
   const [blobLoad,setBlobLoad]=useState(false);
   const [blobErr,setBlobErr]=useState(null);
   const [reloadNonce,setReloadNonce]=useState(0);
   const [imgZoom,setImgZoom]=useState(false);
+
+  const normalizedRemoteUrl=React.useMemo(()=>{
+    if(!receiptPath||typeof receiptPath!=="string")return null;
+    const t=receiptPath.trim();
+    if(!/^https?:\/\//i.test(t))return null;
+    return cloudinaryDeliveryUrlOriginal(t);
+  },[receiptPath]);
 
   useEffect(() => {
     // Case 1: already have inline base64 receipt
@@ -1161,9 +1188,8 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
       return;
     }
     // Case 2: receiptPath is a remote URL (Cloudinary) — use directly
-    if (receiptPath && /^https?:\/\//.test(receiptPath)) {
-      console.log('[AttachmentViewer] setting remote blobUrl:', receiptPath.slice(0, 80));
-      setBlobUrl(receiptPath);
+    if (normalizedRemoteUrl) {
+      setBlobUrl(normalizedRemoteUrl);
       setBlobMime(
         receiptPath.toLowerCase().includes('.pdf')
           ? 'application/pdf'
@@ -1208,7 +1234,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
       cancelled = true;
       if (objUrl) URL.revokeObjectURL(objUrl);
     };
-  }, [apiExpenseId, receipt, receiptPath, reloadNonce]);
+  }, [apiExpenseId, receipt, receiptPath, normalizedRemoteUrl, reloadNonce]);
 
   useEffect(()=>{
     if(!imgZoom)return;
@@ -1217,11 +1243,9 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
     return()=>window.removeEventListener("keydown",onKey);
   },[imgZoom]);
 
-  const remoteUrl = receiptPath && /^https?:\/\//.test(receiptPath) ? receiptPath : null;
   const srcUrl = receipt
     ? "data:" + (receiptType || "image/jpeg") + ";base64," + receipt
-    : (remoteUrl || blobUrl);
-  console.log('[AttachmentViewer] srcUrl:', srcUrl ? srcUrl.slice(0, 80) : 'NULL');
+    : (normalizedRemoteUrl || blobUrl);
   const mime = receipt
     ? (receiptType || "image/jpeg")
     : blobMime || (receiptPath && /\.pdf$/i.test(receiptPath)
@@ -1231,7 +1255,6 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
           : null);
   const isPdf=(mime||"").includes("pdf")||(receiptPath||"").toLowerCase().endsWith(".pdf");
   const isImage=(mime||"").startsWith("image/")||/\.(jpe?g|png|webp|gif|heic|heif|tiff?)$/i.test(receiptPath||"");
-  console.log('[AttachmentViewer] mime:', mime, 'isImage:', isImage, 'isPdf:', isPdf, 'srcUrl:', !!srcUrl);
   const pathLower=(receiptPath?String(receiptPath).toLowerCase():"").split("?")[0];
 
   /** Non-PDF/non-image blobs (office, zip…) — preview as file card, not `<img>` */
