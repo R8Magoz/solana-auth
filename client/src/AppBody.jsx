@@ -1231,6 +1231,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
           : null);
   const isPdf=(mime||"").includes("pdf")||(receiptPath||"").toLowerCase().endsWith(".pdf");
   const isImage=(mime||"").startsWith("image/")||/\.(jpe?g|png|webp|gif|heic|heif|tiff?)$/i.test(receiptPath||"");
+  console.log('[AttachmentViewer] mime:', mime, 'isImage:', isImage, 'isPdf:', isPdf, 'srcUrl:', !!srcUrl);
   const pathLower=(receiptPath?String(receiptPath).toLowerCase():"").split("?")[0];
 
   /** Non-PDF/non-image blobs (office, zip…) — preview as file card, not `<img>` */
