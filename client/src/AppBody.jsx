@@ -1305,7 +1305,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
       )}
       {!blobLoad&&!blobErr&&srcUrl&&isImage&&(
         <div style={{position:"relative"}}>
-          <div style={{display:"flex",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"visible",border:"1px solid #EDE8E0",minHeight:60}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"visible",border:"1px solid #EDE8E0",minHeight:60}}>
             <img src={srcUrl} alt={label||"Recibo"}
               style={{maxWidth:"100%",maxHeight:"420px",width:"auto",height:"auto",display:"block",objectFit:"contain",borderRadius:8,cursor:"zoom-in"}}
               onError={()=>setBlobErr("No se pudo cargar la imagen.")}
@@ -7733,7 +7733,7 @@ export default function App(){
         </div>
 
         {/* Content area */}
-        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}}>
+        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0,minHeight:0}}>
           {/* Mobile header */}
           <div className="mob-only" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="light" size="sm"/></div>
@@ -7747,7 +7747,7 @@ export default function App(){
             </div>
           </div>
 
-          <div style={{flex:1,overflow:"hidden",display:"flex",minWidth:0}}>
+          <div style={{flex:1,overflow:"hidden",display:"flex",minWidth:0,minHeight:0}}>
             <div style={{flex:1,overflowY:"auto",padding:"14px 12px 80px",minWidth:0,WebkitOverflowScrolling:"touch"}}>
               {view==="dashboard"&&<ErrorBoundary><DashboardView/></ErrorBoundary>}
               {view==="expenses" &&<ErrorBoundary><ExpensesView/></ErrorBoundary>}
@@ -7756,7 +7756,7 @@ export default function App(){
               {view==="settings" &&<ErrorBoundary><SettingsView/></ErrorBoundary>}
             </div>
             {rpOpen&&(
-              <div className="dt-only panel-slide" style={{width:350,borderLeft:"1px solid #E5DDD2",overflowY:"auto",padding:16,flexShrink:0,background:"#fff"}}>
+              <div className="dt-only panel-slide" style={{width:350,borderLeft:"1px solid #E5DDD2",overflowY:"auto",padding:16,flexShrink:0,minHeight:0,background:"#fff"}}>
                 {panel==="new"?<NewPanel/>:<DetailPanel/>}
               </div>
             )}
