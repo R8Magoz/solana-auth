@@ -4,14 +4,21 @@ const MAX_STRING_LEN = 4000;
 
 /**
  * Recursively trims strings in a value, strips null bytes, and caps string length.
+ * Skips the length cap for known base64 payload fields and long base64-looking strings.
  * @param {unknown} value
+ * @param {string|undefined} [key]
  * @returns {unknown}
  */
-function sanitizeValue(value) {
+function sanitizeValue(value, key) {
   if (value === null || value === undefined) return value;
   if (typeof value === 'string') {
     let s = value.replace(/\0/g, '').trim();
-    if (s.length > MAX_STRING_LEN) s = s.slice(0, MAX_STRING_LEN);
+    // Skip length cap for base64 fields (receipts) — they can be 200KB+
+    const isBase64Field = key === 'b64' || key === 'receipt' || key === 'base64';
+    const looksLikeBase64 = s.length > 4000 && /^[A-Za-z0-9+/]+=*$/.test(s.slice(0, 100));
+    if (!isBase64Field && !looksLikeBase64 && s.length > MAX_STRING_LEN) {
+      s = s.slice(0, MAX_STRING_LEN);
+    }
     return s;
   }
   if (Array.isArray(value)) {
@@ -20,7 +27,7 @@ function sanitizeValue(value) {
   if (typeof value === 'object') {
     const out = {};
     for (const k of Object.keys(value)) {
-      out[k] = sanitizeValue(value[k]);
+      out[k] = sanitizeValue(value[k], k);
     }
     return out;
   }
