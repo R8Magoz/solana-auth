@@ -89,9 +89,15 @@ function stripDataUriB64Prefixes(s) {
   return x;
 }
 
-function uploadReceiptToCloudinary(buf, mime, humanId) {
+function uploadReceiptToCloudinary(buf, mime, publicIdWithExt) {
   const folder = (process.env.CLOUDINARY_RECEIPTS_FOLDER || 'solana-receipts').replace(/^\/+|\/+$/g, '');
-  const safePublicId = String(humanId).replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 200);
+  const raw = String(publicIdWithExt || '');
+  const lastDot = raw.lastIndexOf('.');
+  const stem = lastDot > 0 ? raw.slice(0, lastDot) : raw;
+  const extFromId = lastDot > 0 ? raw.slice(lastDot + 1) : (mimeToExt(mime) || 'bin');
+  const safeStem = stem.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 160);
+  const safeExt = String(extFromId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'bin';
+  const safePublicId = `${safeStem}.${safeExt}`.slice(0, 200);
   const isPdf = mimeToExt(mime) === 'pdf' || bufferLooksLikePdf(buf);
   const opts = {
     folder,
@@ -160,21 +166,6 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR, dat
     throw err;
   }
   const mime = String(mediaType || 'application/octet-stream').trim().toLowerCase().slice(0, 128);
-  const dateStr = date
-    ? String(date).replace(/-/g, '').slice(0, 8)
-    : new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const amountStr = amount != null ? `${Math.round(Number(amount))}EUR` : null;
-  const humanId = amountStr ? `${dateStr}_${amountStr}` : entityId;
-
-  console.log(
-    '[receipt-save] mime:',
-    mime,
-    'cleanB64 first 20:',
-    cleanB64.slice(0, 20),
-    'buf length after decode:',
-    'TBD',
-  );
-
   let ext = mimeToExt(mime) || 'bin';
   let buf;
   try {
@@ -184,12 +175,6 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR, dat
     err.statusCode = 400;
     throw err;
   }
-  console.log(
-    '[receipt-save] buf length:',
-    buf.length,
-    'looksLikePdf:',
-    bufferLooksLikePdf(buf),
-  );
   if (ext !== 'pdf' && bufferLooksLikePdf(buf)) ext = 'pdf';
   if (buf.length > 100 * 1024 * 1024) {
     const err = new Error('Archivo demasiado grande (máx. 100 MB).');
@@ -197,9 +182,18 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR, dat
     throw err;
   }
 
+  const now = new Date();
+  const dateStr = date
+    ? String(date).replace(/-/g, '').slice(0, 8)
+    : now.toISOString().slice(0, 10).replace(/-/g, '');
+  const timeStr = now.toISOString().slice(11, 16).replace(':', '');
+  const amountStr = amount != null ? Number(amount).toFixed(2) + 'EUR' : null;
+  const humanId = amountStr ? `${dateStr}_${timeStr}_${amountStr}` : entityId;
+  const publicIdWithExt = `${humanId}.${ext}`;
+
   if (ensureCloudinary()) {
     try {
-      const result = await uploadReceiptToCloudinary(buf, mime, humanId);
+      const result = await uploadReceiptToCloudinary(buf, mime, publicIdWithExt);
       return { receiptPath: result.secure_url };
     } catch (e) {
       console.warn('[receipt] Cloudinary upload failed, falling back to disk:', e && e.message ? e.message : e);
