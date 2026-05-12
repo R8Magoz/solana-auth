@@ -1162,6 +1162,13 @@ function cloudinaryDeliveryUrlOriginal(url){
   }
 }
 
+function cloudinaryPdfUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  if (!url.includes('res.cloudinary.com')) return url;
+  // Add fl_attachment flag to force correct PDF content-type on delivery
+  return url.replace('/upload/', '/upload/fl_attachment/');
+}
+
 /* ── ATTACHMENT VIEWER ─────────────────────────────────────────────────────────
    Receipt preview: inline image/PDF, server fetch via apiExpenseId + Bearer, empty state.
 ─────────────────────────────────────────────────────────────────────────────── */
@@ -1364,12 +1371,12 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
         <div style={{padding:"12px 0",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <button
             type="button"
-            onClick={()=>window.open(srcUrl,"_blank")}
+            onClick={()=>window.open(cloudinaryPdfUrl(srcUrl),"_blank")}
             style={{padding:"8px 16px",background:"#3C0A37",color:"white",
               border:"none",borderRadius:6,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>
             Ver PDF
           </button>
-          <a href={srcUrl} download="recibo.pdf"
+          <a href={cloudinaryPdfUrl(srcUrl)} download="recibo.pdf"
             style={{padding:"8px 16px",background:"#F5F0EA",color:"#3C0A37",
               border:"1px solid #3C0A37",borderRadius:6,cursor:"pointer",
               fontSize:13,textDecoration:"none",display:"inline-block",fontFamily:"inherit"}}>
