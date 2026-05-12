@@ -7563,6 +7563,8 @@ function SolanaExpenses(){
       if(!ctx)return;
       ctx.drawImage(v,0,0,w,h);
       const url=c.toDataURL("image/jpeg",0.85);
+      console.log('[capture] captured b64 length:', url.length,
+        'first 100:', url.slice(0, 100));
       stopCam();
       if(receiptAltHandlerRef.current){
         receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
@@ -7704,6 +7706,8 @@ function SolanaExpenses(){
       splitModeOut=undefined;
     }
     const canSubmitterAutoApprove=String(user.id)===String(ownerId);
+    console.log('[submit] receipt b64 length:', receipt?.b64?.length,
+      'first 100 chars:', receipt?.b64?.slice(0, 100));
     if(AUTH_URL){
       const expApproverIdsAuth=effectiveExpenseApproverIds({category:form.category},cats,users);
       const approvalRequiredForSubmit=expApproverIdsAuth.filter(id=>id!==user.id);
