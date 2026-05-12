@@ -2094,84 +2094,61 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
   const [blobErr,setBlobErr]=useState(null);
   const [reloadNonce,setReloadNonce]=useState(0);
   const [imgZoom,setImgZoom]=useState(false);
-  const objUrlRef = useRef(null);
 
   useEffect(() => {
-    return () => {
-      if (objUrlRef.current) {
-        URL.revokeObjectURL(objUrlRef.current);
-        objUrlRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    // If receiptPath is a remote URL (Cloudinary), use it directly
-    if (receiptPath && /^https?:\/\//.test(receiptPath)) {
-      setBlobUrl(receiptPath);
-      setBlobMime(receiptPath.includes('.pdf') ? 'application/pdf' : 'image/jpeg');
-      setBlobLoad(false);
-      return;
-    }
-
-    // Case 1: inline base64 receipt (no fetch needed)
+    // Case 1: already have inline base64 receipt
     if (receipt) {
       setBlobUrl(null);
       setBlobMime(null);
+      return;
+    }
+    // Case 2: receiptPath is a remote URL (Cloudinary) — use directly
+    if (receiptPath && /^https?:\/\//.test(receiptPath)) {
+      setBlobUrl(receiptPath);
+      setBlobMime(
+        receiptPath.toLowerCase().includes('.pdf')
+          ? 'application/pdf'
+          : 'image/jpeg'
+      );
+      setBlobLoad(false);
       setBlobErr(null);
-      setBlobLoad(false);
       return;
     }
-
-    // Case 3: needs server fetch
-    if (!AUTH_URL || !apiExpenseId) {
+    // Case 3: need to fetch from API
+    const apiEntityPath = apiExpenseId
+      ? '/expenses/' + encodeURIComponent(apiExpenseId) + '/receipt'
+      : null;
+    if (!apiEntityPath || !AUTH_URL) {
       setBlobUrl(null);
-      setBlobLoad(false);
+      setBlobMime(null);
       return;
     }
-
     let cancelled = false;
-    if (!API.token) {
-      if (!cancelled) setBlobErr("No hay sesión activa.");
-      if (!cancelled) setBlobLoad(false);
-      return;
-    }
+    let objUrl = null;
     setBlobLoad(true);
     setBlobErr(null);
-
     (async () => {
       try {
-        const blob = await API.fetchBinary(
-          "/expenses/" + encodeURIComponent(apiExpenseId) + "/receipt"
-        );
+        const blob = await API.fetchBinary(apiEntityPath);
         if (cancelled) return;
-
-        const url = URL.createObjectURL(blob);
-        objUrlRef.current = url;
-
-        // Set state — do NOT revoke this URL anywhere else
-        setBlobUrl(url);
+        objUrl = URL.createObjectURL(blob);
+        setBlobUrl(objUrl);
         const guessed = receiptPath ? guessMimeFromReceiptPath(receiptPath) : null;
         setBlobMime(
-          blob.type && blob.type !== "application/octet-stream"
+          blob.type && blob.type !== 'application/octet-stream'
             ? blob.type
-            : guessed || "image/jpeg"
+            : (guessed || 'image/jpeg')
         );
-        setBlobErr(null);
-      } catch (e) {
-        if (!cancelled) {
-          console.error("[AttachmentViewer] fetch failed:", e.message,
-            "| expenseId:", apiExpenseId,
-            "| receiptPath:", receiptPath);
-          setBlobErr(e.message || "No se pudo cargar el archivo.");
-        }
+      } catch(e) {
+        if (!cancelled) setBlobErr(e.message || 'Sin recibo');
       } finally {
         if (!cancelled) setBlobLoad(false);
       }
     })();
-
-    return () => { cancelled = true; };
-
+    return () => {
+      cancelled = true;
+      if (objUrl) URL.revokeObjectURL(objUrl);
+    };
   }, [apiExpenseId, receipt, receiptPath, reloadNonce]);
 
   useEffect(()=>{
