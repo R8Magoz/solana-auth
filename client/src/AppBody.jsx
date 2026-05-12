@@ -6723,14 +6723,10 @@ export default function App(){
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current=null;
     }
-    captureTimeoutRef.current=setTimeout(()=>{
-      captureTimeoutRef.current=null;
-      if(!videoRef.current)return;
-      const v=videoRef.current;
+    const MAX_TRIES=50;
+    const commitFrame=(v,w,h)=>{
       requestAnimationFrame(()=>{
-        const w=v.videoWidth||v.offsetWidth;
-        const h=v.videoHeight||v.offsetHeight;
-        if(!w||!h)return;
+        if(!videoRef.current||videoRef.current!==v)return;
         const c=document.createElement("canvas");
         c.width=w;
         c.height=h;
@@ -6739,7 +6735,7 @@ export default function App(){
         ctx.fillStyle="#FFFFFF";
         ctx.fillRect(0,0,w,h);
         ctx.drawImage(v,0,0,w,h);
-        const url=c.toDataURL("image/jpeg",0.85);
+        const url=c.toDataURL("image/jpeg",0.92);
         if(receiptAltHandlerRef.current){
           receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
           appLog("info","receipt_captured",{source:"camera"});
@@ -6751,7 +6747,32 @@ export default function App(){
         appLog("info","receipt_captured",{source:"camera"});
         stopCam();
       });
-    },500);
+    };
+    let tries=0;
+    const tick=()=>{
+      if(!videoRef.current){
+        captureTimeoutRef.current=null;
+        return;
+      }
+      const v=videoRef.current;
+      const w=v.videoWidth;
+      const h=v.videoHeight;
+      if(w>0&&h>0){
+        captureTimeoutRef.current=null;
+        commitFrame(v,w,h);
+        return;
+      }
+      if(++tries>=MAX_TRIES){
+        captureTimeoutRef.current=null;
+        dispatchSolanaToast(
+          (t("msg.cameraUnavailable")||"Cámara no disponible")+" — espera a que el vídeo esté listo e inténtalo de nuevo.",
+          "error"
+        );
+        return;
+      }
+      captureTimeoutRef.current=setTimeout(tick,50);
+    };
+    captureTimeoutRef.current=setTimeout(tick,300);
   };
 
   /* ── SESSION IDLE TIMEOUT ─────────────────────────────────────────────────
