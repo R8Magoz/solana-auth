@@ -80,13 +80,13 @@ function bufferLooksLikePdf(buf) {
     && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46;
 }
 
-function uploadReceiptToCloudinary(buf, mime, entityId) {
+function uploadReceiptToCloudinary(buf, mime, publicId) {
   const folder = (process.env.CLOUDINARY_RECEIPTS_FOLDER || 'solana-receipts').replace(/^\/+|\/+$/g, '');
-  const publicId = String(entityId).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safePublicId = String(publicId).replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 200);
   const isPdf = mimeToExt(mime) === 'pdf' || bufferLooksLikePdf(buf);
   const opts = {
     folder,
-    public_id: publicId,
+    public_id: safePublicId,
     // PDFs must use raw upload; auto+wrong client MIME ("image/jpeg") yields Invalid PDF file.
     resource_type: isPdf ? 'raw' : 'auto',
     overwrite: true,
@@ -135,10 +135,10 @@ async function removeReceiptAsset(receiptPath, DATA_DIR) {
 }
 
 /**
- * @param {{ b64: string, mediaType?: string, entityId: string, DATA_DIR: string }} opts
+ * @param {{ b64: string, mediaType?: string, entityId: string, DATA_DIR: string, date?: string, amount?: number }} opts
  * @returns {Promise<{ receiptPath: string }>}
  */
-async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
+async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR, date, amount }) {
   if (!b64 || typeof b64 !== 'string') {
     const err = new Error('Falta b64.');
     err.statusCode = 400;
@@ -168,9 +168,19 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
     throw err;
   }
 
+  const dateStr = date
+    ? String(date).trim().slice(0, 10).replace(/-/g, '')
+    : new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const amountStr = amount ? `${Math.round(Number(amount))}EUR` : String(entityId);
+  const humanId = `${dateStr}_${amountStr}`
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 200);
+
   if (ensureCloudinary()) {
     try {
-      const result = await uploadReceiptToCloudinary(buf, mime, entityId);
+      const result = await uploadReceiptToCloudinary(buf, mime, humanId);
       return { receiptPath: result.secure_url };
     } catch (e) {
       console.warn('[receipt] Cloudinary upload failed, falling back to disk:', e && e.message ? e.message : e);
@@ -179,9 +189,10 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR }) {
 
   const RECEIPTS_DIR = path.join(DATA_DIR, 'receipts');
   if (!fs.existsSync(RECEIPTS_DIR)) fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
-  const safeId = String(entityId).replace(/[^a-zA-Z0-9_-]/g, '_');
-  const rel = path.join('receipts', `${safeId}.${ext}`).replace(/\\/g, '/');
-  const abs = path.join(DATA_DIR, 'receipts', `${safeId}.${ext}`);
+  const safeEntity = String(entityId).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const diskBase = `${humanId}_${safeEntity}`.replace(/_+/g, '_').slice(0, 220);
+  const rel = path.join('receipts', `${diskBase}.${ext}`).replace(/\\/g, '/');
+  const abs = path.join(DATA_DIR, 'receipts', `${diskBase}.${ext}`);
   fs.writeFileSync(abs, buf);
   return { receiptPath: rel };
 }
