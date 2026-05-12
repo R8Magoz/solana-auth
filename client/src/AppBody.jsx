@@ -6718,8 +6718,7 @@ export default function App(){
     setCamOn(false);
   };
   const capturePhoto=()=>{
-    const v=videoRef.current;
-    if(!v)return;
+    if(!videoRef.current)return;
     if(captureTimeoutRef.current){
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current=null;
@@ -6727,27 +6726,32 @@ export default function App(){
     captureTimeoutRef.current=setTimeout(()=>{
       captureTimeoutRef.current=null;
       if(!videoRef.current)return;
-      const w=v.videoWidth||v.offsetWidth;
-      const h=v.videoHeight||v.offsetHeight;
-      if(!w||!h)return;
-      const c=document.createElement("canvas");
-      c.width=w;
-      c.height=h;
-      const ctx=c.getContext("2d");
-      if(!ctx)return;
-      ctx.drawImage(v,0,0,w,h);
-      const url=c.toDataURL("image/jpeg",0.85);
-      if(receiptAltHandlerRef.current){
-        receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
+      const v=videoRef.current;
+      requestAnimationFrame(()=>{
+        const w=v.videoWidth||v.offsetWidth;
+        const h=v.videoHeight||v.offsetHeight;
+        if(!w||!h)return;
+        const c=document.createElement("canvas");
+        c.width=w;
+        c.height=h;
+        const ctx=c.getContext("2d");
+        if(!ctx)return;
+        ctx.fillStyle="#FFFFFF";
+        ctx.fillRect(0,0,w,h);
+        ctx.drawImage(v,0,0,w,h);
+        const url=c.toDataURL("image/jpeg",0.85);
+        if(receiptAltHandlerRef.current){
+          receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
+          appLog("info","receipt_captured",{source:"camera"});
+          stopCam();
+          return;
+        }
+        setRecPrev(url);
+        setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
         appLog("info","receipt_captured",{source:"camera"});
         stopCam();
-        return;
-      }
-      setRecPrev(url);
-      setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
-      appLog("info","receipt_captured",{source:"camera"});
-      stopCam();
-    },800);
+      });
+    },500);
   };
 
   /* ── SESSION IDLE TIMEOUT ─────────────────────────────────────────────────
