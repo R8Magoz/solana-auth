@@ -6375,6 +6375,7 @@ export default function App(){
   const [camStr,setCamStr]=useState(null);
   const videoRef=useRef(null);
   const captureTimeoutRef=useRef(null);
+  const capturingRef=useRef(false);
   const canvasRef=useRef(null);
   const fileRef  =useRef(null);
   /** When set, receipt file/camera targets edit form (DetailPanel) instead of new expense. */
@@ -6706,6 +6707,7 @@ export default function App(){
   const openCamStream=async()=>{
     try{
       const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}}});
+      capturingRef.current=false;
       setCamStr(s);
       setCamOn(true);
     }catch(e){
@@ -6732,6 +6734,7 @@ export default function App(){
     }
   },[user]);
   const stopCam=()=>{
+    capturingRef.current=false;
     if(captureTimeoutRef.current){
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current=null;
@@ -6743,12 +6746,16 @@ export default function App(){
   const capturePhoto=()=>{
     const v=videoRef.current;
     if(!v)return;
+    if(capturingRef.current)return;
+    capturingRef.current=true;
     if(captureTimeoutRef.current){
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current=null;
     }
 
-    const doCapture=async()=>{
+    const doCapture=async(isRetry)=>{
+      /* Spec: if (capturingRef.current) return; capturingRef.current = true;
+         Implemented synchronously in capturePhoto() before scheduling so double-clicks cannot race the 300ms delay. */
       try{
         const stream=v.srcObject;
         if(stream&&window.ImageCapture){
@@ -6762,12 +6769,14 @@ export default function App(){
               if(receiptAltHandlerRef.current){
                 receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
                 appLog("info","receipt_captured",{source:"camera"});
+                capturingRef.current=false;
                 stopCam();
                 return;
               }
               setRecPrev(url);
               setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
               appLog("info","receipt_captured",{source:"camera"});
+              capturingRef.current=false;
               stopCam();
             };
             reader.readAsDataURL(blob);
@@ -6776,19 +6785,24 @@ export default function App(){
         }
       }catch(e){
         console.warn("[capture] ImageCapture failed, falling back to canvas:",e);
+        capturingRef.current=false;
+        capturingRef.current=true;
       }
 
       const w=v.videoWidth;
       const h=v.videoHeight;
       if(!w||!h){
-        captureTimeoutRef.current=setTimeout(doCapture,200);
+        captureTimeoutRef.current=setTimeout(()=>{void doCapture(true);},200);
         return;
       }
       const c=document.createElement("canvas");
       c.width=w;
       c.height=h;
       const ctx=c.getContext("2d");
-      if(!ctx)return;
+      if(!ctx){
+        capturingRef.current=false;
+        return;
+      }
       ctx.fillStyle="#FFFFFF";
       ctx.fillRect(0,0,w,h);
       ctx.drawImage(v,0,0,w,h);
@@ -6796,16 +6810,18 @@ export default function App(){
       if(receiptAltHandlerRef.current){
         receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
         appLog("info","receipt_captured",{source:"camera"});
+        capturingRef.current=false;
         stopCam();
         return;
       }
       setRecPrev(url);
       setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
       appLog("info","receipt_captured",{source:"camera"});
+      capturingRef.current=false;
       stopCam();
     };
 
-    captureTimeoutRef.current=setTimeout(doCapture,300);
+    captureTimeoutRef.current=setTimeout(()=>{void doCapture(false);},300);
   };
 
   /* ── SESSION IDLE TIMEOUT ─────────────────────────────────────────────────
