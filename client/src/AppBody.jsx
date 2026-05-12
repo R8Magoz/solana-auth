@@ -1158,20 +1158,18 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
   }, []);
 
   useEffect(() => {
-    // Case 1: inline base64 receipt (no fetch needed)
-    if (receipt) {
-      setBlobUrl(null);
-      setBlobMime(null);
-      setBlobErr(null);
+    // If receiptPath is a remote URL (Cloudinary), use it directly
+    if (receiptPath && /^https?:\/\//.test(receiptPath)) {
+      setBlobUrl(receiptPath);
+      setBlobMime(receiptPath.includes('.pdf') ? 'application/pdf' : 'image/jpeg');
       setBlobLoad(false);
       return;
     }
 
-    // Case 2: remote URL (Cloudinary) — use directly
-    if (receiptPath && /^https?:\/\//i.test(receiptPath)) {
-      console.log('[AttachmentViewer] using remote URL:', receiptPath);
-      setBlobUrl(receiptPath);
-      setBlobMime(guessMimeFromReceiptPath(receiptPath) || "image/jpeg");
+    // Case 1: inline base64 receipt (no fetch needed)
+    if (receipt) {
+      setBlobUrl(null);
+      setBlobMime(null);
       setBlobErr(null);
       setBlobLoad(false);
       return;
@@ -1235,9 +1233,10 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
     return()=>window.removeEventListener("keydown",onKey);
   },[imgZoom]);
 
+  const remoteUrl = receiptPath && /^https?:\/\//.test(receiptPath) ? receiptPath : null;
   const srcUrl = receipt
     ? "data:" + (receiptType || "image/jpeg") + ";base64," + receipt
-    : blobUrl;
+    : (remoteUrl || blobUrl);
   const mime=receipt?(receiptType||"image/jpeg"):blobMime;
   const isPdf=(mime||"").includes("pdf")||(receiptPath||"").toLowerCase().endsWith(".pdf");
   const isImage=(mime||"").startsWith("image/")||/\.(jpe?g|png|webp|gif|heic|heif|tiff?)$/i.test(receiptPath||"");
