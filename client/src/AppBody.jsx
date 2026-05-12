@@ -1163,12 +1163,8 @@ function cloudinaryDeliveryUrlOriginal(url){
 }
 
 function cloudinaryPdfUrl(url) {
-  if (!url || typeof url !== 'string') return url;
-  if (!url.includes('res.cloudinary.com')) return url;
-  // Do not switch image ↔ raw (wrong branch 404s). Force fl_attachment so PDF
-  // gets a consistent Content-Type / delivery for Chrome and downloads.
-  if (url.includes('fl_attachment')) return url;
-  return url.replace('/upload/', '/upload/fl_attachment/');
+  // Return URL unchanged — no transformation needed
+  return url || '';
 }
 
 /* ── ATTACHMENT VIEWER ─────────────────────────────────────────────────────────
