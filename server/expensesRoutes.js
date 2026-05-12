@@ -1150,18 +1150,16 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (!canAccessExpense(req, exp)) {
       return res.status(403).json({ error: 'No autorizado.' });
     }
-    console.log('[receipt] upload attempt:', {
-      expenseId: req.params.id,
-      userId: req.userId,
-      b64Length: typeof req.body?.b64 === 'string' ? req.body.b64.length : 'missing',
-      mediaType: req.body?.mediaType,
-      contentLength: req.headers['content-length'],
-    });
     if (exp.status === 'deleted') {
       return res.status(400).json({ error: 'Gasto eliminado.' });
     }
 
     const { b64, mediaType } = req.body || {};
+    console.log('[receipt-recv] b64 length received:',
+      req.body?.b64?.length,
+      'keys:', Object.keys(req.body || {}).join(','),
+      'body size:', JSON.stringify(req.body)?.length
+    );
     try {
       await receiptStorage.removeReceiptAsset(exp.receiptPath, DATA_DIR);
       const { receiptPath } = await receiptStorage.saveReceiptB64ToStorage({
