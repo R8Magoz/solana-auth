@@ -6796,7 +6796,6 @@ export default function App(){
             };
             img.onerror=()=>{
               URL.revokeObjectURL(blobUrl);
-              console.warn("[capture] blob→img failed, using canvas fallback");
               capturingRef.current=false;
               void doCapture();
             };
@@ -6805,7 +6804,6 @@ export default function App(){
           }
         }
       }catch(e){
-        console.warn("[capture] ImageCapture failed, falling back to canvas:",e);
         capturingRef.current=false;
         capturingRef.current=true;
       }
@@ -7023,15 +7021,6 @@ export default function App(){
           let finalExp = newExp;
           if (receipt?.b64) {
             try {
-              console.log('[receipt upload] starting:', {
-                expenseId: newExp.id,
-                b64Length: receipt.b64?.length,
-                mediaType: receipt.type,
-                hasToken: !!API.token,
-              });
-              const b64String = receipt.b64;
-              console.log('[upload-check] b64 first 200 chars:', b64String.slice(0, 200));
-              console.log('[upload-check] b64 length:', b64String.length);
               const receiptResult = await API.post(
                 "/expenses/" + encodeURIComponent(newExp.id) + "/receipt",
                 { b64: receipt.b64, mediaType: receipt.type || "image/jpeg" }
@@ -7043,8 +7032,7 @@ export default function App(){
                   : [finalExp]
                 );
               }
-            } catch (uploadErr) {
-              console.error('[receipt upload] failed:', uploadErr?.message);
+            } catch {
             }
           }
 
@@ -7268,9 +7256,6 @@ export default function App(){
           }
           await API.put("/expenses/"+encodeURIComponent(expId),body);
           if(updates.receipt){
-            const b64String = updates.receipt;
-            console.log('[upload-check] b64 first 200 chars:', b64String.slice(0, 200));
-            console.log('[upload-check] b64 length:', b64String.length);
             await API.post("/expenses/"+encodeURIComponent(expId)+"/receipt",{
               b64:updates.receipt,
               mediaType:updates.receiptType||"image/jpeg",

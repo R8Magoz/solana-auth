@@ -1155,11 +1155,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     const { b64, mediaType } = req.body || {};
-    console.log('[receipt-recv] b64 length received:',
-      req.body?.b64?.length,
-      'keys:', Object.keys(req.body || {}).join(','),
-      'body size:', JSON.stringify(req.body)?.length
-    );
     try {
       await receiptStorage.removeReceiptAsset(exp.receiptPath, DATA_DIR);
       const { receiptPath } = await receiptStorage.saveReceiptB64ToStorage({
