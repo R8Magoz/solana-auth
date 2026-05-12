@@ -97,15 +97,17 @@ function uploadReceiptToCloudinary(buf, mime, entityId) {
   });
 }
 
-function destroyCloudinaryPublicId(publicId) {
+function destroyCloudinaryPublicId(publicId, resourceType) {
+  // Derive resource type: PDFs are stored as 'raw', everything else is 'image'
+  const rtype = resourceType || (String(publicId).endsWith('.pdf') ? 'raw' : 'image');
   return new Promise((resolve) => {
     cloudinary.uploader.destroy(
       publicId,
-      { resource_type: 'auto' },
+      { resource_type: rtype },
       (err, result) => {
         if (err) console.warn('[receipt] cloudinary destroy:', err.message || err);
         resolve(result);
-      },
+      }
     );
   });
 }
@@ -115,7 +117,9 @@ async function removeReceiptAsset(receiptPath, DATA_DIR) {
   if (isRemoteReceiptPath(receiptPath)) {
     if (!ensureCloudinary()) return;
     const pid = cloudinaryPublicIdFromUrl(receiptPath);
-    if (pid) await destroyCloudinaryPublicId(pid);
+    const pathLower = String(receiptPath).toLowerCase().split('?')[0];
+    const knownType = pathLower.endsWith('.pdf') ? 'raw' : 'image';
+    if (pid) await destroyCloudinaryPublicId(pid, knownType);
     return;
   }
   const abs = path.join(DATA_DIR, receiptPath);
