@@ -7544,21 +7544,33 @@ function SolanaExpenses(){
     setCamOn(false);
   };
   const capturePhoto=()=>{
-    const v=videoRef.current,c=canvasRef.current;
-    if(!v||!c)return;
-    c.width=v.videoWidth||1280;
-    c.height=v.videoHeight||720;
-    c.getContext("2d").drawImage(v,0,0);
-    const url=c.toDataURL("image/jpeg",0.85);
-    stopCam();
-    if(receiptAltHandlerRef.current){
-      receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
+    const v=videoRef.current;
+    if(!v)return;
+    const doCapture=()=>{
+      const w=v.videoWidth;
+      const h=v.videoHeight;
+      if(!w||!h){
+        setTimeout(doCapture,100);
+        return;
+      }
+      const c=document.createElement("canvas");
+      c.width=w;
+      c.height=h;
+      const ctx=c.getContext("2d");
+      if(!ctx)return;
+      ctx.drawImage(v,0,0,w,h);
+      const url=c.toDataURL("image/jpeg",0.85);
+      stopCam();
+      if(receiptAltHandlerRef.current){
+        receiptAltHandlerRef.current({b64:url.split(",")[1],type:"image/jpeg",preview:url});
+        appLog("info","receipt_captured",{source:"camera"});
+        return;
+      }
+      setRecPrev(url);
+      setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
       appLog("info","receipt_captured",{source:"camera"});
-      return;
-    }
-    setRecPrev(url);
-    setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
-    appLog("info","receipt_captured",{source:"camera"});
+    };
+    doCapture();
   };
 
   /* ── SESSION IDLE TIMEOUT ─────────────────────────────────────────────────
