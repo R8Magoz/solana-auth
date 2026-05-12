@@ -1205,10 +1205,11 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
 
         // Set state — do NOT revoke this URL anywhere else
         setBlobUrl(url);
+        const guessed = receiptPath ? guessMimeFromReceiptPath(receiptPath) : null;
         setBlobMime(
           blob.type && blob.type !== "application/octet-stream"
             ? blob.type
-            : guessMimeFromReceiptPath(receiptPath)
+            : guessed || "image/jpeg"
         );
         setBlobErr(null);
       } catch (e) {
@@ -1313,9 +1314,9 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
       )}
       {!blobLoad&&!blobErr&&srcUrl&&isImage&&(
         <div style={{position:"relative"}}>
-          <div style={{display:"flex",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"hidden",border:"1px solid #EDE8E0"}}>
+          <div style={{display:"flex",justifyContent:"center",background:"#F5F0EA",borderRadius:7,overflow:"visible",border:"1px solid #EDE8E0",minHeight:0}}>
             <img src={srcUrl} alt={label||"Recibo"}
-              style={{width:"100%",maxHeight:300,objectFit:"contain",borderRadius:6,cursor:"zoom-in",display:"block"}}
+              style={{maxWidth:"100%",maxHeight:"420px",width:"auto",height:"auto",display:"block",objectFit:"contain",borderRadius:8,cursor:"zoom-in"}}
               onError={()=>setBlobErr("No se pudo cargar la imagen.")}
               onClick={()=>setImgZoom(true)}/>
           </div>
@@ -1346,31 +1347,23 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
         </div>
       )}
       {isPdf&&srcUrl&&(
-        <div style={{padding:20,textAlign:"center",background:"#F5F0EA",borderRadius:8,border:"1px solid #DDD6CC"}}>
-          <div style={{fontSize:32,marginBottom:8}}>PDF</div>
-          <div style={{fontSize:12,color:"#4B5E52",marginBottom:16,fontWeight:500}}>
-            {label||"Documento PDF"}
-          </div>
-          <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-            <button className="btn-outline" style={{fontSize:12,padding:"6px 16px"}}
-              onClick={()=>{
-                const a=document.createElement("a");
-                a.href=srcUrl;
-                a.target="_blank";
-                a.rel="noopener noreferrer";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-              }}>
-              Abrir PDF
-            </button>
-            <button className="btn-outline" style={{fontSize:12,padding:"6px 16px"}} onClick={downloadFile}>
-              Descargar PDF
-            </button>
-            {onRemove&&<button type="button" onClick={onRemove} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}}>
-              ✕ {t?t("action.remove"):"Eliminar"}
-            </button>}
-          </div>
+        <div style={{padding:"12px 0",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <button
+            type="button"
+            onClick={()=>window.open(srcUrl,"_blank")}
+            style={{padding:"8px 16px",background:"#3C0A37",color:"white",
+              border:"none",borderRadius:6,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>
+            Ver PDF
+          </button>
+          <a href={srcUrl} download="recibo.pdf"
+            style={{padding:"8px 16px",background:"#F5F0EA",color:"#3C0A37",
+              border:"1px solid #3C0A37",borderRadius:6,cursor:"pointer",
+              fontSize:13,textDecoration:"none",display:"inline-block",fontFamily:"inherit"}}>
+            Descargar PDF
+          </a>
+          {onRemove&&<button type="button" onClick={onRemove} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}}>
+            ✕ {t?t("action.remove"):"Eliminar"}
+          </button>}
         </div>
       )}
       {isGenericBinary&&(
@@ -3023,7 +3016,7 @@ function DetailPanel(){
       )}
 
       {/* READ MODE */}
-      {!editMode&&<div style={{minWidth:0}}>
+      {!editMode&&<div style={{minWidth:0,overflow:"visible",minHeight:0}}>
       <div
         style={{
           display:"inline-block",
@@ -3152,7 +3145,7 @@ function DetailPanel(){
       {e._apiType==="expense"&&e.status==="rejected"&&e.rejectionNote&&(
         <div style={{marginTop:9,padding:"8px 10px",background:"#FEE2E2",borderRadius:8,fontSize:11,color:"#991B1B"}}><strong>Motivo:</strong> {e.rejectionNote}</div>
       )}
-      <div style={{marginTop:9}}>
+      <div style={{marginTop:9,overflow:"visible",minHeight:0}}>
         <AttachmentViewer
           receipt={e.receipt}
           receiptType={e.receiptType}
@@ -6748,6 +6741,7 @@ export default function App(){
       setRecPrev(url);
       setReceipt({b64:url.split(",")[1],type:"image/jpeg"});
       appLog("info","receipt_captured",{source:"camera"});
+      return;
     };
     doCapture();
   };
