@@ -63,6 +63,13 @@ function seedAppSettings(db) {
     now,
   );
   insert.run('payment_terms_days', '30', 'Default payment terms in days for invoices', 'system', now);
+  insert.run(
+    'payment_terms_options',
+    JSON.stringify([0, 15, 30, 60, 90]),
+    'Available payment term options in days shown in invoice forms',
+    'system',
+    now,
+  );
   insert.run('max_receipt_mb', '10', 'Maximum allowed receipt file size in MB', 'system', now);
   insert.run(
     'report_logo_url',
@@ -98,6 +105,11 @@ function ensureMissingAppSettings(db) {
       'Fiscal year start as MM-DD (e.g. 01-01 for January, 04-01 for April)',
     ],
     ['payment_terms_days', '30', 'Default payment terms in days for invoices'],
+    [
+      'payment_terms_options',
+      JSON.stringify([0, 15, 30, 60, 90]),
+      'Available payment term options in days shown in invoice forms',
+    ],
     ['max_receipt_mb', '10', 'Maximum allowed receipt file size in MB'],
     [
       'report_logo_url',

@@ -66,6 +66,32 @@ function validateSettingValue(key, value) {
     return { ok: true, serialized: JSON.stringify(v.normalized) };
   }
 
+  if (key === 'payment_terms_options') {
+    if (!Array.isArray(value)) {
+      return { ok: false, error: 'payment_terms_options debe ser un array de números.' };
+    }
+    const seen = new Set();
+    const nums = [];
+    for (const x of value) {
+      const n = typeof x === 'number' ? x : Number(String(x).trim());
+      if (!Number.isFinite(n)) {
+        return { ok: false, error: 'Cada plazo debe ser un número entero.' };
+      }
+      const day = Math.round(n);
+      if (day < 0 || day > 365) {
+        return { ok: false, error: 'Cada plazo debe estar entre 0 y 365 días.' };
+      }
+      if (seen.has(day)) continue;
+      seen.add(day);
+      nums.push(day);
+      if (nums.length > 24) {
+        return { ok: false, error: 'Máximo 24 plazos de pago.' };
+      }
+    }
+    nums.sort((a, b) => a - b);
+    return { ok: true, serialized: JSON.stringify(nums) };
+  }
+
   if (key === 'default_approvers') {
     if (!Array.isArray(value)) {
       return { ok: false, error: 'default_approvers debe ser un array de IDs de usuario.' };

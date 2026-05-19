@@ -1501,7 +1501,7 @@ function expenseIsRecurringNonOnce(e){
 function formatCondicionesPagoReadOnly(e){
   const raw=e.condicionesPago!=null&&String(e.condicionesPago).trim()!==""?String(e.condicionesPago).trim():null;
   const ptd=e.paymentTermDays!=null&&!isNaN(Number(e.paymentTermDays))?Number(e.paymentTermDays):null;
-  const mode=raw!=null?raw:(ptd===null||ptd===undefined||ptd===0?"0":([15,30,60].includes(ptd)?String(ptd):"custom"));
+  const mode=raw!=null?raw:(ptd===null||ptd===undefined||ptd===0?"0":(readPaymentTermsOptionsFromLocal().includes(ptd)?String(ptd):"custom"));
   const m=String(mode||"0");
   if(m==="custom")return e.dueDate?`Personalizado (${fmtDate(e.dueDate)})`:"Personalizado";
   if(m==="0")return "Al contado";
@@ -1536,14 +1536,58 @@ function formatDMYFromISO(iso){
   if(p.length<3)return"";
   return`${p[2]}/${p[1]}/${p[0]}`;
 }
+const DEFAULT_PAYMENT_TERMS_OPTIONS=[0,15,30,60];
+const PAYMENT_TERMS_OPTIONS_LS_KEY="sol-payment-terms-options";
+function normalizePaymentTermsOptions(raw){
+  const src=Array.isArray(raw)?raw:DEFAULT_PAYMENT_TERMS_OPTIONS;
+  const seen=new Set();
+  const out=[];
+  for(const x of src){
+    const n=Math.round(Number(x));
+    if(!Number.isFinite(n)||n<0||n>365)continue;
+    if(seen.has(n))continue;
+    seen.add(n);
+    out.push(n);
+  }
+  out.sort((a,b)=>a-b);
+  return out.length?out:[...DEFAULT_PAYMENT_TERMS_OPTIONS];
+}
+function readPaymentTermsOptionsFromLocal(){
+  try{
+    const raw=localStorage.getItem(PAYMENT_TERMS_OPTIONS_LS_KEY);
+    if(raw)return normalizePaymentTermsOptions(JSON.parse(raw));
+  }catch(e){}
+  return [...DEFAULT_PAYMENT_TERMS_OPTIONS];
+}
+async function fetchPaymentTermsOptions(authUrl,token){
+  if(!authUrl||!token)return readPaymentTermsOptionsFromLocal();
+  try{
+    const r=await fetch(authUrl+"/settings/payment_terms_options",{headers:{Authorization:"Bearer "+token}});
+    if(!r.ok)return readPaymentTermsOptionsFromLocal();
+    const d=await r.json().catch(()=>({}));
+    const opts=normalizePaymentTermsOptions(d.value);
+    try{localStorage.setItem(PAYMENT_TERMS_OPTIONS_LS_KEY,JSON.stringify(opts));}catch(e){}
+    return opts;
+  }catch(e){
+    return readPaymentTermsOptionsFromLocal();
+  }
+}
+function paymentTermOptionLabel(days,t){
+  if(days===0)return t?t("expenses.termCash"):"Al contado (0 días)";
+  return "A "+days+" días";
+}
 function paymentTermDaysFromForm(form){
   const mode=form&&form.paymentTermMode;
-  if(mode==="0"||mode===0)return 0;
-  if(mode==="15")return 15;
-  if(mode==="30")return 30;
-  if(mode==="60")return 60;
   if(mode==="custom")return Math.max(0,parseInt(String(form.paymentTermCustomDays||"0"),10)||0);
+  if(mode==="0"||mode===0)return 0;
+  const n=parseInt(String(mode),10);
+  if(Number.isFinite(n)&&n>=0)return n;
   return 0;
+}
+function firstDeferredPaymentTermMode(options){
+  const opts=normalizePaymentTermsOptions(options);
+  const pos=opts.find(d=>d>0);
+  return pos!=null?String(pos):"30";
 }
 function computeInvoiceDueISO(form){
   const base=(form&&form.date)||"";
@@ -3189,28 +3233,26 @@ function recurrenceRuleToCadenceForForm(rule){
   if(r==="biweekly")return{cadenceKey:"custom",cadenceCustomMonths:"1",cadenceCustomAmount:"2",cadenceCustomUnit:"weeks"};
   return{cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months"};
 }
-function expenseInvoiceTermsFromEntity(e){
+function expenseInvoiceTermsFromEntity(e,paymentTermsOptions){
+  const opts=normalizePaymentTermsOptions(paymentTermsOptions||readPaymentTermsOptionsFromLocal());
+  const presetSet=new Set(opts.map(d=>String(d)));
   const due=String(e.dueDate||"").slice(0,10);
   const base=String(e.date||"").slice(0,10);
   const raw=e.condicionesPago!=null&&String(e.condicionesPago).trim()!==""?String(e.condicionesPago).trim():null;
   const ptd=e.paymentTermDays!=null&&!isNaN(Number(e.paymentTermDays))?Number(e.paymentTermDays):null;
-  if(raw==="0"||raw==="15"||raw==="30"||raw==="60"||raw==="custom"){
+  if(raw==="custom"||(raw!=null&&presetSet.has(raw))){
     return{
       paymentTermMode:raw,
       invoiceDueDateDirect:raw==="custom"?due:"",
     };
   }
   if(ptd===0)return{paymentTermMode:"0",invoiceDueDateDirect:""};
-  if(ptd===15)return{paymentTermMode:"15",invoiceDueDateDirect:""};
-  if(ptd===30)return{paymentTermMode:"30",invoiceDueDateDirect:""};
-  if(ptd===60)return{paymentTermMode:"60",invoiceDueDateDirect:""};
+  if(presetSet.has(String(ptd)))return{paymentTermMode:String(ptd),invoiceDueDateDirect:""};
   if(base&&due){
-    const d15=addDaysToISODate(base,15);
-    const d30=addDaysToISODate(base,30);
-    const d60=addDaysToISODate(base,60);
-    if(due===d15)return{paymentTermMode:"15",invoiceDueDateDirect:""};
-    if(due===d30)return{paymentTermMode:"30",invoiceDueDateDirect:""};
-    if(due===d60)return{paymentTermMode:"60",invoiceDueDateDirect:""};
+    for(const d of opts){
+      if(d<=0)continue;
+      if(due===addDaysToISODate(base,d))return{paymentTermMode:String(d),invoiceDueDateDirect:""};
+    }
   }
   return{paymentTermMode:"custom",invoiceDueDateDirect:due};
 }
@@ -3219,6 +3261,7 @@ function ExpenseFormFields({
   t, form, setForm,
   ownerId, ownerUser,
   activeCats, departments, users, ivaRates,
+  paymentTermsOptions,
   hi, rs,
   actionColor,
   splitOn, setSplitOn, splits, setSplits, spMode, setSpMode,
@@ -3232,6 +3275,8 @@ function ExpenseFormFields({
   disableDeferredPaymentToggle,
   showDeferredPaymentLockedHint,
 }){
+  const termOpts=normalizePaymentTermsOptions(paymentTermsOptions);
+  const defaultDeferredMode=firstDeferredPaymentTermMode(termOpts);
   const expAmt=parseFloat(form.amount)||0;
   const amountNum=parseMoney(form.amount);
   const amountOk=amountNum>0;
@@ -3355,7 +3400,7 @@ function ExpenseFormFields({
                     setForm(p=>({
                       ...p,
                       deferredPayment:on,
-                      paymentTermMode:on?(p.paymentTermMode==="0"||!p.paymentTermMode?"30":p.paymentTermMode):"0",
+                      paymentTermMode:on?(p.paymentTermMode==="0"||!p.paymentTermMode?defaultDeferredMode:p.paymentTermMode):"0",
                     }));
                   }}/>
                 <span style={{fontSize:13,color:"#4B5E52"}}>
@@ -3370,11 +3415,11 @@ function ExpenseFormFields({
 
               {form.deferredPayment&&(
                 <select className="inp" style={{marginTop:8}}
-                  value={String(form.paymentTermMode||"30")}
+                  value={String(form.paymentTermMode||defaultDeferredMode)}
                   onChange={e=>setForm(p=>({...p,paymentTermMode:e.target.value}))}>
-                  <option value="15">A 15 días</option>
-                  <option value="30">A 30 días</option>
-                  <option value="60">A 60 días</option>
+                  {termOpts.map(days=>(
+                    <option key={"pt-"+days} value={String(days)}>{paymentTermOptionLabel(days,t)}</option>
+                  ))}
                   <option value="custom">Personalizado</option>
                 </select>
               )}
@@ -3440,7 +3485,7 @@ function NewPanel(){
   const{t,user,cats,form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
         receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,handleReceiptFile,fileRef,
         startCam,submitting,
-        submitExp,resetForm,setPanel,users,calcEqual,ivaRates,departments}=useApp();
+        submitExp,resetForm,setPanel,users,calcEqual,ivaRates,departments,paymentTermsOptions}=useApp();
   const activeCats=cats.filter(c=>!c.archived);
   const ownerRaw=(form.ownerId&&String(form.ownerId).trim())?String(form.ownerId).trim():"";
   const ownerById=ownerRaw?users.find(u=>String(u.id)===ownerRaw):null;
@@ -3543,6 +3588,7 @@ function NewPanel(){
         departments={departments}
         users={users}
         ivaRates={ivaRates}
+        paymentTermsOptions={paymentTermsOptions}
         hi={hi}
         rs={rs}
         actionColor={actionColor}
@@ -3589,7 +3635,7 @@ function NewPanel(){
 /* ── DETAIL PANEL ──────────────────────────────────────────────────────────── */
 function DetailPanel(){
   const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,markExpensePaid,ivaRates,departments,defaultDeptId,
-        fileRef,startCam,receiptAltHandlerRef}=useApp();
+        fileRef,startCam,receiptAltHandlerRef,paymentTermsOptions}=useApp();
   const [editMode,setEditMode]=useState(false);
   const [ef,setEf]=useState({});        // edit form fields
   const [efDirty,setEfDirty]=useState(false);
@@ -3751,7 +3797,7 @@ function DetailPanel(){
     const cadenceCustomMonths=(ckStored&&ckStored!=="once"&&e.cadenceCustomMonths!=null)?String(e.cadenceCustomMonths):fromRule.cadenceCustomMonths;
     const cadenceCustomAmount=fromRule.cadenceCustomAmount!=null?String(fromRule.cadenceCustomAmount):(e.cadenceCustomMonths!=null?String(e.cadenceCustomMonths):"1");
     const cadenceCustomUnit=fromRule.cadenceCustomUnit||"months";
-    const invTerms=e.expenseType==="invoice"?expenseInvoiceTermsFromEntity(e):{paymentTermMode:"0",invoiceDueDateDirect:""};
+    const invTerms=e.expenseType==="invoice"?expenseInvoiceTermsFromEntity(e,paymentTermsOptions):{paymentTermMode:"0",invoiceDueDateDirect:""};
     const deferredPayment=e.expenseType==="invoice"&&String(invTerms.paymentTermMode||"0")!=="0";
     const prov=String((e.proveedor!=null&&String(e.proveedor).trim()!=="")?e.proveedor:(e.vendor||"")).trim();
     setEf({description:e.description,amount:String(e.amount),category:e.category,
@@ -3912,6 +3958,7 @@ function DetailPanel(){
             departments={departments}
             users={users}
             ivaRates={ivaRates}
+            paymentTermsOptions={paymentTermsOptions}
             hi={editHi}
             rs={editRs}
             actionColor={editActionColor}
@@ -6486,9 +6533,121 @@ function DefaultApproversBlock({getAuthTok}){
   );
 }
 
+function PaymentTermsOptionsBlock({getAuthTok,onSaved}){
+  const [draft,setDraft]=useState([...DEFAULT_PAYMENT_TERMS_OPTIONS]);
+  const [loading,setLoading]=useState(true);
+  const [loadErr,setLoadErr]=useState("");
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      if(!AUTH_URL){setLoading(false);return;}
+      setLoading(true);
+      setLoadErr("");
+      try{
+        const tok=getAuthTok();
+        if(!tok){setLoadErr("Sesión expirada.");setLoading(false);return;}
+        const r=await fetch(AUTH_URL+"/settings/payment_terms_options",{headers:{Authorization:"Bearer "+tok}});
+        const d=await r.json().catch(()=>({}));
+        if(cancelled)return;
+        if(!r.ok){setLoadErr(d.error||"No se pudieron cargar los plazos.");return;}
+        setDraft(normalizePaymentTermsOptions(d.value));
+      }catch(e){
+        if(!cancelled)setLoadErr(e.message||"Error de red.");
+      }finally{
+        if(!cancelled)setLoading(false);
+      }
+    })();
+    return()=>{cancelled=true;};
+  },[getAuthTok]);
+
+  const updateDay=(idx,val)=>{
+    const n=Math.round(Number(val));
+    if(!Number.isFinite(n))return;
+    setDraft(prev=>{
+      const next=[...prev];
+      next[idx]=Math.max(0,Math.min(365,n));
+      return next;
+    });
+  };
+  const removeDay=(idx)=>setDraft(prev=>prev.filter((_,i)=>i!==idx));
+  const addDay=()=>setDraft(prev=>normalizePaymentTermsOptions([...prev,30]));
+
+  const save=async()=>{
+    if(!AUTH_URL)return;
+    setSaving(true);
+    setLoadErr("");
+    try{
+      const tok=getAuthTok();
+      if(!tok){setLoadErr("Sesión expirada.");return;}
+      const sorted=normalizePaymentTermsOptions(draft);
+      const r=await fetch(AUTH_URL+"/settings/payment_terms_options",{
+        method:"PUT",
+        headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},
+        body:JSON.stringify({value:sorted}),
+      });
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){setLoadErr(d.error||"No se pudo guardar.");return;}
+      const saved=normalizePaymentTermsOptions(d.value);
+      setDraft(saved);
+      try{localStorage.setItem(PAYMENT_TERMS_OPTIONS_LS_KEY,JSON.stringify(saved));}catch(e){}
+      if(typeof onSaved==="function")onSaved(saved);
+      dispatchSolanaToast("Plazos de pago guardados.","info");
+    }catch(e){
+      setLoadErr(e.message||"Error de red.");
+    }finally{
+      setSaving(false);
+    }
+  };
+
+  if(!AUTH_URL){
+    return <p style={{fontSize:11,color:"#9CAA9F"}}>Solo disponible con servidor conectado.</p>;
+  }
+  if(loading){
+    return <div style={{fontSize:12,color:"#9CAA9F"}}>Cargando…</div>;
+  }
+
+  return(
+    <div>
+      <p style={{fontSize:11,color:"#6B7B72",marginBottom:10,lineHeight:1.45}}>
+        Plazos disponibles en facturas con pago diferido (días). El último valor del formulario sigue siendo «Personalizado».
+      </p>
+      {loadErr&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{loadErr}</div>}
+      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+        {draft.map((days,idx)=>(
+          <div key={"pt-edit-"+idx} style={{display:"flex",alignItems:"center",gap:8}}>
+            <input
+              type="number"
+              className="inp"
+              min={0}
+              max={365}
+              step={1}
+              style={{width:88,fontSize:13}}
+              value={days}
+              onChange={e=>updateDay(idx,e.target.value)}
+            />
+            <span style={{fontSize:11,color:"#6B7B72",flex:1}}>días</span>
+            <button type="button" className="btn-secondary" style={{fontSize:10,padding:"2px 8px"}} onClick={()=>removeDay(idx)} disabled={draft.length<=1}>
+              Quitar
+            </button>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+        <button type="button" className="btn-sm" style={{fontSize:10}} onClick={addDay}>Añadir plazo</button>
+        <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} disabled={saving} onClick={()=>void save()}>
+          {saving?"Guardando…":"Guardar plazos"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ── SETTINGS VIEW ─────────────────────────────────────────────────────────── */
 function SettingsView(){
   const{t,user,users,expenses,cats,saveCats,saveUsers,saveExp,
+        setPaymentTermsOptions,
         onSignOut,passwords,savePasswords,ivaRates,saveIvaRates,setUser}=useApp();
   const isSA=user?.role==="superadmin";
   const isAdmin=user?.role==="admin"||user?.role==="superadmin";
@@ -6965,6 +7124,10 @@ function SettingsView(){
         <DefaultApproversBlock getAuthTok={appSettingsToken}/>
       </AccordionSection>
 
+      <AccordionSection title="Plazos de pago">
+        <PaymentTermsOptionsBlock getAuthTok={appSettingsToken} onSaved={setPaymentTermsOptions}/>
+      </AccordionSection>
+
       <AccordionSection title="Parámetros del sistema">
         <ServerSettingsView/>
       </AccordionSection>
@@ -7195,6 +7358,13 @@ function SolanaExpenses(){
   useEffect(()=>{try{if(localStorage.getItem("sol-lang")==null)localStorage.setItem("sol-lang","es");}catch(e){}},[]);
   const t=React.useMemo(()=>mkT(),[]);
   const [ivaRates,setIvaRates]=useState(()=>readIvaRates());
+  const [paymentTermsOptions,setPaymentTermsOptions]=useState(()=>readPaymentTermsOptionsFromLocal());
+  useEffect(()=>{
+    if(!AUTH_URL||!user)return;
+    const tok=API.token||(typeof sessionStorage!=="undefined"?sessionStorage.getItem("sol-session-token"):"")||"";
+    if(!tok)return;
+    void fetchPaymentTermsOptions(AUTH_URL,tok).then(setPaymentTermsOptions);
+  },[user]);
   const saveIvaRates=useCallback(rates=>{
     const n=normalizeIvaRatesPayload(rates);
     lsSet(IVA_RATES_KEY,n);
@@ -8510,6 +8680,7 @@ function SolanaExpenses(){
   /* ── CONTEXT VALUE ──────────────────────────────────────────────────────── */
   const ctxVal={
     t,user,users,expenses,cats,passwords,ivaRates,saveIvaRates,
+    paymentTermsOptions,setPaymentTermsOptions,
     saveUsers,saveExp,saveCats,savePasswords,
     departments,departmentsWithStats,refreshDepartments,defaultDeptId,
     isAdmin,isApprover,isSA,getUser,ledgerLoading,markExpensePaid,
