@@ -5542,6 +5542,120 @@ function DepartmentsSettingsBlock({t}){
   );
 }
 
+function DefaultApproversBlock({getAuthTok}){
+  const [teamUsers,setTeamUsers]=useState([]);
+  const [selected,setSelected]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [loadErr,setLoadErr]=useState("");
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      if(!AUTH_URL){setLoading(false);return;}
+      setLoading(true);
+      setLoadErr("");
+      try{
+        const tok=getAuthTok();
+        if(!tok){setLoadErr("Sesión expirada.");setLoading(false);return;}
+        const headers={Authorization:"Bearer "+tok};
+        const [teamRes,setRes]=await Promise.all([
+          fetch(AUTH_URL+"/auth/team",{headers}),
+          fetch(AUTH_URL+"/settings/default_approvers",{headers}),
+        ]);
+        const teamData=await teamRes.json().catch(()=>({}));
+        const setData=await setRes.json().catch(()=>({}));
+        if(cancelled)return;
+        if(!teamRes.ok){setLoadErr(teamData.error||"No se pudo cargar el equipo.");return;}
+        if(!setRes.ok){setLoadErr(setData.error||"No se pudieron cargar los aprobadores por defecto.");return;}
+        const roster=Array.isArray(teamData.users)?teamData.users.filter(u=>u.accountStatus==="active"&&u.id!=="system"):[];
+        const cur=Array.isArray(setData.value)?setData.value.map(String):[];
+        setTeamUsers(roster);
+        setSelected(cur);
+      }catch(e){
+        if(!cancelled)setLoadErr(e.message||"Error de red.");
+      }finally{
+        if(!cancelled)setLoading(false);
+      }
+    })();
+    return()=>{cancelled=true;};
+  },[getAuthTok]);
+
+  const toggleUser=(userId)=>{
+    setSelected(prev=>prev.includes(userId)?prev.filter(id=>id!==userId):[...prev,userId]);
+  };
+
+  const saveDefaultApprovers=async()=>{
+    if(!AUTH_URL)return;
+    setSaving(true);
+    setLoadErr("");
+    try{
+      const tok=getAuthTok();
+      if(!tok){setLoadErr("Sesión expirada.");return;}
+      const r=await fetch(AUTH_URL+"/settings/default_approvers",{
+        method:"PUT",
+        headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},
+        body:JSON.stringify({value:selected}),
+      });
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){setLoadErr(d.error||"No se pudo guardar.");return;}
+      const saved=Array.isArray(d.value)?d.value.map(String):selected;
+      setSelected(saved);
+      dispatchSolanaToast("Aprobadores por defecto guardados.","info");
+    }catch(e){
+      setLoadErr(e.message||"Error de red.");
+    }finally{
+      setSaving(false);
+    }
+  };
+
+  if(!AUTH_URL){
+    return <p style={{fontSize:11,color:"#9CAA9F"}}>Solo disponible con servidor conectado.</p>;
+  }
+  if(loading){
+    return <div style={{fontSize:12,color:"#9CAA9F"}}>Cargando…</div>;
+  }
+
+  return(
+    <div>
+      <p style={{fontSize:11,color:"#6B7B72",marginBottom:10,lineHeight:1.45}}>
+        Usuarios que aprueban gastos cuando la categoría no tiene aprobadores asignados.
+        Si no eliges ninguno, se usarán todos los administradores activos.
+      </p>
+      {loadErr&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{loadErr}</div>}
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+        {teamUsers.map(u=>{
+          const isSelected=selected.includes(u.id);
+          return(
+            <button
+              key={u.id}
+              type="button"
+              onClick={()=>toggleUser(u.id)}
+              style={{
+                fontSize:11,
+                padding:"3px 10px",
+                borderRadius:20,
+                border:"1px solid",
+                cursor:"pointer",
+                background:isSelected?"#3C0A37":"#FAF7F4",
+                color:isSelected?"#fff":"#6B7B72",
+                borderColor:isSelected?"#3C0A37":"#DDD6CC",
+                fontWeight:isSelected?600:400,
+              }}
+            >
+              {u.name}
+            </button>
+          );
+        })}
+      </div>
+      {teamUsers.length===0&&<div style={{fontSize:11,color:"#9CAA9F",marginBottom:8}}>No hay usuarios activos.</div>}
+      <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} disabled={saving} onClick={()=>void saveDefaultApprovers()}>
+        {saving?"Guardando…":"Guardar aprobadores por defecto"}
+      </button>
+    </div>
+  );
+}
+
 /* ── SETTINGS VIEW ─────────────────────────────────────────────────────────── */
 export function SettingsView(){
   const{t,user,users,expenses,cats,saveCats,saveUsers,saveExp,
@@ -6016,6 +6130,10 @@ export function SettingsView(){
 
 
       <DepartmentsSettingsBlock t={t}/>
+
+      <AccordionSection title="Aprobación por defecto">
+        <DefaultApproversBlock getAuthTok={appSettingsToken}/>
+      </AccordionSection>
 
       <AccordionSection title="Parámetros del sistema">
         <ServerSettingsView/>

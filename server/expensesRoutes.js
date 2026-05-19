@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const db = require('./db');
 const receiptStorage = require('./receiptStorage');
 const settingsCache = require('./lib/settingsCache');
+const { defaultApproverIdsFromDb } = require('./routes/settingsRoutes');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
@@ -99,10 +100,7 @@ function normalizeApprovalRequiredFromBody(body) {
 }
 
 function fallbackApprovers() {
-  // Only used when category has no approvers assigned
-  return db.prepare(
-    "SELECT id FROM users WHERE role IN ('superadmin')"
-  ).all().map(r => r.id);
+  return defaultApproverIdsFromDb(db);
 }
 
 function getApproverIdsForCategory(categoryName) {

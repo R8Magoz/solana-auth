@@ -66,6 +66,24 @@ function validateSettingValue(key, value) {
     return { ok: true, serialized: JSON.stringify(v.normalized) };
   }
 
+  if (key === 'default_approvers') {
+    if (!Array.isArray(value)) {
+      return { ok: false, error: 'default_approvers debe ser un array de IDs de usuario.' };
+    }
+    const ids = [];
+    const seen = new Set();
+    for (const x of value) {
+      const id = String(x || '').trim().slice(0, 128);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+      if (ids.length > 40) {
+        return { ok: false, error: 'Máximo 40 aprobadores por defecto.' };
+      }
+    }
+    return { ok: true, serialized: JSON.stringify(ids) };
+  }
+
   let serialized;
   try {
     serialized = JSON.stringify(value);
@@ -114,6 +132,56 @@ function readCurrencyCodeFromCache() {
   return /^[A-Z]{3}$/.test(s) ? s : 'EUR';
 }
 
+/**
+ * Fallback approver IDs when a category has no approvers assigned.
+ * Uses `default_approvers` from app_settings when non-empty and all IDs exist in users;
+ * otherwise all active admin/superadmin users.
+ * @param {import('better-sqlite3').Database} database
+ * @returns {string[]}
+ */
+function defaultApproverIdsFromDb(database) {
+  let ids = [];
+  try {
+    const cached = settingsCache.get('default_approvers', undefined);
+    if (cached !== undefined) {
+      ids = Array.isArray(cached)
+        ? cached.map((x) => String(x).trim()).filter(Boolean)
+        : [];
+    } else {
+      const row = database
+        .prepare("SELECT value FROM app_settings WHERE key = 'default_approvers'")
+        .get();
+      if (row && row.value) {
+        const parsed = JSON.parse(row.value);
+        ids = Array.isArray(parsed)
+          ? parsed.map((x) => String(x).trim()).filter(Boolean)
+          : [];
+      }
+    }
+  } catch {
+    ids = [];
+  }
+
+  if (ids.length > 0) {
+    const placeholders = ids.map(() => '?').join(',');
+    const found = database
+      .prepare(`SELECT id FROM users WHERE id IN (${placeholders})`)
+      .all(...ids)
+      .map((r) => r.id);
+    const foundSet = new Set(found);
+    if (ids.every((id) => foundSet.has(id))) {
+      return ids;
+    }
+  }
+
+  return database
+    .prepare(
+      "SELECT id FROM users WHERE role IN ('admin', 'superadmin') AND accountStatus = 'active'",
+    )
+    .all()
+    .map((r) => r.id);
+}
+
 function createSettingsRouter(deps) {
   const { db, requireAdminSession, requireAuth, audit } = deps;
   const router = express.Router();
@@ -146,6 +214,19 @@ function createSettingsRouter(deps) {
       updatedAt: row.updatedAt ?? null,
     }));
     res.json({ ok: true, schema: out });
+  });
+
+  // GET /settings/:key — single setting (authenticated)
+  router.get('/settings/:key', requireAuth, (req, res) => {
+    const key = String(req.params.key || '').trim();
+    if (!key) {
+      return res.status(400).json({ error: 'Clave no válida.' });
+    }
+    const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key);
+    if (!row) {
+      return res.status(404).json({ error: 'Ajuste no encontrado.' });
+    }
+    res.json({ ok: true, key, value: parseStoredValue(row.value) });
   });
 
   // GET /settings — returns all app_settings as { key: parsedValue } (any authenticated user; needed for client formatting)
@@ -208,4 +289,4 @@ function createSettingsRouter(deps) {
   return router;
 }
 
-module.exports = { createSettingsRouter };
+module.exports = { createSettingsRouter, defaultApproverIdsFromDb };

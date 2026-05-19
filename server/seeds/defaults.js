@@ -71,6 +71,13 @@ function seedAppSettings(db) {
     'system',
     now,
   );
+  insert.run(
+    'default_approvers',
+    JSON.stringify([]),
+    'User IDs used as fallback approvers when the category has none assigned',
+    'system',
+    now,
+  );
 }
 
 /**
@@ -96,6 +103,11 @@ function ensureMissingAppSettings(db) {
       'report_logo_url',
       JSON.stringify(''),
       'URL of logo to embed in PDF reports (leave empty to use text name)',
+    ],
+    [
+      'default_approvers',
+      JSON.stringify([]),
+      'User IDs used as fallback approvers when the category has none assigned',
     ],
   ];
   for (const [key, value, description] of rows) {
