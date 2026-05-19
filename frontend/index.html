@@ -1444,6 +1444,7 @@ function expenseFromApi(row){
     _apiType:"expense",
     status:row.status,
     amount:eur,
+    currency:row.currency?String(row.currency).trim().toUpperCase().slice(0,3):"EUR",
     description:row.description,
     category:row.category,
     date:row.date,
@@ -1571,6 +1572,47 @@ async function fetchPaymentTermsOptions(authUrl,token){
   }catch(e){
     return readPaymentTermsOptionsFromLocal();
   }
+}
+const DEFAULT_ALLOWED_CURRENCIES=["EUR"];
+const ALLOWED_CURRENCIES_LS_KEY="sol-allowed-currencies";
+function normalizeAllowedCurrencies(raw){
+  const src=Array.isArray(raw)?raw:DEFAULT_ALLOWED_CURRENCIES;
+  const seen=new Set();
+  const out=[];
+  for(const x of src){
+    const c=String(x||"").trim().toUpperCase();
+    if(!/^[A-Z]{3}$/.test(c))continue;
+    if(seen.has(c))continue;
+    seen.add(c);
+    out.push(c);
+  }
+  return out.length?out:[...DEFAULT_ALLOWED_CURRENCIES];
+}
+function readAllowedCurrenciesFromLocal(){
+  try{
+    const raw=localStorage.getItem(ALLOWED_CURRENCIES_LS_KEY);
+    if(raw)return normalizeAllowedCurrencies(JSON.parse(raw));
+  }catch(e){}
+  return [...DEFAULT_ALLOWED_CURRENCIES];
+}
+async function fetchAllowedCurrencies(authUrl,token){
+  if(!authUrl||!token)return readAllowedCurrenciesFromLocal();
+  try{
+    const r=await fetch(authUrl+"/settings/allowed_currencies",{headers:{Authorization:"Bearer "+token}});
+    if(!r.ok)return readAllowedCurrenciesFromLocal();
+    const d=await r.json().catch(()=>({}));
+    const list=normalizeAllowedCurrencies(d.value);
+    try{localStorage.setItem(ALLOWED_CURRENCIES_LS_KEY,JSON.stringify(list));}catch(e){}
+    return list;
+  }catch(e){
+    return readAllowedCurrenciesFromLocal();
+  }
+}
+function pickFormCurrency(allowed,current){
+  const list=normalizeAllowedCurrencies(allowed);
+  const cur=String(current||"").trim().toUpperCase();
+  if(cur&&list.includes(cur))return cur;
+  return list[0]||"EUR";
 }
 function paymentTermOptionLabel(days,t){
   if(days===0)return t?t("expenses.termCash"):"Al contado (0 días)";
@@ -2036,7 +2078,7 @@ function readLocalDepartments(){
     return SEED_DEPARTMENTS.map(d=>({...d,createdAt:Date.now()}));
   }
 }
-const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
+const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",currency:"",
   expenseType:"expense",vendor:"",deferredPayment:false,paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months",proveedor:""};
 const DRAFT_KEY="sol-session-draft";
 
@@ -3123,7 +3165,7 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
 }
   
   
-function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,showSplitError=false,actionColor=G}){
+function SplitAllocationEditor({t,user,users,totalAmount,currencyCode="EUR",splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,showSplitError=false,actionColor=G}){
   const expAmt=Number(totalAmount)||0;
   const ownerId=user?.id||"";
   useEffect(()=>{if(spMode==="percentage")setSpMode("amount");},[spMode,setSpMode]);
@@ -3197,7 +3239,7 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
                       {spMode==="amount"&&(
                         <div style={{display:"flex",alignItems:"center",border:"1px solid #DDD6CC",borderRadius:6,overflow:"hidden"}}>
                           <input className="inp" type="number" step="0.01" min="0" style={{border:"none",outline:"none",padding:"6px 8px",width:72,fontSize:13,textAlign:"right",background:"transparent",borderColor:(showSplitError&&amtMismatch)?"#DC2626":undefined}} value={amt} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,value:Math.max(0,Number(e.target.value)||0)}:x))}/>
-                          <span style={{padding:"0 8px",fontSize:13,color:"#6B7B72",background:"#F5F0EA",borderLeft:"1px solid #DDD6CC",userSelect:"none"}}>€</span>
+                          <span style={{padding:"0 8px",fontSize:13,color:"#6B7B72",background:"#F5F0EA",borderLeft:"1px solid #DDD6CC",userSelect:"none"}}>{currencyCode}</span>
                         </div>
                       )}
                     </div>
@@ -3262,6 +3304,7 @@ function ExpenseFormFields({
   ownerId, ownerUser,
   activeCats, departments, users, ivaRates,
   paymentTermsOptions,
+  allowedCurrencies,
   hi, rs,
   actionColor,
   splitOn, setSplitOn, splits, setSplits, spMode, setSpMode,
@@ -3277,6 +3320,11 @@ function ExpenseFormFields({
 }){
   const termOpts=normalizePaymentTermsOptions(paymentTermsOptions);
   const defaultDeferredMode=firstDeferredPaymentTermMode(termOpts);
+  const currencyList=normalizeAllowedCurrencies(allowedCurrencies);
+  const formCurrency=pickFormCurrency(currencyList,form.currency);
+  React.useEffect(()=>{
+    setForm(p=>p.currency===formCurrency?p:{...p,currency:formCurrency});
+  },[formCurrency,setForm]);
   const expAmt=parseFloat(form.amount)||0;
   const amountNum=parseMoney(form.amount);
   const amountOk=amountNum>0;
@@ -3321,8 +3369,17 @@ function ExpenseFormFields({
           </div>
         )}
         <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label>
-          <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount} style={rs(hi&&!amountOk)}
-            onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amount:v}));}}/>
+          <div style={{display:"flex",gap:6,alignItems:"stretch"}}>
+            <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount} style={{...rs(hi&&!amountOk),flex:1,minWidth:0}}
+              onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amount:v}));}}/>
+            {currencyList.length<=1?(
+              <span style={{display:"inline-flex",alignItems:"center",padding:"0 10px",fontSize:12,fontWeight:700,color:"#4B5E52",background:"#F5F0EA",border:"1px solid #DDD6CC",borderRadius:6,userSelect:"none"}}>{currencyList[0]||"EUR"}</span>
+            ):(
+              <select className="inp" style={{width:72,fontSize:13,padding:"6px 4px"}} value={formCurrency} onChange={e=>setForm(p=>({...p,currency:e.target.value}))}>
+                {currencyList.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+          </div>
         </div>
         <div><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
           <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
@@ -3467,6 +3524,7 @@ function ExpenseFormFields({
         user={ownerUser}
         users={users}
         totalAmount={expAmt}
+        currencyCode={formCurrency}
         splitOn={splitOn}
         setSplitOn={setSplitOn}
         splits={splits}
@@ -3485,7 +3543,7 @@ function NewPanel(){
   const{t,user,cats,form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
         receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,handleReceiptFile,fileRef,
         startCam,submitting,
-        submitExp,resetForm,setPanel,users,calcEqual,ivaRates,departments,paymentTermsOptions}=useApp();
+        submitExp,resetForm,setPanel,users,calcEqual,ivaRates,departments,paymentTermsOptions,allowedCurrencies}=useApp();
   const activeCats=cats.filter(c=>!c.archived);
   const ownerRaw=(form.ownerId&&String(form.ownerId).trim())?String(form.ownerId).trim():"";
   const ownerById=ownerRaw?users.find(u=>String(u.id)===ownerRaw):null;
@@ -3589,6 +3647,7 @@ function NewPanel(){
         users={users}
         ivaRates={ivaRates}
         paymentTermsOptions={paymentTermsOptions}
+        allowedCurrencies={allowedCurrencies}
         hi={hi}
         rs={rs}
         actionColor={actionColor}
@@ -3635,7 +3694,7 @@ function NewPanel(){
 /* ── DETAIL PANEL ──────────────────────────────────────────────────────────── */
 function DetailPanel(){
   const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,markExpensePaid,ivaRates,departments,defaultDeptId,
-        fileRef,startCam,receiptAltHandlerRef,paymentTermsOptions}=useApp();
+        fileRef,startCam,receiptAltHandlerRef,paymentTermsOptions,allowedCurrencies}=useApp();
   const [editMode,setEditMode]=useState(false);
   const [ef,setEf]=useState({});        // edit form fields
   const [efDirty,setEfDirty]=useState(false);
@@ -3800,7 +3859,7 @@ function DetailPanel(){
     const invTerms=e.expenseType==="invoice"?expenseInvoiceTermsFromEntity(e,paymentTermsOptions):{paymentTermMode:"0",invoiceDueDateDirect:""};
     const deferredPayment=e.expenseType==="invoice"&&String(invTerms.paymentTermMode||"0")!=="0";
     const prov=String((e.proveedor!=null&&String(e.proveedor).trim()!=="")?e.proveedor:(e.vendor||"")).trim();
-    setEf({description:e.description,amount:String(e.amount),category:e.category,
+    setEf({description:e.description,amount:String(e.amount),currency:pickFormCurrency(allowedCurrencies,e.currency||getCurrency()),category:e.category,
       date:e.date,notes:e.notes||"",receipt:e.receipt||null,receiptType:e.receiptType||null,
       paidBy:e.paidBy,
       ownerId:e.ownerId||e.submittedBy,
@@ -3893,6 +3952,7 @@ function DetailPanel(){
       paymentTermDays: paymentTermDaysFromForm(ef),
       dueDate: computeInvoiceDueISO(ef) || null,
       proveedor:String(ef.proveedor||"").trim(),
+      currency:pickFormCurrency(allowedCurrencies,ef.currency),
     },e);
     receiptAltHandlerRef.current=null;
     setEditMode(false);setEfDirty(false);
@@ -3959,6 +4019,7 @@ function DetailPanel(){
             users={users}
             ivaRates={ivaRates}
             paymentTermsOptions={paymentTermsOptions}
+            allowedCurrencies={allowedCurrencies}
             hi={editHi}
             rs={editRs}
             actionColor={editActionColor}
@@ -6533,6 +6594,114 @@ function DefaultApproversBlock({getAuthTok}){
   );
 }
 
+function AllowedCurrenciesBlock({getAuthTok,onSaved}){
+  const [draft,setDraft]=useState([...DEFAULT_ALLOWED_CURRENCIES]);
+  const [loading,setLoading]=useState(true);
+  const [loadErr,setLoadErr]=useState("");
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      if(!AUTH_URL){setLoading(false);return;}
+      setLoading(true);
+      setLoadErr("");
+      try{
+        const tok=getAuthTok();
+        if(!tok){setLoadErr("Sesión expirada.");setLoading(false);return;}
+        const r=await fetch(AUTH_URL+"/settings/allowed_currencies",{headers:{Authorization:"Bearer "+tok}});
+        const d=await r.json().catch(()=>({}));
+        if(cancelled)return;
+        if(!r.ok){setLoadErr(d.error||"No se pudieron cargar las monedas.");return;}
+        setDraft(normalizeAllowedCurrencies(d.value));
+      }catch(e){
+        if(!cancelled)setLoadErr(e.message||"Error de red.");
+      }finally{
+        if(!cancelled)setLoading(false);
+      }
+    })();
+    return()=>{cancelled=true;};
+  },[getAuthTok]);
+
+  const sanitizeCode=(val)=>String(val||"").toUpperCase().replace(/[^A-Z]/g,"").slice(0,3);
+  const updateCode=(idx,val)=>{
+    setDraft(prev=>{
+      const next=[...prev];
+      next[idx]=sanitizeCode(val);
+      return next;
+    });
+  };
+  const removeCode=(idx)=>setDraft(prev=>prev.filter((_,i)=>i!==idx));
+  const addCode=()=>setDraft(prev=>[...prev,""]);
+
+  const save=async()=>{
+    if(!AUTH_URL)return;
+    setSaving(true);
+    setLoadErr("");
+    try{
+      const tok=getAuthTok();
+      if(!tok){setLoadErr("Sesión expirada.");return;}
+      const normalized=normalizeAllowedCurrencies(draft.filter(c=>sanitizeCode(c).length===3));
+      if(!normalized.length){setLoadErr("Debe haber al menos una moneda válida (3 letras).");return;}
+      const r=await fetch(AUTH_URL+"/settings/allowed_currencies",{
+        method:"PUT",
+        headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},
+        body:JSON.stringify({value:normalized}),
+      });
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){setLoadErr(d.error||"No se pudo guardar.");return;}
+      const saved=normalizeAllowedCurrencies(d.value);
+      setDraft(saved);
+      try{localStorage.setItem(ALLOWED_CURRENCIES_LS_KEY,JSON.stringify(saved));}catch(e){}
+      if(typeof onSaved==="function")onSaved(saved);
+      dispatchSolanaToast("Monedas permitidas guardadas.","info");
+    }catch(e){
+      setLoadErr(e.message||"Error de red.");
+    }finally{
+      setSaving(false);
+    }
+  };
+
+  if(!AUTH_URL){
+    return <p style={{fontSize:11,color:"#9CAA9F"}}>Solo disponible con servidor conectado.</p>;
+  }
+  if(loading){
+    return <div style={{fontSize:12,color:"#9CAA9F"}}>Cargando…</div>;
+  }
+
+  return(
+    <div>
+      <p style={{fontSize:11,color:"#6B7B72",marginBottom:10,lineHeight:1.45}}>
+        Códigos ISO 4217 disponibles al registrar gastos y facturas (3 letras, A–Z).
+      </p>
+      {loadErr&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{loadErr}</div>}
+      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+        {draft.map((code,idx)=>(
+          <div key={"cur-edit-"+idx} style={{display:"flex",alignItems:"center",gap:8}}>
+            <input
+              className="inp"
+              type="text"
+              maxLength={3}
+              style={{width:72,fontSize:13,textTransform:"uppercase",letterSpacing:"0.06em"}}
+              value={code}
+              onChange={e=>updateCode(idx,e.target.value)}
+            />
+            <button type="button" className="btn-secondary" style={{fontSize:10,padding:"2px 8px"}} onClick={()=>removeCode(idx)} disabled={draft.length<=1}>
+              Quitar
+            </button>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+        <button type="button" className="btn-sm" style={{fontSize:10}} onClick={addCode}>Añadir moneda</button>
+        <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} disabled={saving} onClick={()=>void save()}>
+          {saving?"Guardando…":"Guardar monedas"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PaymentTermsOptionsBlock({getAuthTok,onSaved}){
   const [draft,setDraft]=useState([...DEFAULT_PAYMENT_TERMS_OPTIONS]);
   const [loading,setLoading]=useState(true);
@@ -6647,7 +6816,7 @@ function PaymentTermsOptionsBlock({getAuthTok,onSaved}){
 /* ── SETTINGS VIEW ─────────────────────────────────────────────────────────── */
 function SettingsView(){
   const{t,user,users,expenses,cats,saveCats,saveUsers,saveExp,
-        setPaymentTermsOptions,
+        setPaymentTermsOptions,setAllowedCurrencies,
         onSignOut,passwords,savePasswords,ivaRates,saveIvaRates,setUser}=useApp();
   const isSA=user?.role==="superadmin";
   const isAdmin=user?.role==="admin"||user?.role==="superadmin";
@@ -7128,6 +7297,10 @@ function SettingsView(){
         <PaymentTermsOptionsBlock getAuthTok={appSettingsToken} onSaved={setPaymentTermsOptions}/>
       </AccordionSection>
 
+      <AccordionSection title="Monedas permitidas">
+        <AllowedCurrenciesBlock getAuthTok={appSettingsToken} onSaved={setAllowedCurrencies}/>
+      </AccordionSection>
+
       <AccordionSection title="Parámetros del sistema">
         <ServerSettingsView/>
       </AccordionSection>
@@ -7359,12 +7532,18 @@ function SolanaExpenses(){
   const t=React.useMemo(()=>mkT(),[]);
   const [ivaRates,setIvaRates]=useState(()=>readIvaRates());
   const [paymentTermsOptions,setPaymentTermsOptions]=useState(()=>readPaymentTermsOptionsFromLocal());
+  const [allowedCurrencies,setAllowedCurrencies]=useState(()=>readAllowedCurrenciesFromLocal());
   useEffect(()=>{
     if(!AUTH_URL||!user)return;
     const tok=API.token||(typeof sessionStorage!=="undefined"?sessionStorage.getItem("sol-session-token"):"")||"";
     if(!tok)return;
     void fetchPaymentTermsOptions(AUTH_URL,tok).then(setPaymentTermsOptions);
+    void fetchAllowedCurrencies(AUTH_URL,tok).then(setAllowedCurrencies);
   },[user]);
+  useEffect(()=>{
+    if(!allowedCurrencies?.length)return;
+    setForm(p=>({...p,currency:pickFormCurrency(allowedCurrencies,p.currency)}));
+  },[allowedCurrencies]);
   const saveIvaRates=useCallback(rates=>{
     const n=normalizeIvaRatesPayload(rates);
     lsSet(IVA_RATES_KEY,n);
@@ -8014,7 +8193,7 @@ function SolanaExpenses(){
           /* Server: resolveApproverIds + computeSubmittedVotes(req.userId) — si el autor está en approvalRequired, queda approved en approvalVotesJson (mismo efecto que autoApprove local). */
           const body={
             amount,
-            currency:getCurrency(),
+            currency:pickFormCurrency(allowedCurrencies,form.currency||getCurrency()),
             amountEUR:amount,
             description:form.description,category:form.category,
             date:form.date,
@@ -8199,15 +8378,15 @@ function SolanaExpenses(){
   const resetForm=useCallback(()=>{
     const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
     receiptAltHandlerRef.current=null;
-    setForm({...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId});
+    setForm({...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId,currency:pickFormCurrency(allowedCurrencies,getCurrency())});
     setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
     try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
     try{sessionStorage.removeItem(DRAFT_KEY);}catch(e){}
-  },[user?.id,defaultDeptId,departments]);
+  },[user?.id,defaultDeptId,departments,allowedCurrencies]);
   const openNew  =()=>{
     receiptAltHandlerRef.current=null;
     const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
-    const base={...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId};
+    const base={...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId,currency:pickFormCurrency(allowedCurrencies,getCurrency())};
     let nextForm=base;
     try{
       const saved=sessionStorage.getItem(DRAFT_KEY);
@@ -8681,6 +8860,7 @@ function SolanaExpenses(){
   const ctxVal={
     t,user,users,expenses,cats,passwords,ivaRates,saveIvaRates,
     paymentTermsOptions,setPaymentTermsOptions,
+    allowedCurrencies,setAllowedCurrencies,
     saveUsers,saveExp,saveCats,savePasswords,
     departments,departmentsWithStats,refreshDepartments,defaultDeptId,
     isAdmin,isApprover,isSA,getUser,ledgerLoading,markExpensePaid,

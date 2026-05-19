@@ -121,6 +121,11 @@ function ensureMissingAppSettings(db) {
       JSON.stringify([]),
       'User IDs used as fallback approvers when the category has none assigned',
     ],
+    [
+      'allowed_currencies',
+      JSON.stringify(['EUR', 'USD', 'GBP', 'CHF']),
+      'ISO 4217 codes available in expense and invoice forms',
+    ],
   ];
   for (const [key, value, description] of rows) {
     const exists = db.prepare('SELECT 1 FROM app_settings WHERE key = ?').get(key);

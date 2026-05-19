@@ -476,7 +476,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     } else {
       rule = null;
     }
-    const cur = 'EUR';
+    const curBody = typeof currency === 'string' ? currency.trim().toUpperCase().slice(0, 3) : '';
+    const cur = /^[A-Z]{3}$/.test(curBody) ? curBody : 'EUR';
     let st = typeof status === 'string' ? status.trim().slice(0, 32) : 'submitted';
     if (!['draft', 'submitted'].includes(st)) {
       return res.status(400).json({ error: 'status inicial solo draft o submitted.' });
