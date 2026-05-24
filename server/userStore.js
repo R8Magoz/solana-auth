@@ -55,7 +55,7 @@ function rowToUser(row) {
     deniedReason: row.deniedReason,
     createdAt: row.createdAt,
     seedTag: row.seedTag,
-    mustChangePassword: !!row.mustChangePassword,
+    mustChangePassword: row.mustChangePassword === 1 || row.mustChangePassword === true,
   };
   if (row.avatar != null && row.avatar !== '') u.avatar = row.avatar;
   if (row.tempPasswordExp != null) u.tempPasswordExp = row.tempPasswordExp;
