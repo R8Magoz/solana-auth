@@ -107,7 +107,8 @@ function createAuthRouter(deps) {
    * POST /auth/login
    * Body: { email, password }
    * Returns user object (without passwordHash) only if status === active.
-   * All other statuses return 403 with a clear, non-leaky message.
+   * 401 + "Correo o contraseña incorrectos." — user not found or password mismatch only.
+   * 403 + specific error — accountStatus gates (pending_admin_approval, denied, other).
    */
   router.post('/login', loginLimiter, async (req, res) => {
     const { email, password } = req.body || {};

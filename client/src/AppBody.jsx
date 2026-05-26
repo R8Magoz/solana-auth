@@ -1923,24 +1923,29 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
         });
         clearTimeout(timeoutId);
 
-        const d = await r.json();
+        const d = await r.json().catch(() => ({}));
         console.log("[LOGIN] server response:", r.status, d);
 
         if (!r.ok) {
           setLoading(false);
           clearTimeout(slowHintTimer);
           setSlowServerHint(false);
+          const apiErr = (d && typeof d.error === "string" && d.error.trim())
+            ? d.error.trim()
+            : (r.status === 401 ? tl("login.invalidCreds") : "No se pudo iniciar sesión.");
           if (d.code === "PENDING_APPROVAL") {
+            setErr(apiErr);
             setStatusType("pending_approval");
             setScreen("status");
             return;
           }
           if (d.code === "ACCESS_DENIED") {
+            setErr(apiErr);
             setStatusType("denied");
             setScreen("status");
             return;
           }
-          setErr(d.error || tl("login.invalidCreds"));
+          setErr(apiErr);
           return;
         }
 
@@ -5999,6 +6004,7 @@ export function SettingsView(){
   const [resetFor,setResetFor]=useState(null);
   const [resetPwInput,setResetPwInput]=useState("");
   const [resetBusy,setResetBusy]=useState(false);
+  const [forceActivateMsg,setForceActivateMsg]=useState(null);
   const [appSetMsg,setAppSetMsg]=useState("");
   const [appSetErr,setAppSetErr]=useState("");
   const [backups,setBackups]=useState([]);
@@ -6332,9 +6338,36 @@ export function SettingsView(){
             <div key={u.id}>
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA"}}>
                 <UserAvatar user={u} size={28} fontSize={8}/>
-                <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"N/A"} · {u.role==="superadmin"?t("role.superadmin"):u.role==="admin"?t("role.admin"):t("role.user")}</div></div>
+                <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"N/A"} · {u.role==="superadmin"?t("role.superadmin"):u.role==="admin"?t("role.admin"):t("role.user")}{u.accountStatus&&u.accountStatus!=="active"?` · ${u.accountStatus}`:""}</div></div>
                 <div style={{display:"flex",gap:3,flexShrink:0,flexWrap:"wrap"}}>
-                  <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(u.id);setEf({name:u.name,title:u.title||"",email:u.email||"",phone:u.phone||"",role:u.role,color:u.color});}}>{t("action.edit")}</button>
+                  <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(u.id);setEf({name:u.name,title:u.title||"",email:u.email||"",role:u.role,color:u.color});}}>{t("action.edit")}</button>
+                  {AUTH_URL&&isSA&&u.accountStatus!=="active"&&u.id!==user.id&&(
+                    <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #FCD34D",background:"transparent",color:"#92400E",cursor:"pointer"}}
+                      onClick={()=>void (async()=>{
+                        const tempPassword=window.prompt("Contraseña temporal (mín. 8 caracteres):");
+                        if(tempPassword==null)return;
+                        if(String(tempPassword).length<8){setForceActivateMsg({userId:u.id,ok:false,text:"La contraseña debe tener al menos 8 caracteres."});return;}
+                        setForceActivateMsg({userId:u.id,ok:false,text:"Activando…"});
+                        try{
+                          const tok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+                          if(!tok){setForceActivateMsg({userId:u.id,ok:false,text:"Sesión expirada."});return;}
+                          const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(u.id)+"/force-activate",{
+                            method:"POST",
+                            headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},
+                            body:JSON.stringify({tempPassword:String(tempPassword)}),
+                          });
+                          const d=await r.json().catch(()=>({}));
+                          if(!r.ok){setForceActivateMsg({userId:u.id,ok:false,text:d.error||"No se pudo activar el usuario."});return;}
+                          const merged=d.user?normalizeItem({...u,...d.user},"user"):normalizeItem({...u,accountStatus:"active",approvalStatus:"approved",mustChangePassword:true},"user");
+                          saveUsers(users.map(x=>x.id===u.id?merged:x));
+                          setForceActivateMsg({userId:u.id,ok:true,text:"Usuario activado. Debe cambiar la contraseña en el próximo inicio de sesión."});
+                        }catch(e){
+                          setForceActivateMsg({userId:u.id,ok:false,text:"Error de red."});
+                        }
+                      })()}>
+                      Activar y resetear contraseña
+                    </button>
+                  )}
                   {AUTH_URL&&u.id!==user.id&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #C4B5FD",background:"transparent",color:"#5B21B6",cursor:"pointer"}} onClick={()=>{setResetFor(resetFor===u.id?null:u.id);setResetPwInput("");}}>{t("team.resetPassword")}</button>}
                   {AUTH_URL&&u.id!==user.id&&(
                     u.accountStatus==="active"
@@ -6366,6 +6399,9 @@ export function SettingsView(){
                   {u.id!==user.id&&<button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelC(u.id)}>{t("action.delete")}</button>}
                 </div>
               </div>
+              {forceActivateMsg&&forceActivateMsg.userId===u.id&&(
+                <div style={{padding:"6px 9px",borderRadius:6,fontSize:11,margin:"4px 0",background:forceActivateMsg.ok?"#D1FAE5":"#FEE2E2",color:forceActivateMsg.ok?"#065F46":"#991B1B"}}>{forceActivateMsg.text}</div>
+              )}
               {delC===u.id&&<div style={{background:"#FEE2E2",borderRadius:7,padding:"8px 10px",margin:"4px 0"}}><div style={{fontSize:11,color:"#7F1D1D",marginBottom:6}}>{t("msg.deleteUser")} {u.name}?</div><div style={{display:"flex",gap:6}}><button className="btn-danger" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>void (async()=>{
                 if(AUTH_URL){
                   const tok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");

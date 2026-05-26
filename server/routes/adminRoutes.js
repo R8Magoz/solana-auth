@@ -39,6 +39,34 @@ function createAdminRouter(deps) {
 
   const router = express.Router();
 
+  /**
+   * GET /admin/debug/user?email=
+   * Temporary superadmin debug: inspect account gate fields (no password hash).
+   */
+  router.get('/debug/user', requireAdminSession, (req, res) => {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ error: 'Parámetro email obligatorio.' });
+    }
+    const user = userStore.findUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado.' });
+    }
+    res.json({
+      ok: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        accountStatus: user.accountStatus,
+        approvalStatus: user.approvalStatus,
+        mustChangePassword: !!(user.mustChangePassword === true || user.mustChangePassword === 1),
+        createdAt: user.createdAt,
+      },
+    });
+  });
+
   router.put('/users/:id', requireAdminSession, async (req, res) => {
     const id = String(req.params.id || '').trim();
     const { name, email, phone, title, role, color } = req.body || {};
@@ -365,6 +393,38 @@ function createAdminRouter(deps) {
     userStore.replaceUserById(user);
     audit('admin_restored', { userId: user.id, email: user.email, by: req.userId });
     res.json({ ok: true });
+  });
+
+  /**
+   * POST /admin/users/:id/force-activate
+   * Superadmin only. Activates account and sets a temporary password (must change on login).
+   */
+  router.post('/users/:id/force-activate', requireAdminSession, async (req, res) => {
+    if (req.userRole !== 'superadmin') {
+      return res.status(403).json({ error: 'Solo superadministrador.' });
+    }
+    const id = String(req.params.id || '').trim();
+    const { tempPassword } = req.body || {};
+    if (!tempPassword || typeof tempPassword !== 'string') {
+      return res.status(400).json({ error: 'tempPassword es obligatorio.' });
+    }
+    const pwError = checkPassword(tempPassword);
+    if (pwError) return res.status(400).json({ error: pwError });
+
+    const target = userStore.findUserByIdPublic(id);
+    if (!target) return res.status(404).json({ error: 'Usuario no encontrado.' });
+
+    const hash = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS);
+    userStore.updateUserApproved(id, req.userId);
+    userStore.setPasswordForceChange(id, hash);
+    audit('admin_force_activate_user', {
+      targetId: id,
+      email: target.email,
+      by: req.userId,
+      ip: req.ip,
+    });
+    const fresh = userStore.findUserByIdPublic(id);
+    res.json({ ok: true, user: fresh });
   });
 
   /**
