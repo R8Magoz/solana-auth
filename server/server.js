@@ -101,12 +101,28 @@ if (!RESEND_KEY) {
 const resend = RESEND_KEY ? new Resend(RESEND_KEY) : null;
 
 // ── DATA DIR + DB + AUDIT (SQLite audit_log; one-time import desde audit.log) ─
-const DATA_DIR   = process.env.DATA_DIR
+const DATA_DIR = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
-  : path.join(__dirname, 'data');
+  : '/var/data';
+if (!process.env.DATA_DIR) {
+  console.warn('[SOLANA-AUTH] DATA_DIR env not set; defaulting to', DATA_DIR);
+  process.env.DATA_DIR = DATA_DIR;
+}
+const SQLITE_PATH = path.join(DATA_DIR, 'solana.db');
 const AUDIT_LEGACY = path.join(DATA_DIR, 'audit.log');
 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(DATA_DIR)) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch (e) {
+    console.warn('[SOLANA-AUTH] WARNING: could not create DATA_DIR:', DATA_DIR, e.message);
+  }
+}
+try {
+  fs.accessSync(DATA_DIR, fs.constants.W_OK);
+} catch (e) {
+  console.warn('[SOLANA-AUTH] WARNING: DATA_DIR is not writable:', DATA_DIR, '-', e.message);
+}
 
 const maintenanceLock = require('./lib/maintenanceLock');
 maintenanceLock.unlock();
@@ -545,6 +561,8 @@ scheduleBackups();
 
 httpServer = app.listen(PORT, () => {
   console.log(`[SOLANA-AUTH] Server running on port ${PORT}`);
+  console.log(`[SOLANA-AUTH] DATA_DIR: ${DATA_DIR}`);
+  console.log(`[SOLANA-AUTH] SQLite: ${SQLITE_PATH}`);
   console.log(`[SOLANA-AUTH] Admin email: ${ADMIN_EMAIL}`);
   console.log(`[SOLANA-AUTH] App URL: ${APP_URL}`);
   console.log(`[SOLANA-AUTH] Email: ${resend ? 'Resend active' : 'STUB (no RESEND_API_KEY)'}`);

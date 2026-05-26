@@ -9,11 +9,13 @@ services:
     healthCheckPath: /health
     disk:
       name: solana-data
-      mountPath: /opt/render/project/src/data
+      mountPath: /var/data
       sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: "20.19.0"
+      - key: DATA_DIR
+        value: /var/data
       - key: PORT
         sync: false
         description: HTTP port for the auth server.
