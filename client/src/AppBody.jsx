@@ -15,7 +15,21 @@ import {
   DEF_CATS,
   AUTH_URL,
 } from './constants.js';
-import { mkT } from './i18n.js';
+import { mkT as mkTBase } from './i18n.js';
+
+const TR_LABEL_PATCH = {
+  'action.addExpense': 'Añadir gasto',
+  'dash.addBill': 'Añadir factura',
+  'dash.addExpense': 'Añadir gasto',
+  'settings.categories': 'Categorías y reglas de aprobación',
+  'login.subtitle': 'Gestión de gastos',
+  'settings.apiIntegrations': 'API e integraciones',
+};
+
+const mkT = () => (key, vars = {}) => {
+  if (TR_LABEL_PATCH[key] != null) return TR_LABEL_PATCH[key];
+  return mkTBase()(key, vars);
+};
 import {
   API,
   debugApiRequest,
@@ -30,14 +44,29 @@ import {
   enqueueOfflineOp,
 } from './api.js';
 import {
-  fmt,
-  fmtKpi,
   fmtDate,
   parseMoney,
   inits,
   applyServerSettings,
   getCurrency,
 } from './helpers.js';
+
+/** Unified currency display — es-ES, thousands separator, 2 decimals, € suffix */
+const fmt = (n) =>
+  new Intl.NumberFormat('es-ES', {
+    style: 'currency',
+    currency: getCurrency(),
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: true,
+  }).format(Number(n || 0));
+
+const fmtKpi = (n) => {
+  const full = fmt(n);
+  const idx = full.lastIndexOf(',');
+  if (idx === -1) return { whole: full, cents: '' };
+  return { whole: full.slice(0, idx), cents: full.slice(idx) };
+};
 import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 
 let _confirmHandler = null;
@@ -2406,13 +2435,13 @@ function ExpenseFormFields({
         </div>
         <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={form.category} style={rs(hi&&!String(form.category||"").trim())} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
-            <option value="">{t("label.category")}</option>
+            <option value="" disabled hidden>{t("label.category")}</option>
             {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
           </select>
         </div>
         <div><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={form.departmentId||""} style={rs(hi&&!String(form.departmentId||"").trim())} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))}>
-            <option value="">{departments.length===0?t("msg.deptRequired"):t("label.department")}</option>
+            <option value="" disabled hidden>{departments.length===0?t("msg.deptRequired"):t("label.department")}</option>
             {departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </div>
@@ -3748,7 +3777,7 @@ export function ExpensesView(){
           style={{fontSize:11,color:"#6B7B72",background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit"}}
           onClick={()=>setFiltersOpen(p=>!p)}
         >
-          {filtersOpen ? "Menos filtros" : "Mas filtros"}
+          {filtersOpen ? "Menos filtros" : "Más filtros"}
           {activeFilterCount > 0 && ` (${activeFilterCount})`}
         </button>
       </div>
@@ -3756,14 +3785,14 @@ export function ExpensesView(){
       <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:9}}>
         <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
           value={catFlt} onChange={e=>setCatFlt(e.target.value)}>
-          <option value="">{t("filter.category")}: {t("filter.all")}</option>
+          <option value="all" disabled={catFlt==="all"} hidden={catFlt==="all"}>{t("filter.category")}: {t("filter.all")}</option>
           {cats.filter(c=>!c.archived).map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
         </select>
         <select className="inp"
           style={{width:"auto",fontSize:11,padding:"4px 8px",minWidth:120,cursor:"pointer"}}
           value={submFlt}
           onChange={e=>setSubmFlt(e.target.value)}>
-          <option value="">Enviado por: Todos</option>
+          <option value="all" disabled={submFlt==="all"} hidden={submFlt==="all"}>Enviado por: Todos</option>
           {(users||[])
             .filter(u=>u.accountStatus==="active"&&u.id!=="system")
             .map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
@@ -3799,7 +3828,7 @@ export function ExpensesView(){
           </div>
         </div>
         <button
-          disabled={isDefaultRange && !catFlt && !submFlt && !expSrc}
+          disabled={isDefaultRange && (!catFlt||catFlt==="all") && (!submFlt||submFlt==="all") && !expSrc}
           style={{padding:"5px 14px",borderRadius:7,fontSize:12,fontWeight:600,
             border:"none",cursor:isDefaultRange?"default":"pointer",
             background:isDefaultRange?"#EDE8E0":"#3C0A37",
@@ -3813,7 +3842,7 @@ export function ExpensesView(){
           {!isDefaultRange && (
             <span style={{background:"rgba(255,255,255,0.25)",borderRadius:8,
               fontSize:10,padding:"1px 5px",fontWeight:700}}>
-              {[catFlt,submFlt,!isDefaultRange?"range":"",expSrc].filter(Boolean).length}
+              {[catFlt&&catFlt!=="all"?catFlt:"",submFlt&&submFlt!=="all"?submFlt:"",!isDefaultRange?"range":"",expSrc].filter(Boolean).length}
             </span>
           )}
         </button>
@@ -3823,8 +3852,8 @@ export function ExpensesView(){
               ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
             }catch(e){}
             setExpFlt("all");
-            setCatFlt("");
-            setSubmFlt("");
+            setCatFlt("all");
+            setSubmFlt("all");
             setDateFrom("");
             setDateTo("");
             setExpSrc("");
@@ -4273,6 +4302,7 @@ export function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel}=useApp();
   const [statusFilter, setStatusFilter] = useState("all");
   const [ivaFilter, setIvaFilter] = useState("with");
+  const [exportSel, setExportSel] = useState("");
   const [dateRange,setDateRange]=useState("thisMonth");
   const [trendRows,setTrendRows]=useState(null);
   const [trendLoad,setTrendLoad]=useState(false);
@@ -4412,7 +4442,7 @@ export function ReportsView(){
   const BAR_W = Math.max(3, (BAR_CLUSTER_W - BAR_GAP) / 2);
   const BAR_OFFSET = (GROUP_W - (BAR_W * 2 + BAR_GAP)) / 2;
   const CHART_H = 160;
-  const TOP_PAD = 24;
+  const TOP_PAD = 36;
   const LABEL_H = 20;
   const SVG_H = TOP_PAD + CHART_H + LABEL_H;
   const SVG_W = CHART_W + SIDE_PAD * 2;
@@ -4535,13 +4565,13 @@ export function ReportsView(){
             <option value="without">Sin IVA</option>
           </select>
           <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
-            value="" onChange={e=>{
+            value={exportSel} onChange={e=>{
               const v = e.target.value;
               if (v === "csv") exportCSV(ivaFilter !== "without");
               if (v === "pdf") void downloadPdf();
-              e.target.value = "";
+              setExportSel("");
             }}>
-            <option value="">Exportar…</option>
+            <option value="" disabled hidden>Exportar…</option>
             <option value="csv">Exportar CSV</option>
             {AUTH_URL && <option value="pdf">Exportar PDF</option>}
           </select>
@@ -4636,13 +4666,13 @@ export function ReportsView(){
                     fill="#C4622D" rx="2" opacity="0.9">
                     <title>{m.label} Facturas: {fmt(m.facturas)}</title>
                   </rect>}
-                  {gH>16&&<text x={x+BAR_W/2} y={gY-3}
-                    textAnchor="middle" fontSize="8" fill="#3C0A37" fontWeight="600">
-                    {m.gastos>=1000?(m.gastos/1000).toFixed(1)+"k":m.gastos.toFixed(0)}
+                  {gH>0&&<text x={x+BAR_W/2} y={gY-4}
+                    textAnchor="middle" fontSize="7" fill="#3C0A37" fontWeight="600">
+                    {fmt(m.gastos)}
                   </text>}
-                  {fH>16&&<text x={x+BAR_W+BAR_GAP+BAR_W/2} y={fY-3}
-                    textAnchor="middle" fontSize="8" fill="#C4622D" fontWeight="600">
-                    {m.facturas>=1000?(m.facturas/1000).toFixed(1)+"k":m.facturas.toFixed(0)}
+                  {fH>0&&<text x={x+BAR_W+BAR_GAP+BAR_W/2} y={fY-4}
+                    textAnchor="middle" fontSize="7" fill="#C4622D" fontWeight="600">
+                    {fmt(m.facturas)}
                   </text>}
                   <text x={SIDE_PAD + i * GROUP_W + GROUP_W / 2} y={TOP_PAD+CHART_H+14}
                     textAnchor="middle" fontSize="9" fill="#9CAA9F">
@@ -5434,22 +5464,22 @@ function DepartmentBudgetTrackerSection({t}){
                   <button type="button" onClick={()=>{setBudEdit(d.id);setBudDraft(String(budget));}} style={{
                     border:"none",background:"transparent",padding:0,cursor:"pointer",fontSize:13,fontWeight:700,color:G,
                     textAlign:"left",fontVariantNumeric:"tabular-nums",
-                  }}>{fmt(budget)} {getCurrency()}</button>
+                  }}>{fmt(budget)}</button>
                 ):(
-                  <span style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(budget)} {getCurrency()}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(budget)}</span>
                 )}
               </div>
               <div>
                 <div style={{color:"#9CAA9F",fontSize:9,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{t("settings.deptTrackerMonth")}</div>
-                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmt(sm)} {getCurrency()}</div>
+                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmt(sm)}</div>
               </div>
               <div>
                 <div style={{color:"#9CAA9F",fontSize:9,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{t("settings.deptTrackerYear")}</div>
-                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmt(sy)} {getCurrency()}</div>
+                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmt(sy)}</div>
               </div>
               <div>
                 <div style={{color:"#9CAA9F",fontSize:9,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{t("settings.deptTrackerRemaining")}</div>
-                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums",color:over?"#DC2626":"#1A0E18"}}>{fmt(rem)} {getCurrency()}</div>
+                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums",color:over?"#DC2626":"#1A0E18"}}>{fmt(rem)}</div>
               </div>
             </div>
             <div style={{marginBottom:4}}>
@@ -5603,7 +5633,7 @@ function DepartmentsSettingsBlock({t}){
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
               <div style={{flex:1,minWidth:120}}>
                 <div style={{fontSize:12,fontWeight:600}}>{d.name}</div>
-                <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)} {getCurrency()}</div>
+                <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)}</div>
               </div>
               <div style={{display:"flex",gap:4}}>
                 <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(d.id);setEf({name:d.name,budget:String(d.budget!=null?d.budget:"")});setDelId(null);}}>{t("action.edit")}</button>
@@ -5625,7 +5655,7 @@ function DepartmentsSettingsBlock({t}){
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                   <div style={{flex:1,minWidth:120}}>
                     <div style={{fontSize:12,fontWeight:600}}>{d.name}</div>
-                    <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)} {getCurrency()}</div>
+                    <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)}</div>
                   </div>
                   <div style={{display:"flex",gap:4}}>
                     {isSA&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>void setArchived(d,false)}>Restaurar</button>}
@@ -6133,7 +6163,7 @@ export function SettingsView(){
         {appSetMsg&&<div style={{padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",fontSize:11,marginBottom:8}}>{appSetMsg}</div>}
         {appSetErr&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{appSetErr}</div>}
 
-        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>IVA Rates</div>
+        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Tipos de IVA</div>
         <div style={{marginBottom:8}}>
           <label className="lbl">{t("settings.ivaDefault")}</label>
           <select className="inp" style={{fontSize:14}} value={appIvaDefaultDraft===null?"":String(appIvaDefaultDraft)} onChange={e=>{const v=e.target.value;setAppIvaDefaultDraft(v===""?null:Number(v));}}>
@@ -6386,8 +6416,8 @@ export default function App(){
   const [panel,   setPanel]   =useState(null);
   const [expFlt,  setExpFlt]  =useSessionState("sol-flt-status","all");
   const [expSrc,  setExpSrc]  =useState("");
-  const [catFlt,  setCatFlt]  =useSessionState("sol-flt-cat","");   // category name or ""
-  const [submFlt, setSubmFlt] =useSessionState("sol-flt-subm","");   // userId or ""
+  const [catFlt,  setCatFlt]  =useSessionState("sol-flt-cat","all");   // category name or "all"
+  const [submFlt, setSubmFlt] =useSessionState("sol-flt-subm","all");   // userId or "all"
   const [dateFrom,setDateFrom]=useSessionState("sol-flt-from","");   // YYYY-MM-DD or ""
   const [dateTo,  setDateTo]  =useSessionState("sol-flt-to","");   // YYYY-MM-DD or ""
   const [expKindFlt,setExpKindFlt]=useSessionState("sol-flt-kind","all");
@@ -6398,8 +6428,8 @@ export default function App(){
       ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
     }catch(e){}
     setExpFlt("all");
-    setCatFlt("");
-    setSubmFlt("");
+    setCatFlt("all");
+    setSubmFlt("all");
     setDateFrom("");
     setDateTo("");
     setExpSrc("");
@@ -6491,7 +6521,7 @@ export default function App(){
 
   const clearMyExpenseFilter=useCallback(()=>{
     myExpFilterClearedRef.current=true;
-    setSubmFlt("");
+    setSubmFlt("all");
   },[setSubmFlt]);
   const onSignOut=useCallback(()=>{
     myExpFilterClearedRef.current=false;
@@ -7618,8 +7648,8 @@ export default function App(){
       const matchVendor=e.expenseType==="invoice"&&String(e.vendor||"").toLowerCase().includes(src);
       if(!matchDesc&&!matchCode&&!matchVendor)return false;
     }
-    if(catFlt&&e.category!==catFlt)return false;
-    if(submFlt){
+    if(catFlt&&catFlt!=="all"&&e.category!==catFlt)return false;
+    if(submFlt&&submFlt!=="all"){
       const matchesSubm=e.submittedBy===submFlt;
       const matchesOwner=e.ownerId===submFlt;
       if(!matchesSubm&&!matchesOwner)return false;
@@ -7644,8 +7674,13 @@ export default function App(){
   }
   const filtered=recurringFiltered;
   const dateFilterActive = dateFrom !== "" || dateTo !== "";
-  const activeFilterCount = [catFlt, submFlt, dateFilterActive?"range":"", expKindFlt!=="all"?"kind":"", recurringFlt!=="all"?"recurring":""]
-    .filter(Boolean).length;
+  const activeFilterCount = [
+    catFlt && catFlt !== "all" ? catFlt : "",
+    submFlt && submFlt !== "all" ? submFlt : "",
+    dateFilterActive ? "range" : "",
+    expKindFlt !== "all" ? "kind" : "",
+    recurringFlt !== "all" ? "recurring" : "",
+  ].filter(Boolean).length;
   const isApprover = (cats || []).some(c =>
     Array.isArray(c.approverIds) &&
     c.approverIds.includes(user?.id)
@@ -7873,7 +7908,7 @@ export default function App(){
         <div className="dt-only" style={{width:198,background:G,display:"flex",flexDirection:"column",padding:"15px 8px",flexShrink:0,overflowY:"auto"}}>
           <div style={{padding:"3px 6px 14px",borderBottom:"1px solid rgba(255,255,255,0.09)",marginBottom:9,cursor:"pointer"}} onClick={()=>go("dashboard")}>
             <SolanaLogo theme="light" size="md"/>
-            <div style={{fontSize:8,color:"rgba(250,247,242,0.28)",marginTop:4,paddingLeft:1,letterSpacing:"0.06em",textTransform:"uppercase"}}>Gestión de Gastos</div>
+            <div style={{fontSize:8,color:"rgba(250,247,242,0.28)",marginTop:4,paddingLeft:1,letterSpacing:"0.06em",textTransform:"uppercase"}}>Gestión de gastos</div>
           </div>
           {navItems.map(n=>(
             <div key={n.id} onClick={()=>go(n.id)} style={{padding:"6px 9px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:500,marginBottom:2,transition:"background 0.15s",background:view===n.id?"rgba(250,247,242,0.12)":"transparent",color:view===n.id?"#FAF7F2":"rgba(250,247,242,0.5)",borderLeft:`3px solid ${view===n.id?T:"transparent"}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
