@@ -1538,6 +1538,16 @@ const AUTH={
     padding:"2px 0"},
   muted:{fontSize:11,color:"#9CAA9F",textAlign:"center",marginTop:12},
 };
+const PW_TOGGLE_STYLE={
+  position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",
+  background:"none",border:"none",color:"#9CAA9F",fontSize:11,cursor:"pointer",
+  fontFamily:"inherit",fontWeight:600,padding:"2px 4px",
+};
+const SETTINGS_PW_TOGGLE_STYLE={
+  position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",
+  background:"none",border:"none",color:"#9CAA9F",fontSize:11,cursor:"pointer",
+  fontFamily:"inherit",fontWeight:600,padding:"2px 4px",
+};
 
 /* Focused input helper — returns className + onFocus/onBlur + style */
 function useInpFocus(){
@@ -1749,53 +1759,62 @@ function SignupScreen({onBack}){
    Shown immediately after login when user.mustChangePassword === true.
    Blocks all app access until a new password is set.
 ─────────────────────────────────────────────────────────────────────────── */
-function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, onDone}){
+function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, onDone, onSignOut}){
   const t=React.useMemo(()=>mkT(),[]);
   const [nw,setNw]=useState("");
   const [cn,setCn]=useState("");
   const [msg,setMsg]=useState("");
   const [ok,setOk]=useState(false);
+  const [saving,setSaving]=useState(false);
   const [showNw,setShowNw]=useState(false);
   const [showCn,setShowCn]=useState(false);
 
   const doChange=async()=>{
+    if(saving||ok)return;
     setMsg("");
     if(nw.length<8){setMsg(t("forceChange.tooShort"));return;}
     if(COMMON_PASSWORDS.has(nw.toLowerCase())){setMsg(t("forceChange.common"));return;}
     if(nw!==cn){setMsg(t("forceChange.mismatch"));return;}
 
-    // 1. Persist to backend (clears mustChangePassword in users.json — prevents loop on next login)
-    if(AUTH_URL){
-      const sessionToken=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
-      if(!sessionToken){
-        setMsg(t("msg.sessionExpired"));
-        return;
-      }
-      try{
+    setSaving(true);
+    try{
+      if(AUTH_URL){
+        const sessionToken=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+        if(!sessionToken){
+          setMsg(t("msg.sessionExpired"));
+          return;
+        }
         const r=await fetch(AUTH_URL+"/auth/change-password",{
           method:"POST",
           headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionToken},
           body:JSON.stringify({userId:user.id,newPassword:nw}),
         });
         const d=await r.json().catch(()=>({}));
-        if(!r.ok){setMsg(d.error||t("forceChange.tooShort"));return;}
-      }catch{
-        setMsg(t("signup.serverDown"));
-        return;
+        if(!r.ok||!d.ok){
+          setMsg(d.error||t("msg.genericShort"));
+          return;
+        }
+      }else{
+        const existing=passwords?.[user.id];
+        if(existing&&nw===existing){
+          setMsg("La nueva contraseña no puede ser igual a la anterior.");
+          return;
+        }
       }
+
+      savePasswords({...passwords,[user.id]:nw});
+      const updated=users.map(u=>u.id===user.id?{...u,mustChangePassword:false}:u);
+      saveUsers(updated);
+      appLog("info","forced_password_changed",{userId:user.id});
+      setOk(true);
+      dispatchSolanaToast("Contraseña actualizada correctamente.", "success", 5000);
+      setTimeout(()=>onDone({...user,mustChangePassword:false}),600);
+    }catch{
+      setMsg(t("signup.serverDown"));
+    }finally{
+      setSaving(false);
     }
-
-    // 2. Update local password store and user record (keeps local fallback in sync)
-    savePasswords({...passwords,[user.id]:nw});
-    const updated=users.map(u=>u.id===user.id?{...u,mustChangePassword:false}:u);
-    saveUsers(updated);
-    appLog("info","forced_password_changed",{userId:user.id});
-    setOk(true);
-    dispatchSolanaToast("Contraseña actualizada correctamente.", "success", 5000);
-    setTimeout(()=>onDone({...user,mustChangePassword:false}),600);
   };
-
-  const toggleStyle={position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#9CAA9F",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600,padding:"2px 4px"};
 
   return(
     <div style={AUTH.page}>
@@ -1811,8 +1830,8 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
             <div style={{position:"relative"}}>
               <input className="auth-inp" style={{...AUTH.inp,paddingRight:52}} type={showNw?"text":"password"} value={nw}
                 onChange={e=>{setNw(e.target.value);setMsg("");}}
-                onKeyDown={e=>e.key==="Enter"&&doChange()} autoFocus/>
-              <button type="button" style={toggleStyle} onClick={()=>setShowNw(v=>!v)}>{showNw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+                onKeyDown={e=>e.key==="Enter"&&!saving&&doChange()} autoFocus disabled={saving||ok}/>
+              <button type="button" style={PW_TOGGLE_STYLE} onClick={()=>setShowNw(v=>!v)}>{showNw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
             </div>
           </div>
           <div style={{marginBottom:16}}>
@@ -1820,15 +1839,20 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
             <div style={{position:"relative"}}>
               <input className="auth-inp" style={{...AUTH.inp,paddingRight:52}} type={showCn?"text":"password"} value={cn}
                 onChange={e=>{setCn(e.target.value);setMsg("");}}
-                onKeyDown={e=>e.key==="Enter"&&doChange()}/>
-              <button type="button" style={toggleStyle} onClick={()=>setShowCn(v=>!v)}>{showCn?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+                onKeyDown={e=>e.key==="Enter"&&!saving&&doChange()} disabled={saving||ok}/>
+              <button type="button" style={PW_TOGGLE_STYLE} onClick={()=>setShowCn(v=>!v)}>{showCn?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
             </div>
           </div>
           {msg&&<div style={AUTH.errorBanner}>{msg}</div>}
           {ok&&<div style={{...AUTH.infoBanner,marginBottom:10,fontSize:11}}>{t("msg.passwordChanged")}</div>}
-          <button style={AUTH.btnPrimary} onClick={doChange} disabled={ok}>
-            {t("forceChange.submit")}
+          <button style={AUTH.btnPrimary} onClick={()=>void doChange()} disabled={ok||saving}>
+            {saving?"…":t("forceChange.submit")}
           </button>
+          {onSignOut&&(
+            <div style={{marginTop:16,textAlign:"center"}}>
+              <button type="button" style={AUTH.link} onClick={()=>onSignOut()}>{t("nav.signOut")}</button>
+            </div>
+          )}
         </div>
         <div style={AUTH.muted}>Solana · Vilanova i la Geltrú · est. 2026</div>
       </div>
@@ -2104,19 +2128,7 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
             />
             <button
               type="button"
-              style={{
-                position: "absolute",
-                right: 10,
-                bottom: 10,
-                background: "none",
-                border: "none",
-                color: "#9CAA9F",
-                fontSize: 11,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                fontWeight: 600,
-                padding: "2px 4px"
-              }}
+              style={PW_TOGGLE_STYLE}
               onClick={() => setShowPw(v => !v)}
             >
               {showPw ? tl("login.hidePw") : tl("login.showPw")}
@@ -5671,12 +5683,16 @@ export function SettingsView(){
   const [archC,setArchC]=useState(null);
   // password
   const [pwForm,setPwForm]=useState({cur:"",nw:"",cn:""});
+  const [showPwCur,setShowPwCur]=useState(false);
+  const [showPwNw,setShowPwNw]=useState(false);
+  const [showPwCn,setShowPwCn]=useState(false);
   const [pwMsg,setPwMsg]=useState("");
   const [pwOk, setPwOk] =useState(false);
   const [pwSaving,setPwSaving]=useState(false);
   const [profileSaving,setProfileSaving]=useState(false);
   const [resetFor,setResetFor]=useState(null);
   const [resetPwInput,setResetPwInput]=useState("");
+  const [showResetPw,setShowResetPw]=useState(false);
   const [resetBusy,setResetBusy]=useState(false);
   const [appSetMsg,setAppSetMsg]=useState("");
   const [appSetErr,setAppSetErr]=useState("");
@@ -5868,16 +5884,22 @@ export function SettingsView(){
           body:JSON.stringify({userId:user.id,newPassword:pwForm.nw,currentPassword:pwForm.cur}),
         });
         const d=await r.json().catch(()=>({}));
-        if(!r.ok){setPwMsg(d.error||t("msg.genericShort"));return;}
+        if(!r.ok||!d.ok){setPwMsg(d.error||t("msg.genericShort"));return;}
       }catch{
         setPwMsg(t("signup.serverDown"));
         return;
       }finally{
         setPwSaving(false);
       }
-    }else if(existing&&pwForm.cur!==existing){
-      setPwMsg(t("msg.passwordWrong"));
-      return;
+    }else{
+      if(existing&&pwForm.cur!==existing){
+        setPwMsg(t("msg.passwordWrong"));
+        return;
+      }
+      if(existing&&pwForm.nw===existing){
+        setPwMsg("La nueva contraseña no puede ser igual a la anterior.");
+        return;
+      }
     }
 
     savePasswords({...passwords,[user.id]:pwForm.nw});
@@ -5928,9 +5950,29 @@ export function SettingsView(){
         <p style={{fontSize:11,color:"#6B7B72",marginBottom:9}}>{t("settings.passwordDesc")}</p>
         {!AUTH_URL&&!passwords?.[user.id]&&<div style={{background:"#FEF3C7",borderRadius:6,padding:"6px 9px",fontSize:10,color:"#92400E",marginBottom:8}}>{t("msg.passwordNoExisting")}</div>}
         <div style={{display:"grid",gap:7}}>
-          {(AUTH_URL||passwords?.[user.id])&&<div><label className="lbl">{t("label.currentPassword")}</label><input className="inp" type="password" value={pwForm.cur} onChange={e=>setPwForm(p=>({...p,cur:e.target.value}))} autoComplete="current-password"/></div>}
-          <div><label className="lbl">{t("label.newPassword")}</label><input className="inp" type="password" value={pwForm.nw} onChange={e=>setPwForm(p=>({...p,nw:e.target.value}))}/></div>
-          <div><label className="lbl">{t("label.confirmPassword")}</label><input className="inp" type="password" value={pwForm.cn} onChange={e=>setPwForm(p=>({...p,cn:e.target.value}))}/></div>
+          {(AUTH_URL||passwords?.[user.id])&&(
+            <div>
+              <label className="lbl">{t("label.currentPassword")}</label>
+              <div style={{position:"relative"}}>
+                <input className="inp" style={{paddingRight:52}} type={showPwCur?"text":"password"} value={pwForm.cur} onChange={e=>setPwForm(p=>({...p,cur:e.target.value}))} autoComplete="current-password"/>
+                <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwCur(v=>!v)}>{showPwCur?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="lbl">{t("label.newPassword")}</label>
+            <div style={{position:"relative"}}>
+              <input className="inp" style={{paddingRight:52}} type={showPwNw?"text":"password"} value={pwForm.nw} onChange={e=>setPwForm(p=>({...p,nw:e.target.value}))} autoComplete="new-password"/>
+              <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwNw(v=>!v)}>{showPwNw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+            </div>
+          </div>
+          <div>
+            <label className="lbl">{t("label.confirmPassword")}</label>
+            <div style={{position:"relative"}}>
+              <input className="inp" style={{paddingRight:52}} type={showPwCn?"text":"password"} value={pwForm.cn} onChange={e=>setPwForm(p=>({...p,cn:e.target.value}))} autoComplete="new-password"/>
+              <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwCn(v=>!v)}>{showPwCn?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+            </div>
+          </div>
         </div>
         {pwMsg&&<div style={{marginTop:7,fontSize:11,padding:"5px 8px",borderRadius:6,background:pwOk?"#D1FAE5":"#FEE2E2",color:pwOk?"#065F46":"#7F1D1D"}}>{pwMsg}</div>}
         <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={pwSaving} onClick={()=>void savePw()}>{pwSaving?"…":(passwords?.[user.id]?t("action.changePassword"):t("action.setPassword"))}</button>
@@ -6061,7 +6103,10 @@ export function SettingsView(){
                 <div style={{background:"#F5F3FF",borderRadius:7,padding:"10px 12px",margin:"4px 0",border:"1px solid #DDD6EE"}}>
                   <div style={{fontSize:10,color:"#6B7B72",marginBottom:8,lineHeight:1.4}}>{t("team.resetPasswordHint")}</div>
                   <label className="lbl">{t("label.tempPassword")}</label>
-                  <input className="inp" style={{fontSize:14,marginBottom:8}} type="password" value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
+                  <div style={{position:"relative"}}>
+                    <input className="inp" style={{fontSize:14,marginBottom:8,paddingRight:52}} type={showResetPw?"text":"password"} value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
+                    <button type="button" style={{...SETTINGS_PW_TOGGLE_STYLE,top:"42%"}} onClick={()=>setShowResetPw(v=>!v)}>{showResetPw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+                  </div>
                   <div style={{display:"flex",gap:6}}>
                     <button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} disabled={resetBusy} onClick={async()=>{
                       if(!resetPwInput||resetPwInput.length<8){dispatchSolanaToast(t("msg.tempPwRequired"),"error");return;}
@@ -7596,6 +7641,7 @@ export default function App(){
   if(user.mustChangePassword)return<ForcePasswordChange
     user={user} passwords={passwords} savePasswords={savePasswords}
     saveUsers={saveUsers} users={users}
+    onSignOut={onSignOut}
     onDone={updated=>{setUser(updated);appLog("info","auth:forced_pw_done",{userId:updated.id});}}
   />;
   // auth:session logged only at login transition — not on every render
