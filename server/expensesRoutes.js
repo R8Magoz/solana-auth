@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('./db');
+const { warnIfNoChanges } = require('./userStore');
 const receiptStorage = require('./receiptStorage');
 const settingsCache = require('./lib/settingsCache');
 
@@ -134,7 +135,7 @@ function resolveApproverIdsForCreate(body) {
 function computeSubmittedVotes(submitterId, approverIds) {
   const votes = {};
   if (approverIds.includes(submitterId)) votes[submitterId] = 'approved';
-  const allDone = approverIds.length > 0 && approverIds.every((id) => votes[id] === 'approved');
+  const allDone = allApproversVotedApproved(approverIds, votes);
   return { votes, allDone };
 }
 
@@ -176,6 +177,17 @@ function remapVotesWithCanonicalKeys(votesRaw, userStore) {
     out[cid] = v;
   }
   return out;
+}
+
+function anyRejectionVote(votes) {
+  if (!votes || typeof votes !== 'object') return false;
+  return Object.values(votes).some((v) => v === 'rejected');
+}
+
+/** True only when every listed approver has an explicit approve vote. */
+function allApproversVotedApproved(approverIds, votes) {
+  if (!Array.isArray(approverIds) || approverIds.length === 0) return false;
+  return approverIds.every((id) => votes[id] === 'approved');
 }
 
 function userIdInRawApproverList(approverTokens, userId, userStore) {
@@ -679,14 +691,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   router.post('/:id/comments', (req, res) => {
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
-    const canComment =
-      exp.userId === req.userId ||
-      exp.ownerId === req.userId ||
-      isAdminRole(req.userRole) ||
-      parseJsonArray(exp.approversJson).includes(req.userId);
-    if (!canComment) {
-      return res.status(403).json({ error: 'No autorizado para comentar.' });
-    }
     if (exp.status === 'deleted') {
       return res.status(400).json({ error: 'Gasto eliminado.' });
     }
@@ -704,11 +708,14 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     };
     list.push(entry);
     const now = Date.now();
-    db.prepare('UPDATE expenses SET commentsJson = ?, updatedAt = ? WHERE id = ?').run(
+    const info = db.prepare('UPDATE expenses SET commentsJson = ?, updatedAt = ? WHERE id = ?').run(
       JSON.stringify(list),
       now,
       exp.id,
     );
+    if (warnIfNoChanges(info, 'expense_comment', { expenseId: exp.id, userId: req.userId })) {
+      return res.status(404).json({ error: 'Gasto no encontrado.' });
+    }
     const updated = getExpenseById(exp.id);
     audit('expense_comment_added', { userId: req.userId, targetId: exp.id });
     res.json({ ok: true, expense: updated });
@@ -846,7 +853,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     const curExpCur = String(exp.currency || 'EUR').toUpperCase();
-    const totalForIva = curExpCur === 'EUR'
+    const nextAmountEUR = curExpCur === 'EUR'
       ? nextAmount
       : (exp.amountEUR != null && Number.isFinite(Number(exp.amountEUR)) ? Number(exp.amountEUR) : nextAmount);
 
@@ -855,7 +862,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (Number.isNaN(nextIvaRate)) nextIvaRate = null;
     if (Number.isNaN(nextIvaAmount)) nextIvaAmount = null;
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'ivaRate')) {
-      const iv = ivaFromBody(req.body, totalForIva);
+      const iv = ivaFromBody(req.body, curExpCur === 'EUR' ? nextAmount : nextAmountEUR);
       if (iv.error) return res.status(400).json({ error: iv.error });
       nextIvaRate = iv.ivaRate;
       nextIvaAmount = iv.ivaAmount;
@@ -907,9 +914,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       }
     }
 
-    db.prepare(`
+    const updateInfo = db.prepare(`
       UPDATE expenses SET
-        amount = ?, description = ?, category = ?, date = ?, notes = ?, status = ?, departmentId = ?,
+        amount = ?, amountEUR = ?, description = ?, category = ?, date = ?, notes = ?, status = ?, departmentId = ?,
         approversJson = ?, approvalVotesJson = ?,
         paidByJson = ?, splitMode = ?,
         ivaRate = ?, ivaAmount = ?,
@@ -922,7 +929,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         updatedAt = ?
       WHERE id = ?
     `).run(
-      nextAmount, nextDesc, nextCat, nextDate, nextNotes, finalStatus, nextDeptId,
+      nextAmount, nextAmountEUR, nextDesc, nextCat, nextDate, nextNotes, finalStatus, nextDeptId,
       nextApproversJson, nextVotesJson,
       nextPaidByJson, nextSplitMode,
       nextIvaRate, nextIvaAmount,
@@ -935,6 +942,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       String(req.body.cadenceCustomMonths || '1').trim().slice(0, 8),
       now, exp.id,
     );
+    if (warnIfNoChanges(updateInfo, 'expense_update', { expenseId: exp.id, userId: req.userId })) {
+      return res.status(404).json({ error: 'Gasto no encontrado.' });
+    }
     // If deferredPayment changed, sync paymentStatus accordingly
     const deferredChanged = exp.deferredPayment !== nextDeferredPayment;
     if (nextExpenseType === 'invoice' && deferredChanged) {
@@ -1006,22 +1016,26 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       if (!defaultIds.includes(req.userId) && !isAdminRole(req.userRole)) {
         return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
       }
-      const votes = {};
+      const votes = remapVotesWithCanonicalKeys(parseJsonObject(exp.approvalVotesJson), userStore);
       votes[req.userId] = 'approved';
-      const allDone = defaultIds.length > 0 && defaultIds.every(id => votes[id] === 'approved');
+      const allDone = allApproversVotedApproved(defaultIds, votes);
       if (allDone) {
-        db.prepare(`UPDATE expenses SET status='approved', approvedBy=?, approvedAt=?,
+        const approveInfo = db.prepare(`UPDATE expenses SET status='approved', approversJson=?, approvalVotesJson=?, approvedBy=?, approvedAt=?,
           rejectedBy=NULL, rejectedAt=NULL, rejectionNote=NULL, updatedAt=? WHERE id=?`)
-          .run(req.userId, now, now, exp.id);
+          .run(JSON.stringify(defaultIds), JSON.stringify(votes), req.userId, now, now, exp.id);
+        if (warnIfNoChanges(approveInfo, 'expense_approve', { expenseId: exp.id, userId: req.userId })) {
+          return res.status(404).json({ error: 'Gasto no encontrado.' });
+        }
         if (exp.expenseType === 'invoice' && exp.paymentStatus === 'pending_approval') {
-          // Only flip to 'unpaid' if this was a deferred payment invoice.
-          // If paymentStatus is already 'paid' (non-deferred), leave it alone.
           db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
             .run(Date.now(), exp.id);
         }
       } else {
-        db.prepare(`UPDATE expenses SET approversJson=?, approvalVotesJson=?, updatedAt=? WHERE id=?`)
+        const partialInfo = db.prepare(`UPDATE expenses SET status='submitted', approversJson=?, approvalVotesJson=?, updatedAt=? WHERE id=?`)
           .run(JSON.stringify(defaultIds), JSON.stringify(votes), now, exp.id);
+        if (warnIfNoChanges(partialInfo, 'expense_approve_partial', { expenseId: exp.id, userId: req.userId })) {
+          return res.status(404).json({ error: 'Gasto no encontrado.' });
+        }
       }
       const updated = getExpenseById(exp.id);
       audit('expense_approved', { userId: req.userId, targetId: exp.id });
@@ -1048,10 +1062,38 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const approversCanon = canonicalizeApproverIds(approversRaw, userStore);
     const votes = remapVotesWithCanonicalKeys(parseJsonObject(exp.approvalVotesJson), userStore);
     votes[adminId] = 'approved';
-    const allDone = approversCanon.length > 0 && approversCanon.every((id) => votes[id] === 'approved');
+
+    if (anyRejectionVote(votes)) {
+      const rejectInfo = db.prepare(`
+        UPDATE expenses SET
+          status = 'rejected',
+          approversJson = ?,
+          approvalVotesJson = ?,
+          rejectedBy = ?, rejectedAt = ?, rejectionNote = COALESCE(rejectionNote, ?),
+          approvedBy = NULL, approvedAt = NULL,
+          updatedAt = ?
+        WHERE id = ?
+      `).run(
+        JSON.stringify(approversCanon),
+        JSON.stringify(votes),
+        adminId,
+        now,
+        'Rechazado por voto de aprobador.',
+        now,
+        exp.id,
+      );
+      if (warnIfNoChanges(rejectInfo, 'expense_approve_reject_vote', { expenseId: exp.id, userId: adminId })) {
+        return res.status(404).json({ error: 'Gasto no encontrado.' });
+      }
+      const updated = getExpenseById(exp.id);
+      audit('expense_rejected', { userId: adminId, targetId: exp.id, via: 'approval_vote' });
+      return res.json({ ok: true, expense: updated });
+    }
+
+    const allDone = allApproversVotedApproved(approversCanon, votes);
 
     if (allDone) {
-      db.prepare(`
+      const approveInfo = db.prepare(`
         UPDATE expenses SET
           status = 'approved',
           approversJson = ?,
@@ -1061,17 +1103,21 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
           updatedAt = ?
         WHERE id = ?
       `).run(JSON.stringify(approversCanon), JSON.stringify(votes), adminId, now, now, exp.id);
+      if (warnIfNoChanges(approveInfo, 'expense_approve', { expenseId: exp.id, userId: adminId })) {
+        return res.status(404).json({ error: 'Gasto no encontrado.' });
+      }
       if (exp.expenseType === 'invoice' && exp.paymentStatus === 'pending_approval') {
-        // Only flip to 'unpaid' if this was a deferred payment invoice.
-        // If paymentStatus is already 'paid' (non-deferred), leave it alone.
         db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
           .run(Date.now(), exp.id);
       }
     } else {
-      db.prepare(`
-        UPDATE expenses SET approversJson = ?, approvalVotesJson = ?, updatedAt = ?
+      const partialInfo = db.prepare(`
+        UPDATE expenses SET status = 'submitted', approversJson = ?, approvalVotesJson = ?, updatedAt = ?
         WHERE id = ?
       `).run(JSON.stringify(approversCanon), JSON.stringify(votes), now, exp.id);
+      if (warnIfNoChanges(partialInfo, 'expense_approve_partial', { expenseId: exp.id, userId: adminId })) {
+        return res.status(404).json({ error: 'Gasto no encontrado.' });
+      }
     }
     const updated = getExpenseById(exp.id);
     const approveNote = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : undefined;
@@ -1101,15 +1147,19 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       }
       const votes = {};
       votes[req.userId] = 'rejected';
-      db.prepare(`
+      const rejectInfo = db.prepare(`
         UPDATE expenses SET
           status = 'rejected',
           approversJson = ?,
           approvalVotesJson = ?,
           rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
+          approvedBy = NULL, approvedAt = NULL,
           updatedAt = ?
         WHERE id = ?
       `).run(JSON.stringify(defaultIds), JSON.stringify(votes), req.userId, now, note, now, exp.id);
+      if (warnIfNoChanges(rejectInfo, 'expense_reject', { expenseId: exp.id, userId: req.userId })) {
+        return res.status(404).json({ error: 'Gasto no encontrado.' });
+      }
       const updated = getExpenseById(exp.id);
       audit('expense_rejected', { userId: req.userId, targetId: exp.id, note });
       return res.json({ ok: true, expense: updated });
@@ -1126,7 +1176,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       }
     }
 
-    db.prepare(`
+    const rejectInfo = db.prepare(`
       UPDATE expenses SET
         status = 'rejected',
         rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
@@ -1135,7 +1185,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         approvalVotesJson = ?,
         updatedAt = ?
       WHERE id = ?
-    `).run(adminId, now, note, JSON.stringify({}), now, exp.id);
+    `).run(adminId, now, note, JSON.stringify({ [adminId]: 'rejected' }), now, exp.id);
+    if (warnIfNoChanges(rejectInfo, 'expense_reject', { expenseId: exp.id, userId: adminId })) {
+      return res.status(404).json({ error: 'Gasto no encontrado.' });
+    }
     if (exp.expenseType === 'invoice' &&
         exp.paymentStatus === 'unpaid') {
       db.prepare("UPDATE expenses SET paymentStatus = 'pending_approval', updatedAt = ? WHERE id = ?")

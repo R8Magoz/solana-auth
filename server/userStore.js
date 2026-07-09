@@ -314,6 +314,13 @@ function countUsers() {
   return db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
 }
 
+/** Log when a SQLite UPDATE silently matches zero rows (a common data-integrity footgun). */
+function warnIfNoChanges(info, context, detail) {
+  if (!info || info.changes !== 0) return false;
+  console.error(`[${context}] UPDATE matched 0 rows`, detail || '');
+  return true;
+}
+
 module.exports = {
   insertUser,
   insertUsersFromJsonRows,
@@ -338,6 +345,7 @@ module.exports = {
   upsertSeedUser,
   deleteUsersWithSeedTag,
   countUsers,
+  warnIfNoChanges,
   userToParams,
   rowToUser,
 };

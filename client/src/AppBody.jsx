@@ -333,6 +333,13 @@ const effectiveExpenseApproverIds=(exp,cats,users)=>{
     .map(u => u.id);
 };
 const getItemStatus=(item,cats,users)=>{
+  if (item && item._apiType === 'expense' && item.status) {
+    const s = String(item.status);
+    if (s === 'deleted') return 'deleted';
+    if (s === 'rejected') return 'rejected';
+    if (s === 'approved') return 'approved';
+    if (s === 'submitted' || s === 'draft') return 'pending';
+  }
   if (item && item._apiType === 'expense' && item.status === 'rejected') return 'rejected';
   if (item && item._apiType === 'expense' && item.status === 'approved') return 'approved';
   if (item && item._apiType === 'expense' && item.status === 'deleted') return 'deleted';
@@ -502,7 +509,8 @@ function expenseFromApi(row){
     id:row.id,
     _apiType:"expense",
     status:row.status,
-    amount:eur,
+    amount:amt,
+    amountEUR:eur,
     description:row.description,
     category:row.category,
     date:row.date,
@@ -515,6 +523,10 @@ function expenseFromApi(row){
     receiptType:row.receiptPath?guessMimeFromReceiptPath(row.receiptPath):null,
     receiptPath:row.receiptPath||null,
     rejectionNote:row.rejectionNote||null,
+    approvedBy:row.approvedBy||null,
+    approvedAt:row.approvedAt!=null?Number(row.approvedAt):null,
+    rejectedBy:row.rejectedBy||null,
+    rejectedAt:row.rejectedAt!=null?Number(row.rejectedAt):null,
     itemCode:row.id,
     approvals,
     approvalRequired,
