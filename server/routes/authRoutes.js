@@ -299,8 +299,15 @@ function createAuthRouter(deps) {
     const emailRaw = body.email != null ? String(body.email).trim().toLowerCase().slice(0, 254) : '';
     const phone = body.phone != null ? String(body.phone).trim().slice(0, 64) : '';
     let avatar = body.avatar;
+    const AVATAR_MAX_LEN = 500000;
     if (avatar != null && typeof avatar === 'string') {
-      avatar = avatar.slice(0, 500000);
+      const trimmed = avatar.trim();
+      if (trimmed.length > AVATAR_MAX_LEN) {
+        return res.status(400).json({
+          error: 'La imagen de perfil es demasiado grande. Usa una imagen más pequeña.',
+        });
+      }
+      avatar = trimmed.slice(0, AVATAR_MAX_LEN);
     } else {
       avatar = null;
     }
