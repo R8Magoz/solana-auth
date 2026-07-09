@@ -186,6 +186,63 @@ function userIdInRawApproverList(approverTokens, userId, userStore) {
   return false;
 }
 
+const EXPENSE_EDIT_TRACKED = [
+  'amount', 'description', 'category', 'date', 'notes', 'departmentId',
+  'ivaRate', 'ivaAmount', 'vendor', 'dueDate', 'expenseType',
+];
+
+function normEditVal(field, val) {
+  if (field === 'amount' || field === 'ivaRate' || field === 'ivaAmount') {
+    if (val == null || val === '') return null;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (field === 'expenseType') return String(val || 'expense').toLowerCase();
+  if (val == null) return null;
+  return String(val);
+}
+
+/** Field-level diff for audit_log edit backlog. */
+function buildExpenseFieldDiff(prev, next) {
+  const changes = [];
+  for (const field of EXPENSE_EDIT_TRACKED) {
+    const from = normEditVal(field, prev[field]);
+    const to = normEditVal(field, next[field]);
+    if (from !== to) changes.push({ field, from, to });
+  }
+  const prevPaid = prev.paidByJson != null ? String(prev.paidByJson) : null;
+  const nextPaid = next.paidByJson != null ? String(next.paidByJson) : null;
+  if (prevPaid !== nextPaid) changes.push({ field: 'paidBy', from: prevPaid, to: nextPaid });
+  const prevSplit = prev.splitMode != null ? String(prev.splitMode) : null;
+  const nextSplit = next.splitMode != null ? String(next.splitMode) : null;
+  if (prevSplit !== nextSplit) changes.push({ field: 'splitMode', from: prevSplit, to: nextSplit });
+  return changes;
+}
+
+function collectReferencedUserIds(expenseRows) {
+  const ids = new Set();
+  for (const e of expenseRows || []) {
+    if (e.userId) ids.add(e.userId);
+    if (e.ownerId) ids.add(e.ownerId);
+    if (e.approvedBy) ids.add(e.approvedBy);
+    if (e.rejectedBy) ids.add(e.rejectedBy);
+    if (e.paidConfirmedBy) ids.add(e.paidConfirmedBy);
+    for (const id of parseJsonArray(e.approversJson)) ids.add(id);
+    try {
+      const paidBy = JSON.parse(e.paidByJson || '[]');
+      if (Array.isArray(paidBy)) {
+        for (const p of paidBy) {
+          if (p && p.userId) ids.add(p.userId);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  ids.delete('system');
+  return [...ids];
+}
+
 /**
  * Validate client paidBy[] against total EUR; resolve legacy user tokens.
  * @returns {{ paidBy: Array<{userId:string,amount:number,pct?:number}>, splitMode: string|null }|{ error: string }}
@@ -352,7 +409,11 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   router.get('/', (req, res) => {
     try {
       const expenses = listExpenses(req);
-      res.json({ expenses });
+      const refIds = collectReferencedUserIds(expenses);
+      const users = userStore.getPublicUsersByIds
+        ? userStore.getPublicUsersByIds(refIds)
+        : [];
+      res.json({ expenses, users });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'Error al listar gastos.' });
@@ -622,6 +683,14 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     const expense = getExpenseById(id);
     audit('expense_created', { userId: req.userId, targetId: id, amount, currency: cur, status: finalStatus });
+    if (finalStatus === 'submitted' && approverIds.length > 0) {
+      audit('expense_submitted', {
+        userId: req.userId,
+        targetId: id,
+        approverIds,
+        category: cat,
+      });
+    }
     res.json({ ok: true, expense });
     } catch (e) {
       console.error('[POST /expenses] UNHANDLED ERROR:', e && (e.stack || e.message || e));
@@ -907,6 +976,39 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       }
     }
 
+    const nextSnapshot = {
+      amount: nextAmount,
+      description: nextDesc,
+      category: nextCat,
+      date: nextDate,
+      notes: nextNotes,
+      departmentId: nextDeptId,
+      ivaRate: nextIvaRate,
+      ivaAmount: nextIvaAmount,
+      vendor: nextVendor,
+      dueDate: nextDue,
+      expenseType: nextExpenseType,
+      paidByJson: nextPaidByJson,
+      splitMode: nextSplitMode,
+    };
+    const fieldChanges = buildExpenseFieldDiff(prev, nextSnapshot);
+    const wasApproved = exp.status === 'approved' && !becomingSubmitted;
+
+    if (wasApproved && fieldChanges.length > 0) {
+      let approverIds = parseJsonArray(exp.approversJson);
+      if (approverIds.length === 0) approverIds = getApproverIdsForCategory(nextCat);
+      approverIds = canonicalizeApproverIds(approverIds, userStore);
+      const { votes } = computeSubmittedVotes(exp.userId, approverIds);
+      finalStatus = 'submitted';
+      nextApproversJson = JSON.stringify(approverIds);
+      nextVotesJson = JSON.stringify(votes);
+      nextApprovedBy = null;
+      nextApprovedAt = null;
+      nextRejectedBy = null;
+      nextRejectedAt = null;
+      nextRejectionNote = null;
+    }
+
     db.prepare(`
       UPDATE expenses SET
         amount = ?, description = ?, category = ?, date = ?, notes = ?, status = ?, departmentId = ?,
@@ -952,14 +1054,57 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     const updated = getExpenseById(exp.id);
-    audit('expense_updated', {
-      userId: req.userId,
-      targetId: exp.id,
-      previous: prev,
-      changes: updated,
-    });
-    res.json({ ok: true, expense: updated });
+    if (fieldChanges.length > 0) {
+      audit('expense_edited', {
+        userId: req.userId,
+        targetId: exp.id,
+        changes: fieldChanges,
+      });
+      if (wasApproved) {
+        audit('expense_reapproval_required', {
+          userId: req.userId,
+          targetId: exp.id,
+          approverIds: parseJsonArray(nextApproversJson),
+        });
+      }
+    } else {
+      audit('expense_updated', { userId: req.userId, targetId: exp.id });
+    }
+    res.json({ ok: true, expense: updated, reapprovalRequired: wasApproved && fieldChanges.length > 0 });
   }
+
+  router.get('/:id/audit', (req, res) => {
+    const exp = getExpenseById(req.params.id);
+    if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
+    if (!canAccessExpense(req, exp)) {
+      return res.status(403).json({ error: 'No autorizado.' });
+    }
+    const rows = db.prepare(`
+      SELECT id, ts, event, userId, targetId, detail
+      FROM audit_log
+      WHERE targetId = ?
+      ORDER BY ts ASC, id ASC
+    `).all(exp.id);
+    const entries = rows.map((r) => {
+      const entry = {
+        id: r.id,
+        ts: r.ts,
+        event: r.event,
+        userId: r.userId,
+        targetId: r.targetId,
+      };
+      if (r.detail) {
+        try {
+          const parsed = JSON.parse(r.detail);
+          if (parsed && typeof parsed === 'object') Object.assign(entry, parsed);
+        } catch {
+          entry.detailRaw = r.detail;
+        }
+      }
+      return entry;
+    });
+    res.json({ ok: true, entries });
+  });
 
   router.put('/:id', putOrPatchExpense);
   router.patch('/:id', putOrPatchExpense);

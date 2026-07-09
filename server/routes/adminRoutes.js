@@ -74,15 +74,17 @@ function createAdminRouter(deps) {
     if (removed.id === req.userId) {
       return res.status(400).json({ error: 'No puedes eliminarte a ti mismo.' });
     }
-    const del = userStore.deleteUserByIdHard(removed.id);
-    if (!del.ok) {
-      if (del.reason === 'references') {
-        return res.status(409).json({ error: 'No se puede eliminar: el usuario tiene gastos o facturas asociados.' });
-      }
-      return res.status(500).json({ error: 'No se pudo eliminar.' });
+    const refs = userStore.countUserReferences(removed.id);
+    if (refs > 0) {
+      const soft = userStore.softDeleteUserById(removed.id);
+      if (!soft.ok) return res.status(500).json({ error: 'No se pudo desactivar el usuario.' });
+      audit('admin_user_soft_deleted', { targetId: id, by: req.userId, references: refs });
+      return res.json({ ok: true, softDeleted: true, user: userStore.findUserByIdPublic(removed.id) });
     }
+    const del = userStore.deleteUserByIdHard(removed.id);
+    if (!del.ok) return res.status(500).json({ error: 'No se pudo eliminar.' });
     audit('admin_user_deleted', { targetId: id, by: req.userId });
-    res.json({ ok: true });
+    res.json({ ok: true, hardDeleted: true });
   });
 
   router.post('/users/:id/reset-password', requireAdminSession, async (req, res) => {
@@ -244,17 +246,17 @@ function createAdminRouter(deps) {
     }
     const target = userStore.findUserByIdPublic(id);
     if (!target) return res.status(404).json({ error: 'Usuario no encontrado.' });
-    const del = userStore.deleteUserByIdHard(id);
-    if (!del.ok) {
-      if (del.reason === 'references') {
-        return res.status(409).json({
-          error: 'No se puede eliminar: el usuario tiene gastos o facturas asociados.',
-        });
-      }
-      return res.status(500).json({ error: 'No se pudo eliminar.' });
+    const refs = userStore.countUserReferences(id);
+    if (refs > 0) {
+      const soft = userStore.softDeleteUserById(id);
+      if (!soft.ok) return res.status(500).json({ error: 'No se pudo desactivar el usuario.' });
+      audit('admin_user_soft_deleted', { targetId: id, by: req.userId, ip: req.ip, references: refs });
+      return res.json({ ok: true, softDeleted: true, user: userStore.findUserByIdPublic(id) });
     }
-    audit('admin_user_deleted', { targetId: id, by: req.userId, ip: req.ip });
-    res.json({ ok: true });
+    const del = userStore.deleteUserByIdHard(id);
+    if (!del.ok) return res.status(500).json({ error: 'No se pudo eliminar.' });
+    audit('admin_user_deleted', { targetId: id, by: req.userId, ip: req.ip, hardDeleted: true });
+    res.json({ ok: true, hardDeleted: true });
   });
 
   router.get('/users/pending', requireAdminSession, (req, res) => {

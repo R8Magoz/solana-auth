@@ -313,12 +313,40 @@ const finalizeApproverIdList=(canonicalIds,users)=>{
   const admins=getAdminIds(u);
   return valid.length>=2?valid:admins;
 };
+/** Users selectable in pickers (split, owner, approvers). */
+const pickableUsers=(users)=>(users||[]).filter(u=>u&&u.accountStatus==="active"&&u.id!=="system");
+/** Merge API user rows into roster (keeps deleted users for historical names). */
+const mergeUsersById=(prev,next)=>{
+  const map=new Map((prev||[]).map(u=>[u.id,u]));
+  for(const u of next||[]){
+    if(u&&u.id)map.set(u.id,normalizeItem(u,"user"));
+  }
+  return [...map.values()];
+};
+const applyExpensesApiPayload=(de,{setUsers,setExpenses})=>{
+  if(de&&Array.isArray(de.users)&&de.users.length){
+    setUsers(prev=>mergeUsersById(prev,de.users.map(u=>normalizeItem(u,"user"))));
+  }
+  if(de&&Array.isArray(de.expenses)){
+    setExpenses(mapExpensesFromApi(de.expenses));
+  }
+};
+const EDIT_FIELD_LABELS={
+  amount:"Importe",description:"Descripción",category:"Categoría",date:"Fecha",
+  notes:"Notas",departmentId:"Departamento",ivaRate:"IVA",ivaAmount:"Importe IVA",
+  vendor:"Proveedor",dueDate:"Vencimiento",expenseType:"Tipo",paidBy:"Reparto",splitMode:"Modo reparto",
+};
 const effectiveExpenseApproverIds=(exp,cats,users)=>{
-  // First check expense's own approversJson (set at creation)
-  const fromExp = exp?.approversJson ||
-    (Array.isArray(exp?.approvers) ? exp.approvers : []);
-  if (Array.isArray(fromExp) && fromExp.length > 0) return fromExp;
-
+  const fromExp=(Array.isArray(exp?.approvalRequired)&&exp.approvalRequired.length>0)
+    ?exp.approvalRequired
+    :(Array.isArray(exp?.approversJson)&&exp.approversJson.length>0)
+      ?exp.approversJson
+      :(Array.isArray(exp?.approvers)&&exp.approvers.length>0)
+        ?exp.approvers
+        :null;
+  if(fromExp&&fromExp.length>0){
+    return canonicalApproverIdList(fromExp,users);
+  }
   // Fall back to category assignment
   const cat = (cats || []).find(c =>
     c.name && c.name.toLowerCase() === (exp?.category || '').toLowerCase()
@@ -326,7 +354,6 @@ const effectiveExpenseApproverIds=(exp,cats,users)=>{
   if (cat && Array.isArray(cat.approverIds) && cat.approverIds.length > 0) {
     return cat.approverIds;
   }
-
   // Last resort: superadmins only
   return (users || [])
     .filter(u => u.role === 'superadmin')
@@ -345,8 +372,7 @@ const getItemStatus=(item,cats,users)=>{
       const reqIdsRaw=Array.isArray(item.approvalRequired)&&item.approvalRequired.length>0?item.approvalRequired:null;
       let reqIds;
       if(reqIdsRaw&&(users&&users.length)){
-        const canon=canonicalApproverIdList(reqIdsRaw,users);
-        reqIds=finalizeApproverIdList(canon,users);
+        reqIds=canonicalApproverIdList(reqIdsRaw,users);
       }else{
         reqIds=reqIdsRaw;
       }
@@ -2471,7 +2497,7 @@ function ExpenseFormFields({
         </div>
         <div><label className="lbl">Titular del gasto <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={ownerId} style={rs(hi&&!ownerId)} onChange={e=>setForm(p=>({...p,ownerId:e.target.value}))}>
-            {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+            {pickableUsers(users).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         </div>
         <div><label className="lbl">{t("form.ivaRate")}</label>
@@ -2599,7 +2625,7 @@ function ExpenseFormFields({
       <SplitAllocationEditor
         t={t}
         user={ownerUser}
-        users={users}
+        users={pickableUsers(users)}
         totalAmount={expAmt}
         splitOn={splitOn}
         setSplitOn={setSplitOn}
@@ -2720,7 +2746,7 @@ function NewPanel(){
         ownerUser={ownerUser}
         activeCats={activeCats}
         departments={departments}
-        users={users}
+        users={pickableUsers(users)}
         ivaRates={ivaRates}
         hi={hi}
         rs={rs}
@@ -2835,8 +2861,23 @@ function DetailPanel(){
       if(objUrl)try{URL.revokeObjectURL(objUrl);}catch(e2){}
     };
   },[editMode,detailId,expenses]);
+  const [serverAudit,setServerAudit]=useState([]);
+  useEffect(()=>{
+    if(!AUTH_URL||!detailId){setServerAudit([]);return;}
+    let dead=false;
+    void API.get("/expenses/"+encodeURIComponent(detailId)+"/audit").then(d=>{
+      if(dead)return;
+      setServerAudit(Array.isArray(d.entries)?d.entries:[]);
+    }).catch(()=>{if(!dead)setServerAudit([]);});
+    return()=>{dead=true;};
+  },[detailId,e?.updatedAt,e?.status]);
   if(!e)return null;
-  const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
+  const getU=id=>{
+    const u=users.find(x=>x.id===id);
+    if(!u)return{name:UNKNOWN_USER_NAME,color:"#999"};
+    if(u.accountStatus==="deleted")return{...u,name:`${u.name} (inactivo)`};
+    return u;
+  };
   const approverIds=effectiveExpenseApproverIds(e,cats,users);
   const st=getItemStatus(e,cats,users);
   const detailAccent = e && e.expenseType === 'invoice' ? '#C4622D' : '#3C0A37';
@@ -2867,7 +2908,43 @@ function DetailPanel(){
         action: tr.action,
         by: tr.by,
         note: tr.note || null,
+        editChanges: tr.meta?.fields ? tr.meta.fields.map(f=>({field:f,from:null,to:null})) : null,
       });
+    });
+
+    const auditEventToAction={
+      expense_submitted:"submitted",
+      expense_created:"created",
+      expense_approved:"approved",
+      expense_rejected:"rejected",
+      expense_comment_added:"comment_added",
+      expense_marked_paid:"paid",
+      expense_deleted:"deleted",
+      expense_reapproval_required:"reapproval_required",
+    };
+    serverAudit.forEach(entry=>{
+      if(entry.event==="expense_edited"&&Array.isArray(entry.changes)&&entry.changes.length>0){
+        events.push({
+          id:`srv-audit-${entry.id}`,
+          at:entry.ts,
+          type:"audit",
+          action:"edited",
+          by:entry.userId,
+          editChanges:entry.changes,
+        });
+        return;
+      }
+      const mapped=auditEventToAction[entry.event];
+      if(mapped){
+        events.push({
+          id:`srv-audit-${entry.id}`,
+          at:entry.ts,
+          type:"audit",
+          action:mapped,
+          by:entry.userId,
+          note:entry.note||null,
+        });
+      }
     });
 
     // comments
@@ -2897,7 +2974,7 @@ function DetailPanel(){
     }
 
     return events.sort((a, b) => String(a.at).localeCompare(String(b.at)));
-  }, [e]);
+  }, [e, serverAudit]);
 
   const actionLabel = (action) => ({
     'created':              'Enviado',
@@ -2919,7 +2996,7 @@ function DetailPanel(){
     'expense_rejected':     'Rechazado',
     'expense_comment_added':'Nota añadida',
     'expense_recurring_spawned': 'Nueva ocurrencia generada',
-    'reopen':               'Reabierto',
+    'reapproval_required':  'Requiere nueva revisión',
     'deleted':              'Eliminado',
   })[action] || action;
   const startEdit=()=>{
@@ -3089,7 +3166,7 @@ function DetailPanel(){
             ownerUser={editOwnerUser}
             activeCats={activeCats}
             departments={departments}
-            users={users}
+            users={pickableUsers(users)}
             ivaRates={ivaRates}
             hi={editHi}
             rs={editRs}
@@ -3300,6 +3377,13 @@ function DetailPanel(){
                     {ev.by && <span style={{fontWeight:400,color:"#6B7B72"}}> · {getU(ev.by).name}</span>}
                   </div>
                   {ev.note && <div style={{fontSize:11,color:"#6B7B72",marginTop:2}}>{ev.note}</div>}
+                  {Array.isArray(ev.editChanges)&&ev.editChanges.length>0&&(
+                    <div style={{fontSize:11,color:"#6B7B72",marginTop:4,lineHeight:1.45}}>
+                      {ev.editChanges.map((ch,i)=>(
+                        <div key={i}>{EDIT_FIELD_LABELS[ch.field]||ch.field}: {String(ch.from??"—")} → {String(ch.to??"—")}</div>
+                      ))}
+                    </div>
+                  )}
                   <div style={{fontSize:10,color:"#C4B8C0",marginTop:1}}>{fmtDate(ev.at)}</div>
                 </div>
               </div>
@@ -6060,7 +6144,7 @@ export function SettingsView(){
               </div>
             </div>
           )}
-          {users.map(u=>(
+          {users.filter(u=>u.accountStatus!=="deleted").map(u=>(
             <div key={u.id}>
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA"}}>
                 <UserAvatar user={u} size={28} fontSize={8}/>
@@ -6106,9 +6190,17 @@ export function SettingsView(){
                     const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(u.id),{method:"DELETE",headers:{Authorization:"Bearer "+tok}});
                     const d=await r.json().catch(()=>({}));
                     if(!r.ok){dispatchSolanaToast(d.error||t("msg.genericShort"),"error");return;}
+                    if(d.user){
+                      saveUsers(users.map(x=>x.id===u.id?normalizeItem(d.user,"user"):{...x,accountStatus:"deleted"}));
+                    }else{
+                      saveUsers(users.map(x=>x.id===u.id?{...x,accountStatus:"deleted"}:x));
+                    }
+                    dispatchSolanaToast(d.softDeleted?`${u.name} desactivado. Sus gastos se conservan.`:"Usuario eliminado.","success");
                   }catch(e){dispatchSolanaToast(t("signup.serverDown"),"error");return;}
                 }
-                saveUsers(users.filter(x=>x.id!==u.id));setDelC(null);
+                saveUsers(users.filter(x=>x.id!==u.id));
+                dispatchSolanaToast("Usuario eliminado.","success");
+                setDelC(null);
               })()}>{t("action.confirm")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setDelC(null)}>{t("action.cancel")}</button></div></div>}
               {resetFor===u.id&&AUTH_URL&&(
                 <div style={{background:"#F5F3FF",borderRadius:7,padding:"10px 12px",margin:"4px 0",border:"1px solid #DDD6EE"}}>
@@ -6394,9 +6486,7 @@ export default function App(){
         // Load data for the restored session
         try{
           const de=await fetch(AUTH_URL+"/expenses",{headers:{"Authorization":"Bearer "+API.token}}).then(r=>r.ok?r.json():{expenses:[]});
-          if(de.expenses&&de.expenses.length){
-            saveExp(mapExpensesFromApi(de.expenses));
-          }
+          applyExpensesApiPayload(de,{setUsers,setExpenses});
         }catch(e){/* non-fatal */}
 
       }catch(e){
@@ -6767,7 +6857,7 @@ export default function App(){
       try{
         const de=await API.get("/expenses");
         if(cancelled)return;
-        setExpenses(mapExpensesFromApi(de.expenses||[]));
+        applyExpensesApiPayload(de,{setUsers,setExpenses});
       }catch(e){
         if(!cancelled)dispatchSolanaToast(e.message||"Error al cargar gastos y facturas.","error");
       }finally{
@@ -6822,7 +6912,7 @@ export default function App(){
         }catch(e){}
         if(cancelled)return;
         const de=await API.get("/expenses");
-        setExpenses(mapExpensesFromApi(de.expenses||[]));
+        applyExpensesApiPayload(de,{setUsers,setExpenses});
       }catch(e){
         migrAttemptRef.current=false;
         dispatchSolanaToast(e.message||"No se pudo migrar datos locales.","error");
@@ -7195,9 +7285,7 @@ export default function App(){
           }
 
           API.get("/expenses").then(full => {
-            if (full && Array.isArray(full.expenses)) {
-              saveExp(full.expenses.map(expenseFromApi));
-            }
+            if (full) applyExpensesApiPayload(full, { setUsers, setExpenses });
           }).catch(() => {});
 
           console.log('[submitExp] opening detail:', {
@@ -7360,10 +7448,12 @@ export default function App(){
           await API.delete("/expenses/"+encodeURIComponent(expId));
           saveExp(expenses.filter(e=>e.id!==expId));
           setDetailId(null);setPanel(null);
+          dispatchSolanaToast("Gasto eliminado correctamente.","success");
         }catch(e){
           if(isOfflineQueuedError(e)){
             saveExp(expenses.filter(x=>x.id!==expId));
             setDetailId(null);setPanel(null);
+            dispatchSolanaToast("Gasto eliminado correctamente.","success");
             return;
           }
           dispatchSolanaToast(e.message||"No se pudo eliminar.","error");
@@ -7372,6 +7462,7 @@ export default function App(){
       }
       saveExp(expenses.filter(e=>e.id!==expId));
       setDetailId(null);setPanel(null);
+      dispatchSolanaToast("Gasto eliminado correctamente.","success");
     })();
   };
 
@@ -7412,7 +7503,7 @@ export default function App(){
               { category: updates.category || oldExp.category }, cats, users
             );
           }
-          await API.put("/expenses/"+encodeURIComponent(expId),body);
+          const putRes=await API.put("/expenses/"+encodeURIComponent(expId),body);
           if(updates.receipt){
             await API.post("/expenses/"+encodeURIComponent(expId)+"/receipt",{
               b64:updates.receipt,
@@ -7420,7 +7511,12 @@ export default function App(){
             });
           }
           const full=await API.get("/expenses");
-          saveExp((full.expenses||[]).map(expenseFromApi));
+          applyExpensesApiPayload(full,{setUsers,setExpenses});
+          if(putRes?.reapprovalRequired){
+            dispatchSolanaToast("Cambios guardados. Los aprobadores han sido notificados para revisar de nuevo.","info");
+          }else{
+            dispatchSolanaToast("Cambios guardados correctamente.","success");
+          }
         }catch(e){
           if(isOfflineQueuedError(e)){
             saveExp(expenses.map(e=>e.id!==expId?e:{...e,...updates}));
@@ -7486,7 +7582,7 @@ export default function App(){
           const expApproverIdsRs=effectiveExpenseApproverIds(exp,cats,users);
           await API.put("/expenses/"+encodeURIComponent(expId),{status:"submitted",approvalRequired:expApproverIdsRs});
           const full=await API.get("/expenses");
-          saveExp((full.expenses||[]).map(expenseFromApi));
+          applyExpensesApiPayload(full,{setUsers,setExpenses});
         }catch(e){
           if(isOfflineQueuedError(e)){
             const expApproverIdsRs=effectiveExpenseApproverIds(exp,cats,users);
@@ -7522,7 +7618,7 @@ export default function App(){
         try{
           await API.post("/expenses/"+encodeURIComponent(expId)+"/comments",{text:tx});
           const full=await API.get("/expenses");
-          saveExp((full.expenses||[]).map(expenseFromApi));
+          applyExpensesApiPayload(full,{setUsers,setExpenses});
         }catch(e){
           if(isCommentPostUnavailable(e)){
             dispatchSolanaToast(t("expense.commentRetryHint"),"error");
@@ -7617,7 +7713,7 @@ export default function App(){
           if(action==="approved")await API.post("/expenses/"+encodeURIComponent(itemId)+"/approve",{note:note||undefined});
           else await API.post("/expenses/"+encodeURIComponent(itemId)+"/reject",{note:note||undefined});
           const full=await API.get("/expenses");
-          saveExp(mapExpensesFromApi(full.expenses||[]));
+          applyExpensesApiPayload(full,{setUsers,setExpenses});
         }catch(e){
           if(isOfflineQueuedError(e)){
             saveExp(expenses.map(x=>{
