@@ -245,6 +245,72 @@ function isAdminRole(role) {
   return role === 'admin' || role === 'superadmin';
 }
 
+/** Approved expenses + invoices (any payment status); rejected/deleted excluded. */
+function deptApprovedSpendEur(departmentId, excludeExpenseId = null) {
+  if (!departmentId) return 0;
+  if (excludeExpenseId) {
+    const row = db.prepare(`
+      SELECT COALESCE(SUM(COALESCE(amountEUR, amount)), 0) AS spent
+      FROM expenses
+      WHERE departmentId = ? AND status = 'approved' AND id != ?
+    `).get(departmentId, excludeExpenseId);
+    return Number(row?.spent) || 0;
+  }
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(COALESCE(amountEUR, amount)), 0) AS spent
+    FROM expenses
+    WHERE departmentId = ? AND status = 'approved'
+  `).get(departmentId);
+  return Number(row?.spent) || 0;
+}
+
+function getDepartmentBudgetRow(departmentId) {
+  return db.prepare('SELECT id, name, budget FROM departments WHERE id = ?').get(departmentId) || null;
+}
+
+function adminAndSuperadminUserIds() {
+  return db.prepare(
+    "SELECT id FROM users WHERE role IN ('admin', 'superadmin') AND id != 'system'"
+  ).all().map((r) => r.id);
+}
+
+/**
+ * When an approval pushes department spend over budget, audit one row per recipient.
+ * @returns {{ exceeded: boolean, notified?: boolean, budget?: number, spent?: number, departmentName?: string }}
+ */
+function maybeNotifyBudgetExceeded({ audit, departmentId, expenseId, actorUserId, submitterUserId, ip }) {
+  const dept = getDepartmentBudgetRow(departmentId);
+  if (!dept) return { exceeded: false };
+  const budget = Number(dept.budget) || 0;
+  if (budget <= 0) return { exceeded: false };
+
+  const afterSpent = deptApprovedSpendEur(departmentId);
+  const beforeSpent = expenseId ? deptApprovedSpendEur(departmentId, expenseId) : afterSpent;
+
+  if (beforeSpent > budget || afterSpent <= budget) {
+    return { exceeded: afterSpent > budget, budget, spent: afterSpent, departmentName: dept.name };
+  }
+
+  const recipients = new Set(adminAndSuperadminUserIds());
+  if (submitterUserId) recipients.add(submitterUserId);
+
+  for (const uid of recipients) {
+    audit('department_budget_exceeded', {
+      userId: uid,
+      targetId: dept.id,
+      expenseId,
+      departmentName: dept.name,
+      budget,
+      spent: afterSpent,
+      actorUserId,
+      submitterUserId,
+      ip,
+    });
+  }
+
+  return { exceeded: true, notified: true, budget, spent: afterSpent, departmentName: dept.name };
+}
+
 function rowToExpense(r) {
   if (!r) return null;
   return {
@@ -356,6 +422,39 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'Error al listar gastos.' });
+    }
+  });
+
+  router.get('/budget-alerts', (req, res) => {
+    try {
+      const lim = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+      const rows = db.prepare(`
+        SELECT id, ts, event, userId, targetId, detail
+        FROM audit_log
+        WHERE event = 'department_budget_exceeded' AND userId = ?
+        ORDER BY id DESC
+        LIMIT ?
+      `).all(req.userId, lim);
+
+      const alerts = rows.map((r) => {
+        let detail = {};
+        if (r.detail) {
+          try { detail = JSON.parse(r.detail); } catch { /* ignore */ }
+        }
+        return {
+          id: r.id,
+          ts: r.ts,
+          departmentId: r.targetId || detail.departmentId,
+          departmentName: detail.departmentName,
+          expenseId: detail.expenseId,
+          budget: detail.budget,
+          spent: detail.spent,
+        };
+      });
+      res.json({ alerts });
+    } catch (e) {
+      console.error('[expenses/budget-alerts]', e);
+      res.status(500).json({ error: 'Error al leer alertas de presupuesto.' });
     }
   });
 
@@ -622,7 +721,22 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     const expense = getExpenseById(id);
     audit('expense_created', { userId: req.userId, targetId: id, amount, currency: cur, status: finalStatus });
-    res.json({ ok: true, expense });
+    let budgetExceeded;
+    if (finalStatus === 'approved' && dept.id) {
+      budgetExceeded = maybeNotifyBudgetExceeded({
+        audit,
+        departmentId: dept.id,
+        expenseId: id,
+        actorUserId: req.userId,
+        submitterUserId: req.userId,
+        ip: req.ip,
+      });
+    }
+    res.json({
+      ok: true,
+      expense,
+      ...(budgetExceeded && budgetExceeded.exceeded ? { budgetExceeded } : {}),
+    });
     } catch (e) {
       console.error('[POST /expenses] UNHANDLED ERROR:', e && (e.stack || e.message || e));
       console.error('[expenses/create]', e);
@@ -1025,7 +1139,22 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       }
       const updated = getExpenseById(exp.id);
       audit('expense_approved', { userId: req.userId, targetId: exp.id });
-      return res.json({ ok: true, expense: updated });
+      let budgetExceeded;
+      if (allDone && updated.status === 'approved' && updated.departmentId) {
+        budgetExceeded = maybeNotifyBudgetExceeded({
+          audit,
+          departmentId: updated.departmentId,
+          expenseId: updated.id,
+          actorUserId: req.userId,
+          submitterUserId: updated.userId,
+          ip: req.ip,
+        });
+      }
+      return res.json({
+        ok: true,
+        expense: updated,
+        ...(budgetExceeded && budgetExceeded.exceeded ? { budgetExceeded } : {}),
+      });
     }
 
     const canApprove = exp.status === 'submitted' ||
@@ -1076,7 +1205,22 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const updated = getExpenseById(exp.id);
     const approveNote = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : undefined;
     audit('expense_approved', { userId: adminId, targetId: exp.id, note: approveNote });
-    res.json({ ok: true, expense: updated });
+    let budgetExceeded;
+    if (allDone && updated.status === 'approved' && updated.departmentId) {
+      budgetExceeded = maybeNotifyBudgetExceeded({
+        audit,
+        departmentId: updated.departmentId,
+        expenseId: updated.id,
+        actorUserId: adminId,
+        submitterUserId: updated.userId,
+        ip: req.ip,
+      });
+    }
+    res.json({
+      ok: true,
+      expense: updated,
+      ...(budgetExceeded && budgetExceeded.exceeded ? { budgetExceeded } : {}),
+    });
   });
 
   router.post('/:id/reject', requireAuth, (req, res) => {

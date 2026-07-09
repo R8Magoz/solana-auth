@@ -367,10 +367,12 @@ const getItemStatus=(item,cats,users)=>{
   if(approverIds.every(id=>v(id)==="approved"))return"approved";
   return"pending";
 };
-/** Gastos aprobados y facturas (invoice) marcadas como pagadas cuentan para el gasto del departamento. */
+/** Aprobados (gasto o factura) cuentan; rechazados no; facturas sin importar estado de pago. */
 function expenseCountsTowardDeptSpend(e,cats,users){
-  if(e&&e.expenseType==="invoice")return e.paymentStatus==="paid";
-  return getItemStatus(e,cats,users)==="approved";
+  if(!e)return false;
+  const st=getItemStatus(e,cats,users);
+  if(st==="rejected")return false;
+  return st==="approved";
 }
 /** @param useServerTotals when true and rows include spent from GET /departments, keep server figures */
 function enrichDepartmentsForUI(depts,expenses,cats,users,useServerTotals){
@@ -3417,28 +3419,25 @@ export function DashboardView(){
   });
   upcoming15.sort((a,b)=>a.daysUntil-b.daysUntil);
   const fixedTipActive=fixedTipOpen||fixedTipHover;
-  const monthSpendByDept=React.useMemo(()=>{
-    const now = new Date();
-    const ym = now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
-    const spendByDept = {};
-    (expenses||[]).forEach(e => {
-      if(e.status==="approved" && e.expenseType!=="invoice" && e.date && e.date.startsWith(ym) && e.departmentId){
-        spendByDept[e.departmentId] = (spendByDept[e.departmentId]||0) + (Number(e.amount)||0);
-      }
-    });
-    return spendByDept;
-  },[expenses]);
   const alerts=React.useMemo(()=>{
-    return (departments||[]).filter(d => {
+    return (departmentsWithStats||[]).filter(d => {
       if(!d.budget || Number(d.budget) <= 0 || d.archived) return false;
-      const spent = monthSpendByDept[d.id] || 0;
+      const spent = Number(d.spent) || 0;
       return spent >= Number(d.budget) * 0.70;
     }).map(d => {
-      const spent = monthSpendByDept[d.id] || 0;
-      const pct = Math.round((spent / Number(d.budget)) * 100);
+      const spent = Number(d.spent) || 0;
+      const budget = Number(d.budget) || 0;
+      const pct = budget > 0 ? Math.round((spent / budget) * 100) : (spent > 0 ? 100 : 0);
       return { ...d, spent, pct };
     }).sort((a,b) => b.pct - a.pct);
-  },[departments,monthSpendByDept]);
+  },[departmentsWithStats]);
+  const [budgetNotifications,setBudgetNotifications]=useState([]);
+  useEffect(()=>{
+    if(!AUTH_URL)return;
+    void API.get("/expenses/budget-alerts").then(d=>{
+      if(d&&Array.isArray(d.alerts))setBudgetNotifications(d.alerts);
+    }).catch(()=>{});
+  },[expenses]);
   useEffect(()=>{
     if(!fixedTipActive||!fixedTipIconRef.current)return;
     const r=fixedTipIconRef.current.getBoundingClientRect();
@@ -3467,6 +3466,19 @@ export function DashboardView(){
             <div style={{fontSize:13,fontWeight:600,color:"#5C1057"}}>{myPending.length} pendiente(s) de tu aprobación</div>
           </div>
           <button className="btn-sm" style={{fontSize:12}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
+        </div>
+      )}
+      {budgetNotifications.length>0&&(
+        <div style={{background:"#FEE2E2",border:"1px solid #DC2626",borderRadius:11,padding:"10px 13px",marginBottom:10}}>
+          <div style={{fontSize:13,fontWeight:600,color:"#991B1B",marginBottom:6}}>Presupuesto de departamento excedido</div>
+          <div style={{display:"grid",gap:6}}>
+            {budgetNotifications.slice(0,5).map(n=>(
+              <div key={n.id} style={{fontSize:12,color:"#7F1D1D"}}>
+                <strong>{n.departmentName||"Departamento"}</strong>
+                {" · "}{fmt(Number(n.spent)||0)} de {fmt(Number(n.budget)||0)}
+              </div>
+            ))}
+          </div>
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:16}}>
@@ -3571,7 +3583,7 @@ export function DashboardView(){
                 <div key={a.id} style={{background:tone.bg,borderLeft:`3px solid ${tone.border}`,borderRadius:8,padding:"8px 10px"}}>
                   <div style={{fontWeight:700,fontSize:12,marginBottom:2}}>{a.name||"—"}</div>
                   <div style={{fontSize:11,color:"#6B7B72"}}>
-                    {a.pct}% del presupuesto mensual · {fmt(a.spent)} de {fmt(Number(a.budget)||0)}
+                    {a.pct}% del presupuesto · {fmt(a.spent)} de {fmt(Number(a.budget)||0)}
                   </div>
                   <div style={{height:4,background:"rgba(0,0,0,0.08)",borderRadius:2,marginTop:6}}>
                     <div style={{height:"100%",width:`${Math.min(100,Math.max(0,a.pct))}%`,background:tone.border,borderRadius:2}}/>
@@ -7111,6 +7123,14 @@ export default function App(){
           const newExp = expenseFromApi(d.expense);
           saveExp(prev => [newExp, ...(Array.isArray(prev) ? prev.filter(x => x.id !== newExp.id) : [])]);
 
+          if (d.budgetExceeded && d.budgetExceeded.exceeded) {
+            const deptName = d.budgetExceeded.departmentName || "Departamento";
+            dispatchSolanaToast(
+              `Presupuesto excedido: ${deptName} · ${fmt(Number(d.budgetExceeded.spent) || 0)} de ${fmt(Number(d.budgetExceeded.budget) || 0)}`,
+              "warning"
+            );
+          }
+
           let finalExp = newExp;
           if (receipt?.b64) {
             try {
@@ -7549,8 +7569,16 @@ export default function App(){
       }
       void (async()=>{
         try{
-          if(action==="approved")await API.post("/expenses/"+encodeURIComponent(itemId)+"/approve",{note:note||undefined});
+          let approveResult;
+          if(action==="approved")approveResult=await API.post("/expenses/"+encodeURIComponent(itemId)+"/approve",{note:note||undefined});
           else await API.post("/expenses/"+encodeURIComponent(itemId)+"/reject",{note:note||undefined});
+          if(action==="approved"&&approveResult?.budgetExceeded?.exceeded){
+            const be=approveResult.budgetExceeded;
+            dispatchSolanaToast(
+              `Presupuesto excedido: ${be.departmentName||"Departamento"} · ${fmt(Number(be.spent)||0)} de ${fmt(Number(be.budget)||0)}`,
+              "warning"
+            );
+          }
           const full=await API.get("/expenses");
           saveExp(mapExpensesFromApi(full.expenses||[]));
         }catch(e){
