@@ -12,6 +12,81 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
 const { nextDueDate, RECURRENCE_RULES, isValidRecurrenceRule } = require('./recurrence');
 
+let PDFDocument;
+try {
+  PDFDocument = require('pdfkit');
+} catch (e) {
+  PDFDocument = null;
+}
+
+const RECURRENCE_RULES_ACCEPTED = [...RECURRENCE_RULES, 'daily'];
+
+/** daily is valid for create/update but lives outside recurrence.js RECURRENCE_RULES. */
+function isAllowedRecurrenceRule(rule) {
+  const r = String(rule || '').trim();
+  if (!r) return false;
+  if (r === 'daily') return true;
+  return isValidRecurrenceRule(r);
+}
+
+function reportRefDateISO(row) {
+  if (!row) return '';
+  if (row.expenseType === 'invoice') {
+    return String(row.dueDate || row.date || '').slice(0, 10);
+  }
+  return String(row.date || '').slice(0, 10);
+}
+
+function validateReportRange(req, res) {
+  const from = String(req.query.from ?? '').trim().slice(0, 10);
+  const to = String(req.query.to ?? '').trim().slice(0, 10);
+  if (!from || !to || !DATE_RE.test(from) || !DATE_RE.test(to)) {
+    res.status(400).json({ error: 'Parámetros from y to obligatorios (YYYY-MM-DD).' });
+    return null;
+  }
+  if (from > to) {
+    res.status(400).json({ error: 'from no puede ser posterior a to.' });
+    return null;
+  }
+  return { from, to };
+}
+
+function eurAmountRow(row) {
+  if (row.amountEUR != null && !Number.isNaN(Number(row.amountEUR))) {
+    return Number(row.amountEUR);
+  }
+  return Number(row.amount) || 0;
+}
+
+function rowMatchesReportStatus(row, statusFilter) {
+  const st = String(row.status || '').trim();
+  if (statusFilter === 'approved') return st === 'approved';
+  if (statusFilter === 'pending') {
+    return st !== 'approved' && st !== 'rejected' && st !== 'deleted';
+  }
+  return st !== 'deleted';
+}
+
+function rowMatchesReportType(row, typeFilter) {
+  const inv = row.expenseType === 'invoice';
+  if (typeFilter === 'expenses') return !inv;
+  if (typeFilter === 'bills' || typeFilter === 'invoices') return inv;
+  return true;
+}
+
+function buildUserNameMap(userStore) {
+  const map = {};
+  try {
+    const users = userStore.getAllUsersPublic ? userStore.getAllUsersPublic() : [];
+    for (const u of users) {
+      if (u && u.id) map[u.id] = u.name || u.email || u.id;
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  return map;
+}
+
 /** Reads numeric app_settings keys (e.g. approval_threshold) via settingsCache. */
 function parseAppSettingFloat(key, defaultVal) {
   try {
@@ -359,6 +434,111 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
   });
 
+  /** PDF export for Informes — requireAuth (not admin-only). Same row set as client CSV for from/to/status. */
+  router.get('/export/pdf', (req, res) => {
+    if (!PDFDocument) {
+      return res.status(503).json({
+        error: 'PDF no disponible. Ejecuta npm install en el servidor (paquete pdfkit).',
+      });
+    }
+    const range = validateReportRange(req, res);
+    if (!range) return;
+
+    const statusFilter = String(req.query.status || 'all').trim().toLowerCase().slice(0, 16);
+    if (!['all', 'approved', 'pending'].includes(statusFilter)) {
+      return res.status(400).json({ error: 'status debe ser all, approved o pending.' });
+    }
+    const typeFilter = String(req.query.type || 'all').trim().toLowerCase().slice(0, 16);
+    if (!['all', 'expenses', 'bills', 'invoices'].includes(typeFilter)) {
+      return res.status(400).json({ error: 'type debe ser all, expenses o bills.' });
+    }
+
+    const { from, to } = range;
+    const userMap = buildUserNameMap(userStore);
+
+    const allRows = db.prepare(`
+      SELECT * FROM expenses
+      WHERE status != 'deleted'
+      ORDER BY date ASC, id ASC
+    `).all();
+
+    const rows = allRows.filter((row) => {
+      const ref = reportRefDateISO(row);
+      if (!ref || ref < from || ref > to) return false;
+      if (!rowMatchesReportStatus(row, statusFilter)) return false;
+      if (!rowMatchesReportType(row, typeFilter)) return false;
+      return true;
+    });
+
+    const doc = new PDFDocument({ margin: 48, size: 'A4', bufferPages: true });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="report-${from}-to-${to}.pdf"`,
+    );
+    doc.pipe(res);
+    doc.on('error', (err) => {
+      console.error('[expenses/export/pdf]', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'No se pudo generar el PDF.' });
+      } else {
+        res.end();
+      }
+    });
+
+    doc.fontSize(16).fillColor('#1a1a1a').text('Informe de gastos', { align: 'center' });
+    doc.moveDown(0.3);
+    doc.fontSize(10).fillColor('#444444').text(`Período: ${from} — ${to}`, { align: 'center' });
+    doc.fontSize(9).fillColor('#666666').text(`Generado: ${new Date().toISOString()}`, { align: 'center' });
+    doc.moveDown(0.8);
+
+    const totalEur = rows.reduce((s, r) => s + eurAmountRow(r), 0);
+    doc.fontSize(10).fillColor('#000000');
+    doc.text(`Líneas: ${rows.length}`);
+    doc.text(`Total (EUR): ${totalEur.toFixed(2)}`);
+    doc.moveDown(0.6);
+
+    const headers = ['Fecha', 'Tipo', 'Descripción', 'Categoría', 'Estado', 'Titular', 'Importe EUR'];
+    const colW = [58, 44, 150, 72, 52, 72, 58];
+    let y = doc.y;
+    let x = 48;
+    doc.fontSize(8).fillColor('#333333').font('Helvetica-Bold');
+    headers.forEach((h, i) => {
+      doc.text(h, x, y, { width: colW[i] });
+      x += colW[i];
+    });
+    doc.font('Helvetica');
+    y += 14;
+
+    const pageBottom = () => doc.page.height - 56;
+    for (const row of rows) {
+      if (y + 14 > pageBottom()) {
+        doc.addPage();
+        y = 48;
+      }
+      const tipo = row.expenseType === 'invoice' ? 'Factura' : 'Gasto';
+      const ownerId = row.ownerId || row.userId;
+      const cells = [
+        row.date || '',
+        tipo,
+        String(row.description || '').slice(0, 80),
+        String(row.category || ''),
+        String(row.status || ''),
+        userMap[ownerId] || ownerId || '—',
+        eurAmountRow(row).toFixed(2),
+      ];
+      x = 48;
+      doc.fontSize(7).fillColor('#000000');
+      cells.forEach((cell, i) => {
+        doc.text(String(cell), x, y, { width: colW[i], ellipsis: true });
+        x += colW[i];
+      });
+      y += 12;
+    }
+
+    doc.end();
+  });
+
   router.post('/', async (req, res) => {
     try {
     console.log('[POST /expenses] body:', JSON.stringify(req.body, null, 2));
@@ -472,8 +652,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const rec = recurring === true || recurring === 1 || recurring === '1';
     let rule = recurrenceRule != null ? String(recurrenceRule).trim().slice(0, 48) : null;
     if (rec) {
-      if (!rule || !isValidRecurrenceRule(rule)) {
-        return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES.join(' | ')} | custom:N[weeks|months|years] | custom:N` });
+      if (!rule || !isAllowedRecurrenceRule(rule)) {
+        return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES_ACCEPTED.join(' | ')} | custom:N[weeks|months|years] | custom:N` });
       }
     } else {
       rule = null;
@@ -837,8 +1017,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         nextRule = recurrenceRule != null ? String(recurrenceRule).trim().slice(0, 48) : null;
       }
       if (nextRec) {
-        if (!nextRule || !isValidRecurrenceRule(nextRule)) {
-          return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES.join(' | ')} | custom:N[weeks|months|years] | custom:N` });
+        if (!nextRule || !isAllowedRecurrenceRule(nextRule)) {
+          return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES_ACCEPTED.join(' | ')} | custom:N[weeks|months|years] | custom:N` });
         }
       } else {
         nextRule = null;

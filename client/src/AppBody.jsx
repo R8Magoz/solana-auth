@@ -710,12 +710,30 @@ function invoiceForecastMonthlyEUR(e){
 }
 function daysUntilISO(iso){
   if(!iso||String(iso).length<10)return null;
-  const t=new Date();
-  t.setHours(0,0,0,0);
-  const d=new Date(String(iso).slice(0,10)+"T12:00:00");
-  if(isNaN(d.getTime()))return null;
-  d.setHours(0,0,0,0);
-  return Math.ceil((d-t)/86400000);
+  const todayKey=new Date().toISOString().slice(0,10);
+  const dueKey=String(iso).slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dueKey))return null;
+  const tParts=todayKey.split("-").map(Number);
+  const dParts=dueKey.split("-").map(Number);
+  const tUtc=Date.UTC(tParts[0],tParts[1]-1,tParts[2]);
+  const dUtc=Date.UTC(dParts[0],dParts[1]-1,dParts[2]);
+  return Math.round((dUtc-tUtc)/86400000);
+}
+/** Unpaid/upcoming invoice for dashboard panel (excludes paid; includes overdue + pending approval). */
+function invoiceIsUpcomingUnpaid(e,cats,users){
+  if(!e||e.expenseType!=="invoice"||!e.dueDate)return false;
+  const st=getItemStatus(e,cats,users);
+  if(st==="rejected"||st==="deleted")return false;
+  const ps=String(e.paymentStatus||"").toLowerCase();
+  if(ps==="paid"||ps==="na")return false;
+  return true;
+}
+function parseCalendarDayParts(iso){
+  const s=String(iso||"").slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return null;
+  const [y,m,d]=s.split("-").map(Number);
+  if(!y||m<1||m>12||d<1||d>31)return null;
+  return{y,m:m-1,d};
 }
 const ST = {
   approved: { bg: '#D1FAE5', color: '#065F46' },
@@ -3411,7 +3429,7 @@ export function DashboardView(){
   const budgetRemainingTotal=budgetTotalActive-spentActive;
   const budgetProgressPct=budgetTotalActive>0 ? (spentActive/budgetTotalActive)*100 : 0;
   const upcoming15=[];
-  expenses.filter(e=>e.expenseType==="invoice"&&e.paymentStatus==="unpaid"&&e.dueDate).forEach(e=>{
+  expenses.filter(e=>invoiceIsUpcomingUnpaid(e,cats,users)).forEach(e=>{
     const diff=daysUntilISO(String(e.dueDate).slice(0,10));
     if(diff!=null&&diff>=0&&diff<=15)upcoming15.push({...e,name:e.vendor||e.description,daysUntil:diff});
   });
@@ -4175,7 +4193,7 @@ export function ApprovalsView(){
 
 /* ── PAYMENT CALENDAR ──────────────────────────────────────────────────────── */
 function PaymentCalendar({reportExpenses}){
-  const{expenses,cats,t,go,setDetailId,setPanel}=useApp();
+  const{expenses,cats,users,t,go,setDetailId,setPanel}=useApp();
   const srcExpenses=Array.isArray(reportExpenses)?reportExpenses:expenses;
   const [cur,setCur]=useState(()=>new Date());
   const year=cur.getFullYear(),mon=cur.getMonth();
@@ -4183,22 +4201,21 @@ function PaymentCalendar({reportExpenses}){
   const daysInMonth=new Date(year,mon+1,0).getDate();
   const events={};
   srcExpenses.forEach(e=>{
+    if(getItemStatus(e,cats,users)==="deleted")return;
     const isInv=e.expenseType==="invoice";
     const dateRaw=isInv?(e.dueDate||e.date):e.date;
     if(!dateRaw)return;
-    try{
-      const dt=new Date(String(dateRaw).slice(0,10)+"T12:00:00");
-      if(dt.getFullYear()===year&&dt.getMonth()===mon){
-        const day=dt.getDate();
-        if(!events[day])events[day]=[];
-        events[day].push({
-          type:isInv?"invoice":"expense",
-          id:e.id,
-          label:isInv?(e.vendor||e.proveedor||e.description):e.description,
-          amount:eurForExpense(e),
-        });
-      }
-    }catch(err){}
+    const parts=parseCalendarDayParts(dateRaw);
+    if(parts&&parts.y===year&&parts.m===mon){
+      const day=parts.d;
+      if(!events[day])events[day]=[];
+      events[day].push({
+        type:isInv?"invoice":"expense",
+        id:e.id,
+        label:isInv?(e.vendor||e.proveedor||e.description):e.description,
+        amount:eurForExpense(e),
+      });
+    }
   });
   const cells=[];
   for(let i=0;i<firstDay;i++)cells.push(null);
@@ -4208,6 +4225,7 @@ function PaymentCalendar({reportExpenses}){
   const monthName=(()=>{const mn=cur.toLocaleString("es-ES",{month:"long"});const yr=cur.getFullYear();return mn.charAt(0).toUpperCase()+mn.slice(1)+" "+yr;})();
   const dayLabels=["cal.mon","cal.tue","cal.wed","cal.thu","cal.fri","cal.sat","cal.sun"].map(k=>t(k));
   const [selDay,setSelDay]=useState(null);
+  useEffect(()=>{setSelDay(null);},[year,mon]);
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -4225,10 +4243,12 @@ function PaymentCalendar({reportExpenses}){
           </div>
         ))}
       </div>
-      {selDay&&events[selDay]&&(
+      {selDay!=null&&(
         <div style={{marginTop:10,background:"#F5F0EA",borderRadius:8,padding:"10px 12px"}}>
           <div style={{fontWeight:600,fontSize:11,marginBottom:6,color:G}}>{selDay} {cur.toLocaleString("es-ES",{month:"long"})}</div>
-          {events[selDay].map((ev,i)=>(
+          {(events[selDay]||[]).length===0
+            ?<div style={{fontSize:11,color:"#9CAA9F"}}>Sin movimientos</div>
+            :(events[selDay]||[]).map((ev,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,marginBottom:3,gap:6}}>
               <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?"#C4622D":"#3C0A37",display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
               <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(ev.amount)}</span>
@@ -4245,27 +4265,17 @@ function PaymentCalendar({reportExpenses}){
   );
 }
 
-/** Date range for server reports (PDF/summary); matches ReportsView filters. */
-function reportsApiDateRange(dateRange){
-  const now=new Date();
-  const pad2=n=>String(n).padStart(2,"0");
-  if(dateRange==="thisMonth"){
-    const from=`${now.getFullYear()}-${pad2(now.getMonth()+1)}-01`;
-    const last=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-    const to=`${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(last)}`;
-    return{from,to};
-  }
-  if(dateRange==="last3Months"){
-    const start=new Date(now.getFullYear(),now.getMonth()-2,1);
-    const from=`${start.getFullYear()}-${pad2(start.getMonth()+1)}-01`;
-    const last=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-    const to=`${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(last)}`;
-    return{from,to};
-  }
-  if(dateRange==="thisYear"){
-    return{from:`${now.getFullYear()}-01-01`,to:`${now.getFullYear()}-12-31`};
-  }
-  return{from:"2000-01-01",to:`${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`};
+/** Date range for server reports (PDF); matches ReportsView reportFrom/reportTo. */
+function reportsApiDateRange(reportFrom, reportTo) {
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const now = new Date();
+  const from = reportFrom && /^\d{4}-\d{2}-\d{2}$/.test(reportFrom)
+    ? reportFrom
+    : '2000-01-01';
+  const to = reportTo && /^\d{4}-\d{2}-\d{2}$/.test(reportTo)
+    ? reportTo
+    : `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  return { from, to };
 }
 
 /* ── REPORTS VIEW ──────────────────────────────────────────────────────────── */
@@ -4273,29 +4283,34 @@ export function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel}=useApp();
   const [statusFilter, setStatusFilter] = useState("all");
   const [ivaFilter, setIvaFilter] = useState("with");
-  const [dateRange,setDateRange]=useState("thisMonth");
+  const [reportFrom, setReportFrom] = React.useState("");
+  const [reportTo, setReportTo] = React.useState(new Date().toISOString().slice(0, 10));
+  React.useEffect(() => {
+    const allDates = (expenses || [])
+      .filter((e) => e.status !== "deleted" && e.date && e.date.length >= 10)
+      .map((e) => e.date.slice(0, 10))
+      .sort();
+    if (allDates.length > 0) {
+      setReportFrom((prev) => prev || allDates[0]);
+    } else {
+      setReportFrom((prev) => prev || "2000-01-01");
+    }
+  }, [expenses]);
+  const rangeFilteredExpenses = useMemo(() => {
+    const getRefDate = (e) => (
+      (e.expenseType === "invoice" ? (e.dueDate || e.date) : e.date) || ""
+    ).slice(0, 10);
+    return expenses.filter((e) => {
+      const d = getRefDate(e);
+      if (!d) return false;
+      if (reportFrom && d < reportFrom) return false;
+      if (reportTo && d > reportTo) return false;
+      return true;
+    });
+  }, [expenses, reportFrom, reportTo]);
   const [trendRows,setTrendRows]=useState(null);
   const [trendLoad,setTrendLoad]=useState(false);
   const [trendErr,setTrendErr]=useState("");
-  const rangeFilteredExpenses=useMemo(()=>{
-    const now=new Date();
-    const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
-    const startOf3Months=new Date(now.getFullYear(),now.getMonth()-2,1);
-    const startOfYear=new Date(now.getFullYear(),0,1);
-    const getRefDate=e=>{
-      const raw=(e.expenseType==="invoice"?(e.dueDate||e.date):e.date)||"";
-      const d=new Date(String(raw).slice(0,10)+"T12:00:00");
-      return Number.isNaN(d.getTime())?null:d;
-    };
-    return expenses.filter(e=>{
-      const d=getRefDate(e);
-      if(!d)return false;
-      if(dateRange==="thisMonth")return d>=startOfMonth;
-      if(dateRange==="last3Months")return d>=startOf3Months;
-      if(dateRange==="thisYear")return d>=startOfYear;
-      return true;
-    });
-  },[expenses,dateRange]);
   useEffect(()=>{
     if(!AUTH_URL){setTrendRows(null);setTrendErr("");setTrendLoad(false);return;}
     let cancelled=false;
@@ -4479,11 +4494,11 @@ export function ReportsView(){
     try{API.ensureSessionToken();}catch(e){}
     const tok=API.token||(typeof sessionStorage!=="undefined"?sessionStorage.getItem("sol-session-token"):"")||"";
     if(!tok){dispatchSolanaToast(t("msg.sessionExpired"),"error");return;}
-    const {from,to}=reportsApiDateRange(dateRange);
-    const qs=new URLSearchParams({from,to,type:"all"});
+    const {from,to}=reportsApiDateRange(reportFrom,reportTo);
+    const qs=new URLSearchParams({from,to,type:"all",status:statusFilter});
     let r;
     try{
-      r=await fetch(AUTH_URL+"/reports/export/pdf?"+qs.toString(),{headers:{Authorization:"Bearer "+tok}});
+      r=await fetch(AUTH_URL+"/expenses/export/pdf?"+qs.toString(),{headers:{Authorization:"Bearer "+tok}});
     }catch(e){
       dispatchSolanaToast(t("msg.genericShort"),"error");
       return;
@@ -4548,12 +4563,13 @@ export function ReportsView(){
         </div>
       </div>
       <div className="card" style={{marginBottom:11,padding:"10px 12px"}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {[{id:"thisMonth",label:"Este mes"},{id:"last3Months",label:"Últimos 3 meses"},{id:"thisYear",label:"Este año"},{id:"all",label:"Todo"}].map(r=>(
-            <button key={r.id} type="button" onClick={()=>setDateRange(r.id)} style={{fontSize:12,padding:"6px 14px",borderRadius:20,border:"1px solid #E5E0D8",background:dateRange===r.id?"#3C0A37":"transparent",color:dateRange===r.id?"#fff":"#6B7B72",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>
-              {r.label}
-            </button>
-          ))}
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <label style={{fontSize:11}}>Desde</label>
+          <input type="date" className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
+            value={reportFrom} onChange={e=>setReportFrom(e.target.value)}/>
+          <label style={{fontSize:11}}>Hasta</label>
+          <input type="date" className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
+            value={reportTo} onChange={e=>setReportTo(e.target.value)}/>
         </div>
       </div>
       {AUTH_URL&&(
