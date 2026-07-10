@@ -4108,7 +4108,7 @@ function ReceiptThumb({expenseId}){
 export function ApprovalsView(){
   const{t,expenses,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel}=useApp();
   const [typeFilter,setTypeFilter]=useState("all");
-  const [assigneeFilter,setAssigneeFilter]=useState("mine");
+  const [assigneeFilter,setAssigneeFilter]=useState("");
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const priorityForItem=(item)=>{
     const ids=effectiveExpenseApproverIds(item,cats,users);
@@ -4147,7 +4147,9 @@ export function ApprovalsView(){
     const vote=approvalVoteFor(item.approvals||{},user.id,users);
     return vote!=="approved"&&vote!=="rejected";
   };
-  const assigneeFiltered=assigneeFilter==="mine"?kindFiltered.filter(pendingMineFilter):kindFiltered;
+  const hasPendingMine=kindFiltered.some(pendingMineFilter);
+  const effectiveAssigneeFilter=assigneeFilter||(hasPendingMine?"mine":"all");
+  const assigneeFiltered=effectiveAssigneeFilter==="mine"?kindFiltered.filter(pendingMineFilter):kindFiltered;
   const activeRows=sortByPriority(assigneeFiltered);
   const cAll=baseList.length;
   const cExp=baseList.filter(e=>e.expenseType!=="invoice").length;
@@ -4163,7 +4165,7 @@ export function ApprovalsView(){
         </p>
       )}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
-        <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 10px"}} value={assigneeFilter} onChange={e=>setAssigneeFilter(e.target.value)}>
+        <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 10px"}} value={effectiveAssigneeFilter} onChange={e=>setAssigneeFilter(e.target.value)}>
           <option value="mine">Pendientes de mí</option>
           <option value="all">Todas</option>
         </select>
