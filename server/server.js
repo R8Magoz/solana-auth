@@ -37,7 +37,7 @@ const path       = require('path');
 const { spawn }  = require('child_process');
 const { Resend } = require('resend');
 const userStore = require('./userStore');
-const { runUsersJsonMigration } = require('./migrate');
+const { runUsersJsonMigration, runRoleConsolidationMigration } = require('./migrate');
 const { createExpensesRouter } = require('./expensesRoutes');
 const { sanitizeRequestBody } = require('./middleware/sanitize');
 
@@ -350,17 +350,34 @@ const expenseReceiptUploadLimiter = rateLimit({
 });
 
 // ── ADMIN AUTH MIDDLEWARE ─────────────────────────────────────────────────────
+const STALE_SUPERADMIN_ROLE = 'superadmin';
+
+function rejectStaleSuperadminToken(session, req, res) {
+  if (session.role === STALE_SUPERADMIN_ROLE) {
+    audit('stale_role_token_rejected', { userId: session.userId, ip: req.ip, claimedRole: session.role });
+    res.status(401).json({ error: 'Sesión obsoleta. Vuelve a iniciar sesión.', code: 'STALE_ROLE' });
+    return true;
+  }
+  return false;
+}
+
 function requireAdminSession(req, res, next) {
   const auth = req.headers['authorization'] || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   const session = verifySessionToken(token);
-  if (session && (session.role === 'admin' || session.role === 'superadmin')) {
-    req.userId = session.userId;
-    req.userRole = session.role;
-    return next();
+  if (!session) {
+    audit('failed_admin_session', { ip: req.ip, path: req.path });
+    return res.status(403).json({ error: 'No autorizado.' });
   }
-  audit('failed_admin_session', { ip: req.ip, path: req.path });
-  return res.status(403).json({ error: 'No autorizado.' });
+  if (rejectStaleSuperadminToken(session, req, res)) return;
+  const user = userStore.findUserByIdPublic(session.userId);
+  if (!user || user.accountStatus !== 'active' || user.role !== 'admin') {
+    audit('failed_admin_session', { ip: req.ip, path: req.path, userId: session.userId });
+    return res.status(403).json({ error: 'No autorizado.' });
+  }
+  req.userId = user.id;
+  req.userRole = user.role;
+  return next();
 }
 
 function requireAuth(req, res, next) {
@@ -373,15 +390,20 @@ function requireAuth(req, res, next) {
   if (!session) {
     return res.status(401).json({ error: 'No autorizado.' });
   }
-  req.userId = session.userId;
-  req.userRole = session.role;
+  if (rejectStaleSuperadminToken(session, req, res)) return;
+  const user = userStore.findUserByIdPublic(session.userId);
+  if (!user || user.accountStatus !== 'active') {
+    return res.status(401).json({ error: 'No autorizado.' });
+  }
+  req.userId = user.id;
+  req.userRole = user.role;
   next();
 }
 
-function requireSuperAdmin(req, res, next) {
-  if (req.userRole !== 'superadmin') {
-    audit('failed_superadmin', { ip: req.ip, path: req.path, userId: req.userId });
-    return res.status(403).json({ error: 'Solo superadministrador.' });
+function requireAdmin(req, res, next) {
+  if (req.userRole !== 'admin') {
+    audit('failed_admin', { ip: req.ip, path: req.path, userId: req.userId });
+    return res.status(403).json({ error: 'Solo administrador.' });
   }
   next();
 }
@@ -415,7 +437,7 @@ const { runExpenseMaintenance } = require('./expenseJobs');
 app.use(
   '/departments',
   departmentsApiLimiter,
-  createDepartmentsRouter({ audit, requireAuth, requireSuperAdmin }),
+  createDepartmentsRouter({ audit, requireAuth, requireSuperAdmin: requireAdmin }),
 );
 app.use('/reports', reportsLimiter, createReportsRouter({ requireAdminSession, requireAuth, userStore }));
 
@@ -524,6 +546,7 @@ app.get('*', (req, res, next) => {
 
 // ── START ─────────────────────────────────────────────────────────────────────
 runUsersJsonMigration({ dataDir: DATA_DIR, audit });
+runRoleConsolidationMigration({ audit });
 
 // ── SCHEDULED BACKUPS ────────────────────────────────────────────────────────
 // Run once on startup, then every 6 hours.

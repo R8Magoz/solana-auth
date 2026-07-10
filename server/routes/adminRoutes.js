@@ -46,11 +46,10 @@ function createAdminRouter(deps) {
     const user = userStore.findUserById(id);
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
     if (role) {
-      // Only superadmin can change roles at all
-      if (req.userRole !== 'superadmin') {
-        return res.status(403).json({ error: 'Solo superadmin puede cambiar roles.' });
+      if (req.userRole !== 'admin') {
+        return res.status(403).json({ error: 'Solo administrador puede cambiar roles.' });
       }
-      if (['user', 'admin', 'superadmin'].includes(role)) {
+      if (['user', 'admin'].includes(role)) {
         user.role = role;
       }
     }
@@ -66,8 +65,8 @@ function createAdminRouter(deps) {
   });
 
   router.delete('/users/:id', requireAdminSession, (req, res) => {
-    if (req.userRole !== 'superadmin') {
-      return res.status(403).json({ error: 'Solo superadmin puede eliminar usuarios.' });
+    if (req.userRole !== 'admin') {
+      return res.status(403).json({ error: 'Solo administrador puede eliminar usuarios.' });
     }
     const id = String(req.params.id || '').trim();
     const removed = userStore.findUserByIdPublic(id);
@@ -149,7 +148,7 @@ function createAdminRouter(deps) {
       accountStatus:    'active',
       approvalStatus:   'approved',
       emailVerifiedAt:  now,
-      approvedBy:       'superadmin',
+      approvedBy:       'admin',
       approvedAt:       now,
       deniedAt:         null,
       deniedBy:         null,
@@ -417,14 +416,6 @@ function createAdminRouter(deps) {
    * List backup files with sizes and modified times.
    */
   router.get('/backups', requireAdminSession, (req, res) => {
-    const session = (() => {
-      const auth = req.headers['authorization'] || '';
-      const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-      return verifySessionToken(token);
-    })();
-    if (!session || session.role !== 'superadmin') {
-      return res.status(403).json({ error: 'Solo el superadmin puede ver copias de seguridad.' });
-    }
     try {
       const backups = listBackups();
       res.json({ ok: true, backups });
@@ -435,17 +426,9 @@ function createAdminRouter(deps) {
   });
 
   router.post('/backups/run', requireAdminSession, (req, res) => {
-    const session = (() => {
-      const auth = req.headers['authorization'] || '';
-      const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-      return verifySessionToken(token);
-    })();
-    if (!session || session.role !== 'superadmin') {
-      return res.status(403).json({ error: 'Solo el superadmin puede ejecutar copias de seguridad.' });
-    }
     try {
       const result = runBackup({ db });
-      audit('backup_manual', { filename: result.filename, userId: session.userId });
+      audit('backup_manual', { filename: result.filename, userId: req.userId });
       res.json({ ok: true, ...result });
     } catch (e) {
       res.status(500).json({ error: e.message });
@@ -453,18 +436,10 @@ function createAdminRouter(deps) {
   });
 
   router.get('/backups/download/:filename', requireAdminSession, (req, res) => {
-    const session = (() => {
-      const auth = req.headers['authorization'] || '';
-      const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-      return verifySessionToken(token);
-    })();
-    if (!session || session.role !== 'superadmin') {
-      return res.status(403).json({ error: 'Solo el superadmin puede descargar copias de seguridad.' });
-    }
     try {
       const fullPath = resolveSafeBackupPath(req.params.filename);
       res.download(fullPath, req.params.filename);
-      audit('backup_downloaded', { filename: req.params.filename, userId: session.userId });
+      audit('backup_downloaded', { filename: req.params.filename, userId: req.userId });
     } catch (e) {
       res.status(400).json({ error: e.message });
     }
@@ -634,11 +609,11 @@ function createAdminRouter(deps) {
       }
     }
 
-    // Bootstrap admin (superadmin, active)
+    // Bootstrap admin (active)
     await upsertSeedUser({
       id: 'bootstrap-admin', email: adminEmail,
       name: adminName || 'Bootstrap Admin',
-      password: adminPassword, role: 'superadmin', color: '#3C0A37',
+      password: adminPassword, role: 'admin', color: '#3C0A37',
       accountStatus: 'active', approvalStatus: 'approved',
     });
 

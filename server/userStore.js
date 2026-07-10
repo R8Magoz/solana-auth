@@ -240,7 +240,7 @@ function replaceUserById(u) {
   updateFullStmt.run(p);
 }
 
-const ALLOWED_ROLES = new Set(['user', 'admin', 'superadmin']);
+const ALLOWED_ROLES = new Set(['user', 'admin']);
 
 /**
  * Superadmin patch of another user (preserves passwordHash and other auth fields).

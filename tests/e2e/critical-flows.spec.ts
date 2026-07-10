@@ -4,7 +4,7 @@ type User = {
   id: string;
   email: string;
   name: string;
-  role: 'user' | 'admin' | 'superadmin';
+  role: 'user' | 'admin';
   accountStatus: 'active' | 'denied' | 'pending_admin_approval';
   approvalStatus: 'approved' | 'denied' | 'pending';
   color: string;
@@ -35,7 +35,7 @@ function makeUsers(): User[] {
       id: 'admin-1',
       email: 'admin@solana.test',
       name: 'Admin QA',
-      role: 'superadmin',
+      role: 'admin',
       accountStatus: 'active',
       approvalStatus: 'approved',
       color: '#3C0A37',
@@ -81,7 +81,6 @@ function parseVotes(row: ExpenseRow): Record<string, string> {
 
 function canSessionActOnApproval(row: ExpenseRow, session: { userId: string; role: string } | null): boolean {
   if (!session) return false;
-  if (session.role !== 'admin' && session.role !== 'superadmin') return false;
   return parseApprovers(row).includes(session.userId);
 }
 
@@ -309,12 +308,12 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         body: JSON.stringify(data),
       });
 
-    const superadminIds = () => state.users.filter((u) => u.role === 'superadmin').map((u) => u.id);
+    const adminIds = () => state.users.filter((u) => u.role === 'admin').map((u) => u.id);
 
     const defaultApproversFromBody = (body: any): string[] => {
       const req = Array.isArray(body.approvalRequired) ? body.approvalRequired.filter(Boolean).map(String) : [];
       if (req.length) return req;
-      const s = superadminIds();
+      const s = adminIds();
       return s.length ? s : [state.users[0]?.id].filter(Boolean) as string[];
     };
 
@@ -393,7 +392,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
     if (path === '/reports/summary' && method === 'GET') {
       if (!session) return json(401, { error: 'No autorizado.' });
       const r = session.role;
-      if (r !== 'admin' && r !== 'superadmin') return json(403, { error: 'No autorizado.' });
+      if (r !== 'admin') return json(403, { error: 'No autorizado.' });
       const totalExpenses = state.expenses.reduce((s, ex) => s + (Number(ex.amountEUR) || 0), 0);
       return json(200, { ok: true, totalExpenses, byCategory: {}, byDepartment: {} });
     }
@@ -401,7 +400,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
     if (path === '/reports/summary/trend' && method === 'GET') {
       if (!session) return json(401, { error: 'No autorizado.' });
       const r = session.role;
-      if (r !== 'admin' && r !== 'superadmin') return json(403, { error: 'No autorizado.' });
+      if (r !== 'admin') return json(403, { error: 'No autorizado.' });
       return json(200, []);
     }
 
@@ -1417,7 +1416,7 @@ test.describe('C — Permissions and profile', () => {
           currency: 'EUR',
           category: 'Software',
           status: 'submitted',
-          approversJson: JSON.stringify(['user-1']),
+          approversJson: JSON.stringify(['admin-1']),
           approvalVotesJson: '{}',
           paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 50, pct: 100 }]),
           splitMode: null,
@@ -1442,7 +1441,7 @@ test.describe('C — Permissions and profile', () => {
     await expect(panel.getByRole('button', { name: /Rechazar/i })).toHaveCount(0);
   });
 
-  test('C4) Superadmin can assign approvers to categories in Settings', async ({ page }) => {
+  test('C4) Admin can assign approvers to categories in Settings', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await openSettingsViaUserMenu(page);
@@ -1466,7 +1465,7 @@ test.describe('C — Permissions and profile', () => {
     await expect(page.getByText(/Guardado|Contraseña|actualizada|cambiada|ok/i).first()).toBeVisible({ timeout: 8000 });
   });
 
-  test('C5) Assigned approver sees Aprobar/Rechazar buttons', async ({ page }) => {
+  test('C5) Assigned approver sees Aprobar/Rechazar buttons regardless of role', async ({ page }) => {
     const state = createMockApiState({
       expenses: [
         {
@@ -1481,7 +1480,7 @@ test.describe('C — Permissions and profile', () => {
           currency: 'EUR',
           category: 'Software',
           status: 'submitted',
-          approversJson: JSON.stringify(['admin-1']),
+          approversJson: JSON.stringify(['user-1']),
           approvalVotesJson: '{}',
           paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 120, pct: 100 }]),
           splitMode: null,
@@ -1502,7 +1501,7 @@ test.describe('C — Permissions and profile', () => {
       ],
     });
     await attachMockApiRoutes(page, state);
-    await loginAs(page, 'admin@solana.test');
+    await loginAs(page, 'user@solana.test');
     await clickSidebarSection(page, 'Aprobaciones');
     await expect(page.getByText('Gasto para aprobar por user QA').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Revisar' }).first()).toBeVisible({ timeout: 15000 });

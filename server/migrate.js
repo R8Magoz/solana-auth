@@ -54,6 +54,19 @@ function runUsersJsonMigration({ dataDir, audit }) {
 }
 
 /**
+ * Idempotent: consolidate legacy superadmin → admin (runs every startup; no-op when none remain).
+ */
+function runRoleConsolidationMigration({ audit }) {
+  const db = require('./db');
+  const rows = db.prepare("SELECT id FROM users WHERE role = 'superadmin'").all();
+  if (!rows.length) return;
+  const userIds = rows.map((r) => r.id);
+  db.prepare("UPDATE users SET role = 'admin' WHERE role = 'superadmin'").run();
+  audit('role_consolidation_superadmin_to_admin', { userIds, count: userIds.length });
+  console.log(`[MIGRATE] Consolidated ${userIds.length} superadmin user(s) → admin`);
+}
+
+/**
  * One-time: copy bills → expenses as expenseType=invoice (idempotent via originBillId).
  * Does not DELETE or UPDATE the bills table.
  * Run: node migrate.js bills
@@ -139,7 +152,7 @@ function migrateBillsToExpenses() {
   return count;
 }
 
-module.exports = { runUsersJsonMigration, migrateBillsToExpenses };
+module.exports = { runUsersJsonMigration, runRoleConsolidationMigration, migrateBillsToExpenses };
 
 if (require.main === module) {
   const cmd = process.argv[2];
