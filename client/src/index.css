@@ -302,6 +302,8 @@ body {
   animation: budgetBarFill 400ms ease-out forwards;
 }
 
+/* Panel budget-health KPI cards use tones from budgetUsageHealth() (AppBody.jsx). */
+
 .inp--invalid {
   border-color: #DC2626 !important;
   box-shadow: 0 0 0 1px #DC2626;
