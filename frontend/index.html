@@ -2203,6 +2203,39 @@ function SidebarUserMenu({items}){
   );
 }
 
+/* ── SIDEBAR NAV ITEM ──────────────────────────────────────────────────────── */
+function SidebarNavItem({active,label,badge,onClick}){
+  const [hovered,setHovered]=useState(false);
+  const showHover=hovered&&!active;
+  return(
+    <div
+      onClick={onClick}
+      onMouseEnter={()=>setHovered(true)}
+      onMouseLeave={()=>setHovered(false)}
+      style={{
+        padding:"6px 9px",
+        borderRadius:6,
+        cursor:"pointer",
+        fontSize:11,
+        fontWeight:500,
+        marginBottom:2,
+        transition:"background 0.15s ease,color 0.15s ease",
+        background:active?"rgba(250,247,242,0.12)":(showHover?"rgba(250,247,242,0.12)":"transparent"),
+        color:active?"#FAF7F2":(showHover?"rgba(250,247,242,0.92)":"rgba(250,247,242,0.5)"),
+        borderLeft:`3px solid ${active?T:"transparent"}`,
+        display:"flex",
+        alignItems:"center",
+        justifyContent:"space-between",
+      }}
+    >
+      <span style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+        <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
+        {badge>0&&<span style={{background:BL,color:"#fff",borderRadius:10,minWidth:16,height:16,padding:"0 4px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,flexShrink:0,lineHeight:1}}>{badge}</span>}
+      </span>
+    </div>
+  );
+}
+
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
 const Ctx=createContext(null);
 const useApp=()=>useContext(Ctx);
@@ -8940,12 +8973,7 @@ function SolanaExpenses(){
             <div style={{fontSize:8,color:"rgba(250,247,242,0.28)",marginTop:4,paddingLeft:1,letterSpacing:"0.06em",textTransform:"uppercase"}}>Gestión de gastos</div>
           </div>
           {navItems.map(n=>(
-            <div key={n.id} onClick={()=>go(n.id)} style={{padding:"6px 9px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:500,marginBottom:2,transition:"background 0.15s",background:view===n.id?"rgba(250,247,242,0.12)":"transparent",color:view===n.id?"#FAF7F2":"rgba(250,247,242,0.5)",borderLeft:`3px solid ${view===n.id?T:"transparent"}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
-                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.label}</span>
-                {n.badge>0&&<span style={{background:BL,color:"#fff",borderRadius:10,minWidth:16,height:16,padding:"0 4px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
-              </span>
-            </div>
+            <SidebarNavItem key={n.id} active={view===n.id} label={n.label} badge={n.badge} onClick={()=>go(n.id)}/>
           ))}
           <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)",position:"relative"}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
