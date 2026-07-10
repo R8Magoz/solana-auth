@@ -134,9 +134,6 @@ function createSettingsRouter(deps) {
 
   // GET /settings/schema — full rows for superadmin UI (register before /settings/:key patterns)
   router.get('/settings/schema', requireAdminSession, (req, res) => {
-    if (req.userRole !== 'superadmin') {
-      return res.status(403).json({ error: 'Solo el superadmin puede ver el esquema de ajustes.' });
-    }
     const rows = stmtSchema.all();
     const out = rows.map((row) => ({
       key: row.key,
@@ -164,10 +161,6 @@ function createSettingsRouter(deps) {
 
   // PUT /settings/:key — update a single setting (key must already exist in app_settings)
   router.put('/settings/:key', requireAdminSession, (req, res) => {
-    if (req.userRole !== 'superadmin') {
-      return res.status(403).json({ error: 'Solo el superadmin puede modificar ajustes.' });
-    }
-
     const key = String(req.params.key || '').trim();
     if (!key) {
       return res.status(400).json({ error: 'Clave no válida.' });

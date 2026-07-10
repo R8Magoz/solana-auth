@@ -340,8 +340,8 @@ const approvalVoteFor=(approvals,canonicalUserId,users)=>{
   return undefined;
 };
 /** Derive admin IDs from live user list — no hardcoded constant needed */
-const getAdminIds=users=>{const u=Array.isArray(users)?users:[];return u.filter(x=>x.role==="admin"||x.role==="superadmin").map(x=>x.id);};
-/** Drop approver IDs not on the roster; if fewer than 2 remain, use all admin/superadmin ids. */
+const getAdminIds=users=>{const u=Array.isArray(users)?users:[];return u.filter(x=>x.role==="admin").map(x=>x.id);};
+/** Drop approver IDs not on the roster; if fewer than 2 remain, use all admin ids. */
 const finalizeApproverIdList=(canonicalIds,users)=>{
   const u=Array.isArray(users)?users:[];
   const list=Array.isArray(canonicalIds)?[...canonicalIds]:[];
@@ -416,11 +416,11 @@ const effectiveExpenseApproverIds=(exp,cats,users)=>{
     return canonicalApproverIdList(cat.approverIds,users);
   }
   return (users || [])
-    .filter(u => u.role === 'superadmin')
+    .filter(u => u.role === 'admin')
     .map(u => u.id);
 };
-const canUserReviewExpense=(item,{user,isAdmin,cats,users})=>{
-  if(!isAdmin||!item||!user?.id)return false;
+const canUserReviewExpense=(item,{user,cats,users})=>{
+  if(!item||!user?.id)return false;
   const approverIds=effectiveExpenseApproverIds(item,cats,users);
   if(!approverIds.includes(user.id))return false;
   if(item._apiType==="expense"){
@@ -966,21 +966,21 @@ const tCat=(name,t)=>{const k="cat."+name.toLowerCase().replace(/[^a-z]/g,"");co
 /* ══════════════════════════════════════════════════════════════════════════════
    PERMISSIONS MATRIX
    ─────────────────────────────────────────────────────────────────────────────
-   Role         │ user  │ admin │ superadmin
-   ─────────────┼───────┼───────┼───────────
-   submit exp   │  ✓    │  ✓    │  ✓
-   edit exp*    │  own  │  own  │  any        *pending only, not yet implemented
-   delete exp*  │  own  │  any  │  any        *pending only
-   approve exp  │  –    │  ✓†   │  ✓†         †only if in category approverIds
-   reject exp   │  –    │  ✓†   │  ✓†
-   submit bill  │  ✓    │  ✓    │  ✓
-   pause bill   │  –    │  ✓    │  ✓
-   delete bill  │  –    │  ✓    │  ✓
-   approve bill │  –    │  ✓†   │  ✓†
-   upload att.  │  ✓    │  ✓    │  ✓          own submissions only
-   export Excel │  ✓    │  ✓    │  ✓
-   manage users │  –    │  –    │  ✓
-   manage cats  │  –    │  –    │  ✓
+   Role         │ user  │ admin
+   ─────────────┼───────┼───────
+   submit exp   │  ✓    │  ✓
+   edit exp*    │  own  │  any        *pending only, not yet implemented
+   delete exp*  │  own  │  any        *pending only
+   approve exp  │  ✓†   │  ✓†         †only if designated approver
+   reject exp   │  ✓†   │  ✓†
+   submit bill  │  ✓    │  ✓
+   pause bill   │  –    │  ✓
+   delete bill  │  –    │  ✓
+   approve bill │  ✓†   │  ✓†
+   upload att.  │  ✓    │  ✓          own submissions only
+   export Excel │  ✓    │  ✓
+   manage users │  –    │  ✓
+   manage cats  │  –    │  ✓
    ─────────────────────────────────────────────────────────────────────────────
 ══════════════════════════════════════════════════════════════════════════════ */
 
@@ -3559,15 +3559,13 @@ function DetailPanel(){
           </div>
         );})}
       </div>
-      {canUserReviewExpense(e,{user,isAdmin,cats,users})&&(
+      {canUserReviewExpense(e,{user,cats,users})&&(
         <div style={{marginTop:9,borderTop:`1px solid ${detailAccent}`,paddingTop:9}}>
           <label className="lbl" style={{marginBottom:3,color:detailAccent}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
           <div style={{display:"flex",gap:6}}>
             <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:detailAccent}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button>
-            {isAdmin && (
-              <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,background:"transparent",color:"#DC2626",border:"2px solid #DC2626",fontWeight:700}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
-            )}
+            <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,background:"transparent",color:"#DC2626",border:"2px solid #DC2626",fontWeight:700}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
           </div>
         </div>
       )}
@@ -4486,7 +4484,7 @@ export function ApprovalsView(){
           const cardBorder = priorityForItem(item) === 0
             ? '1.5px solid #D4AED0'
             : '1px solid transparent';
-          const canActOnRow=canUserReviewExpense(item,{user,isAdmin,cats,users});
+          const canActOnRow=canUserReviewExpense(item,{user,cats,users});
           const payBadge=invoicePaymentBadge(item);
           return(
             <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
@@ -5110,9 +5108,8 @@ function AdminReadme(){
 
           <div style={S.heading}>ROLES</div>
           <div style={S.body}>
-            <b>user</b> puede enviar gastos y facturas, subir recibos, exportar.<br/>
-            <b>admin</b> todo lo anterior + aprobar/rechazar ítems de sus categorías, pausar/eliminar facturas.<br/>
-            <b>superadmin</b> todo lo anterior + gestionar usuarios, categorías, ver el App Log y aprobar cuentas nuevas.
+            <b>user</b> puede enviar gastos y facturas, subir recibos, exportar y aprobar/rechazar si está designado como aprobador.<br/>
+            <b>admin</b> todo lo anterior + gestionar usuarios, categorías, presupuestos, ajustes, ver el App Log y aprobar cuentas nuevas.
           </div>
 
           <div style={S.heading}>CÓDIGOS DE ÍTEM</div>
@@ -5611,7 +5608,7 @@ function barColorForPctUsed(pct){
 
 /* ── DEPARTMENTS PANEL: budget tracker (reports/summary byDepartment) ─────── */
 function DepartmentBudgetTrackerSection({t}){
-  const{view,departments,expenses,cats,users,refreshDepartments,isSA}=useApp();
+  const{view,departments,expenses,cats,users,refreshDepartments,isAdmin}=useApp();
   const active=(departments||[]).filter(d=>!d.archived);
   const [byM,setByM]=useState({});
   const [byY,setByY]=useState({});
@@ -5653,7 +5650,7 @@ function DepartmentBudgetTrackerSection({t}){
   },[view,active.length,deptSig,expenses,cats,users,t,sessionTok]);
   useEffect(()=>{if(view==="settings")void load();},[load,view]);
   const saveBudget=async dept=>{
-    if(!AUTH_URL||!isSA)return;
+    if(!AUTH_URL||!isAdmin)return;
     const b=parseFloat(String(budDraft).replace(",","."))||0;
     if(!Number.isFinite(b)){setErr(t("msg.genericShort"));return;}
     try{API.ensureSessionToken();}catch(e){}
@@ -5703,7 +5700,7 @@ function DepartmentBudgetTrackerSection({t}){
                       if(skipBlurSaveRef.current){skipBlurSaveRef.current=false;return;}
                       if(budEdit===d.id)void saveBudget(d);
                     }}/>
-                ):isSA?(
+                ):isAdmin?(
                   <button type="button" onClick={()=>{setBudEdit(d.id);setBudDraft(String(budget));}} style={{
                     border:"none",background:"transparent",padding:0,cursor:"pointer",fontSize:13,fontWeight:700,color:G,
                     textAlign:"left",fontVariantNumeric:"tabular-nums",
@@ -5758,7 +5755,7 @@ function DepartmentBudgetBars({t,rows,title}){
 
 /* ── DEPARTMENTS CRUD (superadmin, settings) ───────────────────────────────── */
 function DepartmentsSettingsBlock({t}){
-  const{departments,refreshDepartments,isSA,isAdmin}=useApp();
+  const{departments,refreshDepartments,isAdmin}=useApp();
   const [name,setName]=useState("");
   const [bud,setBud]=useState("");
   const [editId,setEditId]=useState(null);
@@ -5767,7 +5764,7 @@ function DepartmentsSettingsBlock({t}){
   const [err,setErr]=useState("");
   const [delId,setDelId]=useState(null);
   const [showArchived,setShowArchived]=useState(false);
-  if(!isSA&&!isAdmin)return null;
+  if(!isAdmin)return null;
   const sessionTok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
   const saveLocal=(next)=>{
     lsSet(DEPTS_LS_KEY,next.map(x=>({id:x.id,name:x.name,budget:Number(x.budget)||0,archived:!!x.archived,createdAt:x.createdAt||Date.now()})));
@@ -5880,7 +5877,7 @@ function DepartmentsSettingsBlock({t}){
               </div>
               <div style={{display:"flex",gap:4}}>
                 <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(d.id);setEf({name:d.name,budget:String(d.budget!=null?d.budget:"")});setDelId(null);}}>{t("action.edit")}</button>
-                {isSA&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>{void (async()=>{if(await confirmUI("¿Archivar este departamento? No aparecerá en el panel ni en nuevos gastos, pero los gastos existentes se mantienen."))void setArchived(d,true);})();}}>Archivar</button>}
+                {isAdmin&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>{void (async()=>{if(await confirmUI("¿Archivar este departamento? No aparecerá en el panel ni en nuevos gastos, pero los gastos existentes se mantienen."))void setArchived(d,true);})();}}>Archivar</button>}
               </div>
             </div>
           )}
@@ -5901,8 +5898,8 @@ function DepartmentsSettingsBlock({t}){
                     <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)}</div>
                   </div>
                   <div style={{display:"flex",gap:4}}>
-                    {isSA&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>void setArchived(d,false)}>Restaurar</button>}
-                    {isSA&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelId(d.id)}>{t("action.delete")}</button>}
+                    {isAdmin&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>void setArchived(d,false)}>Restaurar</button>}
+                    {isAdmin&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelId(d.id)}>{t("action.delete")}</button>}
                   </div>
                 </div>
                 {delId===d.id&&(
@@ -5927,8 +5924,7 @@ function DepartmentsSettingsBlock({t}){
 export function SettingsView(){
   const{t,user,users,expenses,cats,saveCats,saveUsers,saveExp,
         onSignOut,passwords,savePasswords,ivaRates,saveIvaRates,setUser}=useApp();
-  const isSA=user?.role==="superadmin";
-  const isAdmin=user?.role==="admin"||user?.role==="superadmin";
+  const isAdmin=user?.role==="admin";
   const [editId,setEditId]=useState(null);
   const [ef,setEf]=useState({});
   const [addU,setAddU]=useState(false);
@@ -5989,7 +5985,7 @@ export function SettingsView(){
   useEffect(()=>{setAppCatsDraft(cats.map(c=>({...c})));},[cats]);
   const appSettingsToken=()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return"";}};
   const loadBackups=useCallback(async()=>{
-    if(!isSA||!AUTH_URL)return;
+    if(!isAdmin||!AUTH_URL)return;
     setBackupsLoading(true);setBackupsError("");
     try{
       API.ensureSessionToken();
@@ -5998,8 +5994,8 @@ export function SettingsView(){
       setBackups(Array.isArray(d.backups)?d.backups:[]);
     }catch(e){setBackupsError(e.message||t("signup.serverDown"));}
     finally{setBackupsLoading(false);}
-  },[isSA,t]);
-  useEffect(()=>{if(isSA&&AUTH_URL)void loadBackups();},[isSA,AUTH_URL,loadBackups]);
+  },[isAdmin,t]);
+  useEffect(()=>{if(isAdmin&&AUTH_URL)void loadBackups();},[isAdmin,AUTH_URL,loadBackups]);
   const runBackupNow=async()=>{
     setBackupsError("");setBackupsMsg("");
     try{
@@ -6203,7 +6199,7 @@ export function SettingsView(){
           <div><label className="lbl">{t("label.email")}</label><input className="inp" type="email" value={sf.email} onChange={e=>setSf(p=>({...p,email:e.target.value}))}/></div>
           <div style={{marginTop:2}}>
             <label className="lbl">Rol</label>
-            <div style={{fontSize:14,fontWeight:600,color:G}}>{user?.role==="superadmin"?t("role.superadmin"):user?.role==="admin"?t("role.admin"):t("role.user")}</div>
+            <div style={{fontSize:14,fontWeight:600,color:G}}>{user?.role==="admin"?t("role.admin"):t("role.user")}</div>
           </div>
         </div>
         <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={profileSaving||!profileDirty} onClick={()=>void saveProfile()}>{profileSaving?"…":t("action.saveChanges")}</button>
@@ -6248,7 +6244,7 @@ export function SettingsView(){
         <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={pwSaving} onClick={()=>void savePw()}>{pwSaving?"…":(passwords?.[user.id]?t("action.changePassword"):t("action.setPassword"))}</button>
       </AccordionSection>
 
-      {isSA&&(
+      {isAdmin&&(
       <>
       {/* ── Team members ── */}
       <AccordionSection title={t("settings.accordion.team")}>
@@ -6321,7 +6317,7 @@ export function SettingsView(){
             <div key={u.id}>
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA"}}>
                 <UserAvatar user={u} size={28} fontSize={8}/>
-                <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"N/A"} · {u.role==="superadmin"?t("role.superadmin"):u.role==="admin"?t("role.admin"):t("role.user")}</div></div>
+                <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"N/A"} · {u.role==="admin"?t("role.admin"):t("role.user")}</div></div>
                 <div style={{display:"flex",gap:3,flexShrink:0,flexWrap:"wrap"}}>
                   <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(u.id);setEf({name:u.name,email:u.email||"",role:u.role,color:u.color});}}>{t("action.edit")}</button>
                   {AUTH_URL&&u.id!==user.id&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #C4B5FD",background:"transparent",color:"#5B21B6",cursor:"pointer"}} onClick={()=>{setResetFor(resetFor===u.id?null:u.id);setResetPwInput("");}}>{t("team.resetPassword")}</button>}
@@ -6412,7 +6408,7 @@ export function SettingsView(){
                 <div style={{background:"#F5F0EA",borderRadius:9,padding:10,margin:"4px 0"}}>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
                     <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.name")}</label><input className="inp" style={{fontSize:14}} value={ef.name} onChange={e=>setEf(p=>({...p,name:e.target.value}))}/></div>
-                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:14}} value={ef.role} onChange={e=>setEf(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option><option value="superadmin">{t("role.superadmin")}</option></select></div>
+                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:14}} value={ef.role} onChange={e=>setEf(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option></select></div>
                     <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.email")}</label><input className="inp" style={{fontSize:14}} type="email" value={ef.email} onChange={e=>setEf(p=>({...p,email:e.target.value}))}/></div>
                   </div>
                   <div style={{display:"flex",gap:7,marginTop:7}}><button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>void (async()=>{
@@ -6891,8 +6887,7 @@ export default function App(){
   /* ── HELPERS ────────────────────────────────────────────────────────────── */
   const getUser   =id=>users.find(u=>u.id===id)||{id,name:UNKNOWN_USER_NAME,color:"#999",role:"user",title:"",avatar:null};
   const adminIds  =React.useMemo(()=>getAdminIds(users),[users]); // dynamic, never hardcoded
-  const isAdmin   =user?.role==="admin"||user?.role==="superadmin";
-  const isSA      =user?.role==="superadmin";
+  const isAdmin   =user?.role==="admin";
 
   /* Sync token from storage when user is set — never wipe API.token with null/empty
      (login sets sessionStorage + API.token before setUser; a blind ||null here caused 403). */
@@ -8099,7 +8094,7 @@ export default function App(){
     t,user,users,expenses,cats,passwords,ivaRates,saveIvaRates,
     saveUsers,saveExp,saveCats,savePasswords,
     departments,departmentsWithStats,refreshDepartments,defaultDeptId,
-    isAdmin,isApprover,isSA,getUser,ledgerLoading,markExpensePaid,
+    isAdmin,isApprover,getUser,ledgerLoading,markExpensePaid,
     view,setView,go,panel,setPanel,openNew,openNewInvoice,
     detailId,setDetailId,
     form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
@@ -8255,7 +8250,6 @@ export default function App(){
                 <UserAvatar user={sessionUser||user} size={28} fontSize={9}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:10,fontWeight:600,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</div>
-                  <div style={{fontSize:8,color:"rgba(250,247,242,0.75)"}}>{user.role==="superadmin"?t("role.superadmin"):isAdmin?t("role.admin"):t("role.user")}</div>
                 </div>
               </button>
             </div>

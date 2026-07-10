@@ -166,6 +166,9 @@ function createAuthRouter(deps) {
     if (!token) return res.status(401).json({ error: 'No autorizado.' });
     const session = verifySessionToken(token, true); // true = allow grace period
     if (!session) return res.status(401).json({ error: 'Sesión expirada.' });
+    if (session.role === 'superadmin') {
+      return res.status(401).json({ error: 'Sesión obsoleta. Vuelve a iniciar sesión.', code: 'STALE_ROLE' });
+    }
     const user = userStore.findUserByIdPublic(session.userId);
     if (!user || user.accountStatus !== 'active') {
       return res.status(403).json({ error: 'Cuenta no activa.' });
@@ -394,7 +397,7 @@ function createAuthRouter(deps) {
           name:             adminEmail.split('@')[0] || 'Administrator',
           passwordHash:     tempHash,
           tempPasswordExp:  tempExpiry,
-          role:             'superadmin',
+          role:             'admin',
           color:            '#3C0A37',
           accountStatus:    'active',
           approvalStatus:   'approved',

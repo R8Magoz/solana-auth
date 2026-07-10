@@ -170,7 +170,7 @@ function normalizeApprovalRequiredFromBody(body) {
 function fallbackApprovers() {
   // Only used when category has no approvers assigned
   return db.prepare(
-    "SELECT id FROM users WHERE role IN ('superadmin')"
+    "SELECT id FROM users WHERE role = 'admin'"
   ).all().map(r => r.id);
 }
 
@@ -330,7 +330,6 @@ function resolveExpenseApproverIdsForAuth(exp, userStore) {
 }
 
 function canUserActOnExpenseApproval(exp, userId, userRole, userStore) {
-  if (!isAdminRole(userRole)) return false;
   const approverIds = resolveExpenseApproverIdsForAuth(exp, userStore);
   return approverIds.includes(String(userId || ''));
 }
@@ -573,7 +572,7 @@ function normalizePaidByFromBody(body, submitterId, totalEur, userStore) {
 }
 
 function isAdminRole(role) {
-  return role === 'admin' || role === 'superadmin';
+  return role === 'admin';
 }
 
 /** Approved expenses + invoices (any payment status); rejected/deleted excluded. */
@@ -599,9 +598,9 @@ function getDepartmentBudgetRow(departmentId) {
   return db.prepare('SELECT id, name, budget FROM departments WHERE id = ?').get(departmentId) || null;
 }
 
-function adminAndSuperadminUserIds() {
+function adminUserIds() {
   return db.prepare(
-    "SELECT id FROM users WHERE role IN ('admin', 'superadmin') AND id != 'system'"
+    "SELECT id FROM users WHERE role = 'admin' AND id != 'system'"
   ).all().map((r) => r.id);
 }
 
@@ -622,7 +621,7 @@ function maybeNotifyBudgetExceeded({ audit, departmentId, expenseId, actorUserId
     return { exceeded: afterSpent > budget, budget, spent: afterSpent, departmentName: dept.name };
   }
 
-  const recipients = new Set(adminAndSuperadminUserIds());
+  const recipients = new Set(adminUserIds());
   if (submitterUserId) recipients.add(submitterUserId);
 
   for (const uid of recipients) {
