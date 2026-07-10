@@ -2284,7 +2284,7 @@ function makeBlankForm(expenseType,{user}){
 function SidebarUserRow({name,active,open,onToggle}){
   const [hovered,setHovered]=useState(false);
   const showHover=hovered&&!active;
-  const nameColor=active?"#FAF7F2":(showHover?"rgba(250,247,242,0.92)":"rgba(250,247,242,0.5)");
+  const nameColor="#FAF7F2";
   const rowClass=[
     "sidebar-user-row",
     active?" sidebar-user-row--active":"",
@@ -4753,83 +4753,10 @@ function DetailPanel(){
   );
 }
 
-/* ── PERSON DRILLDOWN MODAL ─────────────────────────────────────────────────── */
-function PersonDrilldown({userId, onClose}){
-  const{t,expenses,cats,users}=useApp();
-  const u=users.find(x=>x.id===userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
-  const userExpenses=expenses.filter(e=>
-    (e.paidBy||[]).some(p=>p&&p.userId===userId)
-    ||(!(e.paidBy||[]).length&&(e.submittedBy===userId||e.userId===userId))
-  );
-  const userInvoices=expenses.filter(e=>e.expenseType==="invoice"&&e.submittedBy===userId);
-  const total=userExpenses.reduce((s,e)=>{
-    const st=getItemStatus(e,cats,users);
-    if(st==="deleted"||st==="rejected")return s;
-    return s+shareEurInExpense(e,userId);
-  },0);
-  return(
-    <div style={{position:"fixed",inset:0,background:"rgba(204,78,0,0.55)",zIndex:8000,
-      display:"flex",alignItems:"center",justifyContent:"center",padding:16,
-      fontFamily:"'DM Sans',system-ui,sans-serif"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div style={{background:"#fff",borderRadius:14,width:"100%",maxWidth:460,maxHeight:"85vh",
-        display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(204,78,0,0.2)"}}>
-        {/* Header */}
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 16px",borderBottom:"1px solid #EDE8E0",flexShrink:0}}>
-          <div style={{flex:1}}>
-            <div style={{fontFamily:"'Playfair Display',serif",fontWeight:700,fontSize:15,color:G}}>{t("person.drillTitle").replace("{name}",u.name)}</div>
-            <div style={{fontSize:11,color:"#9CAA9F",marginTop:1}}>Total atribuido: <strong style={{color:G}}>{fmt(total)}</strong></div>
-          </div>
-          <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:20,cursor:"pointer",lineHeight:1}} onClick={onClose}>×</button>
-        </div>
-        {/* Body */}
-        <div style={{overflowY:"auto",padding:"12px 16px"}}>
-          {/* Expenses */}
-          <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:7}}>{t("person.expenses")} ({userExpenses.length})</div>
-          {userExpenses.length===0
-            ?<div style={{fontSize:11,color:"#9CAA9F",marginBottom:11}}>{t("person.noExpenses")}</div>
-            :<div style={{marginBottom:14}}>
-              {userExpenses.map(e=>{const st=getItemStatus(e,cats,users);const sub=(users.find(x=>x.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;return(
-                <div key={e.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F5F0EA",alignItems:"flex-start"}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.expenseType==="invoice"?(e.vendor||e.description):e.description}</div>
-                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.expenseType==="invoice"?(e.dueDate||e.date):e.date)} · {t("filter.submitter")}: {sub} · {e.category}</div>
-                  </div>
-                  <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
-                    <div style={{fontSize:12,fontWeight:700,color:G}}>{fmt(shareEurInExpense(e,userId))}</div>
-                    <div style={{display:"inline-block",padding:"1px 5px",borderRadius:5,fontSize:8,fontWeight:600,background:detailSublistStatusTone(st).bg,color:detailSublistStatusTone(st).color,marginTop:1}}>{t("status."+st)}</div>
-                  </div>
-                </div>
-              );})}
-            </div>
-          }
-          <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:7}}>{t("person.invoicesSent")} ({userInvoices.length})</div>
-          {userInvoices.length===0
-            ?<div style={{fontSize:11,color:"#9CAA9F"}}>{t("person.noInvoices")}</div>
-            :<div>
-              {userInvoices.map(inv=>{const bst=getItemStatus(inv,cats,users);return(
-                <div key={inv.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #F5F0EA",alignItems:"flex-start"}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inv.vendor||inv.description}</div>
-                    <div style={{fontSize:9,color:"#9CAA9F",marginTop:1}}>{fmtDate(inv.dueDate||inv.date)} · {inv.category}{inv.recurring===1&&inv.recurrenceRule?` · ${recurrenceRuleLabel(inv.recurrenceRule,t)}`:""}</div>
-                  </div>
-                  <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
-                    <div style={{fontSize:12,fontWeight:700,color:G}}>{fmtExpenseAmt(inv)}</div>
-                    <div style={{display:"inline-block",padding:"1px 5px",borderRadius:5,fontSize:8,fontWeight:600,background:ST[bst].bg,color:ST[bst].color,marginTop:1}}>{t("status."+bst)}</div>
-                  </div>
-                </div>
-              );})}
-            </div>
-          }
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ── DASHBOARD ─────────────────────────────────────────────────────────────── */
 function DashboardView(){
   const{t,user,expenses,cats,users,isAdmin,myPending,
-        totApproved,totFixed,perPerson,go,openNew,openNewInvoice,setView,setDetailId,setPanel,goToMyRejected,departmentsWithStats,departments,setRecurringFlt,resetForm}=useApp();
+        totApproved,totFixed,go,openNew,openNewInvoice,setView,setDetailId,setPanel,goToMyRejected,departmentsWithStats,departments,setRecurringFlt,resetForm}=useApp();
   const today=new Date();
   const m0=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
   const ym=today.toISOString().slice(0,7);
@@ -4857,8 +4784,6 @@ function DashboardView(){
   const rejList=[...myActivityGastosMonth.filter(e=>getItemStatus(e,cats,users)==="rejected"),...myActivityFacturasMonth.filter(b=>getItemStatus(b,cats,users)==="rejected")];
   const rejSum=rejList.reduce((s,e)=>s+eurForExpense(e),0);
   const rejCnt=rejList.length;
-  const watchDepts=(departmentsWithStats||[]).filter(d=>!d.archived&&Number(d.budget)>0&&effectiveExpenseApproverIds({departmentId:d.id},cats,users).includes(user.id));
-  const [drillPerson,setDrillPerson]=useState(null);
   const deptBudgetActive=(departmentsWithStats||[]).filter(d=>!d.archived&&Number(d.budget)>0);
   const budgetTotalActive=deptBudgetActive.reduce((s,d)=>s+Number(d.budget||0),0);
   const spentActive=deptBudgetActive.reduce((s,d)=>s+Number(d.spent||0),0);
@@ -4891,7 +4816,6 @@ function DashboardView(){
   },[departmentsWithStats]);
   return(
     <div>
-      {drillPerson&&<PersonDrilldown userId={drillPerson} onClose={()=>setDrillPerson(null)}/>}
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.dashboard")}</h1>
       <p style={{fontSize:13,color:"#6B7B72",marginBottom:16}}>{t("dash.welcome")}, {user.name.split(" ")[0]}</p>
       {myPending.length>0&&(
@@ -5015,33 +4939,6 @@ function DashboardView(){
         {rejCnt>0&&<button type="button" style={{width:"100%",marginTop:10,background:"none",border:"none",color:T,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}} onClick={goToMyRejected}>{t("dash.fixRejectedLink").replace("{n}",String(rejCnt))}</button>}
       </div>
       <DepartmentBudgetBars t={t} rows={departmentsWithStats} title={t("dash.deptBudgetsTitle")} animateLoad={dashBudgetAnim}/>
-      {watchDepts.length>0&&(
-        <div className="card" style={{marginBottom:11}}>
-          <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>{t("dash.budgetStatus")}</div>
-          {watchDepts.map(d=>{
-            const spent=Number(d.spent)||0;
-            const budget=Number(d.budget)||0;
-            const pct=budget>0?spent/budget*100:0;
-            const barColor=pct<75?"#16A34A":pct<=100?"#D97706":"#DC2626";
-            return(
-              <div key={d.id} style={{marginBottom:8}}>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span>{d.name}</span><span style={{fontWeight:600}}>{fmt(spent)} / {fmt(budget)}</span></div>
-                <div style={{height:4,background:"#EDE8E0",borderRadius:2,marginTop:4}}><div style={{height:"100%",width:`${Math.min(100,pct)}%`,background:barColor,transition:"width 0.4s",borderRadius:2}}/></div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:9}}>{t("dash.investByPerson")}</div>
-        <p style={{fontSize:10,color:"#9CAA9F",marginBottom:9,lineHeight:1.45}}>{t("reports.personLogHint")}</p>
-        {(()=>{const denom=perPerson.reduce((s,u)=>s+(Number(u.total)||0),0);return perPerson.map(u=>(
-          <div key={u.id} className="row-hover" style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,cursor:"pointer",borderRadius:7,padding:"3px 4px",margin:"0 -4px 7px"}} onClick={()=>setDrillPerson(u.id)}>
-            <div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:2,fontSize:11}}><span style={{fontWeight:500}}>{u.name}</span><span style={{fontWeight:700,color:G}}>{fmt(u.total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:u.color,width:denom>0?`${Math.min(100,u.total/denom*100)}%`:"0%",transition:"width 0.4s"}}/></div></div>
-            <div style={{fontSize:9,color:"#9CAA9F"}}>›</div>
-          </div>
-        ));})()}
-      </div>
       {/* Upcoming invoices · 15 days */}
       <div className="card" style={{marginBottom:11}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:9,flexWrap:"wrap"}}>
