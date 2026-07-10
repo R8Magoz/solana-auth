@@ -67,6 +67,57 @@ function runRoleConsolidationMigration({ audit }) {
 }
 
 /**
+ * One-time: move approval routing from category.approverIds to department_approvers map.
+ * Strips legacy approverIds from categories JSON (categories list kept for expense labeling).
+ */
+function runDepartmentApproversMigration({ audit }) {
+  const db = require('./db');
+  const settingsCache = require('./lib/settingsCache');
+  const now = Date.now();
+
+  const catRow = db.prepare("SELECT value FROM app_settings WHERE key = 'categories'").get();
+  if (catRow && catRow.value) {
+    try {
+      const cats = JSON.parse(catRow.value);
+      if (Array.isArray(cats)) {
+        const stripped = cats.map((c) => {
+          const { approverIds, ...rest } = c && typeof c === 'object' ? c : {};
+          return { ...rest, approverIds: [] };
+        });
+        const before = JSON.stringify(cats);
+        const after = JSON.stringify(stripped);
+        if (before !== after) {
+          db.prepare(
+            "UPDATE app_settings SET value = ?, updatedAt = ? WHERE key = 'categories'"
+          ).run(after, now);
+          settingsCache.invalidate('categories');
+          audit('department_approvers_migration_categories_stripped', { count: cats.length });
+          console.log('[MIGRATE] Stripped legacy category approverIds from app_settings.categories');
+        }
+      }
+    } catch (e) {
+      console.warn('[MIGRATE] category approver strip failed:', e.message);
+    }
+  }
+
+  const exists = db.prepare("SELECT 1 FROM app_settings WHERE key = 'department_approvers'").get();
+  if (!exists) {
+    db.prepare(
+      'INSERT INTO app_settings (key, value, description, updatedBy, updatedAt) VALUES (?, ?, ?, ?, ?)'
+    ).run(
+      'department_approvers',
+      '{}',
+      'Per-department designated approver user ids ({ departmentId: string[] })',
+      'system',
+      now,
+    );
+    settingsCache.invalidate('department_approvers');
+    audit('department_approvers_key_seeded', {});
+    console.log('[MIGRATE] Seeded app_settings.department_approvers');
+  }
+}
+
+/**
  * One-time: copy bills → expenses as expenseType=invoice (idempotent via originBillId).
  * Does not DELETE or UPDATE the bills table.
  * Run: node migrate.js bills
@@ -152,7 +203,12 @@ function migrateBillsToExpenses() {
   return count;
 }
 
-module.exports = { runUsersJsonMigration, runRoleConsolidationMigration, migrateBillsToExpenses };
+module.exports = {
+  runUsersJsonMigration,
+  runRoleConsolidationMigration,
+  runDepartmentApproversMigration,
+  migrateBillsToExpenses,
+};
 
 if (require.main === module) {
   const cmd = process.argv[2];

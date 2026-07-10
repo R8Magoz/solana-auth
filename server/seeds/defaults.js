@@ -17,17 +17,25 @@ function seedAppSettings(db) {
   insert.run(
     'categories',
     JSON.stringify([
-      { id: 'c1', name: 'Equipment', archived: false, approverIds: [] },
-      { id: 'c2', name: 'Supplies', archived: false, approverIds: [] },
-      { id: 'c3', name: 'Marketing', archived: false, approverIds: [] },
-      { id: 'c4', name: 'Legal', archived: false, approverIds: [] },
-      { id: 'c5', name: 'Rent', archived: false, approverIds: [] },
-      { id: 'c6', name: 'Software', archived: false, approverIds: [] },
-      { id: 'c7', name: 'Food & Beverage', archived: false, approverIds: [] },
-      { id: 'c8', name: 'Travel', archived: false, approverIds: [] },
-      { id: 'c9', name: 'Otro', archived: false, approverIds: [] },
+      { id: 'c1', name: 'Equipment', archived: false },
+      { id: 'c2', name: 'Supplies', archived: false },
+      { id: 'c3', name: 'Marketing', archived: false },
+      { id: 'c4', name: 'Legal', archived: false },
+      { id: 'c5', name: 'Rent', archived: false },
+      { id: 'c6', name: 'Software', archived: false },
+      { id: 'c7', name: 'Food & Beverage', archived: false },
+      { id: 'c8', name: 'Travel', archived: false },
+      { id: 'c9', name: 'Otro', archived: false },
     ]),
     'Expense categories available for selection',
+    'system',
+    now,
+  );
+
+  insert.run(
+    'department_approvers',
+    '{}',
+    'Per-department designated approver user ids ({ departmentId: string[] })',
     'system',
     now,
   );
@@ -96,6 +104,11 @@ function ensureMissingAppSettings(db) {
       'report_logo_url',
       JSON.stringify(''),
       'URL of logo to embed in PDF reports (leave empty to use text name)',
+    ],
+    [
+      'department_approvers',
+      '{}',
+      'Per-department designated approver user ids ({ departmentId: string[] })',
     ],
   ];
   for (const [key, value, description] of rows) {

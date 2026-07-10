@@ -261,13 +261,13 @@ export type MockApiState = {
   departments: DeptRow[];
   tokens: Map<string, { userId: string; role: string }>;
   passwords: Map<string, string>;
-  settings: { categories: any[] | null };
+  settings: { categories: any[] | null; department_approvers: Record<string, string[]> };
 };
 
 const _attached = new WeakMap<Page, boolean>();
 
 export function createMockApiState(
-  seed?: { expenses?: ExpenseRow[]; users?: User[]; settingsCategories?: any[] },
+  seed?: { expenses?: ExpenseRow[]; users?: User[]; settingsCategories?: any[]; departmentApprovers?: Record<string, string[]> },
 ): MockApiState {
   return {
     users: seed?.users ?? makeUsers(),
@@ -275,11 +275,13 @@ export function createMockApiState(
     departments: [
       { id: 'dept_ops', name: 'Operaciones', budget: 3000, archived: false, createdAt: Date.now() },
       { id: 'dept_fin', name: 'Finanzas', budget: 5000, archived: false, createdAt: Date.now() },
+      { id: 'dept_estrategia', name: 'Estrategia', budget: 4000, archived: false, createdAt: Date.now() },
     ],
     tokens: new Map<string, { userId: string; role: string }>(),
     passwords: new Map<string, string>(Object.entries(PASSWORDS)),
     settings: {
       categories: seed?.settingsCategories ?? (null as any[] | null),
+      department_approvers: seed?.departmentApprovers ?? {},
     },
   };
 }
@@ -313,6 +315,10 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
     const defaultApproversFromBody = (body: any): string[] => {
       const req = Array.isArray(body.approvalRequired) ? body.approvalRequired.filter(Boolean).map(String) : [];
       if (req.length) return req;
+      const deptId = String(body.departmentId || '').trim();
+      const map = state.settings.department_approvers || {};
+      const fromDept = deptId && Array.isArray(map[deptId]) ? map[deptId].filter(Boolean).map(String) : [];
+      if (fromDept.length) return fromDept;
       const s = adminIds();
       return s.length ? s : [state.users[0]?.id].filter(Boolean) as string[];
     };
@@ -373,7 +379,17 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       if (state.settings.categories && Array.isArray(state.settings.categories)) {
         payload.categories = state.settings.categories;
       }
+      payload.department_approvers = state.settings.department_approvers || {};
       return json(200, { ok: true, settings: payload });
+    }
+
+    if (path === '/settings/department_approvers' && method === 'PUT') {
+      if (!session) return json(401, { error: 'No autorizado.' });
+      const body = safeJson(req.postData());
+      if (body.value && typeof body.value === 'object' && !Array.isArray(body.value)) {
+        state.settings.department_approvers = body.value as Record<string, string[]>;
+      }
+      return json(200, { ok: true });
     }
 
     if (path === '/settings/categories' && method === 'PUT') {
@@ -1441,13 +1457,15 @@ test.describe('C — Permissions and profile', () => {
     await expect(panel.getByRole('button', { name: /Rechazar/i })).toHaveCount(0);
   });
 
-  test('C4) Admin can assign approvers to categories in Settings', async ({ page }) => {
+  test('C4) Admin can assign approvers to departments in Settings', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await openSettingsViaUserMenu(page);
-    // Approver assignment section
-    const approverSection = page.getByText(/Parámetros|Aprobadores|Categorías|Approvers/i).first();
-    await expect(approverSection).toBeVisible({ timeout: 10000 });
+    await page.getByText('Ajustes de aplicación').first().click();
+    await page.waitForTimeout(500);
+    await expect(page.getByText('Departamentos').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Estrategia').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/de este departamento/i).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('C3) Regular user can access settings and change password', async ({ page }) => {

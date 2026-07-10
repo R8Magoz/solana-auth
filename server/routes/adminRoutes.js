@@ -4,7 +4,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const maintenanceLock = require('../lib/maintenanceLock');
-const { autoApprovePendingForRemovedUser } = require('../expensesRoutes');
+const { autoApprovePendingForRemovedUser, pruneDepartmentApproversForUser } = require('../expensesRoutes');
 
 /**
  * @param {object} deps
@@ -82,11 +82,13 @@ function createAdminRouter(deps) {
         audit,
         userStore: { findUserById: userStore.findUserByIdPublic },
       });
+      pruneDepartmentApproversForUser(removed.id);
       audit('admin_user_soft_deleted', { targetId: id, by: req.userId, references: refs });
       return res.json({ ok: true, softDeleted: true, user: userStore.findUserByIdPublic(removed.id) });
     }
     const del = userStore.deleteUserByIdHard(removed.id);
     if (!del.ok) return res.status(500).json({ error: 'No se pudo eliminar.' });
+    pruneDepartmentApproversForUser(removed.id);
     audit('admin_user_deleted', { targetId: id, by: req.userId });
     res.json({ ok: true, hardDeleted: true });
   });
@@ -258,11 +260,13 @@ function createAdminRouter(deps) {
         audit,
         userStore: { findUserById: userStore.findUserByIdPublic },
       });
+      pruneDepartmentApproversForUser(id);
       audit('admin_user_soft_deleted', { targetId: id, by: req.userId, ip: req.ip, references: refs });
       return res.json({ ok: true, softDeleted: true, user: userStore.findUserByIdPublic(id) });
     }
     const del = userStore.deleteUserByIdHard(id);
     if (!del.ok) return res.status(500).json({ error: 'No se pudo eliminar.' });
+    pruneDepartmentApproversForUser(id);
     audit('admin_user_deleted', { targetId: id, by: req.userId, ip: req.ip, hardDeleted: true });
     res.json({ ok: true, hardDeleted: true });
   });
