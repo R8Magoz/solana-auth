@@ -3670,7 +3670,7 @@ export function DashboardView(){
           const fixedKpiBg="#F5F0EA";
           const fixedKpiText="#6B7B72";
 
-          const renderKpiCard=(key,label,val,bg,text,sub,progressFill,showProgress=false,valueFontSize=22,labelColor="#9CAA9F",subColor="#9CAA9F",progressTrack="#EDE8E0",progressLabel="",progressLabelColor="#6B7B72")=> {
+          const renderKpiCard=(key,label,val,bg,text,progressFill,showProgress=false,valueFontSize=22,labelColor="#9CAA9F",progressTrack="#EDE8E0",progressLabel="",progressLabelColor="#6B7B72")=> {
             const kpi=fmtKpi(val);
             return(
               <div key={key} className="card" style={{background:bg,border:"1px solid rgba(0,0,0,0.02)"}}>
@@ -3693,23 +3693,17 @@ export function DashboardView(){
                   <div style={{fontSize:11,color:progressLabelColor,marginTop:5}}>{progressLabel}</div>
                   </>
                 )}
-                <div style={{fontSize:11,color:subColor,marginTop:5}}>{sub}</div>
               </div>
             );
           };
 
-          const totalSub=t("dash.totalInvestedSub")||"Gastos aprobados";
-          const budgetSub="Suma de departamentos";
-          const monthSub=mTotal===0 ? "Sin gastos este mes aún" : "";
-          const fixedSub=totFixed===0 ? "Sin facturas recurrentes" : (t("dash.monthlyFixedSub")||"");
-
           return(
             <>
-              {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiSubColor,budgetHealth.kpiProgressTrack,`${budgetProgressPct.toFixed(1)}% usado`,budgetHealth.kpiLabelColor)}
-              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetSub,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiSubColor,budgetHealth.kpiProgressTrack,`${budgetProgressPct.toFixed(1)}% disponible`,budgetHealth.kpiLabelColor)}
-              {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,monthSub,null,false,22,"#9CAA9F","#9CAA9F")}
+              {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetProgressPct.toFixed(1)}% usado`,budgetHealth.kpiLabelColor)}
+              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetProgressPct.toFixed(1)}% disponible`,budgetHealth.kpiLabelColor)}
+              {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,null,false,22,"#9CAA9F")}
               <div style={{cursor:"pointer"}} onClick={() => { go("expenses"); setRecurringFlt("recurring"); }}>
-                {renderKpiCard("k-fixed",fixedKpiLabel,totFixed,fixedKpiBg,fixedKpiText,fixedSub,null,false)}
+                {renderKpiCard("k-fixed",fixedKpiLabel,totFixed,fixedKpiBg,fixedKpiText,null,false)}
               </div>
             </>
           );
