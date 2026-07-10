@@ -187,6 +187,14 @@ function SplitDivergeIcon({size=16,color="#4B5E52"}){
     </svg>
   );
 }
+/** Sidebar user menu chevron — stroke SVG (avoids tiny/missing Unicode glyph rendering). */
+function ChevronDownIcon({size=19,color="#FAF7F2"}){
+  return(
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" style={{flexShrink:0,display:"block"}}>
+      <path fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" d="M4 6l4 4 4-4"/>
+    </svg>
+  );
+}
 /** Collapsible paidBy breakdown (multi-participant); click-only toggle */
 export function ExpenseSplitBreakdown({e,t,users,alwaysInline=false}){
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
@@ -1278,52 +1286,25 @@ function makeBlankForm(expenseType,{user}){
 function SidebarUserRow({name,active,open,onToggle}){
   const [hovered,setHovered]=useState(false);
   const showHover=hovered&&!active;
+  const nameColor=active?"#FAF7F2":(showHover?"rgba(250,247,242,0.92)":"rgba(250,247,242,0.5)");
+  const rowClass=[
+    "sidebar-user-row",
+    active?" sidebar-user-row--active":"",
+    showHover?" sidebar-user-row--hover":"",
+  ].join("");
   return(
     <button
       type="button"
+      className={rowClass}
       onClick={onToggle}
       onMouseEnter={()=>setHovered(true)}
       onMouseLeave={()=>setHovered(false)}
-      style={{
-        flex:1,
-        minWidth:0,
-        display:"flex",
-        alignItems:"center",
-        justifyContent:"space-between",
-        gap:6,
-        borderRadius:6,
-        padding:"6px 9px",
-        background:active?"rgba(250,247,242,0.12)":(showHover?"rgba(250,247,242,0.12)":"transparent"),
-        border:"none",
-        cursor:"pointer",
-        fontFamily:"inherit",
-        textAlign:"left",
-        transition:"background 0.15s ease,color 0.15s ease",
-      }}
+      aria-expanded={open}
     >
-      <span style={{
-        flex:1,
-        minWidth:0,
-        fontSize:11,
-        fontWeight:500,
-        color:active?"#FAF7F2":(showHover?"rgba(250,247,242,0.92)":"rgba(250,247,242,0.5)"),
-        overflow:"hidden",
-        textOverflow:"ellipsis",
-        whiteSpace:"nowrap",
-        transition:"color 0.15s ease",
-      }}>{name}</span>
-      <span
-        aria-hidden
-        style={{
-          flexShrink:0,
-          fontSize:10,
-          lineHeight:1,
-          color:active?"#FAF7F2":(showHover?"rgba(250,247,242,0.92)":"rgba(250,247,242,0.5)"),
-          transform:open?"rotate(180deg)":"rotate(0deg)",
-          transition:"transform 0.15s ease, color 0.15s ease",
-          display:"inline-flex",
-        }}
-      >▾</span>
+      <span className="sidebar-user-row__name" style={{color:nameColor}}>{name}</span>
+      <span className={`sidebar-user-row__chevron${open?" sidebar-user-row__chevron--open":""}`}>
+        <ChevronDownIcon size={19} color="#FAF7F2"/>
+      </span>
     </button>
   );
 }

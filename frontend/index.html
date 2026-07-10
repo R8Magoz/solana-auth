@@ -82,6 +82,11 @@
     .status-pending{background:#FEF3C7;color:#92400E}
     .status-rejected{background:#FEE2E2;color:#991B1B}
     .status-approved,.status-pending,.status-rejected,.badge.status-approved,.badge.status-pending,.badge.status-rejected{transition:background-color 0.25s ease-in-out,color 0.25s ease-in-out}
+    .sidebar-user-row{flex:1;min-width:0;width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:8px;padding:13px 10px;background:rgba(255,255,255,0.06);border:none;cursor:pointer;font-family:inherit;text-align:left;transition:background 0.15s ease}
+    .sidebar-user-row--hover,.sidebar-user-row--active{background:rgba(250,247,242,0.12)}
+    .sidebar-user-row__name{flex:1;min-width:0;font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color 0.15s ease}
+    .sidebar-user-row__chevron{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;transition:transform 0.15s ease}
+    .sidebar-user-row__chevron--open{transform:rotate(180deg)}
     @media(prefers-reduced-motion:reduce){
       .toast-slot--enter .toast,.toast-slot--exit .toast{animation:none;opacity:1;transform:none}
       .toast-slot--exit .toast{opacity:0;transition:opacity 40ms ease}
@@ -93,6 +98,8 @@
       .inp--shake{animation:none}
       .btn-primary:active,.btn-secondary:active,.btn-danger:active,.btn-sm:active{transform:none}
       .status-approved,.status-pending,.status-rejected,.badge.status-approved,.badge.status-pending,.badge.status-rejected{transition:opacity 40ms ease}
+      .sidebar-user-row__chevron,.sidebar-user-row__chevron--open{transition:none}
+      .sidebar-user-row__chevron--open{transform:rotate(180deg)}
     }
   </style>
 </head>
@@ -1136,6 +1143,14 @@ function SplitDivergeIcon({size=16,color="#4B5E52"}){
   return(
     <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" style={{flexShrink:0,display:"block"}}>
       <path fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M8 14V9M8 9L3.5 3M8 9l4.5-6M3.5 3H2M14 3h-1.5"/>
+    </svg>
+  );
+}
+/** Sidebar user menu chevron — stroke SVG (avoids tiny/missing Unicode glyph rendering). */
+function ChevronDownIcon({size=19,color="#FAF7F2"}){
+  return(
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" style={{flexShrink:0,display:"block"}}>
+      <path fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" d="M4 6l4 4 4-4"/>
     </svg>
   );
 }
@@ -2244,52 +2259,25 @@ function makeBlankForm(expenseType,{user}){
 function SidebarUserRow({name,active,open,onToggle}){
   const [hovered,setHovered]=useState(false);
   const showHover=hovered&&!active;
+  const nameColor=active?"#FAF7F2":(showHover?"rgba(250,247,242,0.92)":"rgba(250,247,242,0.5)");
+  const rowClass=[
+    "sidebar-user-row",
+    active?" sidebar-user-row--active":"",
+    showHover?" sidebar-user-row--hover":"",
+  ].join("");
   return(
     <button
       type="button"
+      className={rowClass}
       onClick={onToggle}
       onMouseEnter={()=>setHovered(true)}
       onMouseLeave={()=>setHovered(false)}
-      style={{
-        flex:1,
-        minWidth:0,
-        display:"flex",
-        alignItems:"center",
-        justifyContent:"space-between",
-        gap:6,
-        borderRadius:6,
-        padding:"6px 9px",
-        background:active?"rgba(250,247,242,0.12)":(showHover?"rgba(250,247,242,0.12)":"transparent"),
-        border:"none",
-        cursor:"pointer",
-        fontFamily:"inherit",
-        textAlign:"left",
-        transition:"background 0.15s ease,color 0.15s ease",
-      }}
+      aria-expanded={open}
     >
-      <span style={{
-        flex:1,
-        minWidth:0,
-        fontSize:11,
-        fontWeight:500,
-        color:active?"#FAF7F2":(showHover?"rgba(250,247,242,0.92)":"rgba(250,247,242,0.5)"),
-        overflow:"hidden",
-        textOverflow:"ellipsis",
-        whiteSpace:"nowrap",
-        transition:"color 0.15s ease",
-      }}>{name}</span>
-      <span
-        aria-hidden
-        style={{
-          flexShrink:0,
-          fontSize:10,
-          lineHeight:1,
-          color:active?"#FAF7F2":(showHover?"rgba(250,247,242,0.92)":"rgba(250,247,242,0.5)"),
-          transform:open?"rotate(180deg)":"rotate(0deg)",
-          transition:"transform 0.15s ease, color 0.15s ease",
-          display:"inline-flex",
-        }}
-      >▾</span>
+      <span className="sidebar-user-row__name" style={{color:nameColor}}>{name}</span>
+      <span className={`sidebar-user-row__chevron${open?" sidebar-user-row__chevron--open":""}`}>
+        <ChevronDownIcon size={19} color="#FAF7F2"/>
+      </span>
     </button>
   );
 }
