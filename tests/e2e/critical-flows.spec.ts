@@ -198,17 +198,11 @@ function finalizeFromApprovalVotes(
   if (hasReject) {
     e.status = 'rejected';
     e.rejectionNote = rejectionNote || e.rejectionNote || 'Rechazado por voto de aprobador.';
-    if (e.expenseType === 'invoice') e.paymentStatus = 'pending_approval';
     return;
   }
   if (allDone) {
     e.status = 'approved';
     e.rejectionNote = null;
-    if (e.expenseType === 'invoice' && e.deferredPayment) {
-      e.paymentStatus = 'unpaid';
-    } else if (e.expenseType === 'invoice') {
-      e.paymentStatus = 'paid';
-    }
     return;
   }
   e.status = 'submitted';
@@ -489,7 +483,6 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       const id = `exp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const approvers = defaultApproversFromBody(body);
       const isInvoice = String(body.expenseType || '').toLowerCase() === 'invoice';
-      const deferred = isInvoice && body.deferredPayment === true;
       const due = (body.dueDate || body.fechaVencimiento || body.date || new Date().toISOString().slice(0, 10))
         .toString()
         .slice(0, 10);
@@ -514,9 +507,9 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
             category: body.category || 'Software',
             notes: body.notes || '',
             dueDate: due,
-            paymentStatus: deferred ? 'pending_approval' : 'paid',
-            paymentTermDays: body.paymentTermDays ?? 0,
-            deferredPayment: deferred,
+            paymentStatus: 'na',
+            paymentTermDays: 0,
+            deferredPayment: false,
             recurring: body.recurring ? 1 : 0,
             recurrenceRule: body.recurrenceRule || null,
             status: 'submitted',
@@ -570,7 +563,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       return json(200, { ok: true, expense: row });
     }
 
-    const expenseIdMatch = path.match(/^\/expenses\/([^/]+)\/(receipt|approve|reject|mark-paid|comments|comment)$/);
+    const expenseIdMatch = path.match(/^\/expenses\/([^/]+)\/(receipt|approve|reject|comments|comment)$/);
     const expensePutMatch = path.match(/^\/expenses\/([^/]+)$/);
 
     if (expenseIdMatch && method === 'POST') {
@@ -643,18 +636,6 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         (e as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = parseAudit(e);
         return json(200, { ok: true, expense: e });
       }
-      if (sub === 'mark-paid') {
-        if (e.paymentStatus === 'paid') {
-          return json(400, { error: 'Ya pagada.' });
-        }
-        e.paymentStatus = 'paid';
-        e.paidAt = Date.now();
-        e.paidConfirmedBy = session.userId;
-        pushAudit(e, { action: 'mark_paid', by: session.userId });
-        e.updatedAt = Date.now();
-        (e as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = parseAudit(e);
-        return json(200, { ok: true, expense: e });
-      }
       if (sub === 'comments' || sub === 'comment') {
         const body = safeJson(req.postData());
         const text = String(body.text || '').trim();
@@ -720,8 +701,6 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         e.splitMode = recalc.splitMode;
       }
       if (body.expenseType) e.expenseType = body.expenseType;
-      if (body.deferredPayment != null) e.deferredPayment = !!body.deferredPayment;
-      if (body.paymentTermDays != null) e.paymentTermDays = Number(body.paymentTermDays);
       if (body.dueDate !== undefined) e.dueDate = body.dueDate;
       if (Array.isArray(body.approvalRequired)) {
         e.approversJson = JSON.stringify(body.approvalRequired.filter(Boolean));
@@ -734,9 +713,6 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         e.approvalVotesJson = '{}';
         e.status = 'submitted';
         e.rejectionNote = null;
-        if (e.expenseType === 'invoice' && String(e.paymentStatus) === 'unpaid') {
-          e.paymentStatus = 'pending_approval';
-        }
       }
       if (body.status !== undefined && body.status !== null) {
         e.status = body.status;
@@ -1172,26 +1148,22 @@ test.describe('A — Expense lifecycle', () => {
 });
 
 test.describe('B — Invoice (factura) lifecycle', () => {
-  test('B1) Submit factura without A pagar — paymentStatus is paid on creation', async ({ page }) => {
+  test('B1) Submit factura appears in Gastos with due date', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await createBillViaUi(page, 'Factura contado QA', '180');
     await clickSidebarGastos(page);
     await filterExpenseListToInvoices(page);
-    // Invoices are shown in Gastos — may need to wait for list to load
     await page.waitForTimeout(1000);
     await expect(page.getByText('Factura contado QA').first()).toBeVisible({ timeout: 15000 });
-    await expect(
-      page
-        .locator('[class*="row"], [class*="card"], li')
-        .filter({ hasText: 'Factura contado QA' })
-        .first()
-        .getByText(/Pagada|Paid|Al contado|contado|pagado/i)
-        .first(),
-    ).toBeVisible({ timeout: 10000 });
+    await openExpenseDetail(page, 'Factura contado QA');
+    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    await expect(panel.getByText(/Vencimiento/i).first()).toBeVisible();
+    await expect(panel.getByText(/Estado de pago/i)).toHaveCount(0);
+    await expect(panel.getByText(/Condiciones de pago/i)).toHaveCount(0);
   });
 
-  test('B2) Submit factura with A pagar — payment tracking activates after approval', async ({ page }) => {
+  test('B2) Submit factura — approve — shows as approved invoice', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await createBillViaUi(page, 'Factura NET-30 QA', '500');
@@ -1203,10 +1175,11 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await clickSidebarGastos(page);
     await filterExpenseListToInvoices(page);
     const row = page.locator('[class*="row"], [class*="card"], li').filter({ hasText: 'Factura NET-30 QA' }).first();
-    await expect(row.getByText(/Pendiente|Por pagar|Unpaid|Vence/i).first()).toBeVisible();
+    await expect(row.getByText(/Aprobado/i).first()).toBeVisible();
+    await expect(row.getByText(/A pagar|Pagada|Pendiente de pago/i)).toHaveCount(0);
   });
 
-  test('B3) Owner marks deferred factura as paid', async ({ page }) => {
+  test('B3) Invoice detail shows due date and no payment-status UI', async ({ page }) => {
     const state = createMockApiState({
       expenses: [
         {
@@ -1215,7 +1188,7 @@ test.describe('B — Invoice (factura) lifecycle', () => {
           ownerId: 'admin-1',
           submittedBy: 'admin-1',
           date: '2026-04-01',
-          description: 'Factura a marcar pagada QA',
+          description: 'Factura con vencimiento QA',
           vendor: 'Proveedor QA',
           amount: 300,
           amountEUR: 300,
@@ -1223,9 +1196,7 @@ test.describe('B — Invoice (factura) lifecycle', () => {
           category: 'Software',
           status: 'approved',
           expenseType: 'invoice',
-          paymentStatus: 'unpaid',
           dueDate: '2026-05-01',
-          paymentTermDays: 30,
           approversJson: JSON.stringify(['admin-1']),
           approvalVotesJson: JSON.stringify({ 'user-1': 'approved' }),
           paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 300, pct: 100 }]),
@@ -1235,7 +1206,6 @@ test.describe('B — Invoice (factura) lifecycle', () => {
           departmentId: 'dept_ops',
           recurring: 0,
           recurrenceRule: null,
-          deferredPayment: true,
           auditTrail: [],
           auditTrailJson: JSON.stringify([]),
           commentsJson: '[]',
@@ -1249,26 +1219,17 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await loginAs(page, 'admin@solana.test');
     await clickSidebarGastos(page);
     await filterExpenseListToInvoices(page);
-    // Invoices are shown in Gastos — may need to wait for list to load
     await page.waitForTimeout(1000);
-    // List rows surface vendor prominently, not always the internal description
     await expect(page.getByText('Proveedor QA').first()).toBeVisible({ timeout: 15000 });
     await openExpenseDetail(page, 'Proveedor QA');
     const detailPanel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
-    await detailPanel.getByRole('button', { name: /Marcar como pagada|Marcar pagada|Mark paid/i }).first().click({ force: true });
-    await page.waitForTimeout(600);
-    const confirmBtn = page.getByRole('button', { name: /Confirmar|Aceptar|Sí/i });
-    if (await confirmBtn.isVisible().catch(() => false)) {
-      await confirmBtn.first().click();
-      await page.waitForTimeout(400);
-    }
-    const inv = state.expenses.find((x) => x.id === 'exp_inv_defer');
-    expect(inv?.paymentStatus).toBe('paid');
-    const panelAfter = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
-    await expect(panelAfter.getByText(/Pagad|Pagado|Al contado|Paid|contado/i).first()).toBeVisible({ timeout: 15000 });
+    await expect(detailPanel.getByText(/Vencimiento/i).first()).toBeVisible();
+    await expect(detailPanel.getByText(/01 may 2026/i).first()).toBeVisible();
+    await expect(detailPanel.getByRole('button', { name: /Marcar como pagada|Marcar pagada|Mark paid/i })).toHaveCount(0);
+    await expect(detailPanel.getByText(/Estado de pago/i)).toHaveCount(0);
   });
 
-  test('B4) Invoice does NOT duplicate on mark-paid', async ({ page }) => {
+  test('B4) Approved invoice appears once in Gastos list', async ({ page }) => {
     const state = createMockApiState({
       expenses: [
         {
@@ -1285,9 +1246,7 @@ test.describe('B — Invoice (factura) lifecycle', () => {
           category: 'Software',
           status: 'approved',
           expenseType: 'invoice',
-          paymentStatus: 'unpaid',
           dueDate: '2026-05-01',
-          paymentTermDays: 0,
           approversJson: JSON.stringify(['admin-1']),
           approvalVotesJson: JSON.stringify({ 'user-1': 'approved' }),
           paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 150, pct: 100 }]),
@@ -1297,7 +1256,6 @@ test.describe('B — Invoice (factura) lifecycle', () => {
           departmentId: 'dept_ops',
           recurring: 0,
           recurrenceRule: null,
-          deferredPayment: true,
           auditTrail: [],
           auditTrailJson: JSON.stringify([]),
           commentsJson: '[]',
@@ -1311,27 +1269,14 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await loginAs(page, 'admin@solana.test');
     await clickSidebarGastos(page);
     await filterExpenseListToInvoices(page);
-    // Invoices are shown in Gastos — may need to wait for list to load
     await page.waitForTimeout(1000);
     await expect(page.getByText('NoDup QA').first()).toBeVisible({ timeout: 15000 });
-    await openExpenseDetail(page, 'NoDup QA');
-    const detailPanel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
-    await detailPanel.getByRole('button', { name: /Marcar como pagada|Marcar pagada|Mark paid/i }).first().click({ force: true });
-    await page.waitForTimeout(600);
-    const confirmBtn = page.getByRole('button', { name: /Confirmar|Aceptar|Sí/i });
-    if (await confirmBtn.isVisible().catch(() => false)) {
-      await confirmBtn.first().click();
-      await page.waitForTimeout(400);
-    }
-    // Invoices are shown in Gastos — may need to wait for list to load
-    await page.waitForTimeout(1000);
-    // Only count list rows (row-hover + amount), not secondary mentions in panels/tooltips
     const listRows = page.locator('div.row-hover').filter({ hasText: 'NoDup QA' }).filter({ hasText: '150,00' });
     await expect(listRows).toHaveCount(1);
     expect(state.expenses.filter((e) => e.description === 'Factura sin duplicar QA')).toHaveLength(1);
   });
 
-  test('B5) Rejected invoice resets paymentStatus to pending_approval', async ({ page }) => {
+  test('B5) Rejected invoice shows rejected status', async ({ page }) => {
     const state = createMockApiState({
       expenses: [
         {
@@ -1348,9 +1293,7 @@ test.describe('B — Invoice (factura) lifecycle', () => {
           category: 'Software',
           status: 'submitted',
           expenseType: 'invoice',
-          paymentStatus: 'unpaid',
           dueDate: '2026-05-01',
-          paymentTermDays: 0,
           approversJson: JSON.stringify(['admin-1']),
           approvalVotesJson: '{}',
           paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 200, pct: 100 }]),
@@ -1360,7 +1303,6 @@ test.describe('B — Invoice (factura) lifecycle', () => {
           departmentId: 'dept_ops',
           recurring: 0,
           recurrenceRule: null,
-          deferredPayment: true,
           auditTrail: [],
           auditTrailJson: JSON.stringify([]),
           commentsJson: '[]',
@@ -1375,7 +1317,9 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await rejectExpenseViaUi(page, 'Rechazada QA');
     const inv = state.expenses.find((e) => e.id === 'exp_inv_rej');
     expect(inv?.status).toBe('rejected');
-    expect(String(inv?.paymentStatus ?? '')).toMatch(/pending_approval|pending/i);
+    await clickSidebarGastos(page);
+    await filterExpenseListToInvoices(page);
+    await expect(page.locator('div.row-hover').filter({ hasText: 'Reject QA' }).getByText(/Rechazado/i).first()).toBeVisible();
   });
 });
 

@@ -94,28 +94,6 @@ function parseAppSettingFloat(key, defaultVal) {
   }
 }
 
-function addDaysToDateISO(dateStr, days) {
-  const d = new Date(`${String(dateStr).trim()}T12:00:00.000Z`);
-  if (Number.isNaN(d.getTime())) return null;
-  d.setUTCDate(d.getUTCDate() + Number(days));
-  return d.toISOString().slice(0, 10);
-}
-
-/** Body.paidAt: YYYY-MM-DD, ISO string, or epoch ms — default fallbackMs */
-function parsePaidAtFromBody(body, fallbackMs) {
-  const raw = body && body.paidAt;
-  if (raw == null || raw === '') return fallbackMs;
-  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.round(raw);
-  const s = String(raw).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    const d = new Date(`${s}T12:00:00.000Z`);
-    if (!Number.isNaN(d.getTime())) return d.getTime();
-  }
-  const d = new Date(s);
-  if (!Number.isNaN(d.getTime())) return d.getTime();
-  return fallbackMs;
-}
-
 function parseJsonArray(str) {
   try {
     const x = JSON.parse(str || 'null');
@@ -428,7 +406,6 @@ function finalizeFromApprovalVotes(exp, approversCanon, votes, actorUserId, now,
       rejectionNote: rejectionNote != null
         ? rejectionNote
         : (exp.rejectionNote || 'Rechazado por voto de aprobador.'),
-      invoicePay: exp.expenseType === 'invoice' ? 'pending_approval' : null,
     };
   }
   if (allDone) {
@@ -440,7 +417,6 @@ function finalizeFromApprovalVotes(exp, approversCanon, votes, actorUserId, now,
       rejectedBy: null,
       rejectedAt: null,
       rejectionNote: null,
-      invoicePay: exp.expenseType === 'invoice' && exp.paymentStatus === 'pending_approval' ? 'unpaid' : null,
     };
   }
   return {
@@ -451,7 +427,6 @@ function finalizeFromApprovalVotes(exp, approversCanon, votes, actorUserId, now,
     rejectedBy: null,
     rejectedAt: null,
     rejectionNote: null,
-    invoicePay: null,
   };
 }
 
@@ -471,13 +446,6 @@ function persistApprovalFinalize(exp, fin, auditFn, req, actorUserId) {
   );
   if (warnIfNoChanges(info, 'expense_approval_finalize', { expenseId: exp.id, userId: actorUserId })) {
     return { error: 'Gasto no encontrado.', status: 404 };
-  }
-  if (fin.invoicePay === 'unpaid') {
-    db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
-      .run(Date.now(), exp.id);
-  } else if (fin.invoicePay === 'pending_approval') {
-    db.prepare("UPDATE expenses SET paymentStatus = 'pending_approval', updatedAt = ? WHERE id = ?")
-      .run(Date.now(), exp.id);
   }
   const updated = getExpenseById(exp.id);
   let budgetExceeded;
@@ -677,7 +645,7 @@ function departmentIdFromBody(body, required) {
 }
 
 function listExpenses(req) {
-  const { status, from, to, category, userId: qUser, includeDeleted, expenseType, paymentStatus } = req.query;
+  const { status, from, to, category, userId: qUser, includeDeleted, expenseType } = req.query;
   void includeDeleted;
   const parts = ["status != 'deleted'"];
   const vals = [];
@@ -695,10 +663,6 @@ function listExpenses(req) {
   if (expenseType) {
     parts.push('expenseType = ?');
     vals.push(String(expenseType).trim().slice(0, 32));
-  }
-  if (paymentStatus) {
-    parts.push('paymentStatus = ?');
-    vals.push(String(paymentStatus).trim().slice(0, 32));
   }
   if (from) {
     parts.push('date >= ?');
@@ -826,7 +790,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     let ownerId = resolvedOwner.id;
     const {
       amount, currency, amountEUR, description, category, date, notes, status,
-      expenseType: bodyExpenseType, vendor, dueDate, paymentTermDays, recurring, recurrenceRule,
+      expenseType: bodyExpenseType, vendor, dueDate, recurring, recurrenceRule,
       b64: bodyB64, receiptB64,
     } = req.body || {};
     const dept = departmentIdFromBody(req.body, true);
@@ -837,9 +801,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const expenseTypeRaw = bodyExpenseType != null ? String(bodyExpenseType).trim().toLowerCase() : 'expense';
     const expenseType = expenseTypeRaw === 'invoice' ? 'invoice' : 'expense';
     const vendorStr = typeof vendor === 'string' ? vendor.trim().slice(0, 256) : '';
-    const termDays = paymentTermDays != null && paymentTermDays !== ''
-      ? Math.max(0, Math.min(3650, Math.round(Number(paymentTermDays))))
-      : 0;
     const desc = typeof description === 'string' ? description.trim().slice(0, 2000) : '';
     const cat = typeof category === 'string' ? category.trim().slice(0, 128) : '';
     const dateStr = typeof date === 'string' ? date.trim().slice(0, 10) : '';
@@ -880,20 +841,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       if (!vendorStr) {
         return res.status(400).json({ error: 'vendor requerido para factura (máx. 256 caracteres).' });
       }
-      if (!resolvedDueDate) {
-        if (termDays > 0 && dateStr) {
-          // compute dueDate = dateStr + termDays days
-          const d = new Date(dateStr);
-          d.setDate(d.getDate() + termDays);
-          resolvedDueDate = d.toISOString().slice(0, 10);
-        } else if (dateStr) {
-          // paymentTermDays === 0 → al contado, due same day
-          resolvedDueDate = dateStr;
-        }
-      }
       if (resolvedDueDate && !DATE_RE.test(resolvedDueDate)) {
         return res.status(400).json({ error: 'dueDate inválida.' });
       }
+      if (!resolvedDueDate) resolvedDueDate = dateStr;
     }
     const rec = recurring === true || recurring === 1 || recurring === '1';
     let rule = recurrenceRule != null ? String(recurrenceRule).trim().slice(0, 48) : null;
@@ -908,14 +859,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     let st = typeof status === 'string' ? status.trim().slice(0, 32) : 'submitted';
     if (!['draft', 'submitted'].includes(st)) {
       return res.status(400).json({ error: 'status inicial solo draft o submitted.' });
-    }
-    let payStat = 'na';
-    const deferredPayment = expenseType === 'invoice'
-      ? ((req.body.deferredPayment === true || req.body.deferredPayment === 1) ? 1 : 0)
-      : 0;
-    if (expenseType === 'invoice') {
-      const deferred = deferredPayment === 1;
-      payStat = deferred ? 'pending_approval' : 'paid';
     }
     const eur = amount;
 
@@ -1034,11 +977,11 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       expenseType,
       vendor: expenseType === 'invoice' ? vendorStr : null,
       dueDate: expenseType === 'invoice' ? resolvedDueDate : null,
-      paymentStatus: payStat,
-      paidAt: payStat === 'paid' ? now : null,
-      paidConfirmedBy: payStat === 'paid' ? req.userId : null,
-      paymentTermDays: expenseType === 'invoice' ? termDays : 0,
-      deferredPayment,
+      paymentStatus: 'na',
+      paidAt: null,
+      paidConfirmedBy: null,
+      paymentTermDays: 0,
+      deferredPayment: 0,
       recurring: rec ? 1 : 0,
       recurrenceRule: rule,
       originBillId: null,
@@ -1069,55 +1012,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       console.error('[expenses/create]', e);
       if (!res.headersSent) res.status(500).json({ error: 'Error al crear gasto: ' + (e && e.message ? e.message : String(e)) });
     }
-  });
-
-  router.post('/:id/mark-paid', (req, res) => {
-    const exp = getExpenseById(req.params.id);
-    if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
-    if (!canAccessExpense(req, exp)) {
-      return res.status(403).json({ error: 'No autorizado.' });
-    }
-    const isOwner = (exp.ownerId || exp.userId) === req.userId;
-    const isAdm = isAdminRole(req.userRole);
-    if (!isOwner && !isAdm) {
-      return res.status(403).json({
-        error: 'Solo el titular o un administrador puede confirmar el pago.'
-      });
-    }
-    if (exp.status === 'deleted') {
-      return res.status(400).json({ error: 'Gasto eliminado.' });
-    }
-    if (String(exp.expenseType || 'expense') !== 'invoice') {
-      return res.status(400).json({ error: 'Solo disponible para facturas.' });
-    }
-    if (String(exp.paymentStatus || '') === 'paid') {
-      return res.status(400).json({ error: 'La factura ya está marcada como pagada.' });
-    }
-    if (exp.status !== 'approved') {
-      return res.status(400).json({ error: 'La factura debe estar aprobada antes de marcar como pagada.' });
-    }
-    if (!isAdm && exp.deferredPayment !== 1 && exp.deferredPayment !== true) {
-      return res.status(403).json({
-        error: 'Solo facturas con "A pagar" pueden marcarse como pagadas por el titular.'
-      });
-    }
-    const now = Date.now();
-    const paidMs = parsePaidAtFromBody(req.body, now);
-    const markPaidInfo = db.prepare(`
-      UPDATE expenses SET paymentStatus = 'paid', paidAt = ?, paidConfirmedBy = ?, updatedAt = ?
-      WHERE id = ?
-    `).run(paidMs, req.userId, now, exp.id);
-    if (warnIfNoChanges(markPaidInfo, 'expense_mark_paid', { expenseId: exp.id, userId: req.userId })) {
-      return res.status(404).json({ error: 'Gasto no encontrado.' });
-    }
-    // Prevent job from re-spawning this specific item
-    db.prepare(
-      "UPDATE expenses SET recurring = 0, updatedAt = ? WHERE id = ? AND expenseType = 'invoice'"
-    ).run(Date.now(), exp.id);
-    audit('expense_marked_paid', { userId: req.userId, targetId: exp.id });
-
-    const out = getExpenseById(exp.id);
-    res.json({ ok: true, expense: out });
   });
 
   router.post('/:id/comments', (req, res) => {
@@ -1170,7 +1064,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     const {
       amount, description, category, date, notes, status,
-      expenseType: bodyExpenseType, vendor, dueDate, paymentTermDays, recurring, recurrenceRule,
+      expenseType: bodyExpenseType, vendor, dueDate, recurring, recurrenceRule,
     } = req.body || {};
     let nextDeptId = exp.departmentId;
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'departmentId')) {
@@ -1214,28 +1108,15 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     let nextVendor = exp.vendor ?? null;
     let nextDue = exp.dueDate ?? null;
-    let nextPayStat = exp.paymentStatus != null ? String(exp.paymentStatus) : 'na';
-    let nextDeferredPayment = nextExpenseType === 'invoice'
-      ? ((exp.deferredPayment === 1 || exp.deferredPayment === true) ? 1 : 0)
-      : 0;
-    let nextTerm = exp.paymentTermDays != null
-      ? Math.max(0, Math.min(3650, Math.round(Number(exp.paymentTermDays))))
-      : 0;
     let nextRec = Number(exp.recurring) === 1;
     let nextRule = exp.recurrenceRule != null ? String(exp.recurrenceRule).trim().slice(0, 48) : null;
 
     if (nextExpenseType === 'expense') {
       nextVendor = null;
       nextDue = null;
-      nextPayStat = 'na';
-      nextTerm = 0;
-      nextDeferredPayment = 0;
       nextRec = false;
       nextRule = null;
     } else {
-      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'deferredPayment')) {
-        nextDeferredPayment = (req.body.deferredPayment === true || req.body.deferredPayment === 1) ? 1 : 0;
-      }
       if (Object.prototype.hasOwnProperty.call(req.body || {}, 'vendor')) {
         nextVendor = String(vendor || '').trim().slice(0, 256);
       } else {
@@ -1244,31 +1125,18 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       if (!nextVendor) {
         return res.status(400).json({ error: 'vendor requerido para factura (máx. 256 caracteres).' });
       }
-      let termDays = nextTerm;
-      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'paymentTermDays')) {
-        termDays = paymentTermDays != null && paymentTermDays !== ''
-          ? Math.max(0, Math.min(3650, Math.round(Number(paymentTermDays))))
-          : 0;
-      }
-      if (termDays > 0) {
-        nextDue = addDaysToDateISO(nextDate, termDays) || null;
-      } else if (Object.prototype.hasOwnProperty.call(req.body || {}, 'dueDate')) {
-        nextDue = dueDate != null && String(dueDate).trim() !== ''
-          ? String(dueDate).trim().slice(0, 10)
-          : null;
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'dueDate')) {
+        const dueRaw = dueDate != null ? String(dueDate).trim().slice(0, 10) : '';
+        nextDue = dueRaw || exp.dueDate || nextDate;
       } else {
-        nextDue = exp.dueDate || null;
+        nextDue = exp.dueDate || nextDate;
       }
       if (nextDue && !DATE_RE.test(nextDue)) {
         return res.status(400).json({ error: 'dueDate inválida.' });
       }
       if (!nextDue) {
-        return res.status(400).json({ error: 'dueDate requerida para factura (o paymentTermDays > 0).' });
+        return res.status(400).json({ error: 'dueDate requerida para factura.' });
       }
-      if (prevType === 'expense' && nextExpenseType === 'invoice') {
-        nextPayStat = 'pending_approval';
-      }
-      nextTerm = termDays;
       if (Object.prototype.hasOwnProperty.call(req.body || {}, 'recurring')) {
         nextRec = recurring === true || recurring === 1 || recurring === '1';
       }
@@ -1357,9 +1225,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       nextRejectedAt = null;
       nextRejectionNote = null;
       finalStatus = 'submitted';
-      if (nextExpenseType === 'invoice' && String(exp.paymentStatus) === 'unpaid') {
-        nextPayStat = 'pending_approval';
-      }
     }
 
     const becomingSubmitted = finalStatus === 'submitted'
@@ -1394,8 +1259,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         ivaRate = ?, ivaAmount = ?,
         approvedBy = ?, approvedAt = ?,
         rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
-        expenseType = ?, vendor = ?, dueDate = ?, paymentStatus = ?, paymentTermDays = ?,
-        deferredPayment = CASE WHEN ? = 'invoice' THEN ? ELSE 0 END,
+        expenseType = ?, vendor = ?, dueDate = ?,
         recurring = ?, recurrenceRule = ?,
         cadenceKey = ?, cadenceCustomMonths = ?,
         updatedAt = ?
@@ -1407,8 +1271,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       nextIvaRate, nextIvaAmount,
       nextApprovedBy, nextApprovedAt,
       nextRejectedBy, nextRejectedAt, nextRejectionNote,
-      nextExpenseType, nextVendor, nextDue, nextPayStat, nextTerm,
-      nextExpenseType, nextDeferredPayment,
+      nextExpenseType, nextVendor, nextDue,
       nextRec ? 1 : 0, nextRule,
       String(req.body.cadenceKey || 'once').trim().slice(0, 32),
       String(req.body.cadenceCustomMonths || '1').trim().slice(0, 8),
@@ -1417,22 +1280,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (warnIfNoChanges(updateInfo, 'expense_update', { expenseId: exp.id, userId: req.userId })) {
       return res.status(404).json({ error: 'Gasto no encontrado.' });
     }
-    // If deferredPayment changed, sync paymentStatus accordingly
-    const deferredChanged = exp.deferredPayment !== nextDeferredPayment;
-    if (nextExpenseType === 'invoice' && deferredChanged) {
-      if (nextDeferredPayment === 0) {
-        // User unchecked A pagar — mark as already paid
-        db.prepare(
-          "UPDATE expenses SET paymentStatus = 'paid', paidAt = ?, paidConfirmedBy = ?, updatedAt = ? WHERE id = ?"
-        ).run(Date.now(), req.userId, Date.now(), exp.id);
-      } else {
-        // User checked A pagar — reset to pending
-        db.prepare(
-          "UPDATE expenses SET paymentStatus = 'pending_approval', updatedAt = ? WHERE id = ?"
-        ).run(Date.now(), exp.id);
-      }
-    }
-
     const updated = getExpenseById(exp.id);
     if (fieldChanges.length > 0) {
       audit('expense_edited', {
@@ -1707,21 +1554,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   return router;
 }
 
-/**
- * Marks unpaid invoices whose due date is before today as overdue (batch SQL update).
- * @returns {import('better-sqlite3').RunResult}
- */
-function markOverdueInvoices() {
-  const today = new Date().toISOString().slice(0, 10);
-  const now = Date.now();
-  return db.prepare(`
-    UPDATE expenses SET paymentStatus = 'overdue', updatedAt = ?
-    WHERE expenseType = 'invoice'
-      AND paymentStatus IN ('unpaid')
-      AND dueDate < ?
-  `).run(now, today);
-}
-
 function pruneDepartmentApproversForUser(userId) {
   const uid = String(userId || '').trim();
   if (!uid) return;
@@ -1756,7 +1588,6 @@ function pruneDepartmentApproversForUser(userId) {
 
 module.exports = {
   createExpensesRouter,
-  markOverdueInvoices,
   autoApprovePendingForRemovedUser,
   pruneDepartmentApproversForUser,
 };

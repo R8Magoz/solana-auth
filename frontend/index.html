@@ -562,12 +562,7 @@ const TR = {
     "expenses.summaryPending": "Pendiente",
     "expenses.typeExpense": "Gasto",
     "expenses.typeInvoice": "Factura",
-    "expenses.paymentPending": "Pendiente",
-    "expenses.paymentOverdue": "Vencida",
-    "expenses.paymentPaid": "Pagada",
-    "expenses.markPaid": "Marcar pagada",
     "expenses.vendor": "Proveedor",
-    "expenses.paymentTerms": "Condiciones de pago",
     "expenses.dueDate": "Fecha vencimiento",
     "expenses.cadence": "Cadencia",
     "expenses.recurringPreview": "Próxima: {{date}}",
@@ -575,20 +570,12 @@ const TR = {
     "expenses.filterExpenses": "Gastos",
     "expenses.filterInvoices": "Facturas",
     "expenses.vence": "Vence el:",
-    "expenses.termCash": "Al contado (0 días)",
-    "expenses.termNet15": "NET-15",
-    "expenses.termNet30": "NET-30",
-    "expenses.termNet60": "NET-60",
-    "expenses.termCustom": "Personalizado",
-    "expenses.termCustomDays": "Días",
     "expenses.cadenceOnce": "Una vez",
     "expenses.cadenceMonthly": "Mensual",
     "expenses.cadenceQuarterly": "Trimestral",
     "expenses.cadenceYearly": "Anual",
     "expenses.cadenceCustom": "Personalizado",
     "expenses.cadenceEveryXMonths": "Cada X meses",
-    "expenses.confirmMarkPaid": "¿Registrar pago?",
-    "expenses.paidDateLabel": "Fecha de pago",
     "expenses.noAttachment": "Sin adjunto",
     "page.expensesDefTitle": "Gastos puntuales",
     "page.expensesDefBody": "Pagos únicos, compras y desembolsos del equipo.",
@@ -739,8 +726,8 @@ function shouldQueueWrite(method, path) {
   if (p.indexOf("/expenses") !== 0) return false;
   // Never queue receipt uploads — b64 payloads are too large for localStorage
   if (p.indexOf("/receipt") !== -1) return false;
-  // Never queue approve/reject/mark-paid — these are small idempotent actions
-  if (/\/(approve|reject|mark-paid|comment)/.test(p)) return false;
+  // Never queue approve/reject/comment — these are small idempotent actions
+  if (/\/(approve|reject|comment)/.test(p)) return false;
   return true;
 }
 
@@ -1739,20 +1726,6 @@ function expenseIsRecurringNonOnce(e){
   const rule=String(e.recurrenceRule||"").toLowerCase().trim();
   return e.recurring===1&&!!rule&&rule!=="once";
 }
-function formatCondicionesPagoReadOnly(e){
-  const raw=e.condicionesPago!=null&&String(e.condicionesPago).trim()!==""?String(e.condicionesPago).trim():null;
-  const ptd=e.paymentTermDays!=null&&!isNaN(Number(e.paymentTermDays))?Number(e.paymentTermDays):null;
-  const mode=raw!=null?raw:(ptd===null||ptd===undefined||ptd===0?"0":([15,30,60].includes(ptd)?String(ptd):"custom"));
-  const m=String(mode||"0");
-  if(m==="custom")return e.dueDate?`Personalizado (${fmtDate(e.dueDate)})`:"Personalizado";
-  if(m==="0")return "Al contado";
-  if(m==="15")return "A 15 días";
-  if(m==="30")return "A 30 días";
-  if(m==="60")return "A 60 días";
-  const n=Number(m);
-  if(!isNaN(n)&&n>0)return `A ${n} días`;
-  return m||"—";
-}
 function addMonthsToISODate(iso,n){
   if(!iso||String(iso).length<10)return"";
   const p=String(iso).slice(0,10).split("-");
@@ -1777,21 +1750,10 @@ function formatDMYFromISO(iso){
   if(p.length<3)return"";
   return`${p[2]}/${p[1]}/${p[0]}`;
 }
-function paymentTermDaysFromForm(form){
-  const mode=form&&form.paymentTermMode;
-  if(mode==="0"||mode===0)return 0;
-  if(mode==="15")return 15;
-  if(mode==="30")return 30;
-  if(mode==="60")return 60;
-  if(mode==="custom")return Math.max(0,parseInt(String(form.paymentTermCustomDays||"0"),10)||0);
-  return 0;
-}
 function computeInvoiceDueISO(form){
-  const base=(form&&form.date)||"";
-  const days=paymentTermDaysFromForm(form);
-  if(days>0)return addDaysToISODate(base,days);
   const manual=(form&&form.invoiceDueDateDirect)||"";
   if(manual&&String(manual).length>=10)return String(manual).slice(0,10);
+  const base=(form&&form.date)||"";
   return base.slice(0,10);
 }
 function normalizeCadenceCustomMonths(v){
@@ -1908,9 +1870,7 @@ function invoiceIsUpcomingUnpaid(e,cats,users){
   if(!e||e.expenseType!=="invoice"||!e.dueDate)return false;
   const st=getItemStatus(e,cats,users);
   if(st==="rejected"||st==="deleted")return false;
-  const ps=String(e.paymentStatus||"").toLowerCase();
-  if(ps==="paid"||ps==="na")return false;
-  return true;
+  return st==="approved";
 }
 function parseCalendarDayParts(iso){
   const s=String(iso||"").slice(0,10);
@@ -1927,17 +1887,6 @@ const ST = {
   paid:     { bg: '#D1FAE5', color: '#065F46' },
   overdue:  { bg: '#FEE2E2', color: '#991B1B' },
   cancelled:{ bg: '#FEE2E2', color: '#991B1B' },
-};
-const invoicePaymentBadge = (e) => {
-  if (e.expenseType !== 'invoice') return null;
-  const deferred = e.deferredPayment === true
-    || Number(e.paymentTermDays || 0) > 0
-    || ["pending_approval", "unpaid", "overdue"].includes(String(e.paymentStatus || "").toLowerCase());
-  if (!deferred) return null;
-  if (e.status !== 'approved') return null;
-  if (e.paymentStatus === 'paid') return null;
-  if (e.paymentStatus === 'pending_approval') return null;
-  return { text: 'A pagar', bg: '#FEF3C7', color: '#78350F' };
 };
 /** Dashboard activity + recent list — semantic greens/amber/red per spec */
 const ACTIVITY_COLORS={
@@ -2274,7 +2223,7 @@ function readLocalDepartments(){
   }
 }
 const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
-  expenseType:"expense",vendor:"",deferredPayment:false,paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months",proveedor:""};
+  expenseType:"expense",vendor:"",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months",proveedor:""};
 const DRAFT_KEY="sol-session-draft";
 function makeBlankForm(expenseType,{user}){
   return{...BF,expenseType,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:""};
@@ -3756,27 +3705,7 @@ function recurrenceRuleToCadenceForForm(rule){
 function expenseInvoiceTermsFromEntity(e){
   const due=String(e.dueDate||"").slice(0,10);
   const base=String(e.date||"").slice(0,10);
-  const raw=e.condicionesPago!=null&&String(e.condicionesPago).trim()!==""?String(e.condicionesPago).trim():null;
-  const ptd=e.paymentTermDays!=null&&!isNaN(Number(e.paymentTermDays))?Number(e.paymentTermDays):null;
-  if(raw==="0"||raw==="15"||raw==="30"||raw==="60"||raw==="custom"){
-    return{
-      paymentTermMode:raw,
-      invoiceDueDateDirect:raw==="custom"?due:"",
-    };
-  }
-  if(ptd===0)return{paymentTermMode:"0",invoiceDueDateDirect:""};
-  if(ptd===15)return{paymentTermMode:"15",invoiceDueDateDirect:""};
-  if(ptd===30)return{paymentTermMode:"30",invoiceDueDateDirect:""};
-  if(ptd===60)return{paymentTermMode:"60",invoiceDueDateDirect:""};
-  if(base&&due){
-    const d15=addDaysToISODate(base,15);
-    const d30=addDaysToISODate(base,30);
-    const d60=addDaysToISODate(base,60);
-    if(due===d15)return{paymentTermMode:"15",invoiceDueDateDirect:""};
-    if(due===d30)return{paymentTermMode:"30",invoiceDueDateDirect:""};
-    if(due===d60)return{paymentTermMode:"60",invoiceDueDateDirect:""};
-  }
-  return{paymentTermMode:"custom",invoiceDueDateDirect:due};
+  return{invoiceDueDateDirect:due||base};
 }
 /** Shared field layout for Nuevo gasto and Editar gasto (same order & UX as NewPanel). */
 function ExpenseFormFields({
@@ -3793,14 +3722,12 @@ function ExpenseFormFields({
   startCam,
   apiReceiptPreview,
   onClearApiReceiptPreview,
-  disableDeferredPaymentToggle,
-  showDeferredPaymentLockedHint,
 }){
   const expAmt=parseFloat(form.amount)||0;
   const amountNum=parseMoney(form.amount);
   const amountOk=amountNum>0;
   const isInv=form.expenseType==="invoice";
-  const duePickOk=!isInv||!form.deferredPayment||(String(form.paymentTermMode||"0")!=="custom")||String(form.invoiceDueDateDirect||"").trim().length>=10;
+  const duePickOk=!isInv||String(form.invoiceDueDateDirect||form.date||"").trim().length>=10;
   const nextPrevISO=nextCadencePreviewISO(form.date,form);
   const nextPrevLbl=nextPrevISO?formatDMYFromISO(nextPrevISO):"";
   const hasLocalPrev=!!recPrev;
@@ -3905,52 +3832,15 @@ function ExpenseFormFields({
         </div>
         {isInv&&(
           <>
-            <div style={{gridColumn:"1/-1",padding:"8px 0"}}>
-              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",margin:0}}>
-                <input type="checkbox"
-                  style={{width:14,height:14,margin:0,flexShrink:0,accentColor:actionColor}}
-                  checked={form.deferredPayment === true}
-                  disabled={disableDeferredPaymentToggle}
-                  onChange={e=>{
-                    const on=e.target.checked;
-                    setForm(p=>({
-                      ...p,
-                      deferredPayment:on,
-                      paymentTermMode:on?(p.paymentTermMode==="0"||!p.paymentTermMode?"30":p.paymentTermMode):"0",
-                    }));
-                  }}/>
-                <span style={{fontSize:13,color:"#4B5E52"}}>
-                  A pagar
-                </span>
-              </label>
-              {showDeferredPaymentLockedHint&&(
-                <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>
-                  No se puede cambiar tras la aprobación.
-                </div>
-              )}
-
-              {form.deferredPayment&&(
-                <select className="inp" style={{marginTop:8}}
-                  value={String(form.paymentTermMode||"30")}
-                  onChange={e=>setForm(p=>({...p,paymentTermMode:e.target.value}))}>
-                  <option value="15">A 15 días</option>
-                  <option value="30">A 30 días</option>
-                  <option value="60">A 60 días</option>
-                  <option value="custom">Personalizado</option>
-                </select>
-              )}
+            <div style={{gridColumn:"1/-1",fontSize:12,color:"#4B5E52"}}>
+              <label className="lbl">{t("expenses.dueDate")}</label>
+              <input
+                className={expenseInpClass(hi&&!duePickOk)}
+                type="date"
+                value={String(form.invoiceDueDateDirect||form.date||"").slice(0,10)}
+                onChange={e=>setForm(p=>({...p,invoiceDueDateDirect:e.target.value}))}
+              />
             </div>
-            {form.deferredPayment&&form.paymentTermMode==="custom"&&(
-              <div style={{gridColumn:"1/-1",fontSize:12,color:"#4B5E52"}}>
-                <label className="lbl">{t("expenses.dueDate")}</label>
-                <input
-                  className={expenseInpClass(hi&&!duePickOk)}
-                  type="date"
-                  value={String(form.invoiceDueDateDirect||"").slice(0,10)}
-                  onChange={e=>setForm(p=>({...p,invoiceDueDateDirect:e.target.value}))}
-                />
-              </div>
-            )}
           </>
         )}
       </div>
@@ -4017,7 +3907,7 @@ function NewPanel(){
   const submitHoverBg=isInv?FH:GH;
   const vendorOk=!isInv||String(form.vendor||"").trim().length>0;
   const proveedorOk=!isInv||String(form.proveedor||"").trim().length>0;
-  const duePickOk=!isInv||!form.deferredPayment||(String(form.paymentTermMode||"0")!=="custom")||String(form.invoiceDueDateDirect||"").trim().length>=10;
+  const duePickOk=!isInv||String(form.invoiceDueDateDirect||form.date||"").trim().length>=10;
   const expenseValid=amountOk&&String(form.description||"").trim()&&String(form.category||"").trim()&&String(form.date||"").trim()&&!!String(form.departmentId||"").trim()&&!!ownerId&&vendorOk&&proveedorOk&&duePickOk;
   const [submitAttempt,setSubmitAttempt]=useState(false);
   React.useEffect(() => {
@@ -4060,7 +3950,7 @@ function NewPanel(){
     draftTimer.current=setTimeout(()=>{
       try{
         const payload={savedAt:new Date().toISOString(),form:{description:form.description,amount:form.amount,category:form.category,date:form.date,notes:form.notes,ivaRate:form.ivaRate===""?"":(form.ivaRate??ivaRateToFormString(readIvaDefault())),departmentId:form.departmentId||"",ownerId:form.ownerId||"",
-          expenseType:form.expenseType||"expense",vendor:form.vendor||"",deferredPayment:!!form.deferredPayment,paymentTermMode:form.paymentTermMode||"0",paymentTermCustomDays:form.paymentTermCustomDays||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once",cadenceCustomMonths:form.cadenceCustomMonths||"1",cadenceCustomAmount:form.cadenceCustomAmount||"1",cadenceCustomUnit:form.cadenceCustomUnit||"months",proveedor:form.proveedor||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
+          expenseType:form.expenseType||"expense",vendor:form.vendor||"",invoiceDueDateDirect:form.invoiceDueDateDirect||"",cadenceKey:form.cadenceKey||"once",cadenceCustomMonths:form.cadenceCustomMonths||"1",cadenceCustomAmount:form.cadenceCustomAmount||"1",cadenceCustomUnit:form.cadenceCustomUnit||"months",proveedor:form.proveedor||""},splitOn,spMode,splits:(splits||[]).map(s=>({userId:s.userId,checked:!!s.checked,percent:s.percent,value:s.value}))};
         sessionStorage.setItem(DRAFT_KEY,JSON.stringify(payload));
       }catch(e){}
     },500);
@@ -4130,7 +4020,7 @@ function NewPanel(){
 
 /* ── DETAIL PANEL ──────────────────────────────────────────────────────────── */
 function DetailPanel(){
-  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,markExpensePaid,ivaRates,departments,defaultDeptId,resetForm,
+  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,ivaRates,departments,defaultDeptId,resetForm,
         fileRef,startCam,receiptAltHandlerRef}=useApp();
   const [editMode,setEditMode]=useState(false);
   const [ef,setEf]=useState({});        // edit form fields
@@ -4142,14 +4032,9 @@ function DetailPanel(){
   const [efSpMode,setEfSpMode]=useState("amount");
   const [editSubmitAttempt,setEditSubmitAttempt]=useState(false);
   const [commentText,setCommentText]=useState("");
-  const [detailPayOpen,setDetailPayOpen]=useState(false);
-  const [detailPayDate,setDetailPayDate]=useState(()=>new Date().toISOString().slice(0,10));
   const e=expenses.find(x=>x.id===detailId);
   useEffect(()=>{
     if(detailId)markExpenseRead(detailId);
-  },[detailId]);
-  useEffect(()=>{
-    setDetailPayOpen(false);
   },[detailId]);
   useEffect(()=>{
     if(!editMode){receiptAltHandlerRef.current=null;return;}
@@ -4284,11 +4169,9 @@ function DetailPanel(){
     if (e.rejectedAt && !events.some(ev => ev.action === 'rejected')) {
       events.push({ id: 'rejected', at: e.rejectedAt, type: 'audit', action: 'rejected', by: e.rejectedBy, note: e.rejectionNote });
     }
-    if (e.paidAt && !events.some(ev => ev.action === 'paid' || ev.action === 'mark_paid')) {
-      events.push({ id: 'paid', at: e.paidAt, type: 'audit', action: 'paid', by: e.paidConfirmedBy });
-    }
-
-    return events.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+    return events
+      .filter(ev=>ev.action!=="paid"&&ev.action!=="mark_paid")
+      .sort((a, b) => String(a.at).localeCompare(String(b.at)));
   }, [e, serverAudit]);
   if(!e)return null;
   const getU=id=>{
@@ -4323,8 +4206,6 @@ function DetailPanel(){
     'approved':             'Aprobado',
     'rejected':             'Rechazado',
     'resubmitted':          'Reenviado',
-    'paid':                 'Marcado como pagado',
-    'mark_paid':            'Marcado como pagado',
     'edited':               'Editado',
     'updated':              'Editado',
     'attachment_removed':   'Adjunto eliminado',
@@ -4349,8 +4230,7 @@ function DetailPanel(){
     const cadenceCustomMonths=(ckStored&&ckStored!=="once"&&e.cadenceCustomMonths!=null)?String(e.cadenceCustomMonths):fromRule.cadenceCustomMonths;
     const cadenceCustomAmount=fromRule.cadenceCustomAmount!=null?String(fromRule.cadenceCustomAmount):(e.cadenceCustomMonths!=null?String(e.cadenceCustomMonths):"1");
     const cadenceCustomUnit=fromRule.cadenceCustomUnit||"months";
-    const invTerms=e.expenseType==="invoice"?expenseInvoiceTermsFromEntity(e):{paymentTermMode:"0",invoiceDueDateDirect:""};
-    const deferredPayment=e.expenseType==="invoice"&&String(invTerms.paymentTermMode||"0")!=="0";
+    const invTerms=e.expenseType==="invoice"?expenseInvoiceTermsFromEntity(e):{invoiceDueDateDirect:""};
     const prov=String((e.proveedor!=null&&String(e.proveedor).trim()!=="")?e.proveedor:(e.vendor||"")).trim();
     setEf({description:e.description,amount:String(e.amount),category:e.category,
       date:e.date,notes:e.notes||"",receipt:e.receipt||null,receiptType:e.receiptType||null,
@@ -4365,10 +4245,8 @@ function DetailPanel(){
       expenseType:e.expenseType||"expense",
       proveedor:prov,
       vendor:String(e.vendor||prov).trim(),
-      deferredPayment,
-      paymentTermMode:invTerms.paymentTermMode,
       invoiceDueDateDirect:invTerms.invoiceDueDateDirect,
-      paymentTermCustomDays:e.paymentTermCustomDays!=null?String(e.paymentTermCustomDays):"30"});
+    });
     const ownerNow=e.ownerId||e.submittedBy||user.id;
     const amtNow=parseMoney(String(e.amount))||0;
     const baseSplits=users.map(u=>{
@@ -4444,9 +4322,7 @@ function DetailPanel(){
       recurrenceRule:recEdit.recurrenceRule,
       expenseType:ef.expenseType||"expense",
       vendor: ef.vendor || "",
-      paymentTermMode: ef.paymentTermMode || "0",
       invoiceDueDateDirect: ef.invoiceDueDateDirect || "",
-      paymentTermDays: paymentTermDaysFromForm(ef),
       dueDate: computeInvoiceDueISO(ef) || null,
       proveedor:String(ef.proveedor||"").trim(),
     },e);
@@ -4479,7 +4355,7 @@ function DetailPanel(){
   const editIsInv=ef.expenseType==="invoice";
   const editVendorOk=!editIsInv||String(ef.vendor||"").trim().length>0;
   const editProveedorOk=!editIsInv||String(ef.proveedor||"").trim().length>0;
-  const editDuePickOk=!editIsInv||!ef.deferredPayment||(String(ef.paymentTermMode||"0")!=="custom")||String(ef.invoiceDueDateDirect||"").trim().length>=10;
+  const editDuePickOk=!editIsInv||String(ef.invoiceDueDateDirect||ef.date||"").trim().length>=10;
   const editExpenseValid=editAmountOk&&String(ef.description||"").trim()&&String(ef.category||"").trim()&&String(ef.date||"").trim()&&!!String(ef.departmentId||"").trim()&&!!editOwnerId&&editVendorOk&&editProveedorOk&&editDuePickOk;
   const editTotVal=efSplits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
   const editCheckedSplit=efSplits.filter(s=>s.checked).length;
@@ -4534,11 +4410,6 @@ function DetailPanel(){
             startCam={startCam}
             apiReceiptPreview={editApiReceipt}
             onClearApiReceiptPreview={clearEditApiReceiptPreview}
-            disableDeferredPaymentToggle={
-              (e.status === 'approved' || e.status === 'rejected') &&
-              e.paymentStatus !== 'pending_approval'
-            }
-            showDeferredPaymentLockedHint={e.status === 'approved'}
           />
           <div style={{display:"flex",gap:6,marginTop:8}}>
             <button className="btn-primary" style={{flex:1,fontSize:13,padding:"8px",background:editActionColor,opacity:(!editExpenseValid||editSplitBlocked)?0.5:1,cursor:(!editExpenseValid||editSplitBlocked)?"not-allowed":"pointer",transition:"color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease"}} onMouseEnter={e=>{if(!editExpenseValid||editSplitBlocked)return;e.currentTarget.style.background=editSubmitHoverBg;}} onMouseLeave={e=>{e.currentTarget.style.background=editActionColor;}} onClick={()=>{
@@ -4579,80 +4450,7 @@ function DetailPanel(){
       ))}
       {e.expenseType==="invoice"&&(<>
         <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12,gap:8}}><span style={{color:"#9CAA9F",flexShrink:0}}>Proveedor</span><span style={{fontWeight:500,textAlign:"right"}}>{String(e.proveedor||e.vendor||"").trim()||"—"}</span></div>
-        <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12,gap:8}}><span style={{color:"#9CAA9F",flexShrink:0}}>Condiciones de pago</span><span style={{fontWeight:500,textAlign:"right"}}>{formatCondicionesPagoReadOnly(e)}</span></div>
-        <div style={{padding:"5px 0",borderBottom:"1px solid #F5F0EA"}}>
-          <div style={{fontSize:9,color:"#9CAA9F",marginBottom:4}}>Estado de pago</div>
-          <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8}}>
-            {(() => {
-              const pb = invoicePaymentBadge(e);
-              if (!pb) return null;
-              return (
-                <span style={{
-                  fontSize: 9, fontWeight: 700, padding: '2px 7px',
-                  borderRadius: 10, background: pb.bg, color: pb.color
-                }}>{pb.text}</span>
-              );
-            })()}
-            {(e.userId === user?.id || e.ownerId === user?.id || isAdmin) &&
-             e.expenseType === "invoice" &&
-             e.status === "approved" &&
-             e.deferredPayment === true &&
-             (e.paymentStatus === "unpaid" || e.paymentStatus === "overdue") && (
-              !detailPayOpen?(
-                <button type="button" className="btn-sm" style={{fontSize:11,padding:"4px 10px",fontWeight:600,background:detailAccent}}
-                  onClick={()=>{setDetailPayDate(new Date().toISOString().slice(0,10));setDetailPayOpen(true);}}>
-                  Marcar como pagada
-                </button>
-              ):(
-                <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,width:"100%",marginTop:4}}>
-                  <label className="lbl" style={{margin:0,display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontSize:11,color:"#6B7B72"}}>Fecha de pago</span>
-                    <input className="inp" type="date" value={detailPayDate} onChange={ev=>setDetailPayDate(ev.target.value)} style={{padding:"4px 8px",fontSize:11}}/>
-                  </label>
-                  <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 12px"}} onClick={()=>{markExpensePaid(e.id,detailPayDate);setDetailPayOpen(false);}}>{t("action.confirm")}</button>
-                  <button type="button" className="btn-secondary" style={{fontSize:11,padding:"5px 12px"}} onClick={()=>setDetailPayOpen(false)}>{t("action.cancel")}</button>
-                </div>
-              )
-            )}
-          </div>
-        </div>
-        {(e.userId === user?.id || e.ownerId === user?.id || isAdmin) &&
-         e.expenseType === 'invoice' &&
-         e.status === 'approved' &&
-         (e.paymentStatus === 'unpaid' || e.paymentStatus === 'overdue') &&
-         e.deferredPayment === true &&
-         e.dueDate && (() => {
-          const today = new Date().toISOString().slice(0, 10);
-          const due = String(e.dueDate).slice(0, 10);
-          if (due > today) return null;
-          const isOverdue = due < today;
-          return (
-            <div style={{
-              marginTop: 8, padding: '12px',
-              background: isOverdue ? '#FEE2E2' : '#FEF3C7',
-              borderRadius: 8, fontSize: 12,
-              color: isOverdue ? '#991B1B' : '#78350F'
-            }}>
-              <div style={{marginBottom: 8}}>
-                {isOverdue
-                  ? `Esta factura venció el ${fmtDate(due)}. Confirma si fue pagada.`
-                  : `Esta factura vence hoy. Confirma el pago.`}
-              </div>
-              <button
-                className="btn-primary"
-                style={{
-                  fontSize: 12, padding: '6px 16px',
-                  background: F, border: 'none'
-                }}
-                onClick={() => {
-                  setDetailPayOpen(true);
-                }}
-              >
-                Marcar como pagada
-              </button>
-            </div>
-          );
-        })()}
+        <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12,gap:8}}><span style={{color:"#9CAA9F",flexShrink:0}}>{t("expenses.dueDate")}</span><span style={{fontWeight:500,textAlign:"right"}}>{fmtDate(e.dueDate)}</span></div>
       </>)}
       <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}>
         <span style={{color:"#9CAA9F"}}>{t("expense.ivaRow")} · {ivaRowLabel}</span>
@@ -4761,7 +4559,7 @@ function DashboardView(){
   const m0=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
   const ym=today.toISOString().slice(0,7);
   const mBillsTotal=expenses
-    .filter(e=>e.expenseType==="invoice"&&e.paymentStatus==="paid"&&(e.dueDate||e.date||"").slice(0,7)===ym)
+    .filter(e=>e.expenseType==="invoice"&&getItemStatus(e,cats,users)==="approved"&&e.dueDate&&String(e.dueDate).slice(0,7)===ym)
     .reduce((s,e)=>s+eurForExpense(e),0);
   const mTotalAll=expenses.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0)
     .reduce((s,e)=>s+eurForExpense(e),0)+mBillsTotal;
@@ -4797,7 +4595,7 @@ function DashboardView(){
   },[]);
   const billsWindowCfg=UPCOMING_BILL_WINDOWS[billsWindow]||UPCOMING_BILL_WINDOWS["15d"];
   const upcomingBills=[];
-  expenses.filter(e=>e.expenseType==="invoice"&&e.paymentStatus==="unpaid"&&e.dueDate).forEach(e=>{
+  expenses.filter(e=>e.expenseType==="invoice"&&getItemStatus(e,cats,users)==="approved"&&e.dueDate).forEach(e=>{
     const diff=daysUntilISO(String(e.dueDate).slice(0,10));
     if(diff!=null&&diff>=0&&diff<=billsWindowCfg.days)upcomingBills.push({...e,name:e.vendor||e.description,daysUntil:diff});
   });
@@ -5015,10 +4813,8 @@ function ExpensesView(){
   const{t,expenses,cats,users,byStatus,filtered,expFlt,setExpFlt,expSrc,setExpSrc,
         catFlt,setCatFlt,submFlt,setSubmFlt,dateFrom,setDateFrom,dateTo,setDateTo,activeFilterCount,
         detailId,setDetailId,panel,setPanel,openNew,resetForm,isAdmin,user,aNote,setANote,approve,clearMyExpenseFilter,totApproved,
-        expKindFlt,setExpKindFlt,markExpensePaid,recurringFlt,setRecurringFlt,saveExp}=useApp();
-  const [payOpenId,setPayOpenId]=useState(null);
+        expKindFlt,setExpKindFlt,recurringFlt,setRecurringFlt,saveExp}=useApp();
   const [filtersOpen,setFiltersOpen]=useState(true);
-  const [payDate,setPayDate]=useState(()=>new Date().toISOString().slice(0,10));
   const pendingTotal=expenses.filter(e=>getItemStatus(e,cats)==="pending").reduce((s,e)=>s+eurForExpense(e),0);
   const naturalFrom = expenses.length
     ? expenses.reduce((min, e) => e.date < min ? e.date : min, expenses[0].date)
@@ -5184,25 +4980,21 @@ function ExpensesView(){
           const approverIds=effectiveExpenseApproverIds(e,cats,users);
           const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
           const isInvRow=e.expenseType==="invoice";
-          const ps=e.paymentStatus||"na";
-          const payBadge=invoicePaymentBadge(e);
           const today = new Date().toISOString().slice(0, 10);
           const due = e.dueDate ? String(e.dueDate).slice(0, 10) : null;
           const isOverdue = due && due < today &&
             e.expenseType === "invoice" &&
-            e.status === "approved" &&
-            e.paymentStatus !== "paid";
+            e.status === "approved";
           const isDueToday = due && due === today &&
             e.expenseType === "invoice" &&
-            e.status === "approved" &&
-            e.paymentStatus !== "paid";
+            e.status === "approved";
           const rowTitle=isInvRow?(e.vendor||e.description):e.description;
           const metaDate=isInvRow&&e.dueDate?`${t("expenses.vence")} ${fmtDate(e.dueDate)} · `:fmtDate(e.date)+" · ";
           const isLastInGroup=idx===group.items.length-1;
           const isLastGroup=group.ym===monthGroups[monthGroups.length-1]?.ym;
           return(
             <div key={e.id}>
-              <div className="row-hover" style={{padding:"9px 13px",borderBottom:(payOpenId===e.id||!isLastInGroup||!isLastGroup)?"1px solid #F5F0EA":"none",cursor:"pointer",background: isOverdue ? "#FFF1F2" : isDueToday ? "#FFFBEB" : undefined,borderLeft: isOverdue ? "3px solid #DC2626" : undefined,display:"flex",alignItems:"flex-start",gap:8}}
+              <div className="row-hover" style={{padding:"9px 13px",borderBottom:(!isLastInGroup||!isLastGroup)?"1px solid #F5F0EA":"none",cursor:"pointer",background: isOverdue ? "#FFF1F2" : isDueToday ? "#FFFBEB" : undefined,borderLeft: isOverdue ? "3px solid #DC2626" : undefined,display:"flex",alignItems:"flex-start",gap:8}}
                 onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
@@ -5224,7 +5016,6 @@ function ExpensesView(){
                         ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
                       }}
                     >{t("status."+st)}</span>
-                    {payBadge&&<span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:10,background:payBadge.bg,color:payBadge.color}}>{payBadge.text}</span>}
                     {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span>{(e.paidBy||[]).length}</span></span>}
                   </div>
                   <div style={{fontSize:10,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -5243,7 +5034,7 @@ function ExpensesView(){
                         Vence · {fmtDate(due)}
                       </span>
                     )}
-                    {(!due || e.expenseType !== "invoice" || e.status !== "approved" || e.paymentStatus === "paid") && (
+                    {(!due || e.expenseType !== "invoice" || e.status !== "approved") && (
                       <span>{metaDate.slice(0,-3)}</span>
                     )}
                     <span>{t("filter.submitter")}: {submitterName} · {e.category}</span>
@@ -5263,30 +5054,8 @@ function ExpensesView(){
                     )}
                     <div style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(e)}</div>
                   </div>
-                  {(e.userId === user?.id || e.ownerId === user?.id || isAdmin) &&
-                   e.expenseType === "invoice" &&
-                   e.status === "approved" &&
-                   e.paymentStatus === "unpaid" && (
-                    <button type="button" className="btn-sm" style={{fontSize:10,padding:"3px 8px",fontWeight:600}}
-                      onClick={ev=>{
-                        ev.stopPropagation();
-                        setPayDate(new Date().toISOString().slice(0,10));
-                        setPayOpenId(payOpenId===e.id?null:e.id);
-                      }}>{t("expenses.markPaid")}</button>
-                  )}
                 </div>
               </div>
-              {payOpenId===e.id&&(
-                <div style={{padding:"8px 13px",background:"#FFFBEB",borderBottom:!isLastInGroup||!isLastGroup?"1px solid #F5F0EA":"none",display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,fontSize:11}}
-                  onClick={ev=>ev.stopPropagation()}>
-                  <span style={{color:"#78350F"}}>{t("expenses.confirmMarkPaid")}</span>
-                  <label style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:"#6B7B72"}}>{t("expenses.paidDateLabel")}</span>
-                    <input className="inp" type="date" style={{padding:"4px 8px",fontSize:11,width:"auto"}} value={payDate} onChange={ev=>setPayDate(ev.target.value)}/>
-                  </label>
-                  <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 12px"}} onClick={()=>{markExpensePaid(e.id,payDate);setPayOpenId(null);}}>{t("action.confirm")}</button>
-                  <button type="button" className="btn-secondary" style={{fontSize:11,padding:"5px 12px"}} onClick={()=>setPayOpenId(null)}>{t("action.cancel")}</button>
-                </div>
-              )}
             </div>
           );
         })}
@@ -5357,9 +5126,6 @@ function ApprovalsView(){
   const baseList = expenses.filter(e => {
     const st = getItemStatus(e, cats, users);
     if (st === "deleted") return false;
-    if (e.expenseType === "invoice" &&
-        st === "approved" &&
-        e.paymentStatus === "paid") return false;
     return true;
   });
   const kindFiltered=baseList.filter(e=>{
@@ -5431,7 +5197,6 @@ function ApprovalsView(){
             ? '1.5px solid #f0c4a8'
             : '1px solid transparent';
           const canActOnRow=canUserReviewExpense(item,{user,cats,users});
-          const payBadge=invoicePaymentBadge(item);
           return(
             <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
               resetForm();
@@ -5479,7 +5244,6 @@ function ApprovalsView(){
                         >
                           {t("status."+st)}
                         </span>
-                        {payBadge&&<span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,display:"inline-block",background:payBadge.bg,color:payBadge.color}}>{payBadge.text}</span>}
                         {canActOnRow&&(
                           <button
                             type="button"
@@ -5913,7 +5677,7 @@ function ApiIntegrationsCard({ inline = false }) {
   const [open, setOpen] = useState(false);
   const apiData = {
     schema: {
-      expenses: { fields: ["id","amount","description","category","date","expenseType","vendor","dueDate","paymentStatus","paymentTermDays","recurring","recurrenceRule","submittedBy","paidBy","approvals","status","notes","receipt"] },
+      expenses: { fields: ["id","amount","description","category","date","expenseType","vendor","dueDate","recurring","recurrenceRule","submittedBy","paidBy","approvals","status","notes","receipt"] },
       categories: { fields: ["id","name","archived"] },
       department_approvers: { fields: ["departmentId","approverIds"] }
     },
@@ -7898,10 +7662,6 @@ function SolanaExpenses(){
           if(row)setExpenses(prev=>prev.map(e=>e.id===row.id?row:e));
           return;
         }
-        if(op.method==="POST"&&op.path.indexOf("/expenses/")===0&&op.path.indexOf("/mark-paid")>=0){
-          const row=expenseFromApi(raw);
-          if(row)setExpenses(prev=>prev.map(e=>e.id===row.id?row:e));
-        }
       }
     };
     window.addEventListener("solana-offline-sync",h);
@@ -8254,32 +8014,18 @@ function SolanaExpenses(){
     const isInvSubmit=form.expenseType==="invoice";
     const proveedorSubmit=String(form.proveedor||"").trim();
     if(isInvSubmit&&!proveedorSubmit){failSubmit("Indica el proveedor.");return;}
-    const condicionesPagoSubmit=String(form.paymentTermMode||"0");
-    const fechaVencimientoSubmit=condicionesPagoSubmit==="custom"
-      ? String(form.invoiceDueDateDirect||"").slice(0,10)
-      : addDaysToISODate(form.date, Number(condicionesPagoSubmit)||0);
-    if(isInvSubmit&&condicionesPagoSubmit==="custom"&&!fechaVencimientoSubmit){failSubmit("Indica la fecha de vencimiento.");return;}
     if(isInvSubmit&&!String(form.vendor||"").trim()){failSubmit("Indica el proveedor.");return;}
     const cadSubmit=cadenceToRecurringPayload(form);
-    const ptdSubmit=paymentTermDaysFromForm(form);
     const computedDueIso=computeInvoiceDueISO(form);
-    const deferredPaymentSubmit = form.expenseType === "invoice" ? (form.deferredPayment === true) : false;
     const invExtras=isInvSubmit?{
       expenseType:"invoice",
       vendor:String(form.vendor||"").trim(),
-      paymentTermDays:ptdSubmit,
-      paymentStatus:deferredPaymentSubmit?"pending_approval":"paid",
       dueDate:computedDueIso||null,
-      deferredPayment:deferredPaymentSubmit,
     }:{
       expenseType:"expense",
-      paymentStatus:"na",
-      deferredPayment:false,
     };
     const facturaExtras={
       proveedor:proveedorSubmit,
-      condicionesPago:condicionesPagoSubmit,
-      fechaVencimiento:fechaVencimientoSubmit||null,
     };
     const recExtras=cadSubmit.recurring?{recurring:1,recurrenceRule:cadSubmit.recurrenceRule}:{recurring:0,recurrenceRule:null};
     let paidBy=[{userId:ownerId,amount,pct:100}];
@@ -8322,7 +8068,6 @@ function SolanaExpenses(){
             notes:form.notes||undefined,status:"submitted",
             departmentId:form.departmentId,
             ownerId,
-            deferredPayment: form.expenseType === 'invoice' ? (form.deferredPayment === true) : false,
             approvalRequired:approvalRequiredForSubmit,
             paidBy,
             ivaRate:ivaRateAuth,
@@ -8332,8 +8077,7 @@ function SolanaExpenses(){
             ...(isInvSubmit?{
               expenseType:"invoice",
               vendor:String(form.vendor||"").trim(),
-              paymentTermDays:ptdSubmit,
-              ...(ptdSubmit===0&&form.invoiceDueDateDirect?{dueDate:String(form.invoiceDueDateDirect).slice(0,10)}:{}),
+              dueDate:computedDueIso||null,
             }:{expenseType:"expense"}),
             ...(recExtras.recurring?{recurring:1,recurrenceRule:recExtras.recurrenceRule}:{recurring:0}),
           };
@@ -8589,12 +8333,8 @@ function SolanaExpenses(){
             expenseType: updates.expenseType || 'expense',
             vendor: updates.vendor || '',
             dueDate: updates.dueDate || null,
-            paymentTermDays: updates.paymentTermDays || 0,
             splitMode: updates.splitMode || 'amount',
             paidBy: updates.paidBy || [],
-            deferredPayment: (updates.expenseType || 'expense') === 'invoice'
-              ? (updates.deferredPayment === true)
-              : false,
           };
 
           if (oldExp.status === 'rejected') {
@@ -8752,27 +8492,6 @@ function SolanaExpenses(){
       }
     }catch(e){}
     saveExp(expenses.map(e=>e.id!==expId?e:{...e,seenBy:[...new Set([...(e.seenBy||[]),user.id])]}));
-  };
-
-  const markExpensePaid=(expId,paidAtIso)=>{
-    if(!AUTH_URL)return;
-    const ex=expenses.find(x=>x.id===expId);
-    if(ex&&ex._pendingSync){dispatchSolanaToast("Espera a sincronizar este movimiento.","error");return;}
-    const pay=(paidAtIso&&String(paidAtIso).slice(0,10))||new Date().toISOString().slice(0,10);
-    void (async()=>{
-      try{
-        await API.post("/expenses/"+encodeURIComponent(expId)+"/mark-paid",{paidAt:pay});
-        const d=await API.get("/expenses");
-        applyExpensesApiPayload(d,{setUsers,setExpenses});
-      }catch(e){
-        if(isOfflineQueuedError(e)){
-          const ts=Date.parse(pay+"T12:00:00");
-          saveExp(expenses.map(x=>x.id!==expId?x:{...x,paymentStatus:"paid",paidAt:Number.isFinite(ts)?ts:Date.now()}));
-          return;
-        }
-        dispatchSolanaToast(e.message||"No se pudo marcar como pagada.","error");
-      }
-    })();
   };
 
   /* ── APPROVE ────────────────────────────────────────────────────────────── */
@@ -9004,7 +8723,7 @@ function SolanaExpenses(){
     saveUsers,saveExp,saveCats,savePasswords,
     departments,departmentsWithStats,refreshDepartments,defaultDeptId,
     deptApprovers,saveDeptApprovers,
-    isAdmin,isApprover,getUser,ledgerLoading,markExpensePaid,
+    isAdmin,isApprover,getUser,ledgerLoading,
     view,setView,go,panel,setPanel,openNew,openNewInvoice,
     detailId,setDetailId,
     form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
