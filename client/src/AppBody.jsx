@@ -878,25 +878,27 @@ function cadenceToRecurringPayload(form){
 }
 function invoiceForecastMonthlyEUR(e){
   const ev=eurForExpense(e);
-  const r=e.recurrenceRule||"monthly";
-  if(r==="quarterly")return ev/3;
+  const r=String(e.recurrenceRule||"monthly").toLowerCase();
+  if(r==="weekly")return ev*4.33;
+  if(r==="biweekly")return ev*2.17;
+  if(r==="monthly")return ev;
   if(r==="yearly")return ev/12;
+  if(r==="quarterly")return ev/3;
+  if(r==="daily")return ev*(365/12);
   if(String(r).startsWith("custom:")){
     const tail=String(r).slice(7);
-    const match=tail.match(/^(\d+)(weeks|months|years)$/);
+    const match=tail.match(/^(\d+)(days|weeks|months|years)$/);
     if(match){
-      const n=parseInt(match[1],10);
+      const n=Math.max(1,parseInt(match[1],10)||1);
       const unit=match[2];
-      if(unit==="weeks")return(ev*(52/12))/n;
+      if(unit==="days")return ev*(30/n);
+      if(unit==="weeks")return ev*(4.33/n);
       if(unit==="months")return ev/n;
       if(unit==="years")return ev/(12*n);
     }
     const legacy=normalizeCadenceCustomMonths(tail);
     return ev/legacy;
   }
-  if(r==="weekly")return ev*52/12;
-  if(r==="biweekly")return ev*26/12;
-  if(r==="daily") return ev*365/12;
   return ev;
 }
 function daysUntilISO(iso){
@@ -2577,16 +2579,17 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
 function recurrenceRuleToCadenceForForm(rule){
   const r=String(rule||"").toLowerCase();
   if(r==="monthly")return{cadenceKey:"monthly",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months"};
-  if(r==="quarterly")return{cadenceKey:"quarterly",cadenceCustomMonths:"3",cadenceCustomAmount:"1",cadenceCustomUnit:"months"};
+  if(r==="quarterly")return{cadenceKey:"custom",cadenceCustomMonths:"3",cadenceCustomAmount:"3",cadenceCustomUnit:"months"};
   if(r==="yearly")return{cadenceKey:"yearly",cadenceCustomMonths:"12",cadenceCustomAmount:"1",cadenceCustomUnit:"months"};
   if(r.startsWith("custom:")){
     const tail=r.slice(7);
-    const match=tail.match(/^(\d+)(weeks|months|years)$/);
+    const match=tail.match(/^(\d+)(days|weeks|months|years)$/);
     if(match)return{cadenceKey:"custom",cadenceCustomMonths:match[1],cadenceCustomAmount:match[1],cadenceCustomUnit:match[2]};
     return{cadenceKey:"custom",cadenceCustomMonths:String(normalizeCadenceCustomMonths(tail)),cadenceCustomAmount:String(normalizeCadenceCustomMonths(tail)),cadenceCustomUnit:"months"};
   }
   if(r==="weekly")return{cadenceKey:"weekly",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"weeks"};
   if(r==="biweekly")return{cadenceKey:"custom",cadenceCustomMonths:"1",cadenceCustomAmount:"2",cadenceCustomUnit:"weeks"};
+  if(r==="daily")return{cadenceKey:"custom",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"days"};
   return{cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months"};
 }
 function expenseInvoiceTermsFromEntity(e){
@@ -2717,10 +2720,8 @@ function ExpenseFormFields({
           {(form.cadenceKey||"once")!=="once"&&(
             <>
               <select className="inp" style={{marginTop:4}} value={form.cadenceKey||"monthly"} onChange={e=>setForm(p=>({...p,cadenceKey:e.target.value}))}>
-                <option value="daily">Diario</option>
                 <option value="weekly">Semanal</option>
                 <option value="monthly">{t("expenses.cadenceMonthly")}</option>
-                <option value="quarterly">{t("expenses.cadenceQuarterly")}</option>
                 <option value="yearly">{t("expenses.cadenceYearly")}</option>
                 <option value="custom">{t("expenses.cadenceCustom")}</option>
               </select>
@@ -3759,13 +3760,6 @@ export function DashboardView(){
       return { ...d, spent, pct };
     }).sort((a,b) => b.pct - a.pct);
   },[departmentsWithStats]);
-  const [budgetNotifications,setBudgetNotifications]=useState([]);
-  useEffect(()=>{
-    if(!AUTH_URL)return;
-    void API.get("/expenses/budget-alerts").then(d=>{
-      if(d&&Array.isArray(d.alerts))setBudgetNotifications(d.alerts);
-    }).catch(()=>{});
-  },[expenses]);
   useEffect(()=>{
     if(!fixedTipActive||!fixedTipIconRef.current)return;
     const r=fixedTipIconRef.current.getBoundingClientRect();
@@ -3794,19 +3788,6 @@ export function DashboardView(){
             <div style={{fontSize:13,fontWeight:600,color:"#5C1057"}}>{myPending.length} pendiente(s) de tu aprobación</div>
           </div>
           <button className="btn-sm" style={{fontSize:12}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
-        </div>
-      )}
-      {budgetNotifications.length>0&&(
-        <div style={{background:"#FEE2E2",border:"1px solid #DC2626",borderRadius:11,padding:"10px 13px",marginBottom:10}}>
-          <div style={{fontSize:13,fontWeight:600,color:"#991B1B",marginBottom:6}}>Presupuesto de departamento excedido</div>
-          <div style={{display:"grid",gap:6}}>
-            {budgetNotifications.slice(0,5).map(n=>(
-              <div key={n.id} style={{fontSize:12,color:"#7F1D1D"}}>
-                <strong>{n.departmentName||"Departamento"}</strong>
-                {" · "}{fmt(Number(n.spent)||0)} de {fmt(Number(n.budget)||0)}
-              </div>
-            ))}
-          </div>
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:16}}>
@@ -3884,7 +3865,7 @@ export function DashboardView(){
                   onClick={e=>e.stopPropagation()}
                   style={{position:"fixed",top:fixedTipPos.top,left:fixedTipPos.left,transform:"translate(-50%,-100%)",background:"#1F2937",color:"#fff",fontSize:10,lineHeight:1.3,padding:"6px 8px",borderRadius:999,whiteSpace:"nowrap",zIndex:99999,pointerEvents:"auto"}}
                 >
-                  Suma mensual de facturas recurrentes activas. Las anuales se dividen entre 12, las trimestrales entre 3, las personalizadas según su intervalo.
+                  Suma mensual de gastos recurrentes activos (aprobados). Semanal × 4,33; anual ÷ 12; personalizado según intervalo.
                 </div>
               )}
               {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,"#DC2626",true,28,"#7F1D1D","#991B1B","#FCA5A5",`${budgetProgressPct.toFixed(1)}% usado`,"#7F1D1D")}
@@ -8026,7 +8007,7 @@ export default function App(){
     .filter(Boolean)
     .sort((a,b)=>b.total-a.total);
   const totFixed=expenses.reduce((s,e)=>{
-    if(!e.cadenceKey||e.cadenceKey==="once")return s;
+    if(!expenseIsRecurringNonOnce(e))return s;
     if(getItemStatus(e,cats,users)!=="approved")return s;
     return s+invoiceForecastMonthlyEUR(e);
   },0);
