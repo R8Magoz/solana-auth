@@ -4198,32 +4198,8 @@ function DetailPanel(){
     }).catch(()=>{if(!dead)setServerAudit([]);});
     return()=>{dead=true;};
   },[detailId,e?.updatedAt,e?.status]);
-  if(!e)return null;
-  const getU=id=>{
-    const u=users.find(x=>x.id===id);
-    if(!u)return{name:UNKNOWN_USER_NAME,color:"#999"};
-    if(u.accountStatus==="deleted")return{...u,name:`${u.name} (inactivo)`};
-    return u;
-  };
-  const approverIds=effectiveExpenseApproverIds(e,cats,users);
-  const st=getItemStatus(e,cats,users);
-  const detailAccent = e && e.expenseType === 'invoice' ? F : G;
-  const detailSublistStatusTone = (s) =>
-    ST[s] || (s === 'deleted' ? { bg: '#F3F4F6', color: '#6B7280' } : ST.pending);
-  const detailTopStatusTone =
-    st === 'approved'
-      ? { bg: detailAccent, color: '#FAF7F2' }
-      : detailSublistStatusTone(st);
-  const canEdit=user.id===e.submittedBy||isAdmin;
-  const ivaRowLabel=(()=>{
-    if(e.ivaRate===null)return formatIvaOptionLabel(IVA_RATE_SIN_IVA);
-    if(e.ivaRate!==undefined&&e.ivaRate!==null){
-      const m=ivaRates.find(r=>r.value===e.ivaRate);
-      return m?formatIvaOptionLabel(m):`${e.ivaRate}%`;
-    }
-    return t("expense.ivaNotTracked");
-  })();
   const allEvents = React.useMemo(() => {
+    if(!e)return[];
     const events = [];
 
     // auditTrail entries
@@ -4304,6 +4280,31 @@ function DetailPanel(){
 
     return events.sort((a, b) => String(a.at).localeCompare(String(b.at)));
   }, [e, serverAudit]);
+  if(!e)return null;
+  const getU=id=>{
+    const u=users.find(x=>x.id===id);
+    if(!u)return{name:UNKNOWN_USER_NAME,color:"#999"};
+    if(u.accountStatus==="deleted")return{...u,name:`${u.name} (inactivo)`};
+    return u;
+  };
+  const approverIds=effectiveExpenseApproverIds(e,cats,users);
+  const st=getItemStatus(e,cats,users);
+  const detailAccent = e && e.expenseType === 'invoice' ? F : G;
+  const detailSublistStatusTone = (s) =>
+    ST[s] || (s === 'deleted' ? { bg: '#F3F4F6', color: '#6B7280' } : ST.pending);
+  const detailTopStatusTone =
+    st === 'approved'
+      ? { bg: detailAccent, color: '#FAF7F2' }
+      : detailSublistStatusTone(st);
+  const canEdit=user.id===e.submittedBy||isAdmin;
+  const ivaRowLabel=(()=>{
+    if(e.ivaRate===null)return formatIvaOptionLabel(IVA_RATE_SIN_IVA);
+    if(e.ivaRate!==undefined&&e.ivaRate!==null){
+      const m=ivaRates.find(r=>r.value===e.ivaRate);
+      return m?formatIvaOptionLabel(m):`${e.ivaRate}%`;
+    }
+    return t("expense.ivaNotTracked");
+  })();
 
   const actionLabel = (action) => ({
     'created':              'Enviado',
