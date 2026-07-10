@@ -2180,6 +2180,58 @@ function makeBlankForm(expenseType,{user}){
 }
 
 /* ── SIDEBAR USER MENU ─────────────────────────────────────────────────────── */
+function SidebarUserRow({name,active,open,onToggle}){
+  const [hovered,setHovered]=useState(false);
+  const showHover=hovered&&!active;
+  return(
+    <button
+      type="button"
+      onClick={onToggle}
+      onMouseEnter={()=>setHovered(true)}
+      onMouseLeave={()=>setHovered(false)}
+      style={{
+        flex:1,
+        minWidth:0,
+        display:"flex",
+        alignItems:"center",
+        justifyContent:"space-between",
+        gap:6,
+        borderRadius:6,
+        padding:"6px 9px",
+        background:active?"rgba(250,247,242,0.12)":(showHover?"rgba(250,247,242,0.12)":"transparent"),
+        border:"none",
+        cursor:"pointer",
+        fontFamily:"inherit",
+        textAlign:"left",
+        transition:"background 0.15s ease,color 0.15s ease",
+      }}
+    >
+      <span style={{
+        flex:1,
+        minWidth:0,
+        fontSize:11,
+        fontWeight:500,
+        color:active?"#FAF7F2":(showHover?"rgba(250,247,242,0.92)":"rgba(250,247,242,0.5)"),
+        overflow:"hidden",
+        textOverflow:"ellipsis",
+        whiteSpace:"nowrap",
+        transition:"color 0.15s ease",
+      }}>{name}</span>
+      <span
+        aria-hidden
+        style={{
+          flexShrink:0,
+          fontSize:10,
+          lineHeight:1,
+          color:active?"#FAF7F2":(showHover?"rgba(250,247,242,0.92)":"rgba(250,247,242,0.5)"),
+          transform:open?"rotate(180deg)":"rotate(0deg)",
+          transition:"transform 0.15s ease, color 0.15s ease",
+          display:"inline-flex",
+        }}
+      >▾</span>
+    </button>
+  );
+}
 function SidebarUserMenu({items}){
   const [hovered,setHovered]=useState(null);
   return(
@@ -9022,12 +9074,13 @@ function SolanaExpenses(){
             <SidebarNavItem key={n.id} active={view===n.id} label={n.label} badge={n.badge} onClick={()=>go(n.id)}/>
           ))}
           <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)",position:"relative"}}>
-            <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
-              <button type="button" onClick={()=>setUserMenuOpen(v=>!v)} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",borderRadius:7,padding:"4px 6px",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:10,fontWeight:600,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</div>
-                </div>
-              </button>
+            <div style={{marginBottom:8}}>
+              <SidebarUserRow
+                name={user.name}
+                active={view==="settings"}
+                open={userMenuOpen}
+                onToggle={()=>setUserMenuOpen(v=>!v)}
+              />
             </div>
             {userMenuOpen&&(
               <SidebarUserMenu items={[
