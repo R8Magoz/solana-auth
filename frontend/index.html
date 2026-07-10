@@ -2194,6 +2194,10 @@ function readLocalDepartments(){
 const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
   expenseType:"expense",vendor:"",deferredPayment:false,paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months",proveedor:""};
 const DRAFT_KEY="sol-session-draft";
+function makeBlankForm(expenseType,{user,defaultDeptId,departments}){
+  const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
+  return{...BF,expenseType,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId};
+}
 
 /* ── CONTEXT ───────────────────────────────────────────────────────────────── */
 const Ctx=createContext(null);
@@ -3781,22 +3785,6 @@ function NewPanel(){
     return()=>{cancelled=true};
   },[receipt?.b64,receipt?.type,ivaRates,setForm]);
   useEffect(()=>{
-    try{
-      const raw = sessionStorage.getItem(DRAFT_KEY);
-      if(!raw) return;
-      const d = JSON.parse(raw);
-      if (!d || !d.form) return;
-      const f = d.form;
-      setForm(p => ({
-        ...p, ...f,
-        date: f.date != null ? String(f.date) : p.date,
-        ownerId: f.ownerId || p.ownerId || "",
-        departmentId: f.departmentId || p.departmentId || "",
-        expenseType: f.expenseType || "expense",
-      }));
-    }catch(e){}
-  },[]);
-  useEffect(()=>{
     clearTimeout(draftTimer.current);
     draftTimer.current=setTimeout(()=>{
       try{
@@ -3872,7 +3860,7 @@ function NewPanel(){
 
 /* ── DETAIL PANEL ──────────────────────────────────────────────────────────── */
 function DetailPanel(){
-  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,markExpensePaid,ivaRates,departments,defaultDeptId,
+  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,markExpensePaid,ivaRates,departments,defaultDeptId,resetForm,
         fileRef,startCam,receiptAltHandlerRef}=useApp();
   const [editMode,setEditMode]=useState(false);
   const [ef,setEf]=useState({});        // edit form fields
@@ -4229,7 +4217,7 @@ function DetailPanel(){
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {!editMode&&canEdit&&(isAdmin||st!=="approved")&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:`1px solid ${detailAccent}`,background:"transparent",color:detailAccent,cursor:"pointer",fontFamily:"inherit"}} onClick={startEdit}>{t("action.editItem")}</button>}
           {!editMode&&(user.id===e.submittedBy||isAdmin)&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>deleteExp(e.id)}>{t("action.deleteItem")}</button>}
-          <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:19,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{void (async()=>{if(editMode&&efDirty&&!(await confirmUI(t("expense.unsaved"))))return;receiptAltHandlerRef.current=null;setEditApiReceipt(prev=>{if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}return null;});setEditMode(false);setDetailId(null);setPanel(null);})();}}>×</button>
+          <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:19,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{void (async()=>{if(editMode&&efDirty&&!(await confirmUI(t("expense.unsaved"))))return;receiptAltHandlerRef.current=null;setEditApiReceipt(prev=>{if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}return null;});setEditMode(false);resetForm();setDetailId(null);setPanel(null);})();}}>×</button>
         </div>
       </div>
 
@@ -4552,7 +4540,7 @@ function PersonDrilldown({userId, onClose}){
 /* ── DASHBOARD ─────────────────────────────────────────────────────────────── */
 function DashboardView(){
   const{t,user,expenses,cats,users,isAdmin,myPending,
-        totApproved,totFixed,perPerson,go,openNew,openNewInvoice,setView,setDetailId,setPanel,goToMyRejected,departmentsWithStats,departments,setRecurringFlt}=useApp();
+        totApproved,totFixed,perPerson,go,openNew,openNewInvoice,setView,setDetailId,setPanel,goToMyRejected,departmentsWithStats,departments,setRecurringFlt,resetForm}=useApp();
   const today=new Date();
   const m0=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
   const ym=today.toISOString().slice(0,7);
@@ -4858,7 +4846,7 @@ function DashboardView(){
           const sorted=[...pool].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
           if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{t("empty.expenses")}</div>;
           return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const ac=ACTIVITY_COLORS[st]||ACTIVITY_COLORS.pending;const sub=(users.find(x=>x.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;return(
-            <div key={e.id} className="row-hover" style={{display:"flex",alignItems:"flex-start",padding:"7px 3px",borderBottom:i<sorted.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}} onClick={()=>{go("expenses");setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);}}>
+            <div key={e.id} className="row-hover" style={{display:"flex",alignItems:"flex-start",padding:"7px 3px",borderBottom:i<sorted.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}} onClick={()=>{resetForm();go("expenses");setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <div style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{short}</div>
@@ -5190,7 +5178,7 @@ function ReceiptThumb({expenseId}){
 
 /* ── APPROVALS ─────────────────────────────────────────────────────────────── */
 function ApprovalsView(){
-  const{t,expenses,cats,users,departments,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel}=useApp();
+  const{t,expenses,cats,users,departments,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel,resetForm}=useApp();
   const [typeFilter,setTypeFilter]=useState("all");
   const [assigneeFilter,setAssigneeFilter]=useState("");
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
@@ -5293,6 +5281,7 @@ function ApprovalsView(){
           const payBadge=invoicePaymentBadge(item);
           return(
             <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
+              resetForm();
               go("expenses");
               setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
             }}>
@@ -5336,6 +5325,7 @@ function ApprovalsView(){
                             style={{fontSize:11}}
                             onClick={e => {
                               e.stopPropagation();
+                              resetForm();
                               go("expenses");
                               setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
                             }}
@@ -5370,7 +5360,7 @@ function ApprovalsView(){
 
 /* ── PAYMENT CALENDAR ──────────────────────────────────────────────────────── */
 function PaymentCalendar({reportExpenses}){
-  const{expenses,cats,users,t,go,setDetailId,setPanel}=useApp();
+  const{expenses,cats,users,t,go,setDetailId,setPanel,resetForm}=useApp();
   const srcExpenses=Array.isArray(reportExpenses)?reportExpenses:expenses;
   const [cur,setCur]=useState(()=>new Date());
   const year=cur.getFullYear(),mon=cur.getMonth();
@@ -5429,7 +5419,7 @@ function PaymentCalendar({reportExpenses}){
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,marginBottom:3,gap:6}}>
               <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?"#C4622D":"#3C0A37",display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
               <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(ev.amount)}</span>
-              <button style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{go("expenses");setTimeout(()=>{setDetailId(ev.id);setPanel("detail");},50);}}>{t("action.viewAll")}</button>
+              <button style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{resetForm();go("expenses");setTimeout(()=>{setDetailId(ev.id);setPanel("detail");},50);}}>{t("action.viewAll")}</button>
             </div>
           ))}
         </div>
@@ -5444,7 +5434,7 @@ function PaymentCalendar({reportExpenses}){
 
 /* ── REPORTS VIEW ──────────────────────────────────────────────────────────── */
 function ReportsView(){
-  const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel}=useApp();
+  const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel,resetForm}=useApp();
   const [statusFilter, setStatusFilter] = useState("all");
   const [ivaFilter, setIvaFilter] = useState("with");
   const [exportSel, setExportSel] = useState("");
@@ -5787,7 +5777,7 @@ function ReportsView(){
                           <div
                             key={row.id}
                             style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:i<userRows.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}}
-                            onClick={()=>{setView("expenses");setDetailId(row.id);setPanel("detail");}}
+                            onClick={()=>{resetForm();setView("expenses");setDetailId(row.id);setPanel("detail");}}
                           >
                             <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#FEE2CC":"#EDE9F6",color:kind==="invoice"?"#C4622D":"#3C0A37"}}>
                               {kind==="invoice"?"FACTURA":"GASTO"}
@@ -8389,23 +8379,24 @@ function SolanaExpenses(){
     appLog("info","attachment_removed",{itemCode:e.itemCode,userId:user.id});
   };
   const resetForm=useCallback(()=>{
-    const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
     receiptAltHandlerRef.current=null;
-    setForm({...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId});
+    setForm(makeBlankForm("expense",{user,defaultDeptId,departments}));
     setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
     try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
     try{sessionStorage.removeItem(DRAFT_KEY);}catch(e){}
   },[user?.id,defaultDeptId,departments]);
   const openNew  =()=>{
     receiptAltHandlerRef.current=null;
-    const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
-    const base={...BF,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId};
-    let nextForm=base;
+    let nextForm=makeBlankForm("expense",{user,defaultDeptId,departments});
     try{
       const saved=sessionStorage.getItem(DRAFT_KEY);
       if(saved){
         const parsed=JSON.parse(saved);
-        if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))nextForm={...base,...parsed};
+        const draftForm=parsed?.form&&typeof parsed.form==="object"?parsed.form:parsed;
+        if(draftForm&&typeof draftForm==="object"&&!Array.isArray(draftForm)){
+          const{expenseType:_drop,...rest}=draftForm;
+          nextForm={...nextForm,...rest,expenseType:"expense"};
+        }
       }
     }catch(e){}
     setForm(nextForm);
@@ -8413,11 +8404,14 @@ function SolanaExpenses(){
     setDetailId(null);setPanel("new");setView("expenses");
   };
   const openNewInvoice=useCallback(()=>{
-    resetForm();
-    setForm(p => ({ ...p, expenseType: "invoice" }));
-    setPanel("new");
-    if (view !== "expenses") go("expenses");
-  },[resetForm,setForm,setPanel,view,go]);
+    receiptAltHandlerRef.current=null;
+    setForm(makeBlankForm("invoice",{user,defaultDeptId,departments}));
+    setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
+    try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
+    try{sessionStorage.removeItem(DRAFT_KEY);}catch(e){}
+    setDetailId(null);setPanel("new");
+    if (view !== "expenses") setView("expenses");
+  },[user,defaultDeptId,departments,setView,setPanel,view]);
 
   /* deleteExp — removes expense with permission check and audit trail */
   const deleteExp=(expId)=>{
