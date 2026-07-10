@@ -293,7 +293,8 @@ function createAuthRouter(deps) {
 
   /**
    * PUT /auth/update-profile
-   * Body: { name?, email?, phone?, avatar? } — authenticated user updates their own record only.
+   * Body: { name?, email?, phone? } — authenticated user updates their own record only.
+   * Avatar column is retained in DB but not accepted or updated via this endpoint.
    */
   router.put('/update-profile', async (req, res) => {
     const auth = req.headers['authorization'] || '';
@@ -303,29 +304,12 @@ function createAuthRouter(deps) {
     if (!session) return res.status(401).json({ error: 'No autorizado.' });
 
     const body = req.body || {};
-    const AVATAR_MAX_LEN = 500000;
     const me = userStore.findUserByIdPublic(session.userId);
     if (!me) return res.status(404).json({ error: 'Usuario no encontrado.' });
 
     const name = body.name != null ? String(body.name).trim().slice(0, 128) : '';
     const emailRaw = body.email != null ? String(body.email).trim().toLowerCase().slice(0, 254) : '';
     const phone = body.phone != null ? String(body.phone).trim().slice(0, 64) : (me.phone || '');
-    let avatar;
-    if (Object.prototype.hasOwnProperty.call(body, 'avatar')) {
-      if (body.avatar != null && typeof body.avatar === 'string') {
-        const trimmed = String(body.avatar).trim();
-        if (trimmed.length > AVATAR_MAX_LEN) {
-          return res.status(400).json({
-            error: 'La imagen de perfil es demasiado grande. Usa una imagen más pequeña.',
-          });
-        }
-        avatar = trimmed.length > 0 ? trimmed.slice(0, AVATAR_MAX_LEN) : null;
-      } else {
-        avatar = null;
-      }
-    } else {
-      avatar = me.avatar ?? null;
-    }
 
     if (!name) return res.status(400).json({ error: 'El nombre es obligatorio.' });
     if (!emailRaw || !emailRaw.includes('@')) {
@@ -341,7 +325,7 @@ function createAuthRouter(deps) {
       name,
       email: emailRaw,
       phone,
-      avatar: avatar === '' ? null : avatar,
+      avatar: me.avatar ?? null,
     });
 
     const fresh = userStore.findUserByIdPublic(session.userId);
