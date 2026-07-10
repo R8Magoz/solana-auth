@@ -4732,17 +4732,16 @@ export function ReportsView(){
   const chartMonths = monthlyChart.months;
   const SLOT_COUNT = chartMonths.length;
   const SIDE_PAD = 8;
-  const BAR_GAP = 4;
   const useWideBars = monthlyChart.dataMonthCount>0 && monthlyChart.dataMonthCount<4;
   const barClusterFrac = useWideBars ? 0.5 : 0.3;
   const MIN_BAR_USER = 40;
   const minBarForSizing = useWideBars ? MIN_BAR_USER : 3;
-  const minChartWForBars = SLOT_COUNT*(2*minBarForSizing+BAR_GAP)/barClusterFrac;
+  const minChartWForBars = SLOT_COUNT*minBarForSizing/barClusterFrac;
   const CHART_W = Math.max(960, minChartWForBars);
   const GROUP_W = CHART_W / SLOT_COUNT;
   const BAR_CLUSTER_W = GROUP_W * barClusterFrac;
-  const BAR_W = Math.max(3, (BAR_CLUSTER_W - BAR_GAP) / 2);
-  const BAR_OFFSET = (GROUP_W - (BAR_W * 2 + BAR_GAP)) / 2;
+  const BAR_W = Math.max(3, BAR_CLUSTER_W);
+  const BAR_OFFSET = (GROUP_W - BAR_W) / 2;
   const CHART_H = 160;
   const TOP_PAD = 36;
   const LABEL_H = 20;
@@ -4844,7 +4843,9 @@ export function ReportsView(){
               const gH = m.gastos>0 ? Math.max(3,(m.gastos/maxVal)*CHART_H) : 0;
               const fH = m.facturas>0 ? Math.max(3,(m.facturas/maxVal)*CHART_H) : 0;
               const gY = TOP_PAD + CHART_H - gH;
-              const fY = TOP_PAD + CHART_H - fH;
+              const fY = gY - fH;
+              const stackTop = fY;
+              const tooltipBreakdown = `Gastos: ${fmt(m.gastos)}\nFacturas: ${fmt(m.facturas)}`;
               return (
                 <g key={m.ym}>
                   {m.total===0&&(
@@ -4860,15 +4861,15 @@ export function ReportsView(){
                   )}
                   {gH>0&&<rect x={x} y={gY} width={BAR_W} height={gH}
                     fill={G} rx="2" opacity="0.9">
-                    <title>{m.label} Gastos: {fmt(m.gastos)}</title>
+                    <title>{tooltipBreakdown}</title>
                   </rect>}
-                  {fH>0&&<rect x={x+BAR_W+BAR_GAP} y={fY} width={BAR_W} height={fH}
+                  {fH>0&&<rect x={x} y={fY} width={BAR_W} height={fH}
                     fill={FACTURA_HEX} rx="2" opacity="0.9">
-                    <title>{m.label} Facturas: {fmt(m.facturas)}</title>
+                    <title>{tooltipBreakdown}</title>
                   </rect>}
                   {m.total>0&&<text
                     x={SIDE_PAD + i * GROUP_W + GROUP_W / 2}
-                    y={Math.min(gY, fY) - 5}
+                    y={stackTop - 5}
                     textAnchor="middle"
                     fontSize="11"
                     fill="#4B5E52"
