@@ -79,6 +79,12 @@ function parseVotes(row: ExpenseRow): Record<string, string> {
   }
 }
 
+function canSessionActOnApproval(row: ExpenseRow, session: { userId: string; role: string } | null): boolean {
+  if (!session) return false;
+  if (session.role !== 'admin' && session.role !== 'superadmin') return false;
+  return parseApprovers(row).includes(session.userId);
+}
+
 function parseAudit(row: ExpenseRow): any[] {
   try {
     const a = JSON.parse(row.auditTrailJson || 'null');
@@ -380,6 +386,9 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         return json(200, { ok: true, receiptPath: e.receiptPath });
       }
       if (sub === 'approve') {
+        if (!canSessionActOnApproval(e, session)) {
+          return json(403, { error: 'No eres aprobador designado para este gasto.' });
+        }
         const votes = parseVotes(e);
         votes[session.userId] = 'approved';
         e.approvalVotesJson = JSON.stringify(votes);
@@ -408,8 +417,8 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         return json(200, { ok: true, expense: e });
       }
       if (sub === 'reject') {
-        if (session.role !== 'admin' && session.role !== 'superadmin') {
-          return json(403, { error: 'No autorizado.' });
+        if (!canSessionActOnApproval(e, session)) {
+          return json(403, { error: 'No eres aprobador designado para este gasto.' });
         }
         const body = safeJson(req.postData());
         e.status = 'rejected';
@@ -734,7 +743,7 @@ test.describe('Critical business flows', () => {
       category: 'Software',
       status: 'submitted',
       expenseType: 'expense',
-      approversJson: JSON.stringify(['user-1']),
+      approversJson: JSON.stringify(['admin-1']),
       approvalVotesJson: '{}',
       ownerId: 'admin-1',
       paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 200, pct: 100 }]),
@@ -832,7 +841,7 @@ test.describe('A — Expense lifecycle', () => {
           currency: 'EUR',
           category: 'Software',
           status: 'rejected',
-          approversJson: JSON.stringify(['user-1']),
+          approversJson: JSON.stringify(['admin-1']),
           approvalVotesJson: '{}',
           paidByJson: JSON.stringify([{ userId: 'user-1', amount: 50, pct: 100 }]),
           splitMode: null,
@@ -882,7 +891,7 @@ test.describe('A — Expense lifecycle', () => {
           currency: 'EUR',
           category: 'Software',
           status: 'approved',
-          approversJson: JSON.stringify(['user-1']),
+          approversJson: JSON.stringify(['admin-1']),
           approvalVotesJson: JSON.stringify({ 'user-1': 'approved' }),
           paidByJson: JSON.stringify([{ userId: 'user-1', amount: 100, pct: 100 }]),
           splitMode: null,
@@ -972,7 +981,7 @@ test.describe('B — Invoice (factura) lifecycle', () => {
           paymentStatus: 'unpaid',
           dueDate: '2026-05-01',
           paymentTermDays: 30,
-          approversJson: JSON.stringify(['user-1']),
+          approversJson: JSON.stringify(['admin-1']),
           approvalVotesJson: JSON.stringify({ 'user-1': 'approved' }),
           paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 300, pct: 100 }]),
           splitMode: null,
@@ -1034,7 +1043,7 @@ test.describe('B — Invoice (factura) lifecycle', () => {
           paymentStatus: 'unpaid',
           dueDate: '2026-05-01',
           paymentTermDays: 0,
-          approversJson: JSON.stringify(['user-1']),
+          approversJson: JSON.stringify(['admin-1']),
           approvalVotesJson: JSON.stringify({ 'user-1': 'approved' }),
           paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 150, pct: 100 }]),
           splitMode: null,
@@ -1097,7 +1106,7 @@ test.describe('B — Invoice (factura) lifecycle', () => {
           paymentStatus: 'unpaid',
           dueDate: '2026-05-01',
           paymentTermDays: 0,
-          approversJson: JSON.stringify(['user-1']),
+          approversJson: JSON.stringify(['admin-1']),
           approvalVotesJson: '{}',
           paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 200, pct: 100 }]),
           splitMode: null,
