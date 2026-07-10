@@ -2978,7 +2978,7 @@ function NewPanel(){
         onClearApiReceiptPreview={undefined}
       />
       {formError&&<div style={{padding:"8px 12px",borderRadius:8,background:"#FCEBEB",color:"#791F1F",fontSize:12,marginBottom:8}}>{formError}</div>}
-      <div style={{position:"relative",width:"100%"}}>
+      <div style={{position:"relative",width:"100%",marginTop:6}}>
         <button type="button" className="btn-primary" disabled={submitting} style={{width:"100%",padding:11,background:actionColor,opacity:submitting?0.6:((!expenseValid||splitSubmitBlocked)?0.5:1),cursor:submitting?"not-allowed":((!expenseValid||splitSubmitBlocked)?"not-allowed":"pointer"),transition:"color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease"}}
           onMouseEnter={e=>{if(submitting||!expenseValid||splitSubmitBlocked)return;e.currentTarget.style.background=submitHoverBg;}}
           onMouseLeave={e=>{e.currentTarget.style.background=actionColor;}}
@@ -7516,14 +7516,14 @@ export default function App(){
   };
   const resetForm=useCallback(()=>{
     receiptAltHandlerRef.current=null;
-    setForm(makeBlankForm("expense",{user,defaultDeptId,departments}));
+    setForm(makeBlankForm("expense",{user}));
     setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
     try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
     try{sessionStorage.removeItem(DRAFT_KEY);}catch(e){}
-  },[user?.id,defaultDeptId,departments]);
+  },[user?.id]);
   const openNew  =()=>{
     receiptAltHandlerRef.current=null;
-    let nextForm=makeBlankForm("expense",{user,defaultDeptId,departments});
+    let nextForm=makeBlankForm("expense",{user});
     try{
       const saved=sessionStorage.getItem(DRAFT_KEY);
       if(saved){
@@ -7541,13 +7541,13 @@ export default function App(){
   };
   const openNewInvoice=useCallback(()=>{
     receiptAltHandlerRef.current=null;
-    setForm(makeBlankForm("invoice",{user,defaultDeptId,departments}));
+    setForm(makeBlankForm("invoice",{user}));
     setSplitOn(false);setSplits([]);setSpMode("amount");setReceipt(null);setRecPrev(null);setFormError("");
     try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
     try{sessionStorage.removeItem(DRAFT_KEY);}catch(e){}
     setDetailId(null);setPanel("new");
     if (view !== "expenses") setView("expenses");
-  },[user,defaultDeptId,departments,setView,setPanel,view]);
+  },[user,setView,setPanel,view]);
 
   /* deleteExp — removes expense with permission check and audit trail */
   const deleteExp=(expId)=>{
