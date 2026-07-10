@@ -109,7 +109,7 @@ body {
   background: rgba(250, 247, 242, 0.12);
 }
 .sidebar-user-row--open {
-  background: rgba(0, 0, 0, 0.18);
+  background: #2B2118;
 }
 .sidebar-user-row--active {
   background: rgba(250, 247, 242, 0.12);
@@ -167,7 +167,7 @@ body {
 .sidebar-user-menu__item--bordered {
   border-bottom: 1px solid rgba(250, 247, 242, 0.08);
 }
-.sidebar-user-menu__item:hover {
+.sidebar-user-menu__item:not(.sidebar-user-menu__item--destructive):hover {
   background: rgba(250, 247, 242, 0.12);
 }
 .sidebar-user-menu__item--destructive {
