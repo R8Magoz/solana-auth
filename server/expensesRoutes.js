@@ -796,7 +796,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
   router.post('/', async (req, res) => {
     try {
-    console.log('[POST /expenses] body:', JSON.stringify(req.body, null, 2));
     const ownerRaw = String(req.body.ownerId || req.body.owner || '').trim();
     let resolvedOwner = null;
 
@@ -819,16 +818,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     if (!resolvedOwner) {
-      const _allUsersDebug = db.prepare(
-        "SELECT * FROM users WHERE id != 'system'"
-      ).all();
-      console.error('[TITULAR DEBUG] ownerRaw received:', JSON.stringify(ownerRaw));
-      console.error('[TITULAR DEBUG] req.body.ownerId:', JSON.stringify(req.body.ownerId));
-      console.error('[TITULAR DEBUG] req.userId:', JSON.stringify(req.userId));
-      console.error('[TITULAR DEBUG] all user ids:', _allUsersDebug.map(u => u.id));
-      console.error('[TITULAR DEBUG] all user names:', _allUsersDebug.map(u => u.name));
       return res.status(400).json({
-        error: `Titular no encontrado. Recibido: "${ownerRaw}" | IDs disponibles: ${_allUsersDebug.map(u=>u.id).join(', ')}`
+        error: `Titular no encontrado. Recibido: "${ownerRaw}"`
       });
     }
 
