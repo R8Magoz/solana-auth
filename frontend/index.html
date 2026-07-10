@@ -1181,7 +1181,8 @@ const normalizeItem=(item,type)=>{
     return merged;
   }
   if(type==="cat"){
-    const merged={archived:false,budget:null,...item,approverIds:Array.isArray(item.approverIds)&&item.approverIds.length>0?item.approverIds:[]};
+    const merged={archived:false,budget:null,...item};
+    delete merged.approverIds;
     if(merged.budget===undefined||merged.budget===""||merged.budget===null)merged.budget=null;
     else if(typeof merged.budget==="string"){const v=parseFloat(merged.budget.replace(",","."));merged.budget=isNaN(v)?null:v;}
     return merged;
@@ -1291,12 +1292,10 @@ const expenseApproverTokens=(exp)=>{
 const effectiveExpenseApproverIds=(exp,cats,users)=>{
   const fromExpense=expenseApproverTokens(exp);
   if(fromExpense)return canonicalApproverIdList(fromExpense,users);
-  const cat = (cats || []).find(c =>
-    c.name && c.name.toLowerCase() === (exp?.category || '').toLowerCase()
-  );
-  if (cat && Array.isArray(cat.approverIds) && cat.approverIds.length > 0) {
-    return canonicalApproverIdList(cat.approverIds,users);
-  }
+  const deptId=exp?.departmentId;
+  const map=_deptApproversMap;
+  const ids=deptId&&Array.isArray(map[deptId])&&map[deptId].length>0?map[deptId]:null;
+  if(ids)return canonicalApproverIdList(ids,users);
   return (users || [])
     .filter(u => u.role === 'admin')
     .map(u => u.id);
@@ -2099,6 +2098,18 @@ function expenseIvaRatesEqual(a,b){
   if(na==="unset"&&nb==="sin")return true;
   return na===nb;
 }
+const DEPT_APPROVERS_LS_KEY='sol-dept-approvers';
+let _deptApproversMap={};
+function setDeptApproversMap(m){
+  _deptApproversMap=m&&typeof m==='object'&&!Array.isArray(m)?m:{};
+}
+function readDeptApproversFromLs(){
+  try{
+    const raw=localStorage.getItem(DEPT_APPROVERS_LS_KEY);
+    const p=raw?JSON.parse(raw):null;
+    return p&&typeof p==='object'&&!Array.isArray(p)?p:{};
+  }catch(e){return{};}
+}
 async function fetchAndApplyServerSettings(authUrl, token) {
   if (!authUrl || !token) return;
   try {
@@ -2111,6 +2122,10 @@ async function fetchAndApplyServerSettings(authUrl, token) {
 
     if (Array.isArray(settings.categories) && settings.categories.length > 0) {
       try { localStorage.setItem('sol-cats', JSON.stringify(settings.categories)); } catch(e) {}
+    }
+    if (settings.department_approvers && typeof settings.department_approvers === 'object' && !Array.isArray(settings.department_approvers)) {
+      try { localStorage.setItem(DEPT_APPROVERS_LS_KEY, JSON.stringify(settings.department_approvers)); } catch(e) {}
+      setDeptApproversMap(settings.department_approvers);
     }
     if (Array.isArray(settings.iva_rates) && settings.iva_rates.length > 0) {
       try { localStorage.setItem(IVA_RATES_KEY, JSON.stringify(settings.iva_rates)); } catch(e) {}
@@ -4650,7 +4665,7 @@ function DashboardView(){
   const rejList=[...myActivityGastosMonth.filter(e=>getItemStatus(e,cats,users)==="rejected"),...myActivityFacturasMonth.filter(b=>getItemStatus(b,cats,users)==="rejected")];
   const rejSum=rejList.reduce((s,e)=>s+eurForExpense(e),0);
   const rejCnt=rejList.length;
-  const watchCats=cats.filter(c=>!c.archived&&c.budget!=null&&c.budget>0&&effectiveExpenseApproverIds({category:c.name},cats,users)[0]===user.id);
+  const watchDepts=(departmentsWithStats||[]).filter(d=>!d.archived&&Number(d.budget)>0&&effectiveExpenseApproverIds({departmentId:d.id},cats,users).includes(user.id));
   const [drillPerson,setDrillPerson]=useState(null);
   const deptBudgetActive=(departmentsWithStats||[]).filter(d=>!d.archived&&Number(d.budget)>0);
   const budgetTotalActive=deptBudgetActive.reduce((s,d)=>s+Number(d.budget||0),0);
@@ -4795,16 +4810,17 @@ function DashboardView(){
         {rejCnt>0&&<button type="button" style={{width:"100%",marginTop:10,background:"none",border:"none",color:T,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}} onClick={goToMyRejected}>{t("dash.fixRejectedLink").replace("{n}",String(rejCnt))}</button>}
       </div>
       <DepartmentBudgetBars t={t} rows={departmentsWithStats} title={t("dash.deptBudgetsTitle")}/>
-      {watchCats.length>0&&(
+      {watchDepts.length>0&&(
         <div className="card" style={{marginBottom:11}}>
           <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>{t("dash.budgetStatus")}</div>
-          {watchCats.map(c=>{
-            const spent=expenses.filter(e=>e.category===c.name&&getItemStatus(e,cats,users)==="approved"&&e.date?.slice(0,7)===ym).reduce((s,e)=>s+eurForExpense(e),0);
-            const pct=c.budget>0?spent/c.budget*100:0;
+          {watchDepts.map(d=>{
+            const spent=Number(d.spent)||0;
+            const budget=Number(d.budget)||0;
+            const pct=budget>0?spent/budget*100:0;
             const barColor=pct<75?"#16A34A":pct<=100?"#D97706":"#DC2626";
             return(
-              <div key={c.id} style={{marginBottom:8}}>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span>{c.name}</span><span style={{fontWeight:600}}>{fmt(spent)} / {fmt(c.budget)}</span></div>
+              <div key={d.id} style={{marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span>{d.name}</span><span style={{fontWeight:600}}>{fmt(spent)} / {fmt(budget)}</span></div>
                 <div style={{height:4,background:"#EDE8E0",borderRadius:2,marginTop:4}}><div style={{height:"100%",width:`${Math.min(100,pct)}%`,background:barColor,transition:"width 0.4s",borderRadius:2}}/></div>
               </div>
             );
@@ -5773,7 +5789,8 @@ function ApiIntegrationsCard({ inline = false }) {
   const apiData = {
     schema: {
       expenses: { fields: ["id","amount","description","category","date","expenseType","vendor","dueDate","paymentStatus","paymentTermDays","recurring","recurrenceRule","submittedBy","paidBy","approvals","status","notes","receipt"] },
-      categories: { fields: ["id","name","approverIds","archived"] }
+      categories: { fields: ["id","name","archived"] },
+      department_approvers: { fields: ["departmentId","approverIds"] }
     },
     totalExpenses: expenses.length,
     exportedAt: new Date().toISOString()
@@ -5888,7 +5905,7 @@ function AdminReadme(){
           <div style={S.heading}>RESOLUCIÓN DE PROBLEMAS COMUNES</div>
           <div style={S.body}>
             <b>"Storage full"</b> → Ve a Zona peligrosa → Exporta JSON y elimina recibos grandes.<br/>
-            <b>Usuario no puede aprobar</b> → Comprueba que su ID aparezca en <span style={S.code}>approverIds</span> de la categoría.<br/>
+            <b>Usuario no puede aprobar</b> → Comprueba que su ID esté asignado como aprobador del departamento del gasto (<span style={S.code}>department_approvers</span>).<br/>
             <b>Ítem sin código</b> → Ítems migrados de v1/v2 pueden carecer de código; se asigna al primer guardado (normalizeItem).<br/>
             <b>Login con servidor de auth</b> → Verifica que <span style={S.code}>AUTH_URL</span> apunte al servidor activo y que CORS_ORIGIN esté configurado.<br/>
             <b>Email de verificación no llega</b> → Comprueba <span style={S.code}>RESEND_API_KEY</span> y que FROM_EMAIL esté verificado en Resend.<br/>
@@ -6666,7 +6683,8 @@ function DepartmentsSettingsBlock({t}){
 /* ── SETTINGS VIEW ─────────────────────────────────────────────────────────── */
 function SettingsView(){
   const{t,user,users,expenses,cats,saveCats,saveUsers,saveExp,
-        onSignOut,passwords,savePasswords,ivaRates,saveIvaRates,setUser}=useApp();
+        onSignOut,passwords,savePasswords,ivaRates,saveIvaRates,setUser,
+        departments,deptApprovers,saveDeptApprovers}=useApp();
   const isAdmin=user?.role==="admin";
   const [editId,setEditId]=useState(null);
   const [ef,setEf]=useState({});
@@ -6690,7 +6708,8 @@ function SettingsView(){
   const [catEdit,setCatEdit]=useState(null);
   const [catForm,setCatForm]=useState({});
   const [addCat,setAddCat]=useState(false);
-  const [newCat,setNewCat]=useState({name:"",approverIds:[],budget:""});
+  const [newCat,setNewCat]=useState({name:"",budget:""});
+  const [appDeptApproversDraft,setAppDeptApproversDraft]=useState(()=>({...(deptApprovers||{})}));
   const [archC,setArchC]=useState(null);
   // password
   const [pwForm,setPwForm]=useState({cur:"",nw:"",cn:""});
@@ -6724,6 +6743,7 @@ function SettingsView(){
   useEffect(()=>{setIvaDefault(readIvaDefault());},[ivaRates]);
   useEffect(()=>{setAppIvaDefaultDraft(readIvaDefault());},[ivaRates]);
   useEffect(()=>{setAppCatsDraft(cats.map(c=>({...c})));},[cats]);
+  useEffect(()=>{setAppDeptApproversDraft({...(deptApprovers||{})});},[deptApprovers]);
   const appSettingsToken=()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return"";}};
   const loadBackups=useCallback(async()=>{
     if(!isAdmin||!AUTH_URL)return;
@@ -6806,14 +6826,32 @@ function SettingsView(){
       prev.map(c => (c.id === catId ? { ...c, ...changes } : c))
     );
   };
-  const toggleCategoryApprover = (catId, userId) => {
-    const cat = appCatsDraft.find(c => c.id === catId);
-    if (!cat) return;
-    const current = cat.approverIds || [];
-    const next = current.includes(userId)
-      ? current.filter(id => id !== userId)
-      : [...current, userId];
-    updateCategory(catId, { approverIds: next });
+  const toggleDeptApprover = (deptId, userId) => {
+    setAppDeptApproversDraft(prev => {
+      const current = Array.isArray(prev[deptId]) ? prev[deptId] : [];
+      const next = current.includes(userId)
+        ? current.filter(id => id !== userId)
+        : [...current, userId];
+      return { ...prev, [deptId]: next };
+    });
+  };
+  const saveAppDeptApprovers = async () => {
+    setAppSetErr(""); setAppSetMsg("");
+    if (AUTH_URL) {
+      const tok = appSettingsToken() || (API.token ? String(API.token) : "");
+      if (!tok) { setAppSetErr(t("msg.sessionExpired")); return; }
+      try {
+        const r = await fetch(AUTH_URL + "/settings/department_approvers", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok },
+          body: JSON.stringify({ value: appDeptApproversDraft }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { setAppSetErr(d.error || t("msg.genericShort")); return; }
+      } catch (e) { setAppSetErr(t("signup.serverDown")); return; }
+    }
+    saveDeptApprovers(appDeptApproversDraft);
+    setAppSetMsg("Aprobadores por departamento guardados.");
   };
   const approverCandidates = users.filter(u =>
     u.accountStatus === 'active' && u.id !== 'system'
@@ -7187,57 +7225,62 @@ function SettingsView(){
         <IvaRatesEditorBlock t={t} ivaRates={ivaRates} onSave={(rates)=>{void saveAppIvaSettings(rates,appIvaDefaultDraft);}}/>
 
         <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"14px 0"}}/>
+        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Departamentos</div>
+        <div style={{fontSize:10,color:"#9CAA9F",marginBottom:8}}>Asigna quién puede aprobar gastos de cada departamento.</div>
+        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:8}}>
+          {(departments||[]).filter(d=>!d.archived).map(d=>(
+            <div key={d.id} style={{display:"flex",flexDirection:"column",gap:6}}>
+              <div style={{fontWeight:600,fontSize:12,color:G}}>{d.name}</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {approverCandidates.map(u => {
+                  const isSelected = (appDeptApproversDraft[d.id] || []).includes(u.id);
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => toggleDeptApprover(d.id, u.id)}
+                      style={{
+                        fontSize: 11,
+                        padding: '3px 10px',
+                        borderRadius: 20,
+                        border: '1px solid',
+                        cursor: 'pointer',
+                        background: isSelected ? '#cc4e00' : '#FAF7F4',
+                        color: isSelected ? '#fff' : '#6B7B72',
+                        borderColor: isSelected ? '#cc4e00' : '#DDD6CC',
+                        fontWeight: isSelected ? 600 : 400,
+                      }}
+                    >
+                      {u.name}
+                    </button>
+                  );
+                })}
+              </div>
+              {(appDeptApproversDraft[d.id] || []).length === 0 && (
+                <div style={{fontSize:10,color:"#DC2626",marginTop:2}}>
+                  Sin aprobadores asignados — los gastos de este departamento
+                  no podrán ser aprobados.
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px",marginBottom:12}} onClick={()=>void saveAppDeptApprovers()}>Guardar aprobadores</button>
+
+        <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"14px 0"}}/>
         <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Categorías</div>
         <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:8}}>
           {appCatsDraft.map((c,idx)=>(
-            <div key={c.id||("tmp-"+idx)} style={{display:"flex",flexDirection:"column",gap:7}}>
-              <div style={{display:"flex",gap:7,alignItems:"center"}}>
+            <div key={c.id||("tmp-"+idx)} style={{display:"flex",gap:7,alignItems:"center"}}>
               <input className="inp" style={{flex:1,fontSize:13,opacity:c.archived?0.65:1}} value={c.name||""} onChange={e=>updateCategory(c.id,{name:e.target.value})}/>
               <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>updateCategory(c.id,{archived:!c.archived})}>
                 {c.archived?"Restaurar":"Archivar"}
               </button>
-              </div>
-              <div style={{marginTop:6}}>
-                <label style={{fontSize:11,color:"#6B7B72",display:"block",marginBottom:4}}>
-                  Aprobadores
-                </label>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {approverCandidates.map(u => {
-                    const isSelected = (c.approverIds || []).includes(u.id);
-                    return (
-                      <button
-                        key={u.id}
-                        type="button"
-                        onClick={() => toggleCategoryApprover(c.id, u.id)}
-                        style={{
-                          fontSize: 11,
-                          padding: '3px 10px',
-                          borderRadius: 20,
-                          border: '1px solid',
-                          cursor: 'pointer',
-                          background: isSelected ? '#cc4e00' : '#FAF7F4',
-                          color: isSelected ? '#fff' : '#6B7B72',
-                          borderColor: isSelected ? '#cc4e00' : '#DDD6CC',
-                          fontWeight: isSelected ? 600 : 400,
-                        }}
-                      >
-                        {u.name}
-                      </button>
-                    );
-                  })}
-                </div>
-                {(c.approverIds || []).length === 0 && (
-                  <div style={{fontSize:10,color:"#DC2626",marginTop:4}}>
-                    Sin aprobadores asignados — los gastos de esta categoría
-                    no podrán ser aprobados.
-                  </div>
-                )}
-              </div>
             </div>
           ))}
         </div>
         <div style={{display:"flex",gap:7,marginBottom:12}}>
-          <button type="button" className="btn-sm" style={{fontSize:10}} onClick={()=>setAppCatsDraft(prev=>[...prev,{id:"c_"+Date.now(),name:"Nueva categoría",archived:false,approverIds:[]}])}>Añadir categoría</button>
+          <button type="button" className="btn-sm" style={{fontSize:10}} onClick={()=>setAppCatsDraft(prev=>[...prev,{id:"c_"+Date.now(),name:"Nueva categoría",archived:false}])}>Añadir categoría</button>
           <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void saveAppCategories()}>Guardar categorías</button>
         </div>
 
@@ -7327,6 +7370,14 @@ function SolanaExpenses(){
     const d=ls("sol-cats",DEF_CATS);
     return d.map(c=>normalizeItem(c,"cat"));
   });
+  const [deptApprovers,setDeptApproversState]=useState(()=>readDeptApproversFromLs());
+  useEffect(()=>{setDeptApproversMap(deptApprovers);},[deptApprovers]);
+  const saveDeptApprovers=useCallback((map)=>{
+    const normalized=map&&typeof map==="object"&&!Array.isArray(map)?map:{};
+    setDeptApproversState(normalized);
+    setDeptApproversMap(normalized);
+    try{localStorage.setItem(DEPT_APPROVERS_LS_KEY,JSON.stringify(normalized));}catch(e){}
+  },[]);
   const [passwords,setPasswords]=useState(()=>ls("sol-pwd",{}));
   const sessionRestoreAttempted = useRef(false);
   // appReady: small deliberate delay so the root div never flashes empty
@@ -7581,10 +7632,15 @@ function SolanaExpenses(){
     setUsers(prev=>{
       const removedIds=prev.filter(u=>!n.some(x=>x.id===u.id)).map(u=>u.id);
       if(removedIds.length){
-        setCats(prevCats=>{
-          const nextCats=prevCats.map(c=>({...c,approverIds:(c.approverIds||[]).filter(aid=>!removedIds.includes(aid))}));
-          lsSet("sol-cats",nextCats);
-          return nextCats;
+        setDeptApproversState(prevMap=>{
+          const next={};
+          for(const [deptId,ids] of Object.entries(prevMap||{})){
+            const filtered=(ids||[]).filter(aid=>!removedIds.includes(aid));
+            if(filtered.length)next[deptId]=filtered;
+          }
+          setDeptApproversMap(next);
+          try{localStorage.setItem(DEPT_APPROVERS_LS_KEY,JSON.stringify(next));}catch(e){}
+          return next;
         });
       }
       lsSet("sol-users",n);
@@ -7683,6 +7739,9 @@ function SolanaExpenses(){
     void API.get("/settings").then(data=>{
       if(cancelled||!data||!data.settings)return;
       applyServerSettings(data.settings);
+      if(data.settings.department_approvers&&typeof data.settings.department_approvers==="object"&&!Array.isArray(data.settings.department_approvers)){
+        saveDeptApprovers(data.settings.department_approvers);
+      }
     }).catch(()=>{});
     return()=>{cancelled=true;};
   },[user?.id,AUTH_URL]);
@@ -7790,7 +7849,7 @@ function SolanaExpenses(){
         for(const ex of localExp){
           if(cancelled)return;
           const amt=Number(ex.amount)||0;
-          const approvalRequired=effectiveExpenseApproverIds({category:ex.category||"Otro"},catsMigr,users);
+          const approvalRequired=effectiveExpenseApproverIds({departmentId:ex.departmentId||DEFAULT_DEPT_ID},catsMigr,users);
           await API.post("/expenses",{
             amount:amt,
             description:ex.description||".",
@@ -8117,7 +8176,7 @@ function SolanaExpenses(){
     }
     const canSubmitterAutoApprove=String(user.id)===String(ownerId);
     if(AUTH_URL){
-      const expApproverIdsAuth=effectiveExpenseApproverIds({category:form.category},cats,users);
+      const expApproverIdsAuth=effectiveExpenseApproverIds({departmentId:form.departmentId},cats,users);
       const approvalRequiredForSubmit=expApproverIdsAuth.filter(id=>id!==user.id);
       const shouldAutoApproveSubmitterAuth=canSubmitterAutoApprove&&approvalRequiredForSubmit.includes(user.id);
       void (async()=>{
@@ -8273,7 +8332,7 @@ function SolanaExpenses(){
       return;
     }
     try{
-      const expApproverIds=effectiveExpenseApproverIds({category:form.category},cats,users);
+      const expApproverIds=effectiveExpenseApproverIds({departmentId:form.departmentId},cats,users);
       const baseTrail=[{action:"submitted",by:user.id,at:new Date().toISOString()}];
       const approvalRequiredLocal=expApproverIds.filter(id=>id!==user.id);
       const shouldAutoApproveSubmitterLocal=canSubmitterAutoApprove&&approvalRequiredLocal.includes(user.id);
@@ -8413,7 +8472,7 @@ function SolanaExpenses(){
           if (oldExp.status === 'rejected') {
             body.status = 'submitted';
             body.approvalRequired = effectiveExpenseApproverIds(
-              { category: updates.category || oldExp.category }, cats, users
+              { departmentId: updates.departmentId || oldExp.departmentId }, cats, users
             );
           }
           const putRes=await API.put("/expenses/"+encodeURIComponent(expId),body);
@@ -8467,7 +8526,7 @@ function SolanaExpenses(){
     let nextSeen=oldExp.seenBy||[];
     if((wasApproved||wasRejected||wasSubmitted)&&relevantChanged){
       newApprovals={};
-      const approverIdsRc=effectiveExpenseApproverIds({category:updates.category||oldExp.category},cats,users);
+      const approverIdsRc=effectiveExpenseApproverIds({departmentId:updates.departmentId||oldExp.departmentId},cats,users);
       let trailExtra=[...newTrail];
       if(wasApproved&&approverIdsRc.includes(user.id)){
         newApprovals={[user.id]:"approved"};
@@ -8731,9 +8790,8 @@ function SolanaExpenses(){
     expKindFlt !== "all" ? "kind" : "",
     recurringFlt !== "all" ? "recurring" : "",
   ].filter(Boolean).length;
-  const isApprover = (cats || []).some(c =>
-    Array.isArray(c.approverIds) &&
-    c.approverIds.includes(user?.id)
+  const isApprover = Object.values(deptApprovers || {}).some(
+    ids => Array.isArray(ids) && ids.includes(user?.id)
   );
   const myPending=AUTH_URL
     ?expenses.filter(e=>{
@@ -8817,6 +8875,7 @@ function SolanaExpenses(){
     t,user,users,expenses,cats,passwords,ivaRates,saveIvaRates,
     saveUsers,saveExp,saveCats,savePasswords,
     departments,departmentsWithStats,refreshDepartments,defaultDeptId,
+    deptApprovers,saveDeptApprovers,
     isAdmin,isApprover,getUser,ledgerLoading,markExpensePaid,
     view,setView,go,panel,setPanel,openNew,openNewInvoice,
     detailId,setDetailId,

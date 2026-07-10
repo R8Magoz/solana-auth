@@ -168,36 +168,38 @@ function normalizeApprovalRequiredFromBody(body) {
 }
 
 function fallbackApprovers() {
-  // Only used when category has no approvers assigned
+  // Only used when department has no designated approvers assigned
   return db.prepare(
     "SELECT id FROM users WHERE role = 'admin'"
   ).all().map(r => r.id);
 }
 
-function getApproverIdsForCategory(categoryName) {
+function getDepartmentApproversMap() {
   try {
     const row = db.prepare(
-      "SELECT value FROM app_settings WHERE key = 'categories'"
+      "SELECT value FROM app_settings WHERE key = 'department_approvers'"
     ).get();
-    if (!row || !row.value) return fallbackApprovers();
-    const cats = JSON.parse(row.value);
-    if (!Array.isArray(cats)) return fallbackApprovers();
-    const cat = cats.find(c =>
-      c.name && c.name.toLowerCase() === (categoryName || '').toLowerCase()
-    );
-    if (cat && Array.isArray(cat.approverIds) && cat.approverIds.length > 0) {
-      return cat.approverIds;
-    }
-    return fallbackApprovers();
+    if (!row || !row.value) return {};
+    const parsed = JSON.parse(row.value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch (e) {
-    return fallbackApprovers();
+    return {};
   }
+}
+
+function getApproverIdsForDepartment(departmentId) {
+  const id = String(departmentId || '').trim();
+  if (!id) return fallbackApprovers();
+  const map = getDepartmentApproversMap();
+  const ids = map[id];
+  if (Array.isArray(ids) && ids.length > 0) return ids;
+  return fallbackApprovers();
 }
 
 function resolveApproverIdsForCreate(body) {
   const fromBody = normalizeApprovalRequiredFromBody(body);
   if (fromBody.length > 0) return fromBody;
-  return getApproverIdsForCategory(body && body.category);
+  return getApproverIdsForDepartment(body && body.departmentId);
 }
 
 function computeSubmittedVotes(submitterId, approverIds) {
@@ -326,7 +328,7 @@ function collectReferencedUserIds(expenseRows) {
 function resolveExpenseApproverIdsForAuth(exp, userStore) {
   const raw = parseJsonArray(exp && exp.approversJson);
   if (raw.length > 0) return canonicalizeApproverIds(raw, userStore);
-  return canonicalizeApproverIds(getApproverIdsForCategory(exp && exp.category), userStore);
+  return canonicalizeApproverIds(getApproverIdsForDepartment(exp && exp.departmentId), userStore);
 }
 
 function canUserActOnExpenseApproval(exp, userId, userRole, userStore) {
@@ -1372,7 +1374,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (becomingSubmitted) {
       const bodyList = normalizeApprovalRequiredFromBody(req.body);
       let approverIds = bodyList.length > 0 ? bodyList : parseJsonArray(exp.approversJson);
-      if (approverIds.length === 0) approverIds = getApproverIdsForCategory(exp.category);
+      if (approverIds.length === 0) approverIds = getApproverIdsForDepartment(exp.departmentId);
       approverIds = canonicalizeApproverIds(approverIds, userStore);
       const { votes, allDone } = computeSubmittedVotes(exp.userId, approverIds);
       nextApproversJson = JSON.stringify(approverIds);
@@ -1527,7 +1529,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const actorId = req.userId || null;
     const approversCanon = parseJsonArray(exp.approversJson).length > 0
       ? resolveExpenseApproverIdsForAuth(exp, userStore)
-      : canonicalizeApproverIds(getApproverIdsForCategory(exp.category), userStore);
+      : canonicalizeApproverIds(getApproverIdsForDepartment(exp.departmentId), userStore);
     if (!canUserActOnExpenseApproval(
       { ...exp, approversJson: JSON.stringify(approversCanon) },
       actorId,
@@ -1575,7 +1577,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
     const approversCanon = parseJsonArray(exp.approversJson).length > 0
       ? resolveExpenseApproverIdsForAuth(exp, userStore)
-      : canonicalizeApproverIds(getApproverIdsForCategory(exp.category), userStore);
+      : canonicalizeApproverIds(getApproverIdsForDepartment(exp.departmentId), userStore);
     if (!canUserActOnExpenseApproval(
       { ...exp, approversJson: JSON.stringify(approversCanon) },
       actorId,
@@ -1720,4 +1722,41 @@ function markOverdueInvoices() {
   `).run(now, today);
 }
 
-module.exports = { createExpensesRouter, markOverdueInvoices, autoApprovePendingForRemovedUser };
+function pruneDepartmentApproversForUser(userId) {
+  const uid = String(userId || '').trim();
+  if (!uid) return;
+  try {
+    const row = db.prepare(
+      "SELECT value FROM app_settings WHERE key = 'department_approvers'"
+    ).get();
+    if (!row || !row.value) return;
+    const map = JSON.parse(row.value);
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return;
+    let changed = false;
+    const next = {};
+    for (const [deptId, ids] of Object.entries(map)) {
+      if (!Array.isArray(ids)) {
+        next[deptId] = ids;
+        continue;
+      }
+      const filtered = ids.filter((id) => String(id) !== uid);
+      if (filtered.length !== ids.length) changed = true;
+      next[deptId] = filtered;
+    }
+    if (!changed) return;
+    const settingsCache = require('./lib/settingsCache');
+    db.prepare(
+      "UPDATE app_settings SET value = ?, updatedAt = ? WHERE key = 'department_approvers'"
+    ).run(JSON.stringify(next), Date.now());
+    settingsCache.invalidate('department_approvers');
+  } catch (e) {
+    console.warn('[department_approvers] prune failed:', e.message);
+  }
+}
+
+module.exports = {
+  createExpensesRouter,
+  markOverdueInvoices,
+  autoApprovePendingForRemovedUser,
+  pruneDepartmentApproversForUser,
+};
