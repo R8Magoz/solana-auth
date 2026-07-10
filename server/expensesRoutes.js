@@ -198,6 +198,75 @@ function userIdInRawApproverList(approverTokens, userId, userStore) {
   return false;
 }
 
+const EXPENSE_EDIT_TRACKED = [
+  'amount', 'description', 'category', 'date', 'notes', 'departmentId',
+  'ivaRate', 'ivaAmount', 'vendor', 'dueDate', 'expenseType',
+];
+
+function normEditVal(field, val) {
+  if (field === 'amount' || field === 'ivaRate' || field === 'ivaAmount') {
+    if (val == null || val === '') return null;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (field === 'expenseType') return String(val || 'expense').toLowerCase();
+  if (val == null) return null;
+  return String(val);
+}
+
+/** Field-level diff for audit_log edit backlog. */
+function buildExpenseFieldDiff(prev, next) {
+  const changes = [];
+  for (const field of EXPENSE_EDIT_TRACKED) {
+    const from = normEditVal(field, prev[field]);
+    const to = normEditVal(field, next[field]);
+    if (from !== to) changes.push({ field, from, to });
+  }
+  const prevPaid = prev.paidByJson != null ? String(prev.paidByJson) : null;
+  const nextPaid = next.paidByJson != null ? String(next.paidByJson) : null;
+  if (prevPaid !== nextPaid) changes.push({ field: 'paidBy', from: prevPaid, to: nextPaid });
+  const prevSplit = prev.splitMode != null ? String(prev.splitMode) : null;
+  const nextSplit = next.splitMode != null ? String(next.splitMode) : null;
+  if (prevSplit !== nextSplit) changes.push({ field: 'splitMode', from: prevSplit, to: nextSplit });
+  return changes;
+}
+
+function collectReferencedUserIds(expenseRows) {
+  const ids = new Set();
+  for (const e of expenseRows || []) {
+    if (e.userId) ids.add(e.userId);
+    if (e.ownerId) ids.add(e.ownerId);
+    if (e.approvedBy) ids.add(e.approvedBy);
+    if (e.rejectedBy) ids.add(e.rejectedBy);
+    if (e.paidConfirmedBy) ids.add(e.paidConfirmedBy);
+    for (const id of parseJsonArray(e.approversJson)) ids.add(id);
+    try {
+      const paidBy = JSON.parse(e.paidByJson || '[]');
+      if (Array.isArray(paidBy)) {
+        for (const p of paidBy) {
+          if (p && p.userId) ids.add(p.userId);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  ids.delete('system');
+  return [...ids];
+}
+
+function resolveExpenseApproverIdsForAuth(exp, userStore) {
+  const raw = parseJsonArray(exp && exp.approversJson);
+  if (raw.length > 0) return canonicalizeApproverIds(raw, userStore);
+  return canonicalizeApproverIds(getApproverIdsForCategory(exp && exp.category), userStore);
+}
+
+function canUserActOnExpenseApproval(exp, userId, userRole, userStore) {
+  if (!isAdminRole(userRole)) return false;
+  const approverIds = resolveExpenseApproverIdsForAuth(exp, userStore);
+  return approverIds.includes(String(userId || ''));
+}
+
 /**
  * Validate client paidBy[] against total EUR; resolve legacy user tokens.
  * @returns {{ paidBy: Array<{userId:string,amount:number,pct?:number}>, splitMode: string|null }|{ error: string }}
@@ -430,7 +499,11 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   router.get('/', (req, res) => {
     try {
       const expenses = listExpenses(req);
-      res.json({ expenses });
+      const refIds = collectReferencedUserIds(expenses);
+      const users = userStore.getPublicUsersByIds
+        ? userStore.getPublicUsersByIds(refIds)
+        : [];
+      res.json({ expenses, users });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'Error al listar gastos.' });
@@ -1076,14 +1149,57 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     const updated = getExpenseById(exp.id);
-    audit('expense_updated', {
-      userId: req.userId,
-      targetId: exp.id,
-      previous: prev,
-      changes: updated,
-    });
-    res.json({ ok: true, expense: updated });
+    if (fieldChanges.length > 0) {
+      audit('expense_edited', {
+        userId: req.userId,
+        targetId: exp.id,
+        changes: fieldChanges,
+      });
+      if (wasApproved) {
+        audit('expense_reapproval_required', {
+          userId: req.userId,
+          targetId: exp.id,
+          approverIds: parseJsonArray(nextApproversJson),
+        });
+      }
+    } else {
+      audit('expense_updated', { userId: req.userId, targetId: exp.id });
+    }
+    res.json({ ok: true, expense: updated, reapprovalRequired: wasApproved && fieldChanges.length > 0 });
   }
+
+  router.get('/:id/audit', (req, res) => {
+    const exp = getExpenseById(req.params.id);
+    if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
+    if (!canAccessExpense(req, exp)) {
+      return res.status(403).json({ error: 'No autorizado.' });
+    }
+    const rows = db.prepare(`
+      SELECT id, ts, event, userId, targetId, detail
+      FROM audit_log
+      WHERE targetId = ?
+      ORDER BY ts ASC, id ASC
+    `).all(exp.id);
+    const entries = rows.map((r) => {
+      const entry = {
+        id: r.id,
+        ts: r.ts,
+        event: r.event,
+        userId: r.userId,
+        targetId: r.targetId,
+      };
+      if (r.detail) {
+        try {
+          const parsed = JSON.parse(r.detail);
+          if (parsed && typeof parsed === 'object') Object.assign(entry, parsed);
+        } catch {
+          entry.detailRaw = r.detail;
+        }
+      }
+      return entry;
+    });
+    res.json({ ok: true, entries });
+  });
 
   router.put('/:id', putOrPatchExpense);
   router.patch('/:id', putOrPatchExpense);
@@ -1115,9 +1231,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   });
 
   router.post('/:id/approve', requireAuth, (req, res) => {
-    if (!isAdminRole(req.userRole)) {
-      return res.status(403).json({ error: 'No autorizado.' });
-    }
     let exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
@@ -1170,6 +1283,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         ...(budgetExceeded && budgetExceeded.exceeded ? { budgetExceeded } : {}),
       });
     }
+    const approversCanon = resolveExpenseApproverIdsForAuth(exp, userStore);
 
     const canApprove = exp.status === 'submitted' ||
       (exp.status === 'rejected' && isAdminRole(req.userRole));
@@ -1184,11 +1298,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       // reload
       exp = getExpenseById(exp.id);
     }
-    if (!userIdInRawApproverList(approversRaw, adminId, userStore)) {
-      return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
-    }
-
-    const approversCanon = canonicalizeApproverIds(approversRaw, userStore);
     const votes = remapVotesWithCanonicalKeys(parseJsonObject(exp.approvalVotesJson), userStore);
     votes[adminId] = 'approved';
 
@@ -1270,9 +1379,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   });
 
   router.post('/:id/reject', requireAuth, (req, res) => {
-    if (!isAdminRole(req.userRole)) {
-      return res.status(403).json({ error: 'No autorizado.' });
-    }
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
@@ -1308,16 +1414,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       audit('expense_rejected', { userId: req.userId, targetId: exp.id, note });
       return res.json({ ok: true, expense: updated });
     }
-
-    if (approversRaw.length > 0) {
-      const canReject = exp.status === 'submitted' ||
-        (exp.status === 'approved' && isAdminRole(req.userRole));
-      if (!canReject) {
-        return res.status(400).json({ error: 'No se puede rechazar en este estado.' });
-      }
-      if (!userIdInRawApproverList(approversRaw, adminId, userStore)) {
-        return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
-      }
+    const canReject = exp.status === 'submitted' ||
+      (exp.status === 'approved' && isAdminRole(req.userRole));
+    if (!canReject) {
+      return res.status(400).json({ error: 'No se puede rechazar en este estado.' });
     }
 
     const rejectInfo = db.prepare(`
