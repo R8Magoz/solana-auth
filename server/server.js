@@ -417,7 +417,7 @@ app.use(
   departmentsApiLimiter,
   createDepartmentsRouter({ audit, requireAuth, requireSuperAdmin }),
 );
-app.use('/reports', reportsLimiter, createReportsRouter({ requireAdminSession, userStore }));
+app.use('/reports', reportsLimiter, createReportsRouter({ requireAdminSession, requireAuth, userStore }));
 
 // ── ROUTES ────────────────────────────────────────────────────────────────────
 const { createAuthRouter } = require('./routes/authRoutes');

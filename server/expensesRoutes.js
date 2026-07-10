@@ -13,13 +13,6 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
 const { nextDueDate, RECURRENCE_RULES, isValidRecurrenceRule } = require('./recurrence');
 
-let PDFDocument;
-try {
-  PDFDocument = require('pdfkit');
-} catch (e) {
-  PDFDocument = null;
-}
-
 const RECURRENCE_RULES_ACCEPTED = [...RECURRENCE_RULES, 'daily'];
 
 /** daily is valid for create/update but lives outside recurrence.js RECURRENCE_RULES. */

@@ -15,7 +15,6 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet"/>
   <style>
@@ -115,7 +114,7 @@ const TR = {
     "action.add": "Añadir",
     "action.submit": "Enviar gasto",
     "action.submitBill": "Enviar factura",
-    "action.exportCSV": "Exportar CSV",
+    "action.exportXLSX": "Exportar Excel",
     "action.exportXLSX": "Exportar Excel",
     "action.downloadPdf": "Descargar PDF",
     "action.exportJSON": "Exportar JSON",
@@ -1434,57 +1433,50 @@ function groupExpensesByMonth(list){
   }
   return groups;
 }
-function downloadExpensesCsv(src,{cats,users,t,user,ivaM="both",fileTag="expenses",saveExp,expenses}){
+async function downloadExpensesXlsx(src,{tag="export",t,user,saveExp,expenses}){
+  if(!src||src.length===0)return;
   const now=new Date().toISOString();
-  if(!AUTH_URL&&saveExp&&expenses){
-    const updatedSrc=src.map(e=>({...e,auditTrail:[...(e.auditTrail||[]),{action:"exported",by:user.id,at:now,meta:{format:"csv",ivaMode:ivaM}}]}));
-    saveExp(expenses.map(e=>{const u=updatedSrc.find(x=>x.id===e.id);return u||e;}));
+  if(!AUTH_URL){
+    dispatchSolanaToast("La exportación Excel requiere conexión al servidor.","error");
+    return;
   }
-  appLog("info","csv_exported",{ivaMode:ivaM,count:src.length,userId:user.id,codes:src.map(e=>e.itemCode||e.id)});
-  const headerBase=[
-    t("item.code"),
-    t("csv.itemType"),
-    t("label.date"),
-    t("label.description"),
-    t("label.category"),
-    t("label.status"),
-    t("filter.submitter"),
-    t("label.paidBy"),
-    t("label.notes"),
-    t("label.approvers"),
-  ];
-  const amountHeaders=
-    ivaM==="with_iva"?["Total con IVA"]
-    :ivaM==="without_iva"?["Base imponible"]
-    :["Base imponible","Cuota IVA","Total con IVA"];
-  const rows=[
-    [...headerBase,...amountHeaders],
-    ...src.map(e=>{
-      const approverIds=effectiveExpenseApproverIds(e,cats,users);
-      const amtEur=eurForExpense(e);
-      const ivaAmt=e.ivaAmount!=null?Number(e.ivaAmount):0;
-      const base=e.ivaRate!=null?Math.round((amtEur-ivaAmt)*100)/100:amtEur;
-      const tipo=e.expenseType==="invoice"?"Factura":"Gasto";
-      const commonFields=[
-        e.itemCode||e.id,
-        tipo,
-        e.date,
-        e.description,
-        e.category,
-        getItemStatus(e,cats,users),
-        (users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name,
-        e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),
-        e.notes||"",
-        approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";"),
-      ];
-      if(ivaM==="with_iva")return[...commonFields,amtEur];
-      if(ivaM==="without_iva")return[...commonFields,base];
-      return[...commonFields,base,ivaAmt,amtEur];
-    }),
-  ];
-  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-  const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`solana-${fileTag}-${ivaM}-${new Date().toISOString().slice(0,10)}.csv`});
-  a.click();URL.revokeObjectURL(a.href);
+  try{API.ensureSessionToken();}catch(e){}
+  const tok=API.token||(typeof sessionStorage!=="undefined"?sessionStorage.getItem("sol-session-token"):"")||"";
+  if(!tok){dispatchSolanaToast(t("msg.sessionExpired"),"error");return;}
+  const ids=src.map(e=>e.id).filter(Boolean).join(",");
+  if(!ids)return;
+  const qs=new URLSearchParams({ids,tag});
+  let r;
+  try{
+    r=await fetch(AUTH_URL+"/reports/export/xlsx?"+qs.toString(),{headers:{Authorization:"Bearer "+tok}});
+  }catch(e){
+    dispatchSolanaToast(t("msg.genericShort"),"error");
+    return;
+  }
+  if(!r.ok){
+    let msg=t("msg.genericShort");
+    try{
+      const ct=r.headers.get("content-type")||"";
+      if(ct.includes("application/json")){const j=await r.json();msg=j.error||msg;}
+    }catch(e){/* ignore */}
+    dispatchSolanaToast(msg,"error");
+    return;
+  }
+  const blob=await r.blob();
+  const cd=r.headers.get("content-disposition")||"";
+  const m=/filename="?([^";]+)"?/i.exec(cd);
+  const downloadName=m?m[1]:`solana-${tag}-${new Date().toISOString().slice(0,10)}.xlsx`;
+  const url=URL.createObjectURL(blob);
+  const a=Object.assign(document.createElement("a"),{href:url,download:downloadName});
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  if(saveExp&&expenses){
+    const idSet=new Set(src.map(e=>e.id));
+    saveExp(expenses.map(e=>idSet.has(e.id)?{...e,auditTrail:[...(e.auditTrail||[]),{action:"exported",by:user.id,at:now,meta:{format:"xlsx",tag}}]}:e));
+  }
+  appLog("info","xlsx_exported",{tag,count:src.length,userId:user.id,codes:src.map(e=>e.itemCode||e.id)});
 }
 const UPCOMING_BILL_WINDOWS={
   "15d":{days:15,title:"Próximas facturas · 15 días"},
@@ -1862,7 +1854,7 @@ const tCat=(name,t)=>{const k="cat."+name.toLowerCase().replace(/[^a-z]/g,"");co
    delete bill  │  –    │  ✓    │  ✓
    approve bill │  –    │  ✓†   │  ✓†
    upload att.  │  ✓    │  ✓    │  ✓          own submissions only
-   export CSV   │  ✓    │  ✓    │  ✓
+   export Excel │  ✓    │  ✓    │  ✓
    manage users │  –    │  –    │  ✓
    manage cats  │  –    │  –    │  ✓
    ─────────────────────────────────────────────────────────────────────────────
@@ -4888,9 +4880,9 @@ function ExpensesView(){
 
   const isDefaultRange = pendingFrom === naturalFrom && pendingTo === naturalTo;
   const monthGroups=React.useMemo(()=>groupExpensesByMonth(filtered),[filtered]);
-  const exportFilteredCsv=()=>{
-    downloadExpensesCsv(filtered,{cats,users,t,user,ivaM:"both",fileTag:"gastos-filtrados",saveExp,expenses});
-    dispatchSolanaToast(t("action.exportCSV"),"success",3000);
+  const exportFilteredXlsx=()=>{
+    void downloadExpensesXlsx(filtered,{tag:"gastos-filtrados",t,user,saveExp,expenses});
+    dispatchSolanaToast(t("action.exportXLSX"),"success",3000);
   };
   return(
     <div>
@@ -4924,7 +4916,7 @@ function ExpensesView(){
           <option value="invoice">Facturas</option>
         </select>
         <button className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} onClick={openNew}>{t("action.newExpense")}</button>
-        <button type="button" className="btn-secondary" style={{fontSize:12,padding:"6px 12px"}} disabled={filtered.length===0} onClick={exportFilteredCsv}>{t("action.exportCSV")}</button>
+        <button type="button" className="btn-secondary" style={{fontSize:12,padding:"6px 12px"}} disabled={filtered.length===0} onClick={exportFilteredXlsx}>{t("action.exportXLSX")}</button>
       </div>
       <div style={{fontSize:11,color:"#9CAA9F",marginBottom:6}}>
         {cPending} pendiente{cPending!==1?"s":""} · {cApproved} aprobado{cApproved!==1?"s":""}
@@ -5433,7 +5425,7 @@ function PaymentCalendar({reportExpenses}){
 }
 
 /* ── REPORTS VIEW ──────────────────────────────────────────────────────────── */
-/** Full date span for server PDF export (no UI date filter). */
+/** Full date span for server Excel export fallback (no UI date filter). */
 function reportsApiDateRange(){
   const pad2=(n)=>String(n).padStart(2,"0");
   const now=new Date();
@@ -5446,7 +5438,6 @@ function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel,resetForm}=useApp();
   const [statusFilter, setStatusFilter] = useState("all");
   const [ivaFilter, setIvaFilter] = useState("with");
-  const [exportSel, setExportSel] = useState("");
   const displayExpenses = (expenses || []).filter(e => {
     if (statusFilter === "approved") return e.status === "approved";
     if (statusFilter === "pending") return e.status !== "approved" && e.status !== "rejected" && e.status !== "deleted";
@@ -5545,40 +5536,9 @@ function ReportsView(){
   const maxVal = Math.max(...chartMonths.map(m => m.total), 1);
   const chartMinWidthPx = Math.ceil(SVG_W);
   const totalPeriodo=displayExpenses.reduce((s,e)=>s+(Number(e.amount)||0),0);
-  const exportCSV=(includeIva=true)=>{
-    const ivaM=includeIva ? (ivaFilter==="with" ? "with_iva" : "both") : "without_iva";
-    downloadExpensesCsv(displayExpenses,{cats,users,t,user,ivaM,fileTag:statusFilter,saveExp,expenses});
-  };
-  const downloadPdf=async()=>{
-    if(!AUTH_URL)return;
-    try{API.ensureSessionToken();}catch(e){}
-    const tok=API.token||(typeof sessionStorage!=="undefined"?sessionStorage.getItem("sol-session-token"):"")||"";
-    if(!tok){dispatchSolanaToast(t("msg.sessionExpired"),"error");return;}
-    const {from,to}=reportsApiDateRange();
-    const qs=new URLSearchParams({from,to,type:"all",status:statusFilter});
-    let r;
-    try{
-      r=await fetch(AUTH_URL+"/expenses/export/pdf?"+qs.toString(),{headers:{Authorization:"Bearer "+tok}});
-    }catch(e){
-      dispatchSolanaToast(t("msg.genericShort"),"error");
-      return;
-    }
-    if(!r.ok){
-      let msg=t("msg.genericShort");
-      try{
-        const ct=r.headers.get("content-type")||"";
-        if(ct.includes("application/json")){const j=await r.json();msg=j.error||msg;}
-      }catch(e){/* ignore */}
-      dispatchSolanaToast(msg,"error");
-      return;
-    }
-    const blob=await r.blob();
-    const url=URL.createObjectURL(blob);
-    const a=Object.assign(document.createElement("a"),{href:url,download:`report-${from}-to-${to}.pdf`});
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+  const exportExcel=()=>{
+    void downloadExpensesXlsx(displayExpenses,{tag:statusFilter,t,user,saveExp,expenses});
+    dispatchSolanaToast(t("action.exportXLSX"),"success",3000);
   };
   return(
     <div>
@@ -5597,17 +5557,7 @@ function ReportsView(){
             <option value="both">Con y sin IVA</option>
             <option value="without">Sin IVA</option>
           </select>
-          <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
-            value={exportSel} onChange={e=>{
-              const v = e.target.value;
-              if (v === "csv") exportCSV(ivaFilter !== "without");
-              if (v === "pdf") void downloadPdf();
-              setExportSel("");
-            }}>
-            <option value="" disabled hidden>Exportar…</option>
-            <option value="csv">Exportar CSV</option>
-            {AUTH_URL && <option value="pdf">Exportar PDF</option>}
-          </select>
+          <button type="button" className="btn-secondary" style={{fontSize:11,padding:"4px 12px"}} disabled={displayExpenses.length===0} onClick={exportExcel}>{t("action.exportXLSX")}</button>
         </div>
       </div>
       <div className="card" style={{marginBottom:11,width:"100%"}}>

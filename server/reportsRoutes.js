@@ -1,12 +1,6 @@
 'use strict';
 
 const express = require('express');
-let PDFDocument;
-try {
-  PDFDocument = require('pdfkit');
-} catch (e) {
-  PDFDocument = null;
-}
 let ExcelJS;
 try {
   ExcelJS = require('exceljs');
@@ -17,70 +11,31 @@ const db = require('./db');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+const EXPORT_HEADERS = [
+  'Código',
+  'Tipo',
+  'Fecha',
+  'Concepto',
+  'Categoría',
+  'Estado',
+  'Enviado por',
+  'Pagado por',
+  'Notas',
+  'Aprobadores',
+  'Total con IVA',
+];
+
 function eurAmount(row) {
   if (row.amountEUR != null && !Number.isNaN(Number(row.amountEUR))) {
     return Number(row.amountEUR);
   }
   const cur = String(row.currency || 'EUR').toUpperCase();
   if (cur === 'EUR') return Number(row.amount) || 0;
-  // TODO: implement live FX rates or require amountEUR always; the fallback below treats raw amount as EUR for non-EUR rows.
   return Number(row.amount) || 0;
 }
 
 function roundMoney(n) {
   return Math.round(Number(n) * 100) / 100;
-}
-
-function quarterLabelFromDate(dateStr) {
-  const m = String(dateStr).match(/^(\d{4})-(\d{2})-\d{2}$/);
-  if (!m) return 'export';
-  const y = parseInt(m[1], 10);
-  const mo = parseInt(m[2], 10);
-  const q = Math.floor((mo - 1) / 3) + 1;
-  return `${y}-Q${q}`;
-}
-
-function csvFilename(type, from, to, ivaMode = 'both') {
-  const base =
-    type === 'expenses' ? 'solana-expenses' : type === 'bills' ? 'solana-bills' : 'solana-all';
-  const q1 = quarterLabelFromDate(from);
-  const q2 = quarterLabelFromDate(to);
-  const im = String(ivaMode || 'both').trim() || 'both';
-  if (q1 === q2) return `${base}-${q1}-${im}.csv`;
-  return `${base}-${from}_to_${to}-${im}.csv`;
-}
-
-function parseIvaMode(raw) {
-  const v = String(raw ?? 'both').trim().toLowerCase();
-  if (v === 'with_iva' || v === 'without_iva' || v === 'both') return v;
-  return 'both';
-}
-
-/** Base (imponible), IVA cuota, total EUR — aligned with client reporting. */
-function ivaPartsForRow(row) {
-  const total = eurAmount(row);
-  const ivaAmt =
-    row.ivaAmount != null && Number.isFinite(Number(row.ivaAmount)) ? Number(row.ivaAmount) : 0;
-  const base =
-    row.ivaRate != null && Number.isFinite(Number(row.ivaRate)) ? roundMoney(total - ivaAmt) : total;
-  return { total, base, ivaAmt };
-}
-
-function expenseAmountColumnLabels(mode) {
-  if (mode === 'with_iva') return ['Total con IVA'];
-  if (mode === 'without_iva') return ['Base imponible'];
-  return ['Base imponible', 'Cuota IVA', 'Total con IVA'];
-}
-
-function csvEscape(val) {
-  if (val == null || val === '') return '';
-  const s = String(val);
-  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
-
-function line(vals) {
-  return vals.map(csvEscape).join(',');
 }
 
 function buildUserMap(userStore) {
@@ -122,16 +77,159 @@ function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
+function parseJsonArray(raw) {
+  try {
+    const v = JSON.parse(raw || 'null');
+    return Array.isArray(v) ? v.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parsePaidByJson(raw) {
+  try {
+    const v = JSON.parse(raw || '[]');
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+function statusLabel(status) {
+  const map = {
+    submitted: 'Pendiente',
+    approved: 'Aprobado',
+    rejected: 'Rechazado',
+    draft: 'Borrador',
+    deleted: 'Eliminado',
+  };
+  return map[String(status || '').toLowerCase()] || String(status || '');
+}
+
+function excelDateFromIso(dateStr) {
+  if (!dateStr || !DATE_RE.test(String(dateStr).slice(0, 10))) return null;
+  const [y, m, d] = String(dateStr).slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0);
+}
+
+function formatPaidBy(row, userMap) {
+  const paidBy = parsePaidByJson(row.paidByJson);
+  if (paidBy.length === 0) {
+    const uid = row.ownerId || row.userId;
+    if (!uid) return '';
+    const amt = roundMoney(eurAmount(row));
+    return `${userMap[uid] || uid}: ${amt.toFixed(2)}`;
+  }
+  return paidBy
+    .map((p) => {
+      const name = userMap[p.userId] || p.userId || '—';
+      const amt = roundMoney(Number(p.amount) || 0);
+      return `${name}: ${amt.toFixed(2)}`;
+    })
+    .join('; ');
+}
+
+function formatApprovers(row, userMap) {
+  return parseJsonArray(row.approversJson)
+    .map((id) => userMap[id] || id)
+    .join('; ');
+}
+
+function safeFilenameTag(raw) {
+  const tag = String(raw || 'export').trim().slice(0, 32);
+  return tag.replace(/[^a-zA-Z0-9_-]/g, '') || 'export';
+}
+
+function fetchExportRows(req) {
+  const idsRaw = String(req.query.ids ?? '').trim();
+  if (idsRaw) {
+    const idList = idsRaw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 5000);
+    if (idList.length === 0) return [];
+    const placeholders = idList.map(() => '?').join(',');
+    return db
+      .prepare(
+        `SELECT * FROM expenses WHERE id IN (${placeholders}) AND status != 'deleted' ORDER BY date ASC, id ASC`,
+      )
+      .all(...idList);
+  }
+  const from = String(req.query.from ?? '').trim().slice(0, 10);
+  const to = String(req.query.to ?? '').trim().slice(0, 10);
+  if (from && to && DATE_RE.test(from) && DATE_RE.test(to) && from <= to) {
+    return db
+      .prepare(
+        `SELECT * FROM expenses WHERE date >= ? AND date <= ? AND status != 'deleted' ORDER BY date ASC, id ASC`,
+      )
+      .all(from, to);
+  }
+  return null;
+}
+
+async function writeExpensesWorkbook(res, rows, userMap, filename) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = getCompanyName();
+  wb.created = new Date();
+  const ws = wb.addWorksheet('Gastos');
+
+  const headerRow = ws.addRow(EXPORT_HEADERS);
+  headerRow.font = { bold: true };
+  headerRow.alignment = { vertical: 'middle' };
+
+  const DATE_COL = 3;
+  const TOTAL_COL = 11;
+
+  for (const e of rows) {
+    const total = roundMoney(eurAmount(e));
+    const tipo = e.expenseType === 'invoice' ? 'Factura' : 'Gasto';
+    const row = ws.addRow([
+      e.itemCode || e.id,
+      tipo,
+      excelDateFromIso(e.date),
+      e.description || '',
+      e.category || '',
+      statusLabel(e.status),
+      userMap[e.ownerId || e.userId] || e.userId || '',
+      formatPaidBy(e, userMap),
+      e.notes || '',
+      formatApprovers(e, userMap),
+      total,
+    ]);
+    const dateCell = row.getCell(DATE_COL);
+    if (dateCell.value instanceof Date) {
+      dateCell.numFmt = 'dd/mm/yyyy';
+    }
+    row.getCell(TOTAL_COL).numFmt = '#,##0.00 "€"';
+  }
+
+  ws.columns.forEach((col, i) => {
+    let max = String(EXPORT_HEADERS[i] || '').length;
+    col.eachCell({ includeEmpty: false }, (cell) => {
+      const len = cell.value instanceof Date
+        ? 10
+        : String(cell.value ?? '').length;
+      if (len > max) max = len;
+    });
+    col.width = Math.min(48, max + 2);
+  });
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  );
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  await wb.xlsx.write(res);
+  res.end();
+}
+
 /**
- * Express router for admin reports (summary, CSV/PDF export, trends).
- * @param {{ requireAdminSession: import('express').RequestHandler, userStore: { getAllUsersPublic: function(): Array<{ id: string, name?: string, email?: string }> } }} deps
+ * Express router for admin reports (summary, Excel export, trends).
+ * @param {{ requireAdminSession: import('express').RequestHandler, requireAuth: import('express').RequestHandler, userStore: { getAllUsersPublic: function(): Array<{ id: string, name?: string, email?: string }> } }} deps
  * @returns {import('express').Router}
  */
-function createReportsRouter({ requireAdminSession, userStore }) {
+function createReportsRouter({ requireAdminSession, requireAuth, userStore }) {
   const router = express.Router();
-  router.use(requireAdminSession);
 
-  router.get('/summary/trend', (req, res) => {
+  router.get('/summary/trend', requireAdminSession, (req, res) => {
     let months = parseInt(String(req.query.months ?? '12'), 10);
     if (!Number.isFinite(months)) months = 12;
     if (months < 1) months = 1;
@@ -176,7 +274,7 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     res.json(out);
   });
 
-  router.get('/summary', (req, res) => {
+  router.get('/summary', requireAdminSession, (req, res) => {
     const range = validateRange(req, res);
     if (!range) return;
 
@@ -196,7 +294,6 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     const byCategory = {};
     const byUser = {};
     const byMonth = {};
-    /** Approved non-invoice expenses only: sum EUR per departmentId */
     const byDepartment = {};
 
     let approvedN = 0;
@@ -292,589 +389,33 @@ function createReportsRouter({ requireAdminSession, userStore }) {
     });
   });
 
-  router.get('/export/csv', (req, res) => {
-    const range = validateRange(req, res);
-    if (!range) return;
-
-    const type = String(req.query.type || 'expenses').trim().toLowerCase().slice(0, 16);
-    if (!['expenses', 'bills', 'all'].includes(type)) {
-      return res.status(400).json({ error: 'type debe ser expenses, bills o all.' });
-    }
-
-    const { from, to } = range;
-    const userMap = buildUserMap(userStore);
-    const ivaMode = parseIvaMode(req.query.iva_mode);
-    const filename = csvFilename(type, from, to, ivaMode);
-
-    const expenseRows = db
-      .prepare(
-        `SELECT * FROM expenses
-         WHERE date >= ? AND date <= ?
-         ORDER BY date ASC, id ASC`,
-      )
-      .all(from, to);
-
-    const billRows = db
-      .prepare(
-        `SELECT * FROM expenses
-         WHERE expenseType = 'invoice'
-           AND date >= ? AND date <= ?
-           AND status != 'deleted'
-         ORDER BY date ASC, id ASC`,
-      )
-      .all(from, to);
-
-    const expenseColsTail = [
-      'description',
-      'category',
-      'date',
-      'status',
-      'approvedBy',
-      'approvedAt',
-      'rejectedBy',
-      'rejectedAt',
-      'rejectionNote',
-      'receiptPath',
-      'notes',
-      'createdAt',
-      'updatedAt',
-    ];
-
-    const billColsTail = [
-      'category',
-      'dueDate',
-      'status',
-      'recurring',
-      'recurrenceRule',
-      'paidAt',
-      'paidBy',
-      'notes',
-      'createdAt',
-      'updatedAt',
-    ];
-
-    const lines = [];
-
-    function pushExpenses() {
-      const hdr = ['id', 'userId', 'userName', ...expenseAmountColumnLabels(ivaMode), ...expenseColsTail];
-      lines.push(line(hdr));
-      for (const e of expenseRows) {
-        const { total, base, ivaAmt } = ivaPartsForRow(e);
-        let amountPart;
-        if (ivaMode === 'with_iva') amountPart = [total];
-        else if (ivaMode === 'without_iva') amountPart = [base];
-        else amountPart = [base, ivaAmt, total];
-        const row = {
-          id: e.id,
-          userId: e.userId,
-          userName: userMap[e.userId] || '',
-          description: e.description,
-          category: e.category,
-          date: e.date,
-          status: e.status,
-          approvedBy: e.approvedBy,
-          approvedAt: e.approvedAt,
-          rejectedBy: e.rejectedBy,
-          rejectedAt: e.rejectedAt,
-          rejectionNote: e.rejectionNote,
-          receiptPath: e.receiptPath,
-          notes: e.notes,
-          createdAt: e.createdAt,
-          updatedAt: e.updatedAt,
-        };
-        lines.push(line([e.id, e.userId, row.userName, ...amountPart, ...expenseColsTail.map((c) => row[c])]));
-      }
-    }
-
-    function pushBills() {
-      const hdr = ['id', 'userId', 'userName', 'vendor', ...expenseAmountColumnLabels(ivaMode), ...billColsTail];
-      lines.push(line(hdr));
-      for (const b of billRows) {
-        const { total, base, ivaAmt } = ivaPartsForRow(b);
-        let amountPart;
-        if (ivaMode === 'with_iva') amountPart = [total];
-        else if (ivaMode === 'without_iva') amountPart = [base];
-        else amountPart = [base, ivaAmt, total];
-        const row = {
-          category: b.category,
-          dueDate: b.dueDate || b.date,
-          status: b.paymentStatus || b.status,
-          recurring: b.recurring ? 1 : 0,
-          recurrenceRule: b.recurrenceRule,
-          paidAt: b.paidAt,
-          paidBy: b.paidConfirmedBy || '',
-          notes: b.notes,
-          createdAt: b.createdAt,
-          updatedAt: b.updatedAt,
-        };
-        lines.push(
-          line([
-            b.id,
-            b.userId,
-            userMap[b.userId] || '',
-            b.vendor || b.description || '',
-            ...amountPart,
-            ...billColsTail.map((c) => row[c]),
-          ]),
-        );
-      }
-    }
-
-    if (type === 'expenses') {
-      pushExpenses();
-    } else if (type === 'bills') {
-      pushBills();
-    } else {
-      pushExpenses();
-      lines.push('');
-      pushBills();
-    }
-
-    const body = `\uFEFF${lines.join('\r\n')}`;
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(body);
-  });
-
-  router.get('/export/xlsx', requireAdminSession, async (req, res) => {
+  router.get('/export/xlsx', requireAuth, async (req, res) => {
     if (!ExcelJS) {
       return res.status(503).json({
         error: 'Excel no disponible. Ejecuta npm install en el servidor (paquete exceljs).',
       });
     }
-    const range = validateRange(req, res);
-    if (!range) return;
-    const { from, to } = range;
-    const type = String(req.query.type || 'all').trim().toLowerCase().slice(0, 16);
-    if (!['expenses', 'bills', 'all'].includes(type)) {
-      return res.status(400).json({ error: 'type debe ser expenses, bills o all.' });
+
+    const rows = fetchExportRows(req);
+    if (rows === null) {
+      return res.status(400).json({
+        error: 'Indica ids (lista separada por comas) o un rango from/to (YYYY-MM-DD).',
+      });
     }
 
-    // Reuse the same DB queries and user map as the CSV route
     const userMap = buildUserMap(userStore);
+    const tag = safeFilenameTag(req.query.tag);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `solana-${tag}-${dateStr}.xlsx`;
 
-    // ── Expense rows ──
-    const expRows = db
-      .prepare(
-        `SELECT * FROM expenses
-         WHERE date >= ? AND date <= ? AND status != 'deleted'
-           AND (expenseType IS NULL OR expenseType != 'invoice')
-         ORDER BY date ASC`,
-      )
-      .all(from, to);
-
-    // ── Invoice rows ──
-    const invRows = db
-      .prepare(
-        `SELECT * FROM expenses
-         WHERE date >= ? AND date <= ? AND status != 'deleted'
-           AND expenseType = 'invoice'
-         ORDER BY date ASC`,
-      )
-      .all(from, to);
-
-    const wb = new ExcelJS.Workbook();
-    wb.creator = getCompanyName();
-    wb.created = new Date();
-
-    const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3C0A37' } };
-    const HEADER_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
-    const BORDER_THIN = { style: 'thin', color: { argb: 'FFE0D8D0' } };
-    const cellBorder = {
-      top: BORDER_THIN,
-      left: BORDER_THIN,
-      bottom: BORDER_THIN,
-      right: BORDER_THIN,
-    };
-
-    function styleHeader(row) {
-      row.eachCell((cell) => {
-        cell.fill = HEADER_FILL;
-        cell.font = HEADER_FONT;
-        cell.border = cellBorder;
-        cell.alignment = { vertical: 'middle' };
-      });
-      row.height = 18;
-    }
-
-    function addSheet(workbook, sheetName, headers, dataRows) {
-      const ws = workbook.addWorksheet(sheetName);
-      const headerRow = ws.addRow(headers);
-      styleHeader(headerRow);
-      for (const row of dataRows) {
-        const r = ws.addRow(row);
-        r.eachCell((cell) => {
-          cell.border = cellBorder;
-        });
-      }
-      // Auto column widths
-      ws.columns.forEach((col, i) => {
-        let max = String(headers[i] || '').length;
-        col.eachCell({ includeEmpty: false }, (cell) => {
-          const len = String(cell.value ?? '').length;
-          if (len > max) max = len;
-        });
-        col.width = Math.min(45, max + 2);
-      });
-      // Freeze header row
-      ws.views = [{ state: 'frozen', ySplit: 1 }];
-      return ws;
-    }
-
-    // ── Spanish column headers ──
-    const EXP_HEADERS = [
-      'Código',
-      'Fecha',
-      'Concepto',
-      'Categoría',
-      'Departamento',
-      'Importe EUR',
-      'Base imponible',
-      '% IVA',
-      'Cuota IVA',
-      'Estado',
-      'Remitente',
-      'Notas',
-    ];
-    const INV_HEADERS = [
-      'Código',
-      'Fecha',
-      'Concepto',
-      'Proveedor',
-      'Categoría',
-      'Importe EUR',
-      'Base imponible',
-      '% IVA',
-      'Cuota IVA',
-      'Estado pago',
-      'Vencimiento',
-      'Remitente',
-      'Notas',
-    ];
-
-    function mapExpRow(e) {
-      const amt = eurAmount(e);
-      const iva = e.ivaAmount != null ? roundMoney(e.ivaAmount) : '';
-      const base = e.ivaRate != null ? roundMoney(amt - (e.ivaAmount || 0)) : amt;
-      return [
-        e.itemCode || e.id,
-        e.date,
-        e.description || '',
-        e.category || '',
-        e.departmentId || '',
-        amt,
-        base,
-        e.ivaRate != null ? e.ivaRate : '',
-        iva,
-        e.status || '',
-        userMap[e.userId] || e.userId || '',
-        e.notes || '',
-      ];
-    }
-
-    function mapInvRow(e) {
-      const amt = eurAmount(e);
-      const iva = e.ivaAmount != null ? roundMoney(e.ivaAmount) : '';
-      const base = e.ivaRate != null ? roundMoney(amt - (e.ivaAmount || 0)) : amt;
-      const payStatus =
-        e.paymentStatus === 'paid'
-          ? 'Pagada'
-          : e.paymentStatus === 'unpaid'
-            ? 'Pendiente'
-            : e.paymentStatus || '';
-      return [
-        e.itemCode || e.id,
-        e.date,
-        e.description || '',
-        e.vendor || e.proveedor || '',
-        e.category || '',
-        amt,
-        base,
-        e.ivaRate != null ? e.ivaRate : '',
-        iva,
-        payStatus,
-        e.dueDate || '',
-        userMap[e.userId] || e.userId || '',
-        e.notes || '',
-      ];
-    }
-
-    if (type === 'expenses' || type === 'all') {
-      addSheet(wb, 'Gastos', EXP_HEADERS, expRows.map(mapExpRow));
-    }
-    if (type === 'bills' || type === 'all') {
-      addSheet(wb, 'Facturas', INV_HEADERS, invRows.map(mapInvRow));
-    }
-
-    // Summary sheet
-    const totalExp = expRows.reduce((s, e) => s + eurAmount(e), 0);
-    const totalInv = invRows.reduce((s, e) => s + eurAmount(e), 0);
-    const summaryWs = wb.addWorksheet('Resumen');
-    const sumHeader = summaryWs.addRow(['Concepto', 'Importe EUR']);
-    styleHeader(sumHeader);
-    summaryWs.addRow(['Total gastos', roundMoney(totalExp)]);
-    summaryWs.addRow(['Total facturas', roundMoney(totalInv)]);
-    summaryWs.addRow(['TOTAL', roundMoney(totalExp + totalInv)]);
-    summaryWs.getColumn(1).width = 22;
-    summaryWs.getColumn(2).width = 16;
-    summaryWs.views = [{ state: 'frozen', ySplit: 1 }];
-
-    const filename = `informe-${from}_${to}.xlsx`;
-    res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    await wb.xlsx.write(res);
-    res.end();
-  });
-
-  router.get('/export/pdf', (req, res) => {
-    if (!PDFDocument) {
-      return res.status(503).json({
-        error: 'PDF no disponible. Ejecuta npm install en el servidor (paquete pdfkit).',
-      });
-    }
-    const range = validateRange(req, res);
-    if (!range) return;
-
-    const type = String(req.query.type || 'expenses').trim().toLowerCase().slice(0, 16);
-    if (!['expenses', 'bills', 'all'].includes(type)) {
-      return res.status(400).json({ error: 'type debe ser expenses, bills o all.' });
-    }
-
-    const { from, to } = range;
-    const userMap = buildUserMap(userStore);
-
-    const allRows = db
-      .prepare(
-        `SELECT * FROM expenses
-         WHERE date >= ? AND date <= ? AND status != 'deleted'
-         ORDER BY date ASC, id ASC`,
-      )
-      .all(from, to);
-
-    function rowMatchesType(e) {
-      const inv = e.expenseType === 'invoice';
-      if (type === 'expenses') return !inv;
-      if (type === 'bills') return inv;
-      return true;
-    }
-
-    const rows = allRows.filter(rowMatchesType);
-
-    let totalExpenses = 0;
-    let totalBills = 0;
-    const byCat = {};
-    const byUserId = {};
-    let approvedN = 0;
-    let rejectedN = 0;
-
-    for (const e of rows) {
-      const amt = eurAmount(e);
-      const inv = e.expenseType === 'invoice';
-      if (inv) totalBills += amt;
-      else totalExpenses += amt;
-
-      const cat = e.category || '—';
-      if (!byCat[cat]) byCat[cat] = { count: 0, sum: 0 };
-      byCat[cat].count += 1;
-      byCat[cat].sum += amt;
-
-      const uid = e.userId || '—';
-      if (!byUserId[uid]) byUserId[uid] = { count: 0, sum: 0 };
-      byUserId[uid].count += 1;
-      byUserId[uid].sum += amt;
-
-      if (e.status === 'approved') approvedN += 1;
-      else if (e.status === 'rejected') rejectedN += 1;
-    }
-
-    const totalEur = totalExpenses + totalBills;
-    const count = rows.length;
-    const avgAmount = count > 0 ? roundMoney(totalEur / count) : 0;
-    const decided = approvedN + rejectedN;
-    const approvalRate = decided > 0 ? Math.round((approvedN / decided) * 10000) / 10000 : null;
-
-    const byDepartmentSpent = {};
-    for (const e of allRows) {
-      if (
-        e.status === 'approved' &&
-        e.expenseType !== 'invoice' &&
-        e.departmentId != null &&
-        String(e.departmentId).trim() !== ''
-      ) {
-        const depId = String(e.departmentId);
-        byDepartmentSpent[depId] = (byDepartmentSpent[depId] || 0) + eurAmount(e);
-      }
-    }
-    for (const k of Object.keys(byDepartmentSpent)) {
-      byDepartmentSpent[k] = roundMoney(byDepartmentSpent[k]);
-    }
-
-    let deptMeta = [];
     try {
-      deptMeta = db.prepare('SELECT id, name, budget FROM departments ORDER BY name COLLATE NOCASE').all();
-    } catch (e) {
-      deptMeta = [];
-    }
-
-    const catEntries = Object.entries(byCat)
-      .map(([name, v]) => ({
-        name,
-        count: v.count,
-        sum: roundMoney(v.sum),
-      }))
-      .filter((x) => x.sum > 0 || x.count > 0)
-      .sort((a, b) => b.sum - a.sum);
-    const catDenom = catEntries.reduce((s, x) => s + x.sum, 0) || 1;
-
-    const userEntries = Object.entries(byUserId)
-      .map(([uid, v]) => ({
-        name: userMap[uid] || uid,
-        count: v.count,
-        sum: roundMoney(v.sum),
-      }))
-      .sort((a, b) => b.sum - a.sum);
-
-    const company = getCompanyName();
-    const generated = new Date().toISOString();
-
-    const doc = new PDFDocument({ margin: 48, size: 'A4' });
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="report-${from}-to-${to}.pdf"`,
-    );
-    doc.pipe(res);
-    doc.on('error', (err) => {
-      try {
-        console.error('[reports/pdf]', err);
-      } catch (e) {
-        /* ignore */
-      }
+      await writeExpensesWorkbook(res, rows, userMap, filename);
+    } catch (err) {
+      console.error('[reports/xlsx]', err);
       if (!res.headersSent) {
-        res.status(500).json({ error: 'No se pudo generar el PDF.' });
-      } else {
-        res.end();
+        res.status(500).json({ error: 'No se pudo generar el Excel.' });
       }
-    });
-
-    function footer() {
-      doc
-        .fontSize(8)
-        .fillColor('#666666')
-        .text('Confidencial — solo para uso interno', 48, doc.page.height - 56, {
-          align: 'center',
-          width: doc.page.width - 96,
-        });
     }
-
-    doc.fontSize(18).fillColor('#1a1a1a').text(company, { align: 'center' });
-    doc.moveDown(0.4);
-    doc.fontSize(11).fillColor('#333333').text(`Período: ${from} — ${to}`, { align: 'center' });
-    doc.fontSize(9).fillColor('#666666').text(`Generado: ${generated}`, { align: 'center' });
-    doc.moveDown(1.2);
-
-    doc.fontSize(12).fillColor('#1a1a1a').text('Resumen', { underline: true });
-    doc.moveDown(0.3);
-    doc.fontSize(9).fillColor('#000000');
-    doc.text(`Total gastos (EUR): ${roundMoney(totalExpenses).toFixed(2)}`);
-    doc.text(`Total facturas (EUR): ${roundMoney(totalBills).toFixed(2)}`);
-    doc.text(`Líneas: ${count}`);
-    doc.text(`Importe medio (EUR): ${avgAmount.toFixed(2)}`);
-    doc.text(
-      `Tasa de aprobación: ${approvalRate != null ? `${(approvalRate * 100).toFixed(2)}%` : '—'}`,
-    );
-    doc.moveDown(0.8);
-
-    function tableHeader(labels, colWidths, yStart) {
-      let x = 48;
-      let y = yStart;
-      doc.fontSize(8).fillColor('#333333').font('Helvetica-Bold');
-      labels.forEach((lab, i) => {
-        doc.text(lab, x, y, { width: colWidths[i] });
-        x += colWidths[i];
-      });
-      doc.font('Helvetica');
-      return y + 14;
-    }
-
-    function tableRow(cells, colWidths, y) {
-      let x = 48;
-      doc.fontSize(8).fillColor('#000000');
-      cells.forEach((cell, i) => {
-        doc.text(String(cell), x, y, { width: colWidths[i], ellipsis: true });
-        x += colWidths[i];
-      });
-      return y + 13;
-    }
-
-    function pageBottom() {
-      return doc.page.height - 64;
-    }
-
-    doc.fontSize(12).fillColor('#1a1a1a').text('Desglose por categoría', { underline: true });
-    doc.moveDown(0.4);
-    let y = doc.y;
-    const cwCat = [150, 52, 72, 52];
-    y = tableHeader(['Categoría', 'Unidades', 'Total EUR', '% del total'], cwCat, y);
-    for (const c of catEntries) {
-      if (y + 16 > pageBottom()) {
-        footer();
-        doc.addPage();
-        y = 48;
-        y = tableHeader(['Categoría', 'Unidades', 'Total EUR', '% del total'], cwCat, y);
-      }
-      const pct = ((c.sum / catDenom) * 100).toFixed(1);
-      y = tableRow([c.name, c.count, c.sum.toFixed(2), `${pct}%`], cwCat, y);
-    }
-    doc.y = y + 6;
-
-    doc.fontSize(12).fillColor('#1a1a1a').text('Desglose por departamento', { underline: true });
-    doc.moveDown(0.4);
-    y = doc.y;
-    const cwDep = [120, 64, 64, 56, 72];
-    y = tableHeader(['Departamento', 'Presupuesto EUR', 'Gastado EUR', '% usado', 'Restante EUR'], cwDep, y);
-    for (const d of deptMeta) {
-      const id = String(d.id);
-      const budget = Number(d.budget) || 0;
-      const spent = byDepartmentSpent[id] || 0;
-      const pctUsed = budget > 0 ? ((spent / budget) * 100).toFixed(1) : spent > 0 ? '100.0' : '0.0';
-      const rem = roundMoney(budget - spent);
-      const name = d.name != null && String(d.name).trim() !== '' ? String(d.name).trim() : id;
-      if (y + 16 > pageBottom()) {
-        footer();
-        doc.addPage();
-        y = 48;
-        y = tableHeader(['Departamento', 'Presupuesto EUR', 'Gastado EUR', '% usado', 'Restante EUR'], cwDep, y);
-      }
-      y = tableRow(
-        [name, budget.toFixed(2), spent.toFixed(2), `${pctUsed}%`, rem.toFixed(2)],
-        cwDep,
-        y,
-      );
-    }
-    doc.y = y + 6;
-
-    doc.fontSize(12).fillColor('#1a1a1a').text('Desglose por usuario', { underline: true });
-    doc.moveDown(0.4);
-    y = doc.y;
-    const cwUsr = [200, 48, 88];
-    y = tableHeader(['Usuario', 'Unidades', 'Total EUR'], cwUsr, y);
-    for (const u of userEntries) {
-      if (y + 16 > pageBottom()) {
-        footer();
-        doc.addPage();
-        y = 48;
-        y = tableHeader(['Usuario', 'Unidades', 'Total EUR'], cwUsr, y);
-      }
-      y = tableRow([u.name, u.count, u.sum.toFixed(2)], cwUsr, y);
-    }
-    doc.y = y + 8;
-
-    footer();
-    doc.end();
   });
 
   return router;
