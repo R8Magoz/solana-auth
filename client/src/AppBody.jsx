@@ -4599,17 +4599,14 @@ function PaymentCalendar({reportExpenses}){
   );
 }
 
-/** Date range for server reports (PDF); matches ReportsView reportFrom/reportTo. */
-function reportsApiDateRange(reportFrom, reportTo) {
+/** Full date span for server PDF export (no UI date filter). */
+function reportsApiDateRange() {
   const pad2 = (n) => String(n).padStart(2, '0');
   const now = new Date();
-  const from = reportFrom && /^\d{4}-\d{2}-\d{2}$/.test(reportFrom)
-    ? reportFrom
-    : '2000-01-01';
-  const to = reportTo && /^\d{4}-\d{2}-\d{2}$/.test(reportTo)
-    ? reportTo
-    : `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
-  return { from, to };
+  return {
+    from: '2000-01-01',
+    to: `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`,
+  };
 }
 
 /* ── REPORTS VIEW ──────────────────────────────────────────────────────────── */
@@ -4618,7 +4615,6 @@ export function ReportsView(){
   const [statusFilter, setStatusFilter] = useState("all");
   const [ivaFilter, setIvaFilter] = useState("with");
   const [exportSel, setExportSel] = useState("");
-  const [dateRange,setDateRange]=useState("thisMonth");
   const [trendRows,setTrendRows]=useState(null);
   const [trendLoad,setTrendLoad]=useState(false);
   const [trendErr,setTrendErr]=useState("");
@@ -4645,10 +4641,10 @@ export function ReportsView(){
     })();
     return()=>{cancelled=true;};
   },[AUTH_URL,t]);
-  const displayExpenses = rangeFilteredExpenses.filter(e => {
+  const displayExpenses = (expenses || []).filter(e => {
     if (statusFilter === "approved") return e.status === "approved";
     if (statusFilter === "pending") return e.status !== "approved" && e.status !== "rejected" && e.status !== "deleted";
-    return true;
+    return e.status !== "deleted";
   });
   const filterLabel = statusFilter==="all" ? ""
     : statusFilter==="approved" ? ` — ${t("reports.approvedOnly")}`
@@ -4753,7 +4749,7 @@ export function ReportsView(){
     try{API.ensureSessionToken();}catch(e){}
     const tok=API.token||(typeof sessionStorage!=="undefined"?sessionStorage.getItem("sol-session-token"):"")||"";
     if(!tok){dispatchSolanaToast(t("msg.sessionExpired"),"error");return;}
-    const {from,to}=reportsApiDateRange(reportFrom,reportTo);
+    const {from,to}=reportsApiDateRange();
     const qs=new URLSearchParams({from,to,type:"all",status:statusFilter});
     let r;
     try{
@@ -4819,16 +4815,6 @@ export function ReportsView(){
             <option value="csv">Exportar CSV</option>
             {AUTH_URL && <option value="pdf">Exportar PDF</option>}
           </select>
-        </div>
-      </div>
-      <div className="card" style={{marginBottom:11,padding:"10px 12px"}}>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          <label style={{fontSize:11}}>Desde</label>
-          <input type="date" className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
-            value={reportFrom} onChange={e=>setReportFrom(e.target.value)}/>
-          <label style={{fontSize:11}}>Hasta</label>
-          <input type="date" className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
-            value={reportTo} onChange={e=>setReportTo(e.target.value)}/>
         </div>
       </div>
       {AUTH_URL&&(
