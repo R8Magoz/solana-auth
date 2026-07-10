@@ -5300,6 +5300,7 @@ function PaymentCalendar({reportExpenses}){
       });
     }
   });
+  const monthTotal=Object.values(events).reduce((s,dayEvents)=>s+dayEvents.reduce((ds,ev)=>ds+ev.amount,0),0);
   const cells=[];
   for(let i=0;i<firstDay;i++)cells.push(null);
   for(let d=1;d<=daysInMonth;d++)cells.push(d);
@@ -5313,7 +5314,10 @@ function PaymentCalendar({reportExpenses}){
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
         <button style={{border:"none",background:"#F5F0EA",borderRadius:6,padding:"4px 10px",fontSize:14,cursor:"pointer",fontWeight:600}} onClick={()=>setCur(new Date(year,mon-1,1))}>‹</button>
-        <span style={{fontWeight:700,fontSize:13,textTransform:"capitalize"}}>{monthName}</span>
+        <div style={{textAlign:"center",flex:1}}>
+          <div style={{fontWeight:700,fontSize:13,textTransform:"capitalize"}}>{monthName}</div>
+          <div style={{fontSize:13,color:"#1A2B1E",fontWeight:400,marginTop:2,fontVariantNumeric:"tabular-nums"}}>{fmt(monthTotal)}</div>
+        </div>
         <button style={{border:"none",background:"#F5F0EA",borderRadius:6,padding:"4px 10px",fontSize:14,cursor:"pointer",fontWeight:600}} onClick={()=>setCur(new Date(year,mon+1,1))}>›</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:3}}>
