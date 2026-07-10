@@ -1326,7 +1326,7 @@ export class AppErrorBoundary extends React.Component{
               <pre style={{fontSize:9,color:"#6B7B72",whiteSpace:"pre-wrap",wordBreak:"break-all",marginTop:6,maxHeight:120,overflow:"auto",background:"#F5F0EA",borderRadius:6,padding:8}}>{info?.componentStack||err?.stack||"Sin información de pila"}</pre>
             </details>
             <div style={{display:"flex",gap:8}}>
-              <button style={{flex:1,background:"#3C0A37",color:"#fff",border:"none",borderRadius:7,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>window.location.reload()}>Recargar aplicación</button>
+              <button style={{flex:1,background:"#cc4e00",color:"#fff",border:"none",borderRadius:7,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>window.location.reload()}>Recargar aplicación</button>
               <button style={{flex:1,background:"transparent",color:"#991B1B",border:"1.5px solid #ECA3A3",borderRadius:7,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>{Object.keys(localStorage).filter(k=>k.startsWith("sol-")).forEach(k=>localStorage.removeItem(k));window.location.reload();}}>Borrar datos y recargar</button>
             </div>
           </div>
@@ -1338,12 +1338,12 @@ export class AppErrorBoundary extends React.Component{
 }
 
 /* ── SOLANA WORDMARK (text) ────────────────────────────────────────────────
-   theme="light" = light text on #3C0A37 bars. theme="dark" = brand purple on light UIs.
+   theme="light" = light text on #cc4e00 bars. theme="dark" = brand orange on light UIs.
 ────────────────────────────────────────────────────────────────────────── */
 function SolanaLogo({theme="light", size="md", variant:_v}){
   const fontSize={sm:20,md:26,lg:40}[size]||26;
   const onDarkBg=theme==="light";
-  const color=onDarkBg?"#FFFFFF":"#3C0A37";
+  const color=onDarkBg?"#FFFFFF":"#cc4e00";
   return(
     <div className="solana-wordmark-wrap" style={{
       display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:1.05,
@@ -1634,7 +1634,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
           <button
             type="button"
             onClick={()=>window.open(cloudinaryPdfUrl(srcUrl),"_blank")}
-            style={{padding:"8px 16px",background:"#3C0A37",color:"white",
+            style={{padding:"8px 16px",background:"#cc4e00",color:"white",
               border:"none",borderRadius:6,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>
             Ver PDF
           </button>
@@ -1655,8 +1655,8 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
                 window.open(cloudinaryPdfUrl(srcUrl),"_blank");
               }
             }}
-            style={{padding:"8px 16px",background:"#F5F0EA",color:"#3C0A37",
-              border:"1px solid #3C0A37",borderRadius:6,cursor:"pointer",
+            style={{padding:"8px 16px",background:"#F5F0EA",color:"#cc4e00",
+              border:"1px solid #cc4e00",borderRadius:6,cursor:"pointer",
               fontSize:13,fontFamily:"inherit"}}>
             {t?t("action.downloadPdf"):"Descargar PDF"}
           </button>
@@ -1728,7 +1728,7 @@ function ItemCodeBadge({code, inline=false, copyHoverAccent}){
 
 /* ══════════════════════════════════════════════════════════════════════════════
    AUTH SHELL — shared visual system for login, signup, and status screens
-   Light warm-paper background (#F5F0EA), white card, plum accents.
+   Light warm-paper background (#F5F0EA), white card, brand orange accents.
    All auth logic (doLogin, doSignup, onLogin, AUTH_URL) preserved unchanged.
 ══════════════════════════════════════════════════════════════════════════════ */
 
@@ -1738,26 +1738,26 @@ const AUTH={
   page:{minHeight:"100vh",background:"#F5F0EA",display:"flex",alignItems:"center",
     justifyContent:"center",padding:"24px 16px",fontFamily:"'DM Sans',system-ui,sans-serif"},
   card:{background:"#fff",borderRadius:16,padding:"36px 32px",
-    boxShadow:"0 2px 24px rgba(60,10,55,0.10),0 1px 3px rgba(0,0,0,0.05)",
+    boxShadow:"0 2px 24px rgba(204,78,0,0.10),0 1px 3px rgba(0,0,0,0.05)",
     border:"1px solid #EDE8E0",width:"100%",maxWidth:400},
   /* Logo lockup (no fill — logo PNG alpha shows against AUTH.page) */
   logoWrap:{display:"flex",flexDirection:"column",alignItems:"center",
     marginBottom:28,textAlign:"center",background:"transparent",backgroundColor:"transparent"},
   title:{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:700,
-    color:"#3C0A37",marginTop:16,marginBottom:4,lineHeight:1.2},
-  subtitle:{fontSize:13,color:"#8A7A87",marginBottom:0,lineHeight:1.5},
+    color:"#cc4e00",marginTop:16,marginBottom:4,lineHeight:1.2},
+  subtitle:{fontSize:13,color:"#9a7860",marginBottom:0,lineHeight:1.5},
   /* Form */
-  lbl:{display:"block",fontSize:10,fontWeight:700,color:"#7A5C74",
+  lbl:{display:"block",fontSize:10,fontWeight:700,color:"#9d6840",
     textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5},
   inp:{width:"100%",background:"#FAFAF8",border:"1.5px solid #DDD6CC",
-    borderRadius:8,padding:"10px 12px",fontSize:14,color:"#1A0E18",
+    borderRadius:8,padding:"10px 12px",fontSize:14,color:"#1a1008",
     fontFamily:"inherit",outline:"none",boxSizing:"border-box",transition:"border-color 0.15s"},
-  inpFocus:{borderColor:"#3C0A37",boxShadow:"0 0 0 3px rgba(60,10,55,0.09)"},
+  inpFocus:{borderColor:"#cc4e00",boxShadow:"0 0 0 3px rgba(204,78,0,0.09)"},
   /* Buttons */
-  btnPrimary:{width:"100%",background:"#3C0A37",color:"#FAF7F2",border:"none",
+  btnPrimary:{width:"100%",background:"#cc4e00",color:"#FAF7F2",border:"none",
     borderRadius:9,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",
     fontFamily:"inherit",transition:"background 0.15s,transform 0.1s,opacity 0.15s"},
-  btnPrimaryHover:{background:"#52114B"},
+  btnPrimaryHover:{background:"#e35900"},
   btnPrimaryLoading:{opacity:0.55,cursor:"default"},
   /* Divider */
   divider:{borderTop:"1px solid #EDE8E0",margin:"20px 0"},
@@ -1765,12 +1765,12 @@ const AUTH={
   errorBanner:{padding:"9px 12px",borderRadius:8,background:"#FEE2E2",
     border:"1px solid #FCA5A5",fontSize:12,color:"#991B1B",marginBottom:14,
     lineHeight:1.5,animation:"fadeIn 0.2s ease"},
-  infoBanner:{padding:"9px 12px",borderRadius:8,background:"#F5E8F4",
-    border:"1px solid #D4AED0",fontSize:12,color:"#5C1057",
+  infoBanner:{padding:"9px 12px",borderRadius:8,background:"#fdf0e6",
+    border:"1px solid #f0c4a8",fontSize:12,color:"#8a3a00",
     marginBottom:14,lineHeight:1.5},
   /* Footer / secondary links */
   footer:{marginTop:20,textAlign:"center"},
-  link:{background:"none",border:"none",color:"#3C0A37",fontSize:12,
+  link:{background:"none",border:"none",color:"#cc4e00",fontSize:12,
     cursor:"pointer",fontFamily:"inherit",textDecoration:"underline",
     padding:"2px 0"},
   muted:{fontSize:11,color:"#9CAA9F",textAlign:"center",marginTop:12},
@@ -1806,17 +1806,17 @@ const STATUS_CFG={
     icon:null,
     titleKey:"status.pendingVerification.title",
     bodyKey:"status.pendingVerification.body",
-    accent:"#5C1057",
-    bg:"#F5E8F4",
-    border:"#D4AED0",
+    accent:"#8a3a00",
+    bg:"#fdf0e6",
+    border:"#f0c4a8",
   },
   pending_approval:{
     icon:null,
     titleKey:"status.pendingApproval.title",
     bodyKey:"status.pendingApproval.body",
-    accent:"#5C1057",
-    bg:"#F5E8F4",
-    border:"#D4AED0",
+    accent:"#8a3a00",
+    bg:"#fdf0e6",
+    border:"#f0c4a8",
   },
   denied:{
     icon:null,
@@ -1851,7 +1851,7 @@ function AuthStatusCard({statusType,tl,onBack}){
           </span>
         </div>
         <button onClick={onBack} style={{...AUTH.btnPrimary,background:"transparent",
-          color:"#3C0A37",border:"1.5px solid #3C0A37",fontSize:13,padding:"10px"}}>
+          color:"#cc4e00",border:"1.5px solid #cc4e00",fontSize:13,padding:"10px"}}>
           {tl("status.backToLogin")}
         </button>
         <div style={AUTH.muted}>Solana · Vilanova i la Geltrú · est. 2026</div>
@@ -1904,12 +1904,12 @@ function SignupScreen({onBack}){
         <p style={{fontSize:13,color:"#6B7280",lineHeight:1.7,marginBottom:24,padding:"0 8px"}}>
           {tl("signup.helperNote")}
         </p>
-        <div style={{background:"#F5E8F4",border:"1px solid #D4AED0",borderRadius:9,
-          padding:"10px 14px",marginBottom:24,fontSize:11,color:"#5C1057",fontWeight:600}}>
+        <div style={{background:"#fdf0e6",border:"1px solid #f0c4a8",borderRadius:9,
+          padding:"10px 14px",marginBottom:24,fontSize:11,color:"#8a3a00",fontWeight:600}}>
           {tl("status.pendingVerification.title")}
         </div>
         <button onClick={onBack} style={{...AUTH.btnPrimary,background:"transparent",
-          color:"#3C0A37",border:"1.5px solid #3C0A37",fontSize:13,padding:"10px"}}>
+          color:"#cc4e00",border:"1.5px solid #cc4e00",fontSize:13,padding:"10px"}}>
           {tl("status.backToLogin")}
         </button>
         <div style={AUTH.muted}>Solana · Vilanova i la Geltrú · est. 2026</div>
@@ -1976,7 +1976,7 @@ function SignupScreen({onBack}){
           <button
             style={loading?{...AUTH.btnPrimary,...AUTH.btnPrimaryLoading}:AUTH.btnPrimary}
             onMouseEnter={e=>{if(!loading)Object.assign(e.currentTarget.style,AUTH.btnPrimaryHover);}}
-            onMouseLeave={e=>{if(!loading)e.currentTarget.style.background="#3C0A37";}}
+            onMouseLeave={e=>{if(!loading)e.currentTarget.style.background="#cc4e00";}}
             onClick={doSignup} disabled={loading}>
             {loading?"…":tl("signup.submit")}
           </button>
@@ -2379,7 +2379,7 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
             <button
               type="button"
               onClick={() => { setForgotOpen(v => !v); clearMessages(); }}
-              style={{ ...AUTH.link, fontSize: 11, color: "#8A7A87" }}
+              style={{ ...AUTH.link, fontSize: 11, color: "#9a7860" }}
             >
               {tl("login.forgotPassword")}
             </button>
@@ -2405,7 +2405,7 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
               </button>
 
               {forgotMsg && (
-                <div style={{ marginTop: 8, fontSize: 11, color: "#5C1057" }}>
+                <div style={{ marginTop: 8, fontSize: 11, color: "#8a3a00" }}>
                   {forgotMsg}
                 </div>
               )}
@@ -2423,7 +2423,7 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
               if (!loading) Object.assign(e.currentTarget.style, AUTH.btnPrimaryHover);
             }}
             onMouseLeave={e => {
-              if (!loading) e.currentTarget.style.background = "#3C0A37";
+              if (!loading) e.currentTarget.style.background = "#cc4e00";
             }}
             onClick={doLogin}
             disabled={loading}
@@ -2431,7 +2431,7 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
             {loading ? "Entrando..." : tl("login.signIn")}
           </button>
           {loading && slowServerHint && (
-            <div style={{marginTop:6,fontSize:11,color:"#8A7A87",textAlign:"center"}}>
+            <div style={{marginTop:6,fontSize:11,color:"#9a7860",textAlign:"center"}}>
               Esto puede tardar unos segundos si el servidor esta iniciando...
             </div>
           )}
@@ -2549,7 +2549,7 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
             {splits.map(s=>{
               const u=users.find(x=>x.id===s.userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
               return(
-                <div key={s.userId} onClick={()=>toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+actionColor):"1.5px solid #DDD6CC",background:s.checked?(actionColor==="#D97706"?"rgba(217,119,6,0.10)":"rgba(60,10,55,0.06)"):"#fff",cursor:"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s,border-color 0.2s ease,background-color 0.2s ease"}}>
+                <div key={s.userId} onClick={()=>toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+actionColor):"1.5px solid #DDD6CC",background:s.checked?(actionColor==="#D97706"?"rgba(217,119,6,0.10)":"rgba(204,78,0,0.06)"):"#fff",cursor:"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s,border-color 0.2s ease,background-color 0.2s ease"}}>
                   <UserAvatar user={u} size={20} fontSize={7}/>
                   <span style={{fontSize:12,fontWeight:s.checked?600:400}}>{u.name.split(" ")[0]}</span>
                 </div>
@@ -3091,7 +3091,7 @@ function DetailPanel(){
   };
   const approverIds=effectiveExpenseApproverIds(e,cats,users);
   const st=getItemStatus(e,cats,users);
-  const detailAccent = e && e.expenseType === 'invoice' ? '#C4622D' : '#3C0A37';
+  const detailAccent = e && e.expenseType === 'invoice' ? '#C4622D' : '#cc4e00';
   const detailSublistStatusTone = (s) =>
     ST[s] || (s === 'deleted' ? { bg: '#F3F4F6', color: '#6B7280' } : ST.pending);
   const detailTopStatusTone =
@@ -3589,7 +3589,7 @@ function DetailPanel(){
                               action==="paid"?"#065F46":"#9CAA9F"
                 }}/>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:600,color:"#3C0A37"}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"#cc4e00"}}>
                     {actionLabel(ev.action)}
                     {ev.by && <span style={{fontWeight:400,color:"#6B7B72"}}> · {getU(ev.by).name}</span>}
                   </div>
@@ -3640,11 +3640,11 @@ function PersonDrilldown({userId, onClose}){
     return s+shareEurInExpense(e,userId);
   },0);
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(60,10,55,0.55)",zIndex:8000,
+    <div style={{position:"fixed",inset:0,background:"rgba(204,78,0,0.55)",zIndex:8000,
       display:"flex",alignItems:"center",justifyContent:"center",padding:16,
       fontFamily:"'DM Sans',system-ui,sans-serif"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div style={{background:"#fff",borderRadius:14,width:"100%",maxWidth:460,maxHeight:"85vh",
-        display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(60,10,55,0.2)"}}>
+        display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(204,78,0,0.2)"}}>
         {/* Header */}
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 16px",borderBottom:"1px solid #EDE8E0",flexShrink:0}}>
           <UserAvatar user={u} size={34} fontSize={11}/>
@@ -3785,9 +3785,9 @@ export function DashboardView(){
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.dashboard")}</h1>
       <p style={{fontSize:13,color:"#6B7B72",marginBottom:16}}>{t("dash.welcome")}, {user.name.split(" ")[0]}</p>
       {myPending.length>0&&(
-        <div style={{background:"#F5E8F4",border:"1px solid #D4AED0",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
+        <div style={{background:"#fdf0e6",border:"1px solid #f0c4a8",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
           <div>
-            <div style={{fontSize:13,fontWeight:600,color:"#5C1057"}}>{myPending.length} pendiente(s) de tu aprobación</div>
+            <div style={{fontSize:13,fontWeight:600,color:"#8a3a00"}}>{myPending.length} pendiente(s) de tu aprobación</div>
           </div>
           <button className="btn-sm" style={{fontSize:12}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
         </div>
@@ -4092,14 +4092,14 @@ export function ExpensesView(){
           <option value="recurring_paid">Costes fijos · pagados</option>
         </select>
         <div style={{display:"flex",alignItems:"center",border:"1.5px solid",
-          borderColor:isDefaultRange?"#DDD6CC":"#3C0A37",borderRadius:7,
+          borderColor:isDefaultRange?"#DDD6CC":"#cc4e00",borderRadius:7,
           overflow:"hidden",background:"#FAFAF9",height:32,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px",
             borderRight:"1px solid #EDE8E0"}}>
             <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
               textTransform:"uppercase",letterSpacing:"0.05em"}}>Desde</span>
             <input type="date" style={{border:"none",background:"transparent",
-              fontSize:12,color:"#3C0A37",outline:"none",cursor:"pointer",
+              fontSize:12,color:"#cc4e00",outline:"none",cursor:"pointer",
               fontFamily:"inherit",width:110}}
               value={pendingFrom}
               onChange={e => setPendingFrom(e.target.value)}/>
@@ -4108,7 +4108,7 @@ export function ExpensesView(){
             <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
               textTransform:"uppercase",letterSpacing:"0.05em"}}>Hasta</span>
             <input type="date" style={{border:"none",background:"transparent",
-              fontSize:12,color:"#3C0A37",outline:"none",cursor:"pointer",
+              fontSize:12,color:"#cc4e00",outline:"none",cursor:"pointer",
               fontFamily:"inherit",width:110}}
               value={pendingTo}
               onChange={e => setPendingTo(e.target.value)}/>
@@ -4118,7 +4118,7 @@ export function ExpensesView(){
           disabled={isDefaultRange && (!catFlt||catFlt==="all") && (!submFlt||submFlt==="all") && !expSrc}
           style={{padding:"5px 14px",borderRadius:7,fontSize:12,fontWeight:600,
             border:"none",cursor:isDefaultRange?"default":"pointer",
-            background:isDefaultRange?"#EDE8E0":"#3C0A37",
+            background:isDefaultRange?"#EDE8E0":"#cc4e00",
             color:isDefaultRange?"#9CAA9F":"#fff",
             fontFamily:"inherit",height:32,display:"flex",alignItems:"center",gap:6}}
           onClick={()=>{
@@ -4196,7 +4196,7 @@ export function ExpensesView(){
                       <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:"#C4622D",color:"#fff",flexShrink:0,display:"inline-block"}}>FACTURA</span>
                     )}
                     {!isInvRow&&expKindFlt!=="invoice"&&(
-                      <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:"#3C0A37",color:"#fff",flexShrink:0,display:"inline-block"}}>GASTO</span>
+                      <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:"#cc4e00",color:"#fff",flexShrink:0,display:"inline-block"}}>GASTO</span>
                     )}
                     <span
                       className={statusToneClass(st)}
@@ -4307,9 +4307,9 @@ function ReceiptThumb({expenseId}){
     };
   },[expenseId]);
   if(url==="__pdf__") return(
-    <div style={{width:52,height:52,borderRadius:8,background:"#F5E8F4",flexShrink:0,
+    <div style={{width:52,height:52,borderRadius:8,background:"#fdf0e6",flexShrink:0,
       display:"flex",alignItems:"center",justifyContent:"center",
-      fontSize:9,fontWeight:700,color:"#5C1057"}}>PDF</div>
+      fontSize:9,fontWeight:700,color:"#8a3a00"}}>PDF</div>
   );
   if(!url)return<div style={{width:52,height:52,borderRadius:8,background:"#EDE8E0",flexShrink:0}} title="Recibo"/>;
   return<img src={url} alt="" style={{width:52,height:52,objectFit:"cover",borderRadius:8,flexShrink:0}}/>;
@@ -4387,8 +4387,8 @@ export function ApprovalsView(){
             ["invoice",t("expenses.filterInvoices"),cInv],
           ].map(([k,lb,cnt])=>{
             const active=typeFilter===k;
-            const fill=k==="invoice"&&active?"#C4622D":active?"#3C0A37":"#fff";
-            const border=active?(k==="invoice"?"#C4622D":"#3C0A37"):"#DDD6CC";
+            const fill=k==="invoice"&&active?"#C4622D":active?"#cc4e00":"#fff";
+            const border=active?(k==="invoice"?"#C4622D":"#cc4e00"):"#DDD6CC";
             const color=active?"#fff":"#4B5E52";
             return(
               <button key={k} type="button" style={{padding:"3px 12px",borderRadius:18,fontSize:11,fontWeight:600,border:`1.5px solid ${border}`,background:fill,color,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setTypeFilter(k)}>
@@ -4419,7 +4419,7 @@ export function ApprovalsView(){
             st === 'rejected' ? '#FFF1F2' :
             '#FFFBEB';
           const cardBorder = priorityForItem(item) === 0
-            ? '1.5px solid #D4AED0'
+            ? '1.5px solid #f0c4a8'
             : '1px solid transparent';
           const canActOnRow=canUserReviewExpense(item,{user,cats,users});
           const payBadge=invoicePaymentBadge(item);
@@ -4452,7 +4452,7 @@ export function ApprovalsView(){
                           <span style={{
                             fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,
                             textTransform:"uppercase",letterSpacing:"0.05em",
-                            background:"#3C0A37",
+                            background:"#cc4e00",
                             color:"#fff",
                             display:"inline-block"
                           }}>GASTO</span>
@@ -4562,8 +4562,8 @@ function PaymentCalendar({reportExpenses}){
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
         {cells.map((d,i)=>(
-          <div key={i} onClick={()=>d&&setSelDay(selDay===d?null:d)} style={{minHeight:32,borderRadius:5,background:d&&isToday(d)?"rgba(60,10,55,0.08)":d&&events[d]?"#FFFBF5":"#FAFAF8",border:d&&isToday(d)?`1.5px solid ${G}`:d&&selDay===d?"1.5px solid "+T:"1px solid transparent",padding:"3px 2px",cursor:d?"pointer":"default",transition:"border 0.1s"}}>
-            {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(events[d]||[]).map((ev,j)=><div key={j} title={ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?"#C4622D":"#3C0A37"}}/>)}</div></>}
+          <div key={i} onClick={()=>d&&setSelDay(selDay===d?null:d)} style={{minHeight:32,borderRadius:5,background:d&&isToday(d)?"rgba(204,78,0,0.08)":d&&events[d]?"#FFFBF5":"#FAFAF8",border:d&&isToday(d)?`1.5px solid ${G}`:d&&selDay===d?"1.5px solid "+T:"1px solid transparent",padding:"3px 2px",cursor:d?"pointer":"default",transition:"border 0.1s"}}>
+            {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(events[d]||[]).map((ev,j)=><div key={j} title={ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?"#C4622D":"#cc4e00"}}/>)}</div></>}
           </div>
         ))}
       </div>
@@ -4574,7 +4574,7 @@ function PaymentCalendar({reportExpenses}){
             ?<div style={{fontSize:11,color:"#9CAA9F"}}>Sin movimientos</div>
             :(events[selDay]||[]).map((ev,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,marginBottom:3,gap:6}}>
-              <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?"#C4622D":"#3C0A37",display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
+              <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?"#C4622D":"#cc4e00",display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
               <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(ev.amount)}</span>
               <button style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{resetForm();go("expenses");setTimeout(()=>{setDetailId(ev.id);setPanel("detail");},50);}}>{t("action.viewAll")}</button>
             </div>
@@ -4583,7 +4583,7 @@ function PaymentCalendar({reportExpenses}){
       )}
       <div style={{display:"flex",gap:12,marginTop:8,fontSize:9}}>
         <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#C4622D",display:"inline-block"}}/>{t("expenses.typeInvoice")}</span>
-        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#3C0A37",display:"inline-block"}}/>{t("nav.expenses")}</span>
+        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#cc4e00",display:"inline-block"}}/>{t("nav.expenses")}</span>
       </div>
     </div>
   );
@@ -4775,7 +4775,7 @@ export function ReportsView(){
           <svg width="100%" height="56" viewBox="0 0 280 56" preserveAspectRatio="none" style={{display:"block"}} aria-hidden="true">
             <rect x="0" y="0" width="280" height="56" fill="none"/>
             <line x1="4" y1="50" x2="276" y2="50" stroke="#E5E0D8" strokeWidth="1"/>
-            <polyline fill="none" stroke="#3C0A37" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={sparklinePts}/>
+            <polyline fill="none" stroke="#cc4e00" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={sparklinePts}/>
           </svg>
         )}
         {!trendLoad&&!trendErr&&!sparklinePts&&<div style={{fontSize:11,color:"#9CAA9F"}}>—</div>}
@@ -4792,7 +4792,7 @@ export function ReportsView(){
         )}
         <div style={{display:"flex",gap:16,marginBottom:12,alignItems:"center"}}>
           <div style={{display:"flex",alignItems:"center",gap:5}}>
-            <div style={{width:10,height:10,borderRadius:2,background:"#3C0A37"}}/>
+            <div style={{width:10,height:10,borderRadius:2,background:"#cc4e00"}}/>
             <span style={{fontSize:11,color:"#4B5E52"}}>Gastos</span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -4837,7 +4837,7 @@ export function ReportsView(){
                     >No hay datos</text>
                   )}
                   {gH>0&&<rect x={x} y={gY} width={BAR_W} height={gH}
-                    fill="#3C0A37" rx="2" opacity="0.9">
+                    fill="#cc4e00" rx="2" opacity="0.9">
                     <title>{m.label} Gastos: {fmt(m.gastos)}</title>
                   </rect>}
                   {fH>0&&<rect x={x+BAR_W+BAR_GAP} y={fY} width={BAR_W} height={fH}
@@ -4845,7 +4845,7 @@ export function ReportsView(){
                     <title>{m.label} Facturas: {fmt(m.facturas)}</title>
                   </rect>}
                   {gH>0&&<text x={x+BAR_W/2} y={gY-4}
-                    textAnchor="middle" fontSize="7" fill="#3C0A37" fontWeight="600">
+                    textAnchor="middle" fontSize="7" fill="#cc4e00" fontWeight="600">
                     {fmt(m.gastos)}
                   </text>}
                   {fH>0&&<text x={x+BAR_W+BAR_GAP+BAR_W/2} y={fY-4}
@@ -4873,7 +4873,7 @@ export function ReportsView(){
       <div className="card" style={{marginBottom:11}}>
         <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:12}}>{t("reports.byCategory")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
         {catTotals.length===0&&<div style={{color:"#9CAA9F",fontSize:12}}>Sin datos para el filtro seleccionado</div>}
-        {catTotals.map(({cat,total})=>(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt(cat);setExpFlt("all");go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{tCat(cat,t)}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:"#3C0A37",width:`${total/maxC*100}%`,transition:"width 0.4s"}}/></div></div>))}
+        {catTotals.map(({cat,total})=>(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt(cat);setExpFlt("all");go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{tCat(cat,t)}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:"#cc4e00",width:`${total/maxC*100}%`,transition:"width 0.4s"}}/></div></div>))}
       </div>
       <div style={{borderTop:"1px solid #F0EBE3",margin:"2px 0 12px"}}/>
       {/* Per person — approved share + submitted count + expandable log */}
@@ -4899,7 +4899,7 @@ export function ReportsView(){
                     </div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontWeight:700,fontSize:16,color:"#3C0A37"}}>{fmt(userTotal)}</div>
+                    <div style={{fontWeight:700,fontSize:16,color:"#cc4e00"}}>{fmt(userTotal)}</div>
                   </div>
                   <span style={{fontSize:10,color:"#9CAA9F",marginLeft:4}}>
                     {open?"▲":"▼"}
@@ -4920,7 +4920,7 @@ export function ReportsView(){
                             style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:i<userRows.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}}
                             onClick={()=>{resetForm();setView("expenses");setDetailId(row.id);setPanel("detail");}}
                           >
-                            <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#FEE2CC":"#EDE9F6",color:kind==="invoice"?"#C4622D":"#3C0A37"}}>
+                            <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#FEE2CC":"#fde8d6",color:kind==="invoice"?"#C4622D":"#cc4e00"}}>
                               {kind==="invoice"?"FACTURA":"GASTO"}
                             </span>
                             <div style={{flex:1,minWidth:0}}>
@@ -4932,7 +4932,7 @@ export function ReportsView(){
                               </div>
                             </div>
                             <div style={{textAlign:"right",flexShrink:0}}>
-                              <div style={{fontSize:13,fontWeight:700,color:"#3C0A37"}}>{fmt(rowAmount)}</div>
+                              <div style={{fontSize:13,fontWeight:700,color:"#cc4e00"}}>{fmt(rowAmount)}</div>
                               <div style={{fontSize:9,fontWeight:600,color:rowStatus==="approved"?"#065F46":"#78350F"}}>
                                 {t("status."+rowStatus)}
                               </div>
@@ -5010,7 +5010,7 @@ function ApiIntegrationsCard({ inline = false }) {
           </button>
         </div>
 
-        <div style={{ marginTop: 10, padding: "8px 10px", background: "#F5E8F4", borderRadius: 7, fontSize: 10, color: "#5C1057", lineHeight: 1.5 }}>
+        <div style={{ marginTop: 10, padding: "8px 10px", background: "#fdf0e6", borderRadius: 7, fontSize: 10, color: "#8a3a00", lineHeight: 1.5 }}>
           <strong>Live API:</strong> Un endpoint REST en tiempo real requiere un servidor. Esta app es client-side.
         </div>
       </div>
@@ -5030,9 +5030,9 @@ function ApiIntegrationsCard({ inline = false }) {
 ─────────────────────────────────────────────────────────────────────────── */
 function AdminReadme(){
   const[open,setOpen]=useState(false);
-  const S={heading:{fontWeight:700,fontSize:11,color:"#3C0A37",marginBottom:4,marginTop:10},
+  const S={heading:{fontWeight:700,fontSize:11,color:"#cc4e00",marginBottom:4,marginTop:10},
            body:{fontSize:10,color:"#4B5E52",lineHeight:1.7},
-           code:{fontFamily:"monospace",fontSize:9,background:"#F5F0EA",padding:"2px 5px",borderRadius:4,color:"#3C0A37"}};
+           code:{fontFamily:"monospace",fontSize:9,background:"#F5F0EA",padding:"2px 5px",borderRadius:4,color:"#cc4e00"}};
   return(
     <div className="card" style={{marginBottom:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}
@@ -5113,11 +5113,11 @@ function AppLogPanelBody(){
   };
   const LEVEL_COLOR={error:"#DC2626",warn:"#D97706",info:"#9CAA9F"};
   const EVENT_COLOR={
-    "auth:login":"#3C0A37","auth:init":"#9CA3AF","auth:boot":"#9CA3AF",
+    "auth:login":"#cc4e00","auth:init":"#9CA3AF","auth:boot":"#9CA3AF",
     "session_idle_expired":"#D97706","password_changed":"#D97706",
     "expense_submitted":"#065F46","bill_submitted":"#065F46",
     "item_approved":"#065F46","item_rejected":"#DC2626",
-    "csv_exported":"#2563EB","attachment_uploaded":"#7A4F9A",
+    "csv_exported":"#2563EB","attachment_uploaded":"#b85c1a",
     "attachment_removed":"#991B1B","upload_rejected":"#DC2626",
   };
   useEffect(()=>{loadLog();},[]);
@@ -5137,7 +5137,7 @@ function AppLogPanelBody(){
           <div key={i} style={{padding:"4px 0",borderBottom:"1px solid #F5F0EA",display:"flex",gap:7,alignItems:"baseline"}}>
             <span style={{color:"#9CAA9F",flexShrink:0,width:68}}>{(e.ts||"").slice(11,19)}</span>
             <span style={{fontWeight:700,color:LEVEL_COLOR[e.level]||"#9CAA9F",flexShrink:0,width:36}}>{(e.level||"info").toUpperCase()}</span>
-            <span style={{color:EVENT_COLOR[e.event]||"#3C0A37",fontWeight:600,flexShrink:0,minWidth:140}}>{e.event}</span>
+            <span style={{color:EVENT_COLOR[e.event]||"#cc4e00",fontWeight:600,flexShrink:0,minWidth:140}}>{e.event}</span>
             <span style={{color:"#6B7B72",wordBreak:"break-all"}}>
               {Object.entries(e).filter(([k])=>!["ts","level","event"].includes(k))
                 .map(([k,v])=>`${k}=${typeof v==="object"?JSON.stringify(v):v}`).join(" · ")}
@@ -5165,7 +5165,7 @@ function AccordionSection({title, children, defaultOpen=false, badge=0, accent=n
           borderBottom:open?"1px solid #EDE8E0":"none"}}>
         <div style={{display:"flex",alignItems:"center",gap:7}}>
           {accent&&<div style={{width:3,height:14,borderRadius:2,background:accent,flexShrink:0}}/>}
-          <span style={{fontWeight:600,fontSize:13,color:accent||"#1A0E18"}}>{title}</span>
+          <span style={{fontWeight:600,fontSize:13,color:accent||"#1a1008"}}>{title}</span>
           {badge>0&&<span style={{background:BL,color:"#fff",borderRadius:"50%",
             width:16,height:16,display:"inline-flex",alignItems:"center",justifyContent:"center",
             fontSize:8,fontWeight:700,flexShrink:0}}>{badge}</span>}
@@ -5312,7 +5312,7 @@ function ServerSettingsView(){
         const busy=!!saving[key];
         return(
           <div key={key} style={{marginBottom:18,paddingBottom:16,borderBottom:"1px solid #F0EBE3"}}>
-            <div style={{fontWeight:600,fontSize:13,color:"#1A0E18",marginBottom:4}}>{lab}</div>
+            <div style={{fontWeight:600,fontSize:13,color:"#1a1008",marginBottom:4}}>{lab}</div>
             {desc&&<div style={{fontSize:11,color:"#9CAA9F",marginBottom:8,lineHeight:1.4}}>{desc}</div>}
             {w==="number"&&(
               <input type="number" min={0} step="any" className="inp" style={{fontSize:14,maxWidth:280}} value={drafts[key]??""} onChange={e=>setDrafts(d=>({...d,[key]:e.target.value}))}/>
@@ -5330,7 +5330,7 @@ function ServerSettingsView(){
               <div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
                   {(Array.isArray(drafts[key])?drafts[key]:[]).map((chip,idx)=>(
-                    <span key={idx} style={{display:"inline-flex",alignItems:"center",gap:4,background:"#EDE8E0",color:"#1A0E18",fontSize:12,padding:"4px 8px",borderRadius:6}}>
+                    <span key={idx} style={{display:"inline-flex",alignItems:"center",gap:4,background:"#EDE8E0",color:"#1a1008",fontSize:12,padding:"4px 8px",borderRadius:6}}>
                       {chip}
                       <button type="button" style={{border:"none",background:"transparent",cursor:"pointer",fontSize:14,lineHeight:1,color:"#6B7B72",padding:0}} onClick={()=>setDrafts(d=>{
                         const arr=[...(Array.isArray(d[key])?d[key]:[])];
@@ -5656,7 +5656,7 @@ function DepartmentBudgetTrackerSection({t}){
               </div>
               <div>
                 <div style={{color:"#9CAA9F",fontSize:9,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{t("settings.deptTrackerRemaining")}</div>
-                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums",color:over?"#DC2626":"#1A0E18"}}>{fmt(rem)}</div>
+                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums",color:over?"#DC2626":"#1a1008"}}>{fmt(rem)}</div>
               </div>
             </div>
             <div style={{marginBottom:4}}>
@@ -6414,9 +6414,9 @@ export function SettingsView(){
                           borderRadius: 20,
                           border: '1px solid',
                           cursor: 'pointer',
-                          background: isSelected ? '#3C0A37' : '#FAF7F4',
+                          background: isSelected ? '#cc4e00' : '#FAF7F4',
                           color: isSelected ? '#fff' : '#6B7B72',
-                          borderColor: isSelected ? '#3C0A37' : '#DDD6CC',
+                          borderColor: isSelected ? '#cc4e00' : '#DDD6CC',
                           fontWeight: isSelected ? 600 : 400,
                         }}
                       >
@@ -7867,11 +7867,11 @@ export default function App(){
   };
 
   /* ── EARLY RETURN — after all hooks, before derived values that need user ── */
-  if(!user)return<div style={{position:"relative",minHeight:"100vh",background:"#3C0A37"}}>
+  if(!user)return<div style={{position:"relative",minHeight:"100vh",background:"#cc4e00"}}>
     <div style={{opacity:appReady?1:0,transition:"opacity 400ms ease",transitionDelay:appReady?"600ms":"0ms"}}>
       <LoginScreen users={users} onLogin={u=>{appLog("info","auth:login",{userId:u.id,role:u.role});try{localStorage.setItem(LAST_ACTIVITY_KEY,String(Date.now()));}catch(e){}setIdleTrackingEnabled(true);setUser(u);}} passwords={passwords} sessionRestoreAttempted={sessionRestoreAttempted}/>
     </div>
-    <div style={{position:"fixed",inset:0,background:"#3C0A37",display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms ease, opacity 400ms ease",transitionDelay:appReady?"600ms":"0ms"}}>
+    <div style={{position:"fixed",inset:0,background:"#cc4e00",display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms ease, opacity 400ms ease",transitionDelay:appReady?"600ms":"0ms"}}>
       <div style={{opacity:1}}><SolanaLogo theme="light" size="lg"/></div>
     </div>
   </div>;
@@ -8048,9 +8048,9 @@ export default function App(){
   /* ── RENDER ─────────────────────────────────────────────────────────────── */
   return(
     <Ctx.Provider value={ctxVal}>
-      <div style={{display:"flex",height:"100vh",width:"100vw",fontFamily:"'DM Sans',system-ui,sans-serif",background:"#F5F0EA",color:"#1A0E18",overflow:"hidden",WebkitOverflowScrolling:"touch"}}>
+      <div style={{display:"flex",height:"100vh",width:"100vw",fontFamily:"'DM Sans',system-ui,sans-serif",background:"#F5F0EA",color:"#1a1008",overflow:"hidden",WebkitOverflowScrolling:"touch"}}>
         {AUTH_URL&&!online&&(
-          <div style={{position:"fixed",top:0,left:0,right:0,zIndex:7500,background:"rgba(245,240,234,0.95)",color:"#5C4A56",fontSize:11,padding:"7px 14px",textAlign:"center",borderBottom:"1px solid rgba(60,10,55,0.1)",fontWeight:500}}>
+          <div style={{position:"fixed",top:0,left:0,right:0,zIndex:7500,background:"rgba(245,240,234,0.95)",color:"#6b4a38",fontSize:11,padding:"7px 14px",textAlign:"center",borderBottom:"1px solid rgba(204,78,0,0.1)",fontWeight:500}}>
             Sin conexión, los cambios se guardarán localmente
           </div>
         )}
@@ -8065,7 +8065,7 @@ export default function App(){
                 fontWeight:500,
                 boxShadow:"0 4px 14px rgba(0,0,0,0.12)",
                 background:t.kind==="error"?"#FEE2E2":t.kind==="conflict"?"#FEF3C7":t.kind==="sync"?"#E8F5E9":t.kind==="offline"?"#E0F2FE":"#fff",
-                color:t.kind==="error"?"#7F1D1D":t.kind==="conflict"?"#92400E":"#1A0E18",
+                color:t.kind==="error"?"#7F1D1D":t.kind==="conflict"?"#92400E":"#1a1008",
                 border:t.kind==="sync"?"1px solid #A7F3D0":t.kind==="offline"?"1px solid #7DD3FC":"1px solid rgba(0,0,0,0.06)",
               }}>{t.message}</div>
             ))}
@@ -8075,7 +8075,7 @@ export default function App(){
           <div style={{position:"fixed",inset:0,zIndex:7700,background:"rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
             <div className="fade-in" style={{width:"min(92vw,420px)",background:"#fff",borderRadius:12,padding:"16px 16px 14px",boxShadow:"0 10px 30px rgba(0,0,0,0.25)"}}>
               <div style={{fontWeight:700,fontSize:14,color:G,marginBottom:8}}>Confirmación</div>
-              <div style={{fontSize:13,color:"#1A0E18",lineHeight:1.35,marginBottom:14,whiteSpace:"pre-wrap"}}>{confirmModal.message}</div>
+              <div style={{fontSize:13,color:"#1a1008",lineHeight:1.35,marginBottom:14,whiteSpace:"pre-wrap"}}>{confirmModal.message}</div>
               <div style={{display:"flex",gap:8}}>
                 <button type="button" className="btn-secondary" style={{flex:1,fontSize:12,padding:"7px 10px"}} onClick={()=>{
                   try{confirmModal.resolve(false);}catch(e){}
@@ -8098,9 +8098,9 @@ export default function App(){
           *{box-sizing:border-box;}
           h1{font-family:'Playfair Display',serif;font-size:24px;font-weight:600;}
           h2{font-family:'DM Sans',system-ui,sans-serif;font-size:16px;font-weight:600;}
-          ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:rgba(60,10,55,0.2);border-radius:2px;}
+          ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:rgba(204,78,0,0.2);border-radius:2px;}
           .card{background:#fff;border-radius:11px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,0.06);}
-          .inp{width:100%;background:#FAF7F8;border:1.5px solid #DDD6CC;border-radius:7px;padding:8px 11px;font-size:14px;color:#1A0E18;font-family:inherit;transition:border-color 0.15s;outline:none;display:block;}
+          .inp{width:100%;background:#FAF7F8;border:1.5px solid #DDD6CC;border-radius:7px;padding:8px 11px;font-size:14px;color:#1a1008;font-family:inherit;transition:border-color 0.15s;outline:none;display:block;}
           .inp:focus{border-color:${G};}
           .expense-form-fields-wrap .inp:focus{border-color:var(--expense-action, ${G})!important;}
           .lbl{font-size:12px;font-weight:600;color:#6B7B72;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;display:block;}
@@ -8111,7 +8111,7 @@ export default function App(){
           .btn-sm{background:${G};color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;}
           .btn-danger{background:transparent;color:#991B1B;border:1.5px solid #ECA3A3;padding:8px 18px;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
           .btn-danger:hover{background:#FEE2E2;}
-          .row-hover:hover{background:rgba(60,10,55,0.04)!important;}
+          .row-hover:hover{background:rgba(204,78,0,0.04)!important;}
           @keyframes spin{to{transform:rotate(360deg);}}
           @keyframes slideIn{from{opacity:0;transform:translateX(16px);}to{opacity:1;transform:translateX(0);}}
           @keyframes fadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
@@ -8143,13 +8143,13 @@ export default function App(){
             fontFamily:"'DM Sans',system-ui,sans-serif",backdropFilter:"blur(4px)"}}>
             <div style={{background:"#fff",borderRadius:16,padding:"36px 32px",maxWidth:380,
               width:"90%",textAlign:"center",
-              boxShadow:"0 4px 32px rgba(60,10,55,0.14),0 1px 4px rgba(0,0,0,0.06)",
+              boxShadow:"0 4px 32px rgba(204,78,0,0.14),0 1px 4px rgba(0,0,0,0.06)",
               border:"1px solid #EDE8E0"}}>
               <div style={{marginBottom:20}}><SolanaLogo theme="dark" size="md" variant="auth"/></div>
-              <div style={{fontSize:18,fontWeight:700,color:"#3C0A37",marginBottom:8,
+              <div style={{fontSize:18,fontWeight:700,color:"#cc4e00",marginBottom:8,
                 fontFamily:"'Playfair Display',serif"}}>{t("session.expiredTitle")}</div>
-              <p style={{fontSize:13,color:"#8A7A87",marginBottom:24,lineHeight:1.6}}>{t("session.expiredMsg")}</p>
-              <button style={{width:"100%",background:"#3C0A37",color:"#FAF7F2",border:"none",
+              <p style={{fontSize:13,color:"#9a7860",marginBottom:24,lineHeight:1.6}}>{t("session.expiredMsg")}</p>
+              <button style={{width:"100%",background:"#cc4e00",color:"#FAF7F2",border:"none",
                 borderRadius:9,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",
                 fontFamily:"inherit"}}
                 onClick={()=>{setSessionExpired(false);}}>

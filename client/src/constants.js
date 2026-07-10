@@ -4,9 +4,9 @@ export const BRAND_HOVER = 'var(--color-brand-hover)';
 export const BRAND_TINT = 'var(--color-brand-tint)';
 
 // Keep HEX for SVG/canvas and other places that require raw colors
-export const BRAND_HEX = '#3C0A37';
+export const BRAND_HEX = '#cc4e00';
 export const ACCENT_HEX = '#C4622D';
-export const BADGE_HEX = '#7A4F9A';
+export const BADGE_HEX = '#b85c1a';
 
 // Backwards-compatible aliases used throughout the monolith
 export const G = BRAND; // brand primary
@@ -20,8 +20,8 @@ export const UNKNOWN_USER_NAME="Usuario";
 
 /* === SEED DATA (local dev / demo only) ======================================= */
 export const DEF_USERS = [
-  { id: 'u_demo1', name: 'Admin User', title: 'Administrador', email: 'admin@example.com', phone: '', role: 'superadmin', color: '#3C0A37' },
-  { id: 'u_demo2', name: 'Manager User', title: 'Responsable', email: 'manager@example.com', phone: '', role: 'admin', color: '#52114B' },
+  { id: 'u_demo1', name: 'Admin User', title: 'Administrador', email: 'admin@example.com', phone: '', role: 'superadmin', color: '#cc4e00' },
+  { id: 'u_demo2', name: 'Manager User', title: 'Responsable', email: 'manager@example.com', phone: '', role: 'admin', color: '#e35900' },
   { id: 'u_demo3', name: 'Team Member', title: 'Equipo', email: 'team1@example.com', phone: '', role: 'user', color: '#8B5E3C' },
   { id: 'u_demo4', name: 'Team Member 2', title: 'Equipo', email: 'team2@example.com', phone: '', role: 'user', color: '#6B7280' },
 ];
