@@ -336,7 +336,7 @@ const TR = {
     "login.title": "Iniciar sesión",
     "login.loginSubtitle": "Accede a tu espacio de gestión",
     "login.createAccount": "Crear cuenta",
-    "login.adminManaged": "Las cuentas son creadas por el administrador. Contacta con tu admin para obtener acceso.",
+    "login.adminManaged": "Contacta con tu admin para obtener acceso.",
     "login.forgotPassword": "¿Olvidaste tu contraseña?",
     "login.forgotHelp": "Si no puedes acceder a tu cuenta, puedes solicitar asistencia de contraseña. Para cuentas gestionadas, la solicitud será revisada por el administrador.",
     "login.requestPasswordHelp": "Solicitar asistencia de contraseña",
@@ -1063,24 +1063,12 @@ const parseMoney=s=>{if(s===null||s===undefined||s==="")return 0;const n=String(
 const inits=n=>n.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase();
 
 /* ── USER AVATAR ────────────────────────────────────────────────────────────
-   Renders profile photo if set, otherwise falls back to colored initials circle.
-   Drop-in replacement for every inline initials-div across the app.
+   Colored initials circle (user.color). Profile photos are no longer shown.
    Props: user (required), size (px, default 24), fontSize (px, default auto)
 ─────────────────────────────────────────────────────────────────────────── */
-function isRenderableAvatarSrc(src){
-  if(!src||typeof src!=="string")return false;
-  const s=src.trim();
-  return s.startsWith("data:image/")||/^https?:\/\//i.test(s)||s.startsWith("blob:");
-}
 function UserAvatar({user, size=24, fontSize=null}){
   if(!user)return null;
   const fs=fontSize||Math.max(6,Math.round(size*0.32));
-  const [imgFailed,setImgFailed]=useState(false);
-  const src=user.avatar;
-  const showPhoto=isRenderableAvatarSrc(src)&&!imgFailed;
-  if(showPhoto)return(
-    <img src={src} alt={user.name||""} onError={()=>setImgFailed(true)} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1.5px solid rgba(0,0,0,0.06)"}}/>
-  );
   return(
     <div style={{width:size,height:size,borderRadius:"50%",background:user.color||"#6B7280",display:"flex",alignItems:"center",justifyContent:"center",fontSize:fs,fontWeight:700,color:"#fff",flexShrink:0}}>
       {inits(user.name||"?")}
@@ -1257,7 +1245,6 @@ const mergeUsersById=(prev,next)=>{
       const prevU=map.get(u.id);
       const normalized=normalizeItem(u,"user");
       if(prevU){
-        if(!normalized.avatar&&prevU.avatar)normalized.avatar=prevU.avatar;
         if(!normalized.name&&prevU.name)normalized.name=prevU.name;
         if(!normalized.email&&prevU.email)normalized.email=prevU.email;
       }
@@ -1266,7 +1253,7 @@ const mergeUsersById=(prev,next)=>{
   }
   return [...map.values()];
 };
-/** Session user reconciled with roster (avatar/name from latest team/expense payload). */
+/** Session user reconciled with roster (name/email from latest team/expense payload). */
 const resolveSessionUser=(sessionUser,users)=>{
   if(!sessionUser)return null;
   const roster=(users||[]).find(u=>u.id===sessionUser.id);
@@ -1274,7 +1261,6 @@ const resolveSessionUser=(sessionUser,users)=>{
   return normalizeItem({
     ...sessionUser,
     ...roster,
-    avatar:roster.avatar??sessionUser.avatar??null,
     role:sessionUser.role??roster.role,
   },"user");
 };
@@ -1931,42 +1917,6 @@ function isMobileReceiptCapture(){
   return /iPhone|iPad|iPod|Android|Mobile/i.test(ua)||(typeof window!=="undefined"&&window.innerWidth<768);
 }
 
-/** Resize profile photos so base64 fits SQLite avatar column (500k chars). */
-function compressAvatarDataUrl(file){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>{
-      const img=new Image();
-      img.onload=()=>{
-        const maxDim=256;
-        let w=img.naturalWidth||maxDim;
-        let h=img.naturalHeight||maxDim;
-        if(w>maxDim||h>maxDim){
-          if(w>=h){h=Math.max(1,Math.round(h*maxDim/w));w=maxDim;}
-          else{w=Math.max(1,Math.round(w*maxDim/h));h=maxDim;}
-        }
-        const canvas=document.createElement("canvas");
-        canvas.width=w;
-        canvas.height=h;
-        const ctx=canvas.getContext("2d");
-        if(!ctx){resolve(String(reader.result));return;}
-        ctx.drawImage(img,0,0,w,h);
-        let quality=0.85;
-        let out=canvas.toDataURL("image/jpeg",quality);
-        while(out.length>480000&&quality>0.45){
-          quality-=0.1;
-          out=canvas.toDataURL("image/jpeg",quality);
-        }
-        resolve(out);
-      };
-      img.onerror=()=>reject(new Error("No se pudo procesar la imagen."));
-      img.src=String(reader.result);
-    };
-    reader.onerror=()=>reject(new Error("No se pudo leer el archivo."));
-    reader.readAsDataURL(file);
-  });
-}
-
 const UPLOAD_RULES={
   receipt:{
     maxBytes: 20*1024*1024,
@@ -1974,11 +1924,6 @@ const UPLOAD_RULES={
     allowedExts: [],
     inferFromExtension: false,
     rejectHint: "",
-  },
-  avatar:{
-    maxBytes:1*1024*1024,   // 1 MB — profile images don't need to be large
-    allowedTypes:["image/jpeg","image/jpg","image/png","image/webp"],
-    allowedExts:[".jpg",".jpeg",".png",".webp"],
   },
 };
 function receiptMimeOkForServerUpload(mediaType){
@@ -3276,28 +3221,30 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
           </div>
 
           {/* Password */}
-          <div style={{ marginBottom: 6, position: "relative" }}>
+          <div style={{ marginBottom: 6 }}>
             <label style={AUTH.lbl}>{tl("login.password")}</label>
-            <input
-              {...pwF}
-              style={{ ...pwF.style, paddingRight: 58 }}
-              type={showPw ? "text" : "password"}
-              placeholder={tl("login.enterPassword")}
-              value={pw}
-              onChange={e => {
-                setPw(e.target.value);
-                setErr(""); 
-              }}
-              onKeyDown={e => e.key === "Enter" && doLogin()}
-              autoComplete="current-password"
-            />
-            <button
-              type="button"
-              style={PW_TOGGLE_STYLE}
-              onClick={() => setShowPw(v => !v)}
-            >
-              {showPw ? tl("login.hidePw") : tl("login.showPw")}
-            </button>
+            <div style={{ position: "relative" }}>
+              <input
+                {...pwF}
+                style={{ ...pwF.style, paddingRight: 58 }}
+                type={showPw ? "text" : "password"}
+                placeholder={tl("login.enterPassword")}
+                value={pw}
+                onChange={e => {
+                  setPw(e.target.value);
+                  setErr(""); 
+                }}
+                onKeyDown={e => e.key === "Enter" && doLogin()}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                style={PW_TOGGLE_STYLE}
+                onClick={() => setShowPw(v => !v)}
+              >
+                {showPw ? tl("login.hidePw") : tl("login.showPw")}
+              </button>
+            </div>
           </div>
 
           {/* Forgot password Toggle */}
@@ -6716,20 +6663,18 @@ function SettingsView(){
   const [nuErr,setNuErr]=useState("");
   const [delC,setDelC]=useState(null);
   const [dSelf,setDSelf]=useState(false);
-  const [sf,setSf]=useState({name:user?.name||"",email:user?.email||"",avatar:user?.avatar||null});
+  const [sf,setSf]=useState({name:user?.name||"",email:user?.email||""});
   const profileBaseline=useMemo(()=>({
     name:(user?.name||"").trim(),
     email:(user?.email||"").trim(),
-    avatar:user?.avatar??null,
-  }),[user?.id,user?.name,user?.email,user?.avatar]);
+  }),[user?.id,user?.name,user?.email]);
   const profileDirty=useMemo(()=>(
     (sf.name||"").trim()!==profileBaseline.name
     ||(sf.email||"").trim()!==profileBaseline.email
-    ||(sf.avatar??null)!==profileBaseline.avatar
   ),[sf,profileBaseline]);
   useEffect(()=>{
-    setSf({name:user?.name||"",email:user?.email||"",avatar:user?.avatar||null});
-  },[user?.id,user?.name,user?.email,user?.avatar]);
+    setSf({name:user?.name||"",email:user?.email||""});
+  },[user?.id,user?.name,user?.email]);
   const [catEdit,setCatEdit]=useState(null);
   const [catForm,setCatForm]=useState({});
   const [addCat,setAddCat]=useState(false);
@@ -6887,7 +6832,7 @@ function SettingsView(){
   };
   const saveProfile=async()=>{
     if(profileSaving)return;
-    const payload={name:(sf.name||"").trim(),email:(sf.email||"").trim(),avatar:sf.avatar||null};
+    const payload={name:(sf.name||"").trim(),email:(sf.email||"").trim()};
     if(!payload.name){dispatchSolanaToast(t("msg.genericShort"),"error");return;}
     if(AUTH_URL){
       setProfileSaving(true);
@@ -6904,7 +6849,7 @@ function SettingsView(){
         const merged=normalizeItem({...user,...d.user},"user");
         setUser(merged);
         saveUsers(users.map(u=>u.id===user.id?merged:u));
-        setSf({name:merged.name||"",email:merged.email||"",avatar:merged.avatar??null});
+        setSf({name:merged.name||"",email:merged.email||""});
         dispatchSolanaToast(t("msg.profileUpdated"),"success",5000);
       }catch(e){
         dispatchSolanaToast(t("signup.serverDown"),"error");
@@ -6967,16 +6912,9 @@ function SettingsView(){
 
       {/* ── Profile (all users) ── */}
       <AccordionSection title={t("settings.accordion.profile")}>
-        {/* Avatar upload */}
+        {/* Profile preview */}
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-          <UserAvatar user={{...user,avatar:sf.avatar||user?.avatar}} size={52} fontSize={16}/>
-          <div>
-            <label style={{display:"inline-block",padding:"5px 10px",borderRadius:6,border:"1.5px solid #DDD6CC",fontSize:11,fontWeight:600,color:G,cursor:"pointer",fontFamily:"inherit",background:"transparent"}}>
-              {sf.avatar?t("action.changePhoto"):t("action.upload")}
-              <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const err=validateUpload(f,UPLOAD_RULES.avatar);if(err){dispatchSolanaToast(err,"error");e.target.value="";return;}void compressAvatarDataUrl(f).then(dataUrl=>setSf(p=>({...p,avatar:dataUrl}))).catch(ex=>dispatchSolanaToast(ex?.message||"No se pudo procesar la imagen.","error")).finally(()=>{e.target.value="";});}}/>
-            </label>
-            {sf.avatar&&<button style={{marginLeft:7,fontSize:10,color:"#991B1B",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setSf(p=>({...p,avatar:null}))}>✕</button>}
-          </div>
+          <UserAvatar user={user} size={52} fontSize={16}/>
         </div>
         <div style={{display:"grid",gap:8}}>
           <div><label className="lbl">{t("label.name")}</label><input className="inp" value={sf.name} onChange={e=>setSf(p=>({...p,name:e.target.value}))}/></div>
@@ -7159,9 +7097,9 @@ function SettingsView(){
                 <div style={{background:"#F5F3FF",borderRadius:7,padding:"10px 12px",margin:"4px 0",border:"1px solid #DDD6EE"}}>
                   <div style={{fontSize:10,color:"#6B7B72",marginBottom:8,lineHeight:1.4}}>{t("team.resetPasswordHint")}</div>
                   <label className="lbl">{t("label.tempPassword")}</label>
-                  <div style={{position:"relative"}}>
-                    <input className="inp" style={{fontSize:14,marginBottom:8,paddingRight:52}} type={showResetPw?"text":"password"} value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
-                    <button type="button" style={{...SETTINGS_PW_TOGGLE_STYLE,top:"42%"}} onClick={()=>setShowResetPw(v=>!v)}>{showResetPw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+                  <div style={{position:"relative",marginBottom:8}}>
+                    <input className="inp" style={{fontSize:14,paddingRight:52}} type={showResetPw?"text":"password"} value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
+                    <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowResetPw(v=>!v)}>{showResetPw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
                   </div>
                   <div style={{display:"flex",gap:6}}>
                     <button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} disabled={resetBusy} onClick={async()=>{
@@ -7557,10 +7495,10 @@ function SolanaExpenses(){
     if(!user?.id||!users?.length)return;
     const resolved=resolveSessionUser(user,users);
     if(!resolved)return;
-    if(resolved.avatar!==user.avatar||resolved.name!==user.name||resolved.email!==user.email){
+    if(resolved.name!==user.name||resolved.email!==user.email){
       setUser(resolved);
     }
-  },[users,user?.id,user?.avatar,user?.name,user?.email]);
+  },[users,user?.id,user?.name,user?.email]);
   const departmentsWithStats=React.useMemo(
     ()=>enrichDepartmentsForUI(departments,expenses,cats,users,false),
     [departments,expenses,cats,users],
@@ -9029,7 +8967,6 @@ function SolanaExpenses(){
                 <UserAvatar user={sessionUser||user} size={28} fontSize={9}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:10,fontWeight:600,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</div>
-                  <div style={{fontSize:8,color:"rgba(250,247,242,0.75)"}}>{user.role==="superadmin"?t("role.superadmin"):isAdmin?t("role.admin"):t("role.user")}</div>
                 </div>
               </button>
             </div>
