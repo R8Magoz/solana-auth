@@ -4878,14 +4878,14 @@ export function ReportsView(){
                     fill={FACTURA_HEX} rx="2" opacity="0.9">
                     <title>{m.label} Facturas: {fmt(m.facturas)}</title>
                   </rect>}
-                  {gH>0&&<text x={x+BAR_W/2} y={gY-4}
-                    textAnchor="middle" fontSize="7" fill={G} fontWeight="600">
-                    {fmt(m.gastos)}
-                  </text>}
-                  {fH>0&&<text x={x+BAR_W+BAR_GAP+BAR_W/2} y={fY-4}
-                    textAnchor="middle" fontSize="7" fill={FACTURA_HEX} fontWeight="600">
-                    {fmt(m.facturas)}
-                  </text>}
+                  {m.total>0&&<text
+                    x={SIDE_PAD + i * GROUP_W + GROUP_W / 2}
+                    y={Math.min(gY, fY) - 5}
+                    textAnchor="middle"
+                    fontSize="11"
+                    fill="#4B5E52"
+                    fontWeight="600"
+                  >{fmt(m.total)}</text>}
                   <text x={SIDE_PAD + i * GROUP_W + GROUP_W / 2} y={TOP_PAD+CHART_H+14}
                     textAnchor="middle" fontSize="9" fill="#9CAA9F">
                     {m.label}
