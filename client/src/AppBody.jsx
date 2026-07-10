@@ -1326,7 +1326,7 @@ function SidebarUserRow({name,active,open,onToggle}){
 function SidebarUserMenu({items}){
   const [hovered,setHovered]=useState(null);
   return(
-    <div className="fade-in" style={{position:"absolute",bottom:"100%",left:8,right:8,marginBottom:6,background:"#52114B",border:"1px solid rgba(250,247,242,0.15)",borderRadius:10,overflow:"hidden",zIndex:20,boxShadow:"0 12px 32px rgba(0,0,0,0.28),0 2px 8px rgba(0,0,0,0.12)",padding:"4px 0"}}>
+    <div className="fade-in" style={{position:"absolute",bottom:"100%",left:8,right:8,marginBottom:6,background:G,border:"1px solid rgba(250,247,242,0.15)",borderRadius:10,overflow:"hidden",zIndex:20,boxShadow:"0 12px 32px rgba(0,0,0,0.28),0 2px 8px rgba(0,0,0,0.12)",padding:"4px 0"}}>
       {items.map((item,i)=>(
         <button
           key={item.key}
@@ -1475,7 +1475,7 @@ export class AppErrorBoundary extends React.Component{
               <pre style={{fontSize:9,color:"#6B7B72",whiteSpace:"pre-wrap",wordBreak:"break-all",marginTop:6,maxHeight:120,overflow:"auto",background:"#F5F0EA",borderRadius:6,padding:8}}>{info?.componentStack||err?.stack||"Sin información de pila"}</pre>
             </details>
             <div style={{display:"flex",gap:8}}>
-              <button style={{flex:1,background:"#cc4e00",color:"#fff",border:"none",borderRadius:7,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>window.location.reload()}>Recargar aplicación</button>
+              <button style={{flex:1,background:G,color:"#fff",border:"none",borderRadius:7,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>window.location.reload()}>Recargar aplicación</button>
               <button style={{flex:1,background:"transparent",color:"#991B1B",border:"1.5px solid #ECA3A3",borderRadius:7,padding:"9px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>{Object.keys(localStorage).filter(k=>k.startsWith("sol-")).forEach(k=>localStorage.removeItem(k));window.location.reload();}}>Borrar datos y recargar</button>
             </div>
           </div>
@@ -1487,12 +1487,12 @@ export class AppErrorBoundary extends React.Component{
 }
 
 /* ── SOLANA WORDMARK (text) ────────────────────────────────────────────────
-   theme="light" = light text on #cc4e00 bars. theme="dark" = brand orange on light UIs.
+   theme="light" = light text on G bars. theme="dark" = brand orange on light UIs.
 ────────────────────────────────────────────────────────────────────────── */
 function SolanaLogo({theme="light", size="md", variant:_v}){
   const fontSize={sm:20,md:26,lg:40}[size]||26;
   const onDarkBg=theme==="light";
-  const color=onDarkBg?"#FFFFFF":"#cc4e00";
+  const color=onDarkBg?"#FFFFFF":G;
   return(
     <div className="solana-wordmark-wrap" style={{
       display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:1.05,
@@ -1784,7 +1784,7 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
           <button
             type="button"
             onClick={()=>window.open(cloudinaryPdfUrl(srcUrl),"_blank")}
-            style={{padding:"8px 16px",background:"#cc4e00",color:"white",
+            style={{padding:"8px 16px",background:G,color:"white",
               border:"none",borderRadius:6,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>
             Ver PDF
           </button>
@@ -1805,8 +1805,8 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
                 window.open(cloudinaryPdfUrl(srcUrl),"_blank");
               }
             }}
-            style={{padding:"8px 16px",background:"#F5F0EA",color:"#cc4e00",
-              border:"1px solid #cc4e00",borderRadius:6,cursor:"pointer",
+            style={{padding:"8px 16px",background:"#F5F0EA",color:G,
+              border:`1px solid ${G}`,borderRadius:6,cursor:"pointer",
               fontSize:13,fontFamily:"inherit"}}>
             {t?t("action.downloadPdf"):"Descargar PDF"}
           </button>
@@ -1894,7 +1894,7 @@ const AUTH={
   logoWrap:{display:"flex",flexDirection:"column",alignItems:"center",
     marginBottom:28,textAlign:"center",background:"transparent",backgroundColor:"transparent"},
   title:{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:700,
-    color:"#cc4e00",marginTop:16,marginBottom:4,lineHeight:1.2},
+    color:G,marginTop:16,marginBottom:4,lineHeight:1.2},
   subtitle:{fontSize:13,color:"#9a7860",marginBottom:0,lineHeight:1.5},
   /* Form */
   lbl:{display:"block",fontSize:10,fontWeight:700,color:"#9d6840",
@@ -1902,9 +1902,9 @@ const AUTH={
   inp:{width:"100%",background:"#FAFAF8",border:"1.5px solid #DDD6CC",
     borderRadius:8,padding:"10px 12px",fontSize:14,color:"#1a1008",
     fontFamily:"inherit",outline:"none",boxSizing:"border-box",transition:"border-color 0.15s"},
-  inpFocus:{borderColor:"#cc4e00",boxShadow:"0 0 0 3px rgba(204,78,0,0.09)"},
+  inpFocus:{borderColor:G,boxShadow:"0 0 0 3px rgba(204,78,0,0.09)"},
   /* Buttons */
-  btnPrimary:{width:"100%",background:"#cc4e00",color:"#FAF7F2",border:"none",
+  btnPrimary:{width:"100%",background:G,color:"#FAF7F2",border:"none",
     borderRadius:9,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",
     fontFamily:"inherit",transition:"background 0.15s,transform 0.1s,opacity 0.15s"},
   btnPrimaryHover:{background:"#a83f00"},
@@ -1920,7 +1920,7 @@ const AUTH={
     marginBottom:14,lineHeight:1.5},
   /* Footer / secondary links */
   footer:{marginTop:20,textAlign:"center"},
-  link:{background:"none",border:"none",color:"#cc4e00",fontSize:12,
+  link:{background:"none",border:"none",color:G,fontSize:12,
     cursor:"pointer",fontFamily:"inherit",textDecoration:"underline",
     padding:"2px 0"},
   muted:{fontSize:11,color:"#9CAA9F",textAlign:"center",marginTop:12},
@@ -2001,7 +2001,7 @@ function AuthStatusCard({statusType,tl,onBack}){
           </span>
         </div>
         <button onClick={onBack} style={{...AUTH.btnPrimary,background:"transparent",
-          color:"#cc4e00",border:"1.5px solid #cc4e00",fontSize:13,padding:"10px"}}>
+          color:G,border:`1.5px solid ${G}`,fontSize:13,padding:"10px"}}>
           {tl("status.backToLogin")}
         </button>
         <div style={AUTH.muted}>Solana · Vilanova i la Geltrú · est. 2026</div>
@@ -2059,7 +2059,7 @@ function SignupScreen({onBack}){
           {tl("status.pendingVerification.title")}
         </div>
         <button onClick={onBack} style={{...AUTH.btnPrimary,background:"transparent",
-          color:"#cc4e00",border:"1.5px solid #cc4e00",fontSize:13,padding:"10px"}}>
+          color:G,border:`1.5px solid ${G}`,fontSize:13,padding:"10px"}}>
           {tl("status.backToLogin")}
         </button>
         <div style={AUTH.muted}>Solana · Vilanova i la Geltrú · est. 2026</div>
@@ -2126,7 +2126,7 @@ function SignupScreen({onBack}){
           <button
             style={loading?{...AUTH.btnPrimary,...AUTH.btnPrimaryLoading}:AUTH.btnPrimary}
             onMouseEnter={e=>{if(!loading)Object.assign(e.currentTarget.style,AUTH.btnPrimaryHover);}}
-            onMouseLeave={e=>{if(!loading)e.currentTarget.style.background="#cc4e00";}}
+            onMouseLeave={e=>{if(!loading)e.currentTarget.style.background=G;}}
             onClick={doSignup} disabled={loading}>
             {loading?"…":tl("signup.submit")}
           </button>
@@ -2573,7 +2573,7 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
               if (!loading) Object.assign(e.currentTarget.style, AUTH.btnPrimaryHover);
             }}
             onMouseLeave={e => {
-              if (!loading) e.currentTarget.style.background = "#cc4e00";
+              if (!loading) e.currentTarget.style.background = G;
             }}
             onClick={doLogin}
             disabled={loading}
@@ -3736,7 +3736,7 @@ function DetailPanel(){
                               action==="paid"?"#065F46":"#9CAA9F"
                 }}/>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:600,color:"#cc4e00"}}>
+                  <div style={{fontSize:12,fontWeight:600,color:G}}>
                     {actionLabel(ev.action)}
                     {ev.by && <span style={{fontWeight:400,color:"#6B7B72"}}> · {getU(ev.by).name}</span>}
                   </div>
@@ -4251,14 +4251,14 @@ export function ExpensesView(){
           <option value="recurring_paid">Costes fijos · pagados</option>
         </select>
         <div style={{display:"flex",alignItems:"center",border:"1.5px solid",
-          borderColor:isDefaultRange?"#DDD6CC":"#cc4e00",borderRadius:7,
+          borderColor:isDefaultRange?"#DDD6CC":G,borderRadius:7,
           overflow:"hidden",background:"#FAFAF9",height:32,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px",
             borderRight:"1px solid #EDE8E0"}}>
             <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
               textTransform:"uppercase",letterSpacing:"0.05em"}}>Desde</span>
             <input type="date" style={{border:"none",background:"transparent",
-              fontSize:12,color:"#cc4e00",outline:"none",cursor:"pointer",
+              fontSize:12,color:G,outline:"none",cursor:"pointer",
               fontFamily:"inherit",width:110}}
               value={pendingFrom}
               onChange={e => setPendingFrom(e.target.value)}/>
@@ -4267,7 +4267,7 @@ export function ExpensesView(){
             <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
               textTransform:"uppercase",letterSpacing:"0.05em"}}>Hasta</span>
             <input type="date" style={{border:"none",background:"transparent",
-              fontSize:12,color:"#cc4e00",outline:"none",cursor:"pointer",
+              fontSize:12,color:G,outline:"none",cursor:"pointer",
               fontFamily:"inherit",width:110}}
               value={pendingTo}
               onChange={e => setPendingTo(e.target.value)}/>
@@ -4277,7 +4277,7 @@ export function ExpensesView(){
           disabled={isDefaultRange && (!catFlt||catFlt==="all") && (!submFlt||submFlt==="all") && !expSrc}
           style={{padding:"5px 14px",borderRadius:7,fontSize:12,fontWeight:600,
             border:"none",cursor:isDefaultRange?"default":"pointer",
-            background:isDefaultRange?"#EDE8E0":"#cc4e00",
+            background:isDefaultRange?"#EDE8E0":G,
             color:isDefaultRange?"#9CAA9F":"#fff",
             fontFamily:"inherit",height:32,display:"flex",alignItems:"center",gap:6}}
           onClick={()=>{
@@ -4355,7 +4355,7 @@ export function ExpensesView(){
                       <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:FACTURA,color:"#fff",flexShrink:0,display:"inline-block"}}>FACTURA</span>
                     )}
                     {!isInvRow&&expKindFlt!=="invoice"&&(
-                      <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:"#cc4e00",color:"#fff",flexShrink:0,display:"inline-block"}}>GASTO</span>
+                      <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:G,color:"#fff",flexShrink:0,display:"inline-block"}}>GASTO</span>
                     )}
                     <span
                       className={statusToneClass(st)}
@@ -4546,8 +4546,8 @@ export function ApprovalsView(){
             ["invoice",t("expenses.filterInvoices"),cInv],
           ].map(([k,lb,cnt])=>{
             const active=typeFilter===k;
-            const fill=k==="invoice"&&active?FACTURA_HEX:active?"#cc4e00":"#fff";
-            const border=active?(k==="invoice"?FACTURA_HEX:"#cc4e00"):"#DDD6CC";
+            const fill=k==="invoice"&&active?FACTURA_HEX:active?G:"#fff";
+            const border=active?(k==="invoice"?FACTURA_HEX:G):"#DDD6CC";
             const color=active?"#fff":"#4B5E52";
             return(
               <button key={k} type="button" style={{padding:"3px 12px",borderRadius:18,fontSize:11,fontWeight:600,border:`1.5px solid ${border}`,background:fill,color,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setTypeFilter(k)}>
@@ -4611,7 +4611,7 @@ export function ApprovalsView(){
                           <span style={{
                             fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,
                             textTransform:"uppercase",letterSpacing:"0.05em",
-                            background:"#cc4e00",
+                            background:G,
                             color:"#fff",
                             display:"inline-block"
                           }}>GASTO</span>
@@ -4722,7 +4722,7 @@ function PaymentCalendar({reportExpenses}){
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
         {cells.map((d,i)=>(
           <div key={i} onClick={()=>d&&setSelDay(selDay===d?null:d)} style={{minHeight:32,borderRadius:5,background:d&&isToday(d)?"rgba(204,78,0,0.08)":d&&events[d]?"#FFFBF5":"#FAFAF8",border:d&&isToday(d)?`1.5px solid ${G}`:d&&selDay===d?"1.5px solid "+T:"1px solid transparent",padding:"3px 2px",cursor:d?"pointer":"default",transition:"border 0.1s"}}>
-            {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(events[d]||[]).map((ev,j)=><div key={j} title={ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?FACTURA_HEX:"#cc4e00"}}/>)}</div></>}
+            {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(events[d]||[]).map((ev,j)=><div key={j} title={ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?FACTURA_HEX:G}}/>)}</div></>}
           </div>
         ))}
       </div>
@@ -4733,7 +4733,7 @@ function PaymentCalendar({reportExpenses}){
             ?<div style={{fontSize:11,color:"#9CAA9F"}}>Sin movimientos</div>
             :(events[selDay]||[]).map((ev,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,marginBottom:3,gap:6}}>
-              <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?FACTURA_HEX:"#cc4e00",display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
+              <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?FACTURA_HEX:G,display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
               <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(ev.amount)}</span>
               <button style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{resetForm();go("expenses");setTimeout(()=>{setDetailId(ev.id);setPanel("detail");},50);}}>{t("action.viewAll")}</button>
             </div>
@@ -4742,7 +4742,7 @@ function PaymentCalendar({reportExpenses}){
       )}
       <div style={{display:"flex",gap:12,marginTop:8,fontSize:9}}>
         <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:FACTURA_HEX,display:"inline-block"}}/>{t("expenses.typeInvoice")}</span>
-        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#cc4e00",display:"inline-block"}}/>{t("nav.expenses")}</span>
+        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:G,display:"inline-block"}}/>{t("nav.expenses")}</span>
       </div>
     </div>
   );
@@ -4934,7 +4934,7 @@ export function ReportsView(){
           <svg width="100%" height="56" viewBox="0 0 280 56" preserveAspectRatio="none" style={{display:"block"}} aria-hidden="true">
             <rect x="0" y="0" width="280" height="56" fill="none"/>
             <line x1="4" y1="50" x2="276" y2="50" stroke="#E5E0D8" strokeWidth="1"/>
-            <polyline fill="none" stroke="#cc4e00" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={sparklinePts}/>
+            <polyline fill="none" stroke={G} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={sparklinePts}/>
           </svg>
         )}
         {!trendLoad&&!trendErr&&!sparklinePts&&<div style={{fontSize:11,color:"#9CAA9F"}}>—</div>}
@@ -4951,7 +4951,7 @@ export function ReportsView(){
         )}
         <div style={{display:"flex",gap:16,marginBottom:12,alignItems:"center"}}>
           <div style={{display:"flex",alignItems:"center",gap:5}}>
-            <div style={{width:10,height:10,borderRadius:2,background:"#cc4e00"}}/>
+            <div style={{width:10,height:10,borderRadius:2,background:G}}/>
             <span style={{fontSize:11,color:"#4B5E52"}}>Gastos</span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -4996,7 +4996,7 @@ export function ReportsView(){
                     >No hay datos</text>
                   )}
                   {gH>0&&<rect x={x} y={gY} width={BAR_W} height={gH}
-                    fill="#cc4e00" rx="2" opacity="0.9">
+                    fill={G} rx="2" opacity="0.9">
                     <title>{m.label} Gastos: {fmt(m.gastos)}</title>
                   </rect>}
                   {fH>0&&<rect x={x+BAR_W+BAR_GAP} y={fY} width={BAR_W} height={fH}
@@ -5004,7 +5004,7 @@ export function ReportsView(){
                     <title>{m.label} Facturas: {fmt(m.facturas)}</title>
                   </rect>}
                   {gH>0&&<text x={x+BAR_W/2} y={gY-4}
-                    textAnchor="middle" fontSize="7" fill="#cc4e00" fontWeight="600">
+                    textAnchor="middle" fontSize="7" fill={G} fontWeight="600">
                     {fmt(m.gastos)}
                   </text>}
                   {fH>0&&<text x={x+BAR_W+BAR_GAP+BAR_W/2} y={fY-4}
@@ -5032,7 +5032,7 @@ export function ReportsView(){
       <div className="card" style={{marginBottom:11}}>
         <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:12}}>{t("reports.byCategory")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
         {catTotals.length===0&&<div style={{color:"#9CAA9F",fontSize:12}}>Sin datos para el filtro seleccionado</div>}
-        {catTotals.map(({cat,total})=>(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt(cat);setExpFlt("all");go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{tCat(cat,t)}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:"#cc4e00",width:`${total/maxC*100}%`,transition:"width 0.4s"}}/></div></div>))}
+        {catTotals.map(({cat,total})=>(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt(cat);setExpFlt("all");go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{tCat(cat,t)}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:G,width:`${total/maxC*100}%`,transition:"width 0.4s"}}/></div></div>))}
       </div>
       <div style={{borderTop:"1px solid #F0EBE3",margin:"2px 0 12px"}}/>
       {/* Per person — approved share + submitted count + expandable log */}
@@ -5057,7 +5057,7 @@ export function ReportsView(){
                     </div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontWeight:700,fontSize:16,color:"#cc4e00"}}>{fmt(userTotal)}</div>
+                    <div style={{fontWeight:700,fontSize:16,color:G}}>{fmt(userTotal)}</div>
                   </div>
                   <span style={{fontSize:10,color:"#9CAA9F",marginLeft:4}}>
                     {open?"▲":"▼"}
@@ -5078,7 +5078,7 @@ export function ReportsView(){
                             style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:i<userRows.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}}
                             onClick={()=>{resetForm();setView("expenses");setDetailId(row.id);setPanel("detail");}}
                           >
-                            <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#EDE9FE":"#fde8d6",color:kind==="invoice"?FACTURA:"#cc4e00"}}>
+                            <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#EDE9FE":"#fde8d6",color:kind==="invoice"?FACTURA:G}}>
                               {kind==="invoice"?"FACTURA":"GASTO"}
                             </span>
                             <div style={{flex:1,minWidth:0}}>
@@ -5090,7 +5090,7 @@ export function ReportsView(){
                               </div>
                             </div>
                             <div style={{textAlign:"right",flexShrink:0}}>
-                              <div style={{fontSize:13,fontWeight:700,color:"#cc4e00"}}>{fmt(rowAmount)}</div>
+                              <div style={{fontSize:13,fontWeight:700,color:G}}>{fmt(rowAmount)}</div>
                               <div style={{fontSize:9,fontWeight:600,color:rowStatus==="approved"?"#065F46":"#78350F"}}>
                                 {t("status."+rowStatus)}
                               </div>
@@ -5189,9 +5189,9 @@ function ApiIntegrationsCard({ inline = false }) {
 ─────────────────────────────────────────────────────────────────────────── */
 function AdminReadme(){
   const[open,setOpen]=useState(false);
-  const S={heading:{fontWeight:700,fontSize:11,color:"#cc4e00",marginBottom:4,marginTop:10},
+  const S={heading:{fontWeight:700,fontSize:11,color:G,marginBottom:4,marginTop:10},
            body:{fontSize:10,color:"#4B5E52",lineHeight:1.7},
-           code:{fontFamily:"monospace",fontSize:9,background:"#F5F0EA",padding:"2px 5px",borderRadius:4,color:"#cc4e00"}};
+           code:{fontFamily:"monospace",fontSize:9,background:"#F5F0EA",padding:"2px 5px",borderRadius:4,color:G}};
   return(
     <div className="card" style={{marginBottom:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}
@@ -5272,7 +5272,7 @@ function AppLogPanelBody(){
   };
   const LEVEL_COLOR={error:"#DC2626",warn:"#D97706",info:"#9CAA9F"};
   const EVENT_COLOR={
-    "auth:login":"#cc4e00","auth:init":"#9CA3AF","auth:boot":"#9CA3AF",
+    "auth:login":G,"auth:init":"#9CA3AF","auth:boot":"#9CA3AF",
     "session_idle_expired":"#D97706","password_changed":"#D97706",
     "expense_submitted":"#065F46","bill_submitted":"#065F46",
     "item_approved":"#065F46","item_rejected":"#DC2626",
@@ -5296,7 +5296,7 @@ function AppLogPanelBody(){
           <div key={i} style={{padding:"4px 0",borderBottom:"1px solid #F5F0EA",display:"flex",gap:7,alignItems:"baseline"}}>
             <span style={{color:"#9CAA9F",flexShrink:0,width:68}}>{(e.ts||"").slice(11,19)}</span>
             <span style={{fontWeight:700,color:LEVEL_COLOR[e.level]||"#9CAA9F",flexShrink:0,width:36}}>{(e.level||"info").toUpperCase()}</span>
-            <span style={{color:EVENT_COLOR[e.event]||"#cc4e00",fontWeight:600,flexShrink:0,minWidth:140}}>{e.event}</span>
+            <span style={{color:EVENT_COLOR[e.event]||G,fontWeight:600,flexShrink:0,minWidth:140}}>{e.event}</span>
             <span style={{color:"#6B7B72",wordBreak:"break-all"}}>
               {Object.entries(e).filter(([k])=>!["ts","level","event"].includes(k))
                 .map(([k,v])=>`${k}=${typeof v==="object"?JSON.stringify(v):v}`).join(" · ")}
@@ -5596,7 +5596,7 @@ function PendingUsersPanel(){
   if(pending.length===0)return null;
 
   return(
-    <AccordionSection title={t("settings.accordion.pending")} badge={pending.length} defaultOpen accent="#7C3AED">
+    <AccordionSection title={t("settings.accordion.pending")} badge={pending.length} defaultOpen accent={G}>
       <div>
         <p style={{fontSize:11,color:"#6B7B72",marginBottom:9}}>{t("settings.pendingUsersDesc")}</p>
         {msg&&<div style={{marginBottom:8,padding:"5px 9px",borderRadius:6,background:msg.includes("aprobado")||msg.includes("denegado")?"#D1FAE5":"#FEE2E2",color:msg.includes("aprobado")||msg.includes("denegado")?"#065F46":"#991B1B",fontSize:11}}>{msg}</div>}
@@ -6581,9 +6581,9 @@ export function SettingsView(){
                         borderRadius: 20,
                         border: '1px solid',
                         cursor: 'pointer',
-                        background: isSelected ? '#cc4e00' : '#FAF7F4',
+                        background: isSelected ? G : '#FAF7F4',
                         color: isSelected ? '#fff' : '#6B7B72',
-                        borderColor: isSelected ? '#cc4e00' : '#DDD6CC',
+                        borderColor: isSelected ? G : '#DDD6CC',
                         fontWeight: isSelected ? 600 : 400,
                       }}
                     >
@@ -8067,11 +8067,11 @@ export default function App(){
   };
 
   /* ── EARLY RETURN — after all hooks, before derived values that need user ── */
-  if(!user)return<div style={{position:"relative",minHeight:"100vh",background:"#cc4e00"}}>
+  if(!user)return<div style={{position:"relative",minHeight:"100vh",background:G}}>
     <div style={{opacity:appReady?1:0,transition:"opacity 400ms ease",transitionDelay:appReady?"600ms":"0ms"}}>
       <LoginScreen users={users} onLogin={u=>{appLog("info","auth:login",{userId:u.id,role:u.role});try{localStorage.setItem(LAST_ACTIVITY_KEY,String(Date.now()));}catch(e){}setIdleTrackingEnabled(true);setUser(u);}} passwords={passwords} sessionRestoreAttempted={sessionRestoreAttempted}/>
     </div>
-    <div style={{position:"fixed",inset:0,background:"#cc4e00",display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms ease, opacity 400ms ease",transitionDelay:appReady?"600ms":"0ms"}}>
+    <div style={{position:"fixed",inset:0,background:G,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms ease, opacity 400ms ease",transitionDelay:appReady?"600ms":"0ms"}}>
       <div style={{opacity:1}}><SolanaLogo theme="light" size="lg"/></div>
     </div>
   </div>;
@@ -8324,10 +8324,10 @@ export default function App(){
               boxShadow:"0 4px 32px rgba(204,78,0,0.14),0 1px 4px rgba(0,0,0,0.06)",
               border:"1px solid #EDE8E0"}}>
               <div style={{marginBottom:20}}><SolanaLogo theme="dark" size="md" variant="auth"/></div>
-              <div style={{fontSize:18,fontWeight:700,color:"#cc4e00",marginBottom:8,
+              <div style={{fontSize:18,fontWeight:700,color:G,marginBottom:8,
                 fontFamily:"'Playfair Display',serif"}}>{t("session.expiredTitle")}</div>
               <p style={{fontSize:13,color:"#9a7860",marginBottom:24,lineHeight:1.6}}>{t("session.expiredMsg")}</p>
-              <button style={{width:"100%",background:"#cc4e00",color:"#FAF7F2",border:"none",
+              <button style={{width:"100%",background:G,color:"#FAF7F2",border:"none",
                 borderRadius:9,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",
                 fontFamily:"inherit"}}
                 onClick={()=>{setSessionExpired(false);}}>

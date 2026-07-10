@@ -165,7 +165,7 @@ async function sendEmail({ to, subject, html, logEvent, logData = {} }) {
 function emailLogoHeaderHtml() {
   const base = String(APP_URL || '').replace(/\/+$/, '');
   if (!base) {
-    return '<div style="font-family:Georgia,\'Times New Roman\',serif;font-size:24px;color:#3C0A37;margin-bottom:6px;text-align:center;font-weight:700">Solana</div>';
+    return '<div style="font-family:Georgia,\'Times New Roman\',serif;font-size:24px;color:#cc4e00;margin-bottom:6px;text-align:center;font-weight:700">Solana</div>';
   }
   const src = `${base}/logo.png`;
   return `<div style="text-align:center;margin-bottom:8px">
@@ -229,14 +229,14 @@ const passwordResetEmailHtml = (tempPassword) => {
       Tu contraseña temporal es:
     </p>
     <div style="background:#F5F0EA;border-radius:8px;padding:20px;text-align:center;margin:0 0 24px;">
-      <code style="font-size:22px;font-weight:700;letter-spacing:0.12em;color:#3C0A37;">
+      <code style="font-size:22px;font-weight:700;letter-spacing:0.12em;color:#cc4e00;">
         ${tempPassword}
       </code>
     </div>
     <p style="font-size:12px;color:#9CAA9F;margin:0 0 28px;">
       Caduca en 24 horas.
     </p>
-    <a href="${APP_URL}" style="display:inline-block;background:#3C0A37;color:#fff;
+    <a href="${APP_URL}" style="display:inline-block;background:#cc4e00;color:#fff;
       text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;">
       Entrar en Solana →
     </a>
