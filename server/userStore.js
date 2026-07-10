@@ -270,6 +270,45 @@ function adminPatchUser(targetId, body) {
   return { ok: true, user: findUserByIdPublic(targetId) };
 }
 
+/** Count expense/bill rows that reference this user (FK-safe delete check). */
+function countUserReferences(id) {
+  const uid = String(id || '').trim();
+  if (!uid) return 0;
+  const exp = db.prepare(`
+    SELECT COUNT(*) AS c FROM expenses
+    WHERE userId = ? OR ownerId = ? OR approvedBy = ? OR rejectedBy = ? OR paidConfirmedBy = ?
+  `).get(uid, uid, uid, uid, uid);
+  const bills = db.prepare(`
+    SELECT COUNT(*) AS c FROM bills
+    WHERE userId = ? OR ownerId = ? OR paidBy = ?
+  `).get(uid, uid, uid);
+  return (exp?.c || 0) + (bills?.c || 0);
+}
+
+/** Soft-delete: keep row for FK/historical names; revoke login via accountStatus. */
+function softDeleteUserById(id) {
+  const uid = String(id || '').trim();
+  if (!uid) return { ok: false };
+  const r = db.prepare(`
+    UPDATE users SET accountStatus = 'deleted', approvalStatus = 'denied' WHERE id = ?
+  `).run(uid);
+  return { ok: r.changes > 0 };
+}
+
+/** Public user rows for id list (includes deleted — for expense name resolution). */
+function getPublicUsersByIds(ids) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of ids || []) {
+    const id = String(raw || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const u = findUserByIdPublic(id);
+    if (u) out.push(u);
+  }
+  return out;
+}
+
 /**
  * Hard delete user row. Fails with FK if expenses reference this user.
  */
@@ -314,6 +353,13 @@ function countUsers() {
   return db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
 }
 
+/** Log when a SQLite UPDATE silently matches zero rows (a common data-integrity footgun). */
+function warnIfNoChanges(info, context, detail) {
+  if (!info || info.changes !== 0) return false;
+  console.error(`[${context}] UPDATE matched 0 rows`, detail || '');
+  return true;
+}
+
 module.exports = {
   insertUser,
   insertUsersFromJsonRows,
@@ -335,9 +381,13 @@ module.exports = {
   replaceUserById,
   adminPatchUser,
   deleteUserByIdHard,
+  softDeleteUserById,
+  countUserReferences,
+  getPublicUsersByIds,
   upsertSeedUser,
   deleteUsersWithSeedTag,
   countUsers,
+  warnIfNoChanges,
   userToParams,
   rowToUser,
 };

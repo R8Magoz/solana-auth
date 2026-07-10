@@ -15,7 +15,21 @@ import {
   DEF_CATS,
   AUTH_URL,
 } from './constants.js';
-import { mkT } from './i18n.js';
+import { mkT as mkTBase } from './i18n.js';
+
+const TR_LABEL_PATCH = {
+  'action.addExpense': 'Añadir gasto',
+  'dash.addBill': 'Añadir factura',
+  'dash.addExpense': 'Añadir gasto',
+  'settings.categories': 'Categorías y reglas de aprobación',
+  'login.subtitle': 'Gestión de gastos',
+  'settings.apiIntegrations': 'API e integraciones',
+};
+
+const mkT = () => (key, vars = {}) => {
+  if (TR_LABEL_PATCH[key] != null) return TR_LABEL_PATCH[key];
+  return mkTBase()(key, vars);
+};
 import {
   API,
   debugApiRequest,
@@ -30,14 +44,29 @@ import {
   enqueueOfflineOp,
 } from './api.js';
 import {
-  fmt,
-  fmtKpi,
   fmtDate,
   parseMoney,
   inits,
   applyServerSettings,
   getCurrency,
 } from './helpers.js';
+
+/** Unified currency display — es-ES, thousands separator, 2 decimals, € suffix */
+const fmt = (n) =>
+  new Intl.NumberFormat('es-ES', {
+    style: 'currency',
+    currency: getCurrency(),
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: true,
+  }).format(Number(n || 0));
+
+const fmtKpi = (n) => {
+  const full = fmt(n);
+  const idx = full.lastIndexOf(',');
+  if (idx === -1) return { whole: full, cents: '' };
+  return { whole: full.slice(0, idx), cents: full.slice(idx) };
+};
 import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 
 let _confirmHandler = null;
@@ -313,26 +342,73 @@ const finalizeApproverIdList=(canonicalIds,users)=>{
   const admins=getAdminIds(u);
   return valid.length>=2?valid:admins;
 };
+/** Users selectable in pickers (split, owner, approvers). */
+const pickableUsers=(users)=>(users||[]).filter(u=>u&&u.accountStatus==="active"&&u.id!=="system");
+/** Merge API user rows into roster (keeps deleted users for historical names). */
+const mergeUsersById=(prev,next)=>{
+  const map=new Map((prev||[]).map(u=>[u.id,u]));
+  for(const u of next||[]){
+    if(u&&u.id)map.set(u.id,normalizeItem(u,"user"));
+  }
+  return [...map.values()];
+};
+const applyExpensesApiPayload=(de,{setUsers,setExpenses})=>{
+  if(de&&Array.isArray(de.users)&&de.users.length){
+    setUsers(prev=>mergeUsersById(prev,de.users.map(u=>normalizeItem(u,"user"))));
+  }
+  if(de&&Array.isArray(de.expenses)){
+    setExpenses(mapExpensesFromApi(de.expenses));
+  }
+};
+const EDIT_FIELD_LABELS={
+  amount:"Importe",description:"Descripción",category:"Categoría",date:"Fecha",
+  notes:"Notas",departmentId:"Departamento",ivaRate:"IVA",ivaAmount:"Importe IVA",
+  vendor:"Proveedor",dueDate:"Vencimiento",expenseType:"Tipo",paidBy:"Reparto",splitMode:"Modo reparto",
+};
+const expenseApproverTokens=(exp)=>{
+  if(Array.isArray(exp?.approvalRequired)&&exp.approvalRequired.length>0)return exp.approvalRequired;
+  if(Array.isArray(exp?.approversJson)&&exp.approversJson.length>0)return exp.approversJson;
+  if(typeof exp?.approversJson==="string"){
+    try{
+      const parsed=JSON.parse(exp.approversJson||"null");
+      if(Array.isArray(parsed)&&parsed.length>0)return parsed;
+    }catch(e){}
+  }
+  if(Array.isArray(exp?.approvers)&&exp.approvers.length>0)return exp.approvers;
+  return null;
+};
 const effectiveExpenseApproverIds=(exp,cats,users)=>{
-  // First check expense's own approversJson (set at creation)
-  const fromExp = exp?.approversJson ||
-    (Array.isArray(exp?.approvers) ? exp.approvers : []);
-  if (Array.isArray(fromExp) && fromExp.length > 0) return fromExp;
-
-  // Fall back to category assignment
+  const fromExpense=expenseApproverTokens(exp);
+  if(fromExpense)return canonicalApproverIdList(fromExpense,users);
   const cat = (cats || []).find(c =>
     c.name && c.name.toLowerCase() === (exp?.category || '').toLowerCase()
   );
   if (cat && Array.isArray(cat.approverIds) && cat.approverIds.length > 0) {
-    return cat.approverIds;
+    return canonicalApproverIdList(cat.approverIds,users);
   }
-
-  // Last resort: superadmins only
   return (users || [])
     .filter(u => u.role === 'superadmin')
     .map(u => u.id);
 };
+const canUserReviewExpense=(item,{user,isAdmin,cats,users})=>{
+  if(!isAdmin||!item||!user?.id)return false;
+  const approverIds=effectiveExpenseApproverIds(item,cats,users);
+  if(!approverIds.includes(user.id))return false;
+  if(approvalVoteFor(item.approvals||{},user.id,users)==="approved")return false;
+  if(item._apiType==="expense"){
+    return item.status==="submitted"||item.status==="approved";
+  }
+  const st=getItemStatus(item,cats,users);
+  return st==="pending"||st==="approved";
+};
 const getItemStatus=(item,cats,users)=>{
+  if (item && item._apiType === 'expense' && item.status) {
+    const s = String(item.status);
+    if (s === 'deleted') return 'deleted';
+    if (s === 'rejected') return 'rejected';
+    if (s === 'approved') return 'approved';
+    if (s === 'submitted' || s === 'draft') return 'pending';
+  }
   if (item && item._apiType === 'expense' && item.status === 'rejected') return 'rejected';
   if (item && item._apiType === 'expense' && item.status === 'approved') return 'approved';
   if (item && item._apiType === 'expense' && item.status === 'deleted') return 'deleted';
@@ -345,8 +421,7 @@ const getItemStatus=(item,cats,users)=>{
       const reqIdsRaw=Array.isArray(item.approvalRequired)&&item.approvalRequired.length>0?item.approvalRequired:null;
       let reqIds;
       if(reqIdsRaw&&(users&&users.length)){
-        const canon=canonicalApproverIdList(reqIdsRaw,users);
-        reqIds=finalizeApproverIdList(canon,users);
+        reqIds=canonicalApproverIdList(reqIdsRaw,users);
       }else{
         reqIds=reqIdsRaw;
       }
@@ -367,10 +442,12 @@ const getItemStatus=(item,cats,users)=>{
   if(approverIds.every(id=>v(id)==="approved"))return"approved";
   return"pending";
 };
-/** Gastos aprobados y facturas (invoice) marcadas como pagadas cuentan para el gasto del departamento. */
+/** Aprobados (gasto o factura) cuentan; rechazados no; facturas sin importar estado de pago. */
 function expenseCountsTowardDeptSpend(e,cats,users){
-  if(e&&e.expenseType==="invoice")return e.paymentStatus==="paid";
-  return getItemStatus(e,cats,users)==="approved";
+  if(!e)return false;
+  const st=getItemStatus(e,cats,users);
+  if(st==="rejected")return false;
+  return st==="approved";
 }
 /** @param useServerTotals when true and rows include spent from GET /departments, keep server figures */
 function enrichDepartmentsForUI(depts,expenses,cats,users,useServerTotals){
@@ -430,6 +507,94 @@ const shareEurInExpense=(e,userId)=>{
   return(Number(p.amount)||0)/base*tot;
 };
 const fmtExpenseAmt=e=>fmt(Number(e?.amount)||0);
+
+function expenseSortDate(e){
+  const raw=e.expenseType==="invoice"?(e.dueDate||e.date):e.date;
+  return String(raw||"").slice(0,10);
+}
+function expenseMonthKey(e){return expenseSortDate(e).slice(0,7);}
+function formatMonthGroupLabel(ym){
+  if(!ym||ym.length<7)return ym||"";
+  const parts=ym.split("-");
+  const d=new Date(Number(parts[0]),Number(parts[1])-1,1);
+  const label=d.toLocaleDateString("es-ES",{month:"long",year:"numeric"});
+  return label.charAt(0).toUpperCase()+label.slice(1);
+}
+function groupExpensesByMonth(list){
+  const sorted=[...list].sort((a,b)=>expenseSortDate(b).localeCompare(expenseSortDate(a)));
+  const groups=[];
+  const indexByYm=new Map();
+  for(const e of sorted){
+    const ym=expenseMonthKey(e);
+    if(!indexByYm.has(ym)){
+      indexByYm.set(ym,groups.length);
+      groups.push({ym,label:formatMonthGroupLabel(ym),items:[],total:0});
+    }
+    const g=groups[indexByYm.get(ym)];
+    g.items.push(e);
+    g.total+=eurForExpense(e);
+  }
+  return groups;
+}
+function downloadExpensesCsv(src,{cats,users,t,user,ivaM="both",fileTag="expenses",saveExp,expenses}){
+  const now=new Date().toISOString();
+  if(!AUTH_URL&&saveExp&&expenses){
+    const updatedSrc=src.map(e=>({...e,auditTrail:[...(e.auditTrail||[]),{action:"exported",by:user.id,at:now,meta:{format:"csv",ivaMode:ivaM}}]}));
+    saveExp(expenses.map(e=>{const u=updatedSrc.find(x=>x.id===e.id);return u||e;}));
+  }
+  appLog("info","csv_exported",{ivaMode:ivaM,count:src.length,userId:user.id,codes:src.map(e=>e.itemCode||e.id)});
+  const headerBase=[
+    t("item.code"),
+    t("csv.itemType"),
+    t("label.date"),
+    t("label.description"),
+    t("label.category"),
+    t("label.status"),
+    t("filter.submitter"),
+    t("label.paidBy"),
+    t("label.notes"),
+    t("label.approvers"),
+  ];
+  const amountHeaders=
+    ivaM==="with_iva"?["Total con IVA"]
+    :ivaM==="without_iva"?["Base imponible"]
+    :["Base imponible","Cuota IVA","Total con IVA"];
+  const rows=[
+    [...headerBase,...amountHeaders],
+    ...src.map(e=>{
+      const approverIds=effectiveExpenseApproverIds(e,cats,users);
+      const amtEur=eurForExpense(e);
+      const ivaAmt=e.ivaAmount!=null?Number(e.ivaAmount):0;
+      const base=e.ivaRate!=null?Math.round((amtEur-ivaAmt)*100)/100:amtEur;
+      const tipo=e.expenseType==="invoice"?"Factura":"Gasto";
+      const commonFields=[
+        e.itemCode||e.id,
+        tipo,
+        e.date,
+        e.description,
+        e.category,
+        getItemStatus(e,cats,users),
+        (users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name,
+        e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),
+        e.notes||"",
+        approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";"),
+      ];
+      if(ivaM==="with_iva")return[...commonFields,amtEur];
+      if(ivaM==="without_iva")return[...commonFields,base];
+      return[...commonFields,base,ivaAmt,amtEur];
+    }),
+  ];
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`solana-${fileTag}-${ivaM}-${new Date().toISOString().slice(0,10)}.csv`});
+  a.click();URL.revokeObjectURL(a.href);
+}
+const UPCOMING_BILL_WINDOWS={
+  "15d":{days:15,title:"Próximas facturas · 15 días"},
+  "1m":{days:30,title:"Próximas facturas · 1 mes"},
+  "3m":{days:90,title:"Próximas facturas · 3 meses"},
+  "6m":{days:180,title:"Próximas facturas · 6 meses"},
+  "1y":{days:365,title:"Próximas facturas · 1 año"},
+};
 function guessMimeFromReceiptPath(p){
   if(!p) return 'application/octet-stream';
   let stem = String(p);
@@ -502,7 +667,8 @@ function expenseFromApi(row){
     id:row.id,
     _apiType:"expense",
     status:row.status,
-    amount:eur,
+    amount:amt,
+    amountEUR:eur,
     description:row.description,
     category:row.category,
     date:row.date,
@@ -515,6 +681,10 @@ function expenseFromApi(row){
     receiptType:row.receiptPath?guessMimeFromReceiptPath(row.receiptPath):null,
     receiptPath:row.receiptPath||null,
     rejectionNote:row.rejectionNote||null,
+    approvedBy:row.approvedBy||null,
+    approvedAt:row.approvedAt!=null?Number(row.approvedAt):null,
+    rejectedBy:row.rejectedBy||null,
+    rejectedAt:row.rejectedAt!=null?Number(row.rejectedAt):null,
     itemCode:row.id,
     approvals,
     approvalRequired,
@@ -824,6 +994,48 @@ function receiptEffectiveMime(file){
   if(dot===-1)return raw||"";
   const ext=n.slice(dot);
   return RECEIPT_EXT_TO_MIME[ext]||raw||"";
+}
+
+function isMobileReceiptCapture(){
+  if(typeof navigator==="undefined")return false;
+  const ua=navigator.userAgent||"";
+  return /iPhone|iPad|iPod|Android|Mobile/i.test(ua)||(typeof window!=="undefined"&&window.innerWidth<768);
+}
+
+/** Resize profile photos so base64 fits SQLite avatar column (500k chars). */
+function compressAvatarDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        const maxDim=256;
+        let w=img.naturalWidth||maxDim;
+        let h=img.naturalHeight||maxDim;
+        if(w>maxDim||h>maxDim){
+          if(w>=h){h=Math.max(1,Math.round(h*maxDim/w));w=maxDim;}
+          else{w=Math.max(1,Math.round(w*maxDim/h));h=maxDim;}
+        }
+        const canvas=document.createElement("canvas");
+        canvas.width=w;
+        canvas.height=h;
+        const ctx=canvas.getContext("2d");
+        if(!ctx){resolve(String(reader.result));return;}
+        ctx.drawImage(img,0,0,w,h);
+        let quality=0.85;
+        let out=canvas.toDataURL("image/jpeg",quality);
+        while(out.length>480000&&quality>0.45){
+          quality-=0.1;
+          out=canvas.toDataURL("image/jpeg",quality);
+        }
+        resolve(out);
+      };
+      img.onerror=()=>reject(new Error("No se pudo procesar la imagen."));
+      img.src=String(reader.result);
+    };
+    reader.onerror=()=>reject(new Error("No se pudo leer el archivo."));
+    reader.readAsDataURL(file);
+  });
 }
 
 const UPLOAD_RULES={
@@ -1556,6 +1768,16 @@ const AUTH={
     padding:"2px 0"},
   muted:{fontSize:11,color:"#9CAA9F",textAlign:"center",marginTop:12},
 };
+const PW_TOGGLE_STYLE={
+  position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",
+  background:"none",border:"none",color:"#9CAA9F",fontSize:11,cursor:"pointer",
+  fontFamily:"inherit",fontWeight:600,padding:"2px 4px",
+};
+const SETTINGS_PW_TOGGLE_STYLE={
+  position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",
+  background:"none",border:"none",color:"#9CAA9F",fontSize:11,cursor:"pointer",
+  fontFamily:"inherit",fontWeight:600,padding:"2px 4px",
+};
 
 /* Focused input helper — returns className + onFocus/onBlur + style */
 function useInpFocus(){
@@ -1767,53 +1989,62 @@ function SignupScreen({onBack}){
    Shown immediately after login when user.mustChangePassword === true.
    Blocks all app access until a new password is set.
 ─────────────────────────────────────────────────────────────────────────── */
-function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, onDone}){
+function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, onDone, onSignOut}){
   const t=React.useMemo(()=>mkT(),[]);
   const [nw,setNw]=useState("");
   const [cn,setCn]=useState("");
   const [msg,setMsg]=useState("");
   const [ok,setOk]=useState(false);
+  const [saving,setSaving]=useState(false);
   const [showNw,setShowNw]=useState(false);
   const [showCn,setShowCn]=useState(false);
 
   const doChange=async()=>{
+    if(saving||ok)return;
     setMsg("");
     if(nw.length<8){setMsg(t("forceChange.tooShort"));return;}
     if(COMMON_PASSWORDS.has(nw.toLowerCase())){setMsg(t("forceChange.common"));return;}
     if(nw!==cn){setMsg(t("forceChange.mismatch"));return;}
 
-    // 1. Persist to backend (clears mustChangePassword in users.json — prevents loop on next login)
-    if(AUTH_URL){
-      const sessionToken=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
-      if(!sessionToken){
-        setMsg(t("msg.sessionExpired"));
-        return;
-      }
-      try{
+    setSaving(true);
+    try{
+      if(AUTH_URL){
+        const sessionToken=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
+        if(!sessionToken){
+          setMsg(t("msg.sessionExpired"));
+          return;
+        }
         const r=await fetch(AUTH_URL+"/auth/change-password",{
           method:"POST",
           headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionToken},
           body:JSON.stringify({userId:user.id,newPassword:nw}),
         });
         const d=await r.json().catch(()=>({}));
-        if(!r.ok){setMsg(d.error||t("forceChange.tooShort"));return;}
-      }catch{
-        setMsg(t("signup.serverDown"));
-        return;
+        if(!r.ok||!d.ok){
+          setMsg(d.error||t("msg.genericShort"));
+          return;
+        }
+      }else{
+        const existing=passwords?.[user.id];
+        if(existing&&nw===existing){
+          setMsg("La nueva contraseña no puede ser igual a la anterior.");
+          return;
+        }
       }
+
+      savePasswords({...passwords,[user.id]:nw});
+      const updated=users.map(u=>u.id===user.id?{...u,mustChangePassword:false}:u);
+      saveUsers(updated);
+      appLog("info","forced_password_changed",{userId:user.id});
+      setOk(true);
+      dispatchSolanaToast("Contraseña actualizada correctamente.", "success", 5000);
+      setTimeout(()=>onDone({...user,mustChangePassword:false}),600);
+    }catch{
+      setMsg(t("signup.serverDown"));
+    }finally{
+      setSaving(false);
     }
-
-    // 2. Update local password store and user record (keeps local fallback in sync)
-    savePasswords({...passwords,[user.id]:nw});
-    const updated=users.map(u=>u.id===user.id?{...u,mustChangePassword:false}:u);
-    saveUsers(updated);
-    appLog("info","forced_password_changed",{userId:user.id});
-    setOk(true);
-    dispatchSolanaToast("Contraseña actualizada correctamente.", "success", 5000);
-    setTimeout(()=>onDone({...user,mustChangePassword:false}),600);
   };
-
-  const toggleStyle={position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#9CAA9F",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600,padding:"2px 4px"};
 
   return(
     <div style={AUTH.page}>
@@ -1829,8 +2060,8 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
             <div style={{position:"relative"}}>
               <input className="auth-inp" style={{...AUTH.inp,paddingRight:52}} type={showNw?"text":"password"} value={nw}
                 onChange={e=>{setNw(e.target.value);setMsg("");}}
-                onKeyDown={e=>e.key==="Enter"&&doChange()} autoFocus/>
-              <button type="button" style={toggleStyle} onClick={()=>setShowNw(v=>!v)}>{showNw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+                onKeyDown={e=>e.key==="Enter"&&!saving&&doChange()} autoFocus disabled={saving||ok}/>
+              <button type="button" style={PW_TOGGLE_STYLE} onClick={()=>setShowNw(v=>!v)}>{showNw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
             </div>
           </div>
           <div style={{marginBottom:16}}>
@@ -1838,15 +2069,20 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
             <div style={{position:"relative"}}>
               <input className="auth-inp" style={{...AUTH.inp,paddingRight:52}} type={showCn?"text":"password"} value={cn}
                 onChange={e=>{setCn(e.target.value);setMsg("");}}
-                onKeyDown={e=>e.key==="Enter"&&doChange()}/>
-              <button type="button" style={toggleStyle} onClick={()=>setShowCn(v=>!v)}>{showCn?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+                onKeyDown={e=>e.key==="Enter"&&!saving&&doChange()} disabled={saving||ok}/>
+              <button type="button" style={PW_TOGGLE_STYLE} onClick={()=>setShowCn(v=>!v)}>{showCn?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
             </div>
           </div>
           {msg&&<div style={AUTH.errorBanner}>{msg}</div>}
           {ok&&<div style={{...AUTH.infoBanner,marginBottom:10,fontSize:11}}>{t("msg.passwordChanged")}</div>}
-          <button style={AUTH.btnPrimary} onClick={doChange} disabled={ok}>
-            {t("forceChange.submit")}
+          <button style={AUTH.btnPrimary} onClick={()=>void doChange()} disabled={ok||saving}>
+            {saving?"…":t("forceChange.submit")}
           </button>
+          {onSignOut&&(
+            <div style={{marginTop:16,textAlign:"center"}}>
+              <button type="button" style={AUTH.link} onClick={()=>onSignOut()}>{t("nav.signOut")}</button>
+            </div>
+          )}
         </div>
         <div style={AUTH.muted}>Solana · Vilanova i la Geltrú · est. 2026</div>
       </div>
@@ -2122,19 +2358,7 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
             />
             <button
               type="button"
-              style={{
-                position: "absolute",
-                right: 10,
-                bottom: 10,
-                background: "none",
-                border: "none",
-                color: "#9CAA9F",
-                fontSize: 11,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                fontWeight: 600,
-                padding: "2px 4px"
-              }}
+              style={PW_TOGGLE_STYLE}
               onClick={() => setShowPw(v => !v)}
             >
               {showPw ? tl("login.hidePw") : tl("login.showPw")}
@@ -2221,33 +2445,46 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
   
 function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,showSplitError=false,actionColor=G}){
   const expAmt=Number(totalAmount)||0;
-  const ownerId=user?.id||"";
   useEffect(()=>{if(spMode==="percentage")setSpMode("amount");},[spMode,setSpMode]);
   const calcEq=(arr,amt)=>{
-    const on=arr.filter(s=>s.checked);const n=on.length||1;
-    const eqPct=parseFloat((100/n).toFixed(2));
-    const eqAmt=parseFloat(((amt||0)/n).toFixed(2));
-    return arr.map(s=>s.checked?{...s,percent:eqPct,value:eqAmt}:{...s,percent:0,value:0});
+    const on=arr.filter(s=>s.checked);
+    const n=on.length;
+    if(!n)return arr.map(s=>({...s,percent:0,value:0}));
+    const rows=on.map(s=>{
+      const eqAmt=parseFloat(((amt||0)/n).toFixed(2));
+      const eqPct=parseFloat((100/n).toFixed(2));
+      return{...s,percent:eqPct,value:eqAmt};
+    });
+    const sum=rows.reduce((a,r)=>a+r.value,0);
+    if(rows.length&&amt>0&&Math.abs(sum-amt)>0.01){
+      const last={...rows[rows.length-1]};
+      last.value=parseFloat((last.value+(amt-sum)).toFixed(2));
+      last.percent=Math.round((last.value/amt)*10000)/100;
+      rows[rows.length-1]=last;
+    }
+    const byId=Object.fromEntries(rows.map(r=>[r.userId,r]));
+    return arr.map(s=>byId[s.userId]||{...s,percent:0,value:0});
   };
+  useEffect(()=>{
+    if(!splitOn||splits.length===0)return;
+    if(splits.filter(s=>s.checked).length<2)return;
+    setSplits(prev=>calcEq(prev,expAmt));
+  },[expAmt,splitOn]);
   const checkedCount=splits.filter(s=>s.checked).length;
   const totAmt=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
   const amtMismatch=splitOn&&spMode==="amount"&&expAmt>0&&Math.abs(totAmt-expAmt)>0.01;
   const toggleSplit=()=>{
     if(users.length<2)return;
-    if(splitOn){setSplitOn(false);setSpMode("amount");return;}
-    const n=users.length;
-    const pct=parseFloat((100/n).toFixed(2));
-    const next=users.map(u=>({userId:u.id,checked:true,percent:pct,value:0}));
+    if(splitOn){setSplitOn(false);setSplits([]);setSpMode("amount");return;}
     setSpMode("amount");
-    setSplits(calcEq(next,expAmt));
+    setSplits(users.map(u=>({userId:u.id,checked:false,percent:0,value:0})));
     setSplitOn(true);
   };
   const toggleUser=uid=>{
-    if(uid===ownerId)return;
     const next=splits.map(s=>s.userId===uid?{...s,checked:!s.checked}:s);
     const nOn=next.filter(s=>s.checked).length;
-    if(nOn<2){setSplitOn(false);setSplits([]);setSpMode("amount");return;}
-    setSplits(calcEq(next,expAmt));
+    if(nOn>=2)setSplits(calcEq(next,expAmt));
+    else setSplits(next.map(s=>({...s,percent:0,value:0})));
   };
   return(
     <div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:0,opacity:users.length<2?0.92:1}} title={users.length<2?t("split.minTwoTeam"):""}>
@@ -2255,7 +2492,7 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
         <div>
           <div style={{fontWeight:600,fontSize:12}}>{t("label.splitExpense")}</div>
           {!splitOn&&<div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{users.length<2?t("split.minTwoTeam"):t("label.divideTeam")}</div>}
-          {splitOn&&<div style={{fontSize:9,color:"#6B7B72",marginTop:3}}>{t("split.submitterLocked")}</div>}
+          {splitOn&&checkedCount<2&&<div style={{fontSize:9,color:"#6B7B72",marginTop:3}}>Selecciona al menos 2 participantes</div>}
         </div>
         <div onClick={toggleSplit} style={{width:36,height:20,borderRadius:10,background:splitOn?actionColor:(users.length<2?"#E5E0D8":"#C9C0B4"),cursor:users.length<2?"not-allowed":"pointer",position:"relative",transition:"background 0.2s ease",flexShrink:0,opacity:users.length<2?0.65:1}}>
           <div style={{position:"absolute",top:2,left:splitOn?18:2,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
@@ -2271,12 +2508,10 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
           <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
             {splits.map(s=>{
               const u=users.find(x=>x.id===s.userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
-              const locked=s.userId===ownerId;
               return(
-                <div key={s.userId} onClick={()=>!locked&&toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+actionColor):"1.5px solid #DDD6CC",background:s.checked?(actionColor==="#D97706"?"rgba(217,119,6,0.10)":"rgba(60,10,55,0.06)"):"#fff",cursor:locked?"default":"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s,border-color 0.2s ease,background-color 0.2s ease"}}>
+                <div key={s.userId} onClick={()=>toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+actionColor):"1.5px solid #DDD6CC",background:s.checked?(actionColor==="#D97706"?"rgba(217,119,6,0.10)":"rgba(60,10,55,0.06)"):"#fff",cursor:"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s,border-color 0.2s ease,background-color 0.2s ease"}}>
                   <UserAvatar user={u} size={20} fontSize={7}/>
                   <span style={{fontSize:12,fontWeight:s.checked?600:400}}>{u.name.split(" ")[0]}</span>
-                  {locked&&<span style={{fontSize:9,color:"#9CAA9F"}}>*</span>}
                 </div>
               );
             })}
@@ -2424,19 +2659,19 @@ function ExpenseFormFields({
         </div>
         <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={form.category} style={rs(hi&&!String(form.category||"").trim())} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
-            <option value="">{t("label.category")}</option>
+            <option value="" disabled hidden>{t("label.category")}</option>
             {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
           </select>
         </div>
         <div><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={form.departmentId||""} style={rs(hi&&!String(form.departmentId||"").trim())} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))}>
-            <option value="">{departments.length===0?t("msg.deptRequired"):t("label.department")}</option>
+            <option value="" disabled hidden>{departments.length===0?t("msg.deptRequired"):t("label.department")}</option>
             {departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </div>
         <div><label className="lbl">Titular del gasto <span style={{color:"#A32D2D"}}>*</span></label>
           <select className="inp" value={ownerId} style={rs(hi&&!ownerId)} onChange={e=>setForm(p=>({...p,ownerId:e.target.value}))}>
-            {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+            {pickableUsers(users).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         </div>
         <div><label className="lbl">{t("form.ivaRate")}</label>
@@ -2564,7 +2799,7 @@ function ExpenseFormFields({
       <SplitAllocationEditor
         t={t}
         user={ownerUser}
-        users={users}
+        users={pickableUsers(users)}
         totalAmount={expAmt}
         splitOn={splitOn}
         setSplitOn={setSplitOn}
@@ -2685,7 +2920,7 @@ function NewPanel(){
         ownerUser={ownerUser}
         activeCats={activeCats}
         departments={departments}
-        users={users}
+        users={pickableUsers(users)}
         ivaRates={ivaRates}
         hi={hi}
         rs={rs}
@@ -2800,8 +3035,23 @@ function DetailPanel(){
       if(objUrl)try{URL.revokeObjectURL(objUrl);}catch(e2){}
     };
   },[editMode,detailId,expenses]);
+  const [serverAudit,setServerAudit]=useState([]);
+  useEffect(()=>{
+    if(!AUTH_URL||!detailId){setServerAudit([]);return;}
+    let dead=false;
+    void API.get("/expenses/"+encodeURIComponent(detailId)+"/audit").then(d=>{
+      if(dead)return;
+      setServerAudit(Array.isArray(d.entries)?d.entries:[]);
+    }).catch(()=>{if(!dead)setServerAudit([]);});
+    return()=>{dead=true;};
+  },[detailId,e?.updatedAt,e?.status]);
   if(!e)return null;
-  const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
+  const getU=id=>{
+    const u=users.find(x=>x.id===id);
+    if(!u)return{name:UNKNOWN_USER_NAME,color:"#999"};
+    if(u.accountStatus==="deleted")return{...u,name:`${u.name} (inactivo)`};
+    return u;
+  };
   const approverIds=effectiveExpenseApproverIds(e,cats,users);
   const st=getItemStatus(e,cats,users);
   const detailAccent = e && e.expenseType === 'invoice' ? '#C4622D' : '#3C0A37';
@@ -2832,7 +3082,43 @@ function DetailPanel(){
         action: tr.action,
         by: tr.by,
         note: tr.note || null,
+        editChanges: tr.meta?.fields ? tr.meta.fields.map(f=>({field:f,from:null,to:null})) : null,
       });
+    });
+
+    const auditEventToAction={
+      expense_submitted:"submitted",
+      expense_created:"created",
+      expense_approved:"approved",
+      expense_rejected:"rejected",
+      expense_comment_added:"comment_added",
+      expense_marked_paid:"paid",
+      expense_deleted:"deleted",
+      expense_reapproval_required:"reapproval_required",
+    };
+    serverAudit.forEach(entry=>{
+      if(entry.event==="expense_edited"&&Array.isArray(entry.changes)&&entry.changes.length>0){
+        events.push({
+          id:`srv-audit-${entry.id}`,
+          at:entry.ts,
+          type:"audit",
+          action:"edited",
+          by:entry.userId,
+          editChanges:entry.changes,
+        });
+        return;
+      }
+      const mapped=auditEventToAction[entry.event];
+      if(mapped){
+        events.push({
+          id:`srv-audit-${entry.id}`,
+          at:entry.ts,
+          type:"audit",
+          action:mapped,
+          by:entry.userId,
+          note:entry.note||null,
+        });
+      }
     });
 
     // comments
@@ -2862,7 +3148,7 @@ function DetailPanel(){
     }
 
     return events.sort((a, b) => String(a.at).localeCompare(String(b.at)));
-  }, [e]);
+  }, [e, serverAudit]);
 
   const actionLabel = (action) => ({
     'created':              'Enviado',
@@ -2884,7 +3170,7 @@ function DetailPanel(){
     'expense_rejected':     'Rechazado',
     'expense_comment_added':'Nota añadida',
     'expense_recurring_spawned': 'Nueva ocurrencia generada',
-    'reopen':               'Reabierto',
+    'reapproval_required':  'Requiere nueva revisión',
     'deleted':              'Eliminado',
   })[action] || action;
   const startEdit=()=>{
@@ -3054,7 +3340,7 @@ function DetailPanel(){
             ownerUser={editOwnerUser}
             activeCats={activeCats}
             departments={departments}
-            users={users}
+            users={pickableUsers(users)}
             ivaRates={ivaRates}
             hi={editHi}
             rs={editRs}
@@ -3210,7 +3496,7 @@ function DetailPanel(){
           </div>
         );})}
       </div>
-      {((AUTH_URL&&e._apiType==="expense"&&(e.status==="submitted"||e.status==="pending"||(isAdmin&&e.status==="approved"))&&isAdmin&&approverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved")||(!AUTH_URL&&isAdmin&&approverIds.includes(user.id)&&(st==="pending"||(isAdmin&&st==="approved"))&&approvalVoteFor(e.approvals,user.id,users)!=="approved"))&&(
+      {canUserReviewExpense(e,{user,isAdmin,cats,users})&&(
         <div style={{marginTop:9,borderTop:`1px solid ${detailAccent}`,paddingTop:9}}>
           <label className="lbl" style={{marginBottom:3,color:detailAccent}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
@@ -3265,6 +3551,13 @@ function DetailPanel(){
                     {ev.by && <span style={{fontWeight:400,color:"#6B7B72"}}> · {getU(ev.by).name}</span>}
                   </div>
                   {ev.note && <div style={{fontSize:11,color:"#6B7B72",marginTop:2}}>{ev.note}</div>}
+                  {Array.isArray(ev.editChanges)&&ev.editChanges.length>0&&(
+                    <div style={{fontSize:11,color:"#6B7B72",marginTop:4,lineHeight:1.45}}>
+                      {ev.editChanges.map((ch,i)=>(
+                        <div key={i}>{EDIT_FIELD_LABELS[ch.field]||ch.field}: {String(ch.from??"—")} → {String(ch.to??"—")}</div>
+                      ))}
+                    </div>
+                  )}
                   <div style={{fontSize:10,color:"#C4B8C0",marginTop:1}}>{fmtDate(ev.at)}</div>
                 </div>
               </div>
@@ -3428,35 +3721,34 @@ export function DashboardView(){
   const spentActive=deptBudgetActive.reduce((s,d)=>s+Number(d.spent||0),0);
   const budgetRemainingTotal=budgetTotalActive-spentActive;
   const budgetProgressPct=budgetTotalActive>0 ? (spentActive/budgetTotalActive)*100 : 0;
-  const upcoming15=[];
-  expenses.filter(e=>invoiceIsUpcomingUnpaid(e,cats,users)).forEach(e=>{
+  const [billsWindow,setBillsWindow]=useState("15d");
+  const billsWindowCfg=UPCOMING_BILL_WINDOWS[billsWindow]||UPCOMING_BILL_WINDOWS["15d"];
+  const upcomingBills=[];
+  expenses.filter(e=>e.expenseType==="invoice"&&e.paymentStatus==="unpaid"&&e.dueDate).forEach(e=>{
     const diff=daysUntilISO(String(e.dueDate).slice(0,10));
-    if(diff!=null&&diff>=0&&diff<=15)upcoming15.push({...e,name:e.vendor||e.description,daysUntil:diff});
+    if(diff!=null&&diff>=0&&diff<=billsWindowCfg.days)upcomingBills.push({...e,name:e.vendor||e.description,daysUntil:diff});
   });
-  upcoming15.sort((a,b)=>a.daysUntil-b.daysUntil);
+  upcomingBills.sort((a,b)=>a.daysUntil-b.daysUntil);
   const fixedTipActive=fixedTipOpen||fixedTipHover;
-  const monthSpendByDept=React.useMemo(()=>{
-    const now = new Date();
-    const ym = now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
-    const spendByDept = {};
-    (expenses||[]).forEach(e => {
-      if(e.status==="approved" && e.expenseType!=="invoice" && e.date && e.date.startsWith(ym) && e.departmentId){
-        spendByDept[e.departmentId] = (spendByDept[e.departmentId]||0) + (Number(e.amount)||0);
-      }
-    });
-    return spendByDept;
-  },[expenses]);
   const alerts=React.useMemo(()=>{
-    return (departments||[]).filter(d => {
+    return (departmentsWithStats||[]).filter(d => {
       if(!d.budget || Number(d.budget) <= 0 || d.archived) return false;
-      const spent = monthSpendByDept[d.id] || 0;
+      const spent = Number(d.spent) || 0;
       return spent >= Number(d.budget) * 0.70;
     }).map(d => {
-      const spent = monthSpendByDept[d.id] || 0;
-      const pct = Math.round((spent / Number(d.budget)) * 100);
+      const spent = Number(d.spent) || 0;
+      const budget = Number(d.budget) || 0;
+      const pct = budget > 0 ? Math.round((spent / budget) * 100) : (spent > 0 ? 100 : 0);
       return { ...d, spent, pct };
     }).sort((a,b) => b.pct - a.pct);
-  },[departments,monthSpendByDept]);
+  },[departmentsWithStats]);
+  const [budgetNotifications,setBudgetNotifications]=useState([]);
+  useEffect(()=>{
+    if(!AUTH_URL)return;
+    void API.get("/expenses/budget-alerts").then(d=>{
+      if(d&&Array.isArray(d.alerts))setBudgetNotifications(d.alerts);
+    }).catch(()=>{});
+  },[expenses]);
   useEffect(()=>{
     if(!fixedTipActive||!fixedTipIconRef.current)return;
     const r=fixedTipIconRef.current.getBoundingClientRect();
@@ -3485,6 +3777,19 @@ export function DashboardView(){
             <div style={{fontSize:13,fontWeight:600,color:"#5C1057"}}>{myPending.length} pendiente(s) de tu aprobación</div>
           </div>
           <button className="btn-sm" style={{fontSize:12}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
+        </div>
+      )}
+      {budgetNotifications.length>0&&(
+        <div style={{background:"#FEE2E2",border:"1px solid #DC2626",borderRadius:11,padding:"10px 13px",marginBottom:10}}>
+          <div style={{fontSize:13,fontWeight:600,color:"#991B1B",marginBottom:6}}>Presupuesto de departamento excedido</div>
+          <div style={{display:"grid",gap:6}}>
+            {budgetNotifications.slice(0,5).map(n=>(
+              <div key={n.id} style={{fontSize:12,color:"#7F1D1D"}}>
+                <strong>{n.departmentName||"Departamento"}</strong>
+                {" · "}{fmt(Number(n.spent)||0)} de {fmt(Number(n.budget)||0)}
+              </div>
+            ))}
+          </div>
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:16}}>
@@ -3589,7 +3894,7 @@ export function DashboardView(){
                 <div key={a.id} style={{background:tone.bg,borderLeft:`3px solid ${tone.border}`,borderRadius:8,padding:"8px 10px"}}>
                   <div style={{fontWeight:700,fontSize:12,marginBottom:2}}>{a.name||"—"}</div>
                   <div style={{fontSize:11,color:"#6B7B72"}}>
-                    {a.pct}% del presupuesto mensual · {fmt(a.spent)} de {fmt(Number(a.budget)||0)}
+                    {a.pct}% del presupuesto · {fmt(a.spent)} de {fmt(Number(a.budget)||0)}
                   </div>
                   <div style={{height:4,background:"rgba(0,0,0,0.08)",borderRadius:2,marginTop:6}}>
                     <div style={{height:"100%",width:`${Math.min(100,Math.max(0,a.pct))}%`,background:tone.border,borderRadius:2}}/>
@@ -3643,15 +3948,24 @@ export function DashboardView(){
       </div>
       {/* Upcoming invoices · 15 days */}
       <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:9}}>{t("dash.upcomingBills")}</div>
-        {upcoming15.length===0
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:9,flexWrap:"wrap"}}>
+          <div style={{fontWeight:600,fontSize:13}}>{billsWindowCfg.title}</div>
+          <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}} value={billsWindow} onChange={e=>setBillsWindow(e.target.value)}>
+            <option value="15d">15 días</option>
+            <option value="1m">1 mes</option>
+            <option value="3m">3 meses</option>
+            <option value="6m">6 meses</option>
+            <option value="1y">1 año</option>
+          </select>
+        </div>
+        {upcomingBills.length===0
           ?<div style={{fontSize:11,color:"#9CAA9F",padding:"4px 0"}}>{t("dash.noBillsSoon")}</div>
-          :upcoming15.map((b,i)=>{
+          :upcomingBills.map((b,i)=>{
             const dueTxt=b.daysUntil===0?t("dash.dueToday"):b.daysUntil===1?t("dash.dueTomorrow"):t("dash.dueIn").replace("{n}",String(b.daysUntil));
             const dueS=String(b.dueDate||"").slice(0,10);
             const dayBox=dueS.length>=10?parseInt(dueS.slice(8,10),10):"—";
             return(
-              <div key={b.id+"-"+i} style={{display:"flex",alignItems:"center",padding:"6px 0",borderBottom:i<upcoming15.length-1?"1px solid #F5F0EA":"none",gap:9}}>
+              <div key={b.id+"-"+i} style={{display:"flex",alignItems:"center",padding:"6px 0",borderBottom:i<upcomingBills.length-1?"1px solid #F5F0EA":"none",gap:9}}>
                 <div style={{width:32,height:32,borderRadius:6,background:G,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   <div style={{fontSize:13,fontWeight:800,color:"#FAF7F2",lineHeight:1}}>{dayBox}</div>
                 </div>
@@ -3708,9 +4022,9 @@ export function ExpensesView(){
   const{t,expenses,cats,users,byStatus,filtered,expFlt,setExpFlt,expSrc,setExpSrc,
         catFlt,setCatFlt,submFlt,setSubmFlt,dateFrom,setDateFrom,dateTo,setDateTo,activeFilterCount,
         detailId,setDetailId,panel,setPanel,openNew,resetForm,isAdmin,user,aNote,setANote,approve,clearMyExpenseFilter,totApproved,
-        expKindFlt,setExpKindFlt,markExpensePaid,recurringFlt,setRecurringFlt}=useApp();
+        expKindFlt,setExpKindFlt,markExpensePaid,recurringFlt,setRecurringFlt,saveExp}=useApp();
   const [payOpenId,setPayOpenId]=useState(null);
-  const [filtersOpen,setFiltersOpen]=useState(false);
+  const [filtersOpen,setFiltersOpen]=useState(true);
   const [payDate,setPayDate]=useState(()=>new Date().toISOString().slice(0,10));
   const pendingTotal=expenses.filter(e=>getItemStatus(e,cats)==="pending").reduce((s,e)=>s+eurForExpense(e),0);
   const naturalFrom = expenses.length
@@ -3724,6 +4038,11 @@ export function ExpensesView(){
   const [pendingTo,   setPendingTo]   = React.useState(naturalTo);
 
   const isDefaultRange = pendingFrom === naturalFrom && pendingTo === naturalTo;
+  const monthGroups=useMemo(()=>groupExpensesByMonth(filtered),[filtered]);
+  const exportFilteredCsv=()=>{
+    downloadExpensesCsv(filtered,{cats,users,t,user,ivaM:"both",fileTag:"gastos-filtrados",saveExp,expenses});
+    dispatchSolanaToast(t("action.exportCSV"),"success",3000);
+  };
   return(
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
@@ -3756,6 +4075,7 @@ export function ExpensesView(){
           <option value="invoice">Facturas</option>
         </select>
         <button className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} onClick={openNew}>{t("action.newExpense")}</button>
+        <button type="button" className="btn-secondary" style={{fontSize:12,padding:"6px 12px"}} disabled={filtered.length===0} onClick={exportFilteredCsv}>{t("action.exportCSV")}</button>
       </div>
       <div style={{fontSize:11,color:"#9CAA9F",marginBottom:6}}>
         {cPending} pendiente{cPending!==1?"s":""} · {cApproved} aprobado{cApproved!==1?"s":""}
@@ -3766,7 +4086,7 @@ export function ExpensesView(){
           style={{fontSize:11,color:"#6B7B72",background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit"}}
           onClick={()=>setFiltersOpen(p=>!p)}
         >
-          {filtersOpen ? "Menos filtros" : "Mas filtros"}
+          {filtersOpen ? "Menos filtros" : "Más filtros"}
           {activeFilterCount > 0 && ` (${activeFilterCount})`}
         </button>
       </div>
@@ -3774,14 +4094,14 @@ export function ExpensesView(){
       <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:9}}>
         <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
           value={catFlt} onChange={e=>setCatFlt(e.target.value)}>
-          <option value="">{t("filter.category")}: {t("filter.all")}</option>
+          <option value="all" disabled={catFlt==="all"} hidden={catFlt==="all"}>{t("filter.category")}: {t("filter.all")}</option>
           {cats.filter(c=>!c.archived).map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
         </select>
         <select className="inp"
           style={{width:"auto",fontSize:11,padding:"4px 8px",minWidth:120,cursor:"pointer"}}
           value={submFlt}
           onChange={e=>setSubmFlt(e.target.value)}>
-          <option value="">Enviado por: Todos</option>
+          <option value="all" disabled={submFlt==="all"} hidden={submFlt==="all"}>Enviado por: Todos</option>
           {(users||[])
             .filter(u=>u.accountStatus==="active"&&u.id!=="system")
             .map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
@@ -3817,7 +4137,7 @@ export function ExpensesView(){
           </div>
         </div>
         <button
-          disabled={isDefaultRange && !catFlt && !submFlt && !expSrc}
+          disabled={isDefaultRange && (!catFlt||catFlt==="all") && (!submFlt||submFlt==="all") && !expSrc}
           style={{padding:"5px 14px",borderRadius:7,fontSize:12,fontWeight:600,
             border:"none",cursor:isDefaultRange?"default":"pointer",
             background:isDefaultRange?"#EDE8E0":"#3C0A37",
@@ -3831,7 +4151,7 @@ export function ExpensesView(){
           {!isDefaultRange && (
             <span style={{background:"rgba(255,255,255,0.25)",borderRadius:8,
               fontSize:10,padding:"1px 5px",fontWeight:700}}>
-              {[catFlt,submFlt,!isDefaultRange?"range":"",expSrc].filter(Boolean).length}
+              {[catFlt&&catFlt!=="all"?catFlt:"",submFlt&&submFlt!=="all"?submFlt:"",!isDefaultRange?"range":"",expSrc].filter(Boolean).length}
             </span>
           )}
         </button>
@@ -3841,8 +4161,8 @@ export function ExpensesView(){
               ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
             }catch(e){}
             setExpFlt("all");
-            setCatFlt("");
-            setSubmFlt("");
+            setCatFlt("all");
+            setSubmFlt("all");
             setDateFrom("");
             setDateTo("");
             setExpSrc("");
@@ -3860,7 +4180,13 @@ export function ExpensesView(){
       })()}
       <div className="card" style={{padding:0,overflow:"hidden"}}>
         {filtered.length===0&&<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{t("empty.expenses")}</div>}
-        {filtered.map((e,idx)=>{
+        {monthGroups.map(group=>(
+          <div key={group.ym}>
+            <div style={{position:"sticky",top:0,zIndex:2,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 13px",background:"#F5F0EA",borderBottom:"1px solid #EDE8E0",fontSize:11,fontWeight:600,color:"#4B5E52"}}>
+              <span>{group.label}</span>
+              <span style={{fontVariantNumeric:"tabular-nums",color:G}}>{fmt(group.total)}</span>
+            </div>
+            {group.items.map((e,idx)=>{
           const st=getItemStatus(e,cats,users),sel=detailId===e.id&&panel==="detail";
           const approverIds=effectiveExpenseApproverIds(e,cats,users);
           const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
@@ -3879,9 +4205,11 @@ export function ExpensesView(){
             e.paymentStatus !== "paid";
           const rowTitle=isInvRow?(e.vendor||e.description):e.description;
           const metaDate=isInvRow&&e.dueDate?`${t("expenses.vence")} ${fmtDate(e.dueDate)} · `:fmtDate(e.date)+" · ";
+          const isLastInGroup=idx===group.items.length-1;
+          const isLastGroup=group.ym===monthGroups[monthGroups.length-1]?.ym;
           return(
             <div key={e.id}>
-              <div className="row-hover" style={{padding:"9px 13px",borderBottom:(payOpenId===e.id||idx<filtered.length-1)?"1px solid #F5F0EA":"none",cursor:"pointer",background: isOverdue ? "#FFF1F2" : isDueToday ? "#FFFBEB" : undefined,borderLeft: isOverdue ? "3px solid #DC2626" : undefined,display:"flex",alignItems:"flex-start",gap:8}}
+              <div className="row-hover" style={{padding:"9px 13px",borderBottom:(payOpenId===e.id||!isLastInGroup||!isLastGroup)?"1px solid #F5F0EA":"none",cursor:"pointer",background: isOverdue ? "#FFF1F2" : isDueToday ? "#FFFBEB" : undefined,borderLeft: isOverdue ? "3px solid #DC2626" : undefined,display:"flex",alignItems:"flex-start",gap:8}}
                 onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
@@ -3956,7 +4284,7 @@ export function ExpensesView(){
                 </div>
               </div>
               {payOpenId===e.id&&(
-                <div style={{padding:"8px 13px",background:"#FFFBEB",borderBottom:idx<filtered.length-1?"1px solid #F5F0EA":"none",display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,fontSize:11}}
+                <div style={{padding:"8px 13px",background:"#FFFBEB",borderBottom:!isLastInGroup||!isLastGroup?"1px solid #F5F0EA":"none",display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,fontSize:11}}
                   onClick={ev=>ev.stopPropagation()}>
                   <span style={{color:"#78350F"}}>{t("expenses.confirmMarkPaid")}</span>
                   <label style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:"#6B7B72"}}>{t("expenses.paidDateLabel")}</span>
@@ -3969,6 +4297,8 @@ export function ExpensesView(){
             </div>
           );
         })}
+          </div>
+        ))}
       </div>
       {panel==="detail"&&detailId&&<div className="mob-only" style={{marginTop:11,background:"#fff",borderRadius:11,padding:14}}><DetailPanel/></div>}
     </div>
@@ -4011,6 +4341,7 @@ function ReceiptThumb({expenseId}){
 export function ApprovalsView(){
   const{t,expenses,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel}=useApp();
   const [typeFilter,setTypeFilter]=useState("all");
+  const [assigneeFilter,setAssigneeFilter]=useState("");
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const priorityForItem=(item)=>{
     const ids=effectiveExpenseApproverIds(item,cats,users);
@@ -4043,7 +4374,16 @@ export function ApprovalsView(){
     if(typeFilter==="expense")return e.expenseType!=="invoice";
     return e.expenseType==="invoice";
   });
-  const activeRows=sortByPriority(kindFiltered);
+  const pendingMineFilter=(item)=>{
+    const ids=effectiveExpenseApproverIds(item,cats,users);
+    if(!ids.includes(user.id))return false;
+    const vote=approvalVoteFor(item.approvals||{},user.id,users);
+    return vote!=="approved"&&vote!=="rejected";
+  };
+  const hasPendingMine=kindFiltered.some(pendingMineFilter);
+  const effectiveAssigneeFilter=assigneeFilter||(hasPendingMine?"mine":"all");
+  const assigneeFiltered=effectiveAssigneeFilter==="mine"?kindFiltered.filter(pendingMineFilter):kindFiltered;
+  const activeRows=sortByPriority(assigneeFiltered);
   const cAll=baseList.length;
   const cExp=baseList.filter(e=>e.expenseType!=="invoice").length;
   const cInv=baseList.filter(e=>e.expenseType==="invoice").length;
@@ -4058,6 +4398,10 @@ export function ApprovalsView(){
         </p>
       )}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+        <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 10px"}} value={effectiveAssigneeFilter} onChange={e=>setAssigneeFilter(e.target.value)}>
+          <option value="mine">Pendientes de mí</option>
+          <option value="all">Todas</option>
+        </select>
         <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
           {[
             ["all",t("expenses.filterAll"),cAll],
@@ -4099,7 +4443,7 @@ export function ApprovalsView(){
           const cardBorder = priorityForItem(item) === 0
             ? '1.5px solid #D4AED0'
             : '1px solid transparent';
-          const canActOnRow=isAdmin&&rowApproverIds.includes(user.id);
+          const canActOnRow=canUserReviewExpense(item,{user,isAdmin,cats,users});
           const payBadge=invoicePaymentBadge(item);
           return(
             <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
@@ -4283,31 +4627,8 @@ export function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel}=useApp();
   const [statusFilter, setStatusFilter] = useState("all");
   const [ivaFilter, setIvaFilter] = useState("with");
-  const [reportFrom, setReportFrom] = React.useState("");
-  const [reportTo, setReportTo] = React.useState(new Date().toISOString().slice(0, 10));
-  React.useEffect(() => {
-    const allDates = (expenses || [])
-      .filter((e) => e.status !== "deleted" && e.date && e.date.length >= 10)
-      .map((e) => e.date.slice(0, 10))
-      .sort();
-    if (allDates.length > 0) {
-      setReportFrom((prev) => prev || allDates[0]);
-    } else {
-      setReportFrom((prev) => prev || "2000-01-01");
-    }
-  }, [expenses]);
-  const rangeFilteredExpenses = useMemo(() => {
-    const getRefDate = (e) => (
-      (e.expenseType === "invoice" ? (e.dueDate || e.date) : e.date) || ""
-    ).slice(0, 10);
-    return expenses.filter((e) => {
-      const d = getRefDate(e);
-      if (!d) return false;
-      if (reportFrom && d < reportFrom) return false;
-      if (reportTo && d > reportTo) return false;
-      return true;
-    });
-  }, [expenses, reportFrom, reportTo]);
+  const [exportSel, setExportSel] = useState("");
+  const [dateRange,setDateRange]=useState("thisMonth");
   const [trendRows,setTrendRows]=useState(null);
   const [trendLoad,setTrendLoad]=useState(false);
   const [trendErr,setTrendErr]=useState("");
@@ -4427,7 +4748,7 @@ export function ReportsView(){
   const BAR_W = Math.max(3, (BAR_CLUSTER_W - BAR_GAP) / 2);
   const BAR_OFFSET = (GROUP_W - (BAR_W * 2 + BAR_GAP)) / 2;
   const CHART_H = 160;
-  const TOP_PAD = 24;
+  const TOP_PAD = 36;
   const LABEL_H = 20;
   const SVG_H = TOP_PAD + CHART_H + LABEL_H;
   const SVG_W = CHART_W + SIDE_PAD * 2;
@@ -4435,59 +4756,7 @@ export function ReportsView(){
   const chartMinWidthPx = Math.ceil(SVG_W);
   const exportCSV=(includeIva=true)=>{
     const ivaM=includeIva ? (ivaFilter==="with" ? "with_iva" : "both") : "without_iva";
-    const data=statusFilter;
-    const src=displayExpenses;
-    const now=new Date().toISOString();
-    const exportedUser=user;
-    if(!AUTH_URL){
-      const updatedSrc=src.map(e=>({...e,auditTrail:[...(e.auditTrail||[]),{action:"exported",by:exportedUser.id,at:now,meta:{format:"csv",filter:data,ivaMode:ivaM}}]}));
-      saveExp(expenses.map(e=>{const u=updatedSrc.find(x=>x.id===e.id);return u||e;}));
-    }
-    appLog("info","csv_exported",{filter:data,ivaMode:ivaM,count:src.length,userId:exportedUser.id,codes:src.map(e=>e.itemCode||e.id)});
-    const headerBase=[
-      t("item.code"),
-      t("csv.itemType"),
-      t("label.date"),
-      t("label.description"),
-      t("label.category"),
-      t("label.status"),
-      t("filter.submitter"),
-      t("label.paidBy"),
-      t("label.notes"),
-      t("label.approvers"),
-    ];
-    const amountHeaders=
-      ivaM==="with_iva"?["Total con IVA"]
-      :ivaM==="without_iva"?["Base imponible"]
-      :["Base imponible","Cuota IVA","Total con IVA"];
-    const rows=[
-      [...headerBase,...amountHeaders],
-      ...src.map(e=>{
-        const approverIds=effectiveExpenseApproverIds(e,cats,users);
-        const amtEur=eurForExpense(e);
-        const ivaAmt=e.ivaAmount!=null?Number(e.ivaAmount):0;
-        const base=e.ivaRate!=null?Math.round((amtEur-ivaAmt)*100)/100:amtEur;
-        const tipo=e.expenseType==="invoice"?"Factura":"Gasto";
-        const commonFields=[
-          e.itemCode||e.id,
-          tipo,
-          e.date,
-          e.description,
-          e.category,
-          getItemStatus(e,cats,users),
-          (users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name,
-          e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),
-          e.notes||"",
-          approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";"),
-        ];
-        if(ivaM==="with_iva")return[...commonFields,amtEur];
-        if(ivaM==="without_iva")return[...commonFields,base];
-        return[...commonFields,base,ivaAmt,amtEur];
-      }),
-    ];
-    const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`solana-${data}-${ivaM}-${new Date().toISOString().slice(0,10)}.csv`});
-    a.click();URL.revokeObjectURL(a.href);
+    downloadExpensesCsv(displayExpenses,{cats,users,t,user,ivaM,fileTag:statusFilter,saveExp,expenses});
   };
   const downloadPdf=async()=>{
     if(!AUTH_URL)return;
@@ -4550,13 +4819,13 @@ export function ReportsView(){
             <option value="without">Sin IVA</option>
           </select>
           <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
-            value="" onChange={e=>{
+            value={exportSel} onChange={e=>{
               const v = e.target.value;
               if (v === "csv") exportCSV(ivaFilter !== "without");
               if (v === "pdf") void downloadPdf();
-              e.target.value = "";
+              setExportSel("");
             }}>
-            <option value="">Exportar…</option>
+            <option value="" disabled hidden>Exportar…</option>
             <option value="csv">Exportar CSV</option>
             {AUTH_URL && <option value="pdf">Exportar PDF</option>}
           </select>
@@ -4580,7 +4849,7 @@ export function ReportsView(){
         </div>
         {trendErr&&<div style={{fontSize:11,color:"#991B1B",marginBottom:6}}>{trendErr}</div>}
         {!trendErr&&sparklinePts&&(
-          <svg width="280" height="56" viewBox="0 0 280 56" style={{display:"block",maxWidth:"100%"}} aria-hidden="true">
+          <svg width="100%" height="56" viewBox="0 0 280 56" preserveAspectRatio="none" style={{display:"block"}} aria-hidden="true">
             <rect x="0" y="0" width="280" height="56" fill="none"/>
             <line x1="4" y1="50" x2="276" y2="50" stroke="#E5E0D8" strokeWidth="1"/>
             <polyline fill="none" stroke="#3C0A37" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={sparklinePts}/>
@@ -4589,7 +4858,7 @@ export function ReportsView(){
         {!trendLoad&&!trendErr&&!sparklinePts&&<div style={{fontSize:11,color:"#9CAA9F"}}>—</div>}
       </div>
       )}
-      <div className="card" style={{marginBottom:11}}>
+      <div className="card" style={{marginBottom:11,width:"100%"}}>
         <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:10}}>
           {monthlyChart.sparse ? "Actividad mensual" : "Actividad mensual (12 meses)"}
         </div>
@@ -4652,13 +4921,13 @@ export function ReportsView(){
                     fill="#C4622D" rx="2" opacity="0.9">
                     <title>{m.label} Facturas: {fmt(m.facturas)}</title>
                   </rect>}
-                  {gH>16&&<text x={x+BAR_W/2} y={gY-3}
-                    textAnchor="middle" fontSize="8" fill="#3C0A37" fontWeight="600">
-                    {m.gastos>=1000?(m.gastos/1000).toFixed(1)+"k":m.gastos.toFixed(0)}
+                  {gH>0&&<text x={x+BAR_W/2} y={gY-4}
+                    textAnchor="middle" fontSize="7" fill="#3C0A37" fontWeight="600">
+                    {fmt(m.gastos)}
                   </text>}
-                  {fH>16&&<text x={x+BAR_W+BAR_GAP+BAR_W/2} y={fY-3}
-                    textAnchor="middle" fontSize="8" fill="#C4622D" fontWeight="600">
-                    {m.facturas>=1000?(m.facturas/1000).toFixed(1)+"k":m.facturas.toFixed(0)}
+                  {fH>0&&<text x={x+BAR_W+BAR_GAP+BAR_W/2} y={fY-4}
+                    textAnchor="middle" fontSize="7" fill="#C4622D" fontWeight="600">
+                    {fmt(m.facturas)}
                   </text>}
                   <text x={SIDE_PAD + i * GROUP_W + GROUP_W / 2} y={TOP_PAD+CHART_H+14}
                     textAnchor="middle" fontSize="9" fill="#9CAA9F">
@@ -5450,22 +5719,22 @@ function DepartmentBudgetTrackerSection({t}){
                   <button type="button" onClick={()=>{setBudEdit(d.id);setBudDraft(String(budget));}} style={{
                     border:"none",background:"transparent",padding:0,cursor:"pointer",fontSize:13,fontWeight:700,color:G,
                     textAlign:"left",fontVariantNumeric:"tabular-nums",
-                  }}>{fmt(budget)} {getCurrency()}</button>
+                  }}>{fmt(budget)}</button>
                 ):(
-                  <span style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(budget)} {getCurrency()}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmt(budget)}</span>
                 )}
               </div>
               <div>
                 <div style={{color:"#9CAA9F",fontSize:9,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{t("settings.deptTrackerMonth")}</div>
-                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmt(sm)} {getCurrency()}</div>
+                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmt(sm)}</div>
               </div>
               <div>
                 <div style={{color:"#9CAA9F",fontSize:9,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{t("settings.deptTrackerYear")}</div>
-                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmt(sy)} {getCurrency()}</div>
+                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmt(sy)}</div>
               </div>
               <div>
                 <div style={{color:"#9CAA9F",fontSize:9,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{t("settings.deptTrackerRemaining")}</div>
-                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums",color:over?"#DC2626":"#1A0E18"}}>{fmt(rem)} {getCurrency()}</div>
+                <div style={{fontWeight:600,fontVariantNumeric:"tabular-nums",color:over?"#DC2626":"#1A0E18"}}>{fmt(rem)}</div>
               </div>
             </div>
             <div style={{marginBottom:4}}>
@@ -5619,7 +5888,7 @@ function DepartmentsSettingsBlock({t}){
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
               <div style={{flex:1,minWidth:120}}>
                 <div style={{fontSize:12,fontWeight:600}}>{d.name}</div>
-                <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)} {getCurrency()}</div>
+                <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)}</div>
               </div>
               <div style={{display:"flex",gap:4}}>
                 <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(d.id);setEf({name:d.name,budget:String(d.budget!=null?d.budget:"")});setDelId(null);}}>{t("action.edit")}</button>
@@ -5641,7 +5910,7 @@ function DepartmentsSettingsBlock({t}){
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                   <div style={{flex:1,minWidth:120}}>
                     <div style={{fontSize:12,fontWeight:600}}>{d.name}</div>
-                    <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)} {getCurrency()}</div>
+                    <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)}</div>
                   </div>
                   <div style={{display:"flex",gap:4}}>
                     {isSA&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>void setArchived(d,false)}>Restaurar</button>}
@@ -5680,6 +5949,18 @@ export function SettingsView(){
   const [delC,setDelC]=useState(null);
   const [dSelf,setDSelf]=useState(false);
   const [sf,setSf]=useState({name:user?.name||"",email:user?.email||"",phone:user?.phone||"",avatar:user?.avatar||null});
+  const profileBaseline=useMemo(()=>({
+    name:(user?.name||"").trim(),
+    email:(user?.email||"").trim(),
+    phone:(user?.phone||"").trim(),
+    avatar:user?.avatar??null,
+  }),[user?.id,user?.name,user?.email,user?.phone,user?.avatar]);
+  const profileDirty=useMemo(()=>(
+    (sf.name||"").trim()!==profileBaseline.name
+    ||(sf.email||"").trim()!==profileBaseline.email
+    ||(sf.phone||"").trim()!==profileBaseline.phone
+    ||(sf.avatar??null)!==profileBaseline.avatar
+  ),[sf,profileBaseline]);
   const [catEdit,setCatEdit]=useState(null);
   const [catForm,setCatForm]=useState({});
   const [addCat,setAddCat]=useState(false);
@@ -5687,12 +5968,16 @@ export function SettingsView(){
   const [archC,setArchC]=useState(null);
   // password
   const [pwForm,setPwForm]=useState({cur:"",nw:"",cn:""});
+  const [showPwCur,setShowPwCur]=useState(false);
+  const [showPwNw,setShowPwNw]=useState(false);
+  const [showPwCn,setShowPwCn]=useState(false);
   const [pwMsg,setPwMsg]=useState("");
   const [pwOk, setPwOk] =useState(false);
   const [pwSaving,setPwSaving]=useState(false);
   const [profileSaving,setProfileSaving]=useState(false);
   const [resetFor,setResetFor]=useState(null);
   const [resetPwInput,setResetPwInput]=useState("");
+  const [showResetPw,setShowResetPw]=useState(false);
   const [resetBusy,setResetBusy]=useState(false);
   const [appSetMsg,setAppSetMsg]=useState("");
   const [appSetErr,setAppSetErr]=useState("");
@@ -5851,7 +6136,7 @@ export function SettingsView(){
         setUser(merged);
         saveUsers(users.map(u=>u.id===user.id?merged:u));
         setSf({name:merged.name||"",email:merged.email||"",phone:merged.phone||"",avatar:merged.avatar??null});
-        dispatchSolanaToast(t("msg.profileUpdated"),"info");
+        dispatchSolanaToast(t("msg.profileUpdated"),"success",5000);
       }catch(e){
         dispatchSolanaToast(t("signup.serverDown"),"error");
       }finally{
@@ -5862,7 +6147,7 @@ export function SettingsView(){
     const merged=normalizeItem({...user,...sf},"user");
     saveUsers(users.map(u=>u.id===user.id?merged:u));
     setUser(merged);
-    dispatchSolanaToast(t("msg.profileUpdated"),"info");
+    dispatchSolanaToast(t("msg.profileUpdated"),"success",5000);
   };
 
   const savePw=async()=>{
@@ -5884,16 +6169,22 @@ export function SettingsView(){
           body:JSON.stringify({userId:user.id,newPassword:pwForm.nw,currentPassword:pwForm.cur}),
         });
         const d=await r.json().catch(()=>({}));
-        if(!r.ok){setPwMsg(d.error||t("msg.genericShort"));return;}
+        if(!r.ok||!d.ok){setPwMsg(d.error||t("msg.genericShort"));return;}
       }catch{
         setPwMsg(t("signup.serverDown"));
         return;
       }finally{
         setPwSaving(false);
       }
-    }else if(existing&&pwForm.cur!==existing){
-      setPwMsg(t("msg.passwordWrong"));
-      return;
+    }else{
+      if(existing&&pwForm.cur!==existing){
+        setPwMsg(t("msg.passwordWrong"));
+        return;
+      }
+      if(existing&&pwForm.nw===existing){
+        setPwMsg("La nueva contraseña no puede ser igual a la anterior.");
+        return;
+      }
     }
 
     savePasswords({...passwords,[user.id]:pwForm.nw});
@@ -5916,7 +6207,7 @@ export function SettingsView(){
           <div>
             <label style={{display:"inline-block",padding:"5px 10px",borderRadius:6,border:"1.5px solid #DDD6CC",fontSize:11,fontWeight:600,color:G,cursor:"pointer",fontFamily:"inherit",background:"transparent"}}>
               {sf.avatar?t("action.changePhoto"):t("action.upload")}
-              <input type="file" accept="image/jpeg,image/png,image/webp" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const err=validateUpload(f,UPLOAD_RULES.avatar);if(err){dispatchSolanaToast(err,"error");e.target.value="";return;}const r=new FileReader();r.onload=ev=>setSf(p=>({...p,avatar:ev.target.result}));r.readAsDataURL(f);e.target.value="";}}/>
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const err=validateUpload(f,UPLOAD_RULES.avatar);if(err){dispatchSolanaToast(err,"error");e.target.value="";return;}void compressAvatarDataUrl(f).then(dataUrl=>setSf(p=>({...p,avatar:dataUrl}))).catch(ex=>dispatchSolanaToast(ex?.message||"No se pudo procesar la imagen.","error")).finally(()=>{e.target.value="";});}}/>
             </label>
             {sf.avatar&&<button style={{marginLeft:7,fontSize:10,color:"#991B1B",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setSf(p=>({...p,avatar:null}))}>✕</button>}
           </div>
@@ -5930,7 +6221,7 @@ export function SettingsView(){
             <div style={{fontSize:14,fontWeight:600,color:G}}>{user?.role==="superadmin"?t("role.superadmin"):user?.role==="admin"?t("role.admin"):t("role.user")}</div>
           </div>
         </div>
-        <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={profileSaving} onClick={()=>void saveProfile()}>{profileSaving?"…":t("action.saveChanges")}</button>
+        <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={profileSaving||!profileDirty} onClick={()=>void saveProfile()}>{profileSaving?"…":t("action.saveChanges")}</button>
         <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #EDE8E0"}}>
           <div style={{fontWeight:600,fontSize:12,color:"#991B1B",marginBottom:4}}>{t("settings.deleteAccount")}</div>
           {!dSelf?<button className="btn-danger" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setDSelf(true)}>{t("settings.requestDeletion")}</button>:(
@@ -5944,9 +6235,29 @@ export function SettingsView(){
         <p style={{fontSize:11,color:"#6B7B72",marginBottom:9}}>{t("settings.passwordDesc")}</p>
         {!AUTH_URL&&!passwords?.[user.id]&&<div style={{background:"#FEF3C7",borderRadius:6,padding:"6px 9px",fontSize:10,color:"#92400E",marginBottom:8}}>{t("msg.passwordNoExisting")}</div>}
         <div style={{display:"grid",gap:7}}>
-          {(AUTH_URL||passwords?.[user.id])&&<div><label className="lbl">{t("label.currentPassword")}</label><input className="inp" type="password" value={pwForm.cur} onChange={e=>setPwForm(p=>({...p,cur:e.target.value}))} autoComplete="current-password"/></div>}
-          <div><label className="lbl">{t("label.newPassword")}</label><input className="inp" type="password" value={pwForm.nw} onChange={e=>setPwForm(p=>({...p,nw:e.target.value}))}/></div>
-          <div><label className="lbl">{t("label.confirmPassword")}</label><input className="inp" type="password" value={pwForm.cn} onChange={e=>setPwForm(p=>({...p,cn:e.target.value}))}/></div>
+          {(AUTH_URL||passwords?.[user.id])&&(
+            <div>
+              <label className="lbl">{t("label.currentPassword")}</label>
+              <div style={{position:"relative"}}>
+                <input className="inp" style={{paddingRight:52}} type={showPwCur?"text":"password"} value={pwForm.cur} onChange={e=>setPwForm(p=>({...p,cur:e.target.value}))} autoComplete="current-password"/>
+                <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwCur(v=>!v)}>{showPwCur?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="lbl">{t("label.newPassword")}</label>
+            <div style={{position:"relative"}}>
+              <input className="inp" style={{paddingRight:52}} type={showPwNw?"text":"password"} value={pwForm.nw} onChange={e=>setPwForm(p=>({...p,nw:e.target.value}))} autoComplete="new-password"/>
+              <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwNw(v=>!v)}>{showPwNw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+            </div>
+          </div>
+          <div>
+            <label className="lbl">{t("label.confirmPassword")}</label>
+            <div style={{position:"relative"}}>
+              <input className="inp" style={{paddingRight:52}} type={showPwCn?"text":"password"} value={pwForm.cn} onChange={e=>setPwForm(p=>({...p,cn:e.target.value}))} autoComplete="new-password"/>
+              <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwCn(v=>!v)}>{showPwCn?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+            </div>
+          </div>
         </div>
         {pwMsg&&<div style={{marginTop:7,fontSize:11,padding:"5px 8px",borderRadius:6,background:pwOk?"#D1FAE5":"#FEE2E2",color:pwOk?"#065F46":"#7F1D1D"}}>{pwMsg}</div>}
         <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={pwSaving} onClick={()=>void savePw()}>{pwSaving?"…":(passwords?.[user.id]?t("action.changePassword"):t("action.setPassword"))}</button>
@@ -6023,7 +6334,7 @@ export function SettingsView(){
               </div>
             </div>
           )}
-          {users.map(u=>(
+          {users.filter(u=>u.accountStatus!=="deleted").map(u=>(
             <div key={u.id}>
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA"}}>
                 <UserAvatar user={u} size={28} fontSize={8}/>
@@ -6069,15 +6380,26 @@ export function SettingsView(){
                     const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(u.id),{method:"DELETE",headers:{Authorization:"Bearer "+tok}});
                     const d=await r.json().catch(()=>({}));
                     if(!r.ok){dispatchSolanaToast(d.error||t("msg.genericShort"),"error");return;}
+                    if(d.user){
+                      saveUsers(users.map(x=>x.id===u.id?normalizeItem(d.user,"user"):{...x,accountStatus:"deleted"}));
+                    }else{
+                      saveUsers(users.map(x=>x.id===u.id?{...x,accountStatus:"deleted"}:x));
+                    }
+                    dispatchSolanaToast(d.softDeleted?`${u.name} desactivado. Sus gastos se conservan.`:"Usuario eliminado.","success");
                   }catch(e){dispatchSolanaToast(t("signup.serverDown"),"error");return;}
                 }
-                saveUsers(users.filter(x=>x.id!==u.id));setDelC(null);
+                saveUsers(users.filter(x=>x.id!==u.id));
+                dispatchSolanaToast("Usuario eliminado.","success");
+                setDelC(null);
               })()}>{t("action.confirm")}</button><button className="btn-secondary" style={{flex:1,fontSize:11,padding:"4px 8px"}} onClick={()=>setDelC(null)}>{t("action.cancel")}</button></div></div>}
               {resetFor===u.id&&AUTH_URL&&(
                 <div style={{background:"#F5F3FF",borderRadius:7,padding:"10px 12px",margin:"4px 0",border:"1px solid #DDD6EE"}}>
                   <div style={{fontSize:10,color:"#6B7B72",marginBottom:8,lineHeight:1.4}}>{t("team.resetPasswordHint")}</div>
                   <label className="lbl">{t("label.tempPassword")}</label>
-                  <input className="inp" style={{fontSize:14,marginBottom:8}} type="password" value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
+                  <div style={{position:"relative"}}>
+                    <input className="inp" style={{fontSize:14,marginBottom:8,paddingRight:52}} type={showResetPw?"text":"password"} value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
+                    <button type="button" style={{...SETTINGS_PW_TOGGLE_STYLE,top:"42%"}} onClick={()=>setShowResetPw(v=>!v)}>{showResetPw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+                  </div>
                   <div style={{display:"flex",gap:6}}>
                     <button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} disabled={resetBusy} onClick={async()=>{
                       if(!resetPwInput||resetPwInput.length<8){dispatchSolanaToast(t("msg.tempPwRequired"),"error");return;}
@@ -6149,7 +6471,7 @@ export function SettingsView(){
         {appSetMsg&&<div style={{padding:"6px 9px",borderRadius:6,background:"#D1FAE5",color:"#065F46",fontSize:11,marginBottom:8}}>{appSetMsg}</div>}
         {appSetErr&&<div style={{padding:"6px 9px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",fontSize:11,marginBottom:8}}>{appSetErr}</div>}
 
-        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>IVA Rates</div>
+        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Tipos de IVA</div>
         <div style={{marginBottom:8}}>
           <label className="lbl">{t("settings.ivaDefault")}</label>
           <select className="inp" style={{fontSize:14}} value={appIvaDefaultDraft===null?"":String(appIvaDefaultDraft)} onChange={e=>{const v=e.target.value;setAppIvaDefaultDraft(v===""?null:Number(v));}}>
@@ -6357,9 +6679,7 @@ export default function App(){
         // Load data for the restored session
         try{
           const de=await fetch(AUTH_URL+"/expenses",{headers:{"Authorization":"Bearer "+API.token}}).then(r=>r.ok?r.json():{expenses:[]});
-          if(de.expenses&&de.expenses.length){
-            saveExp(mapExpensesFromApi(de.expenses));
-          }
+          applyExpensesApiPayload(de,{setUsers,setExpenses});
         }catch(e){/* non-fatal */}
 
       }catch(e){
@@ -6402,8 +6722,8 @@ export default function App(){
   const [panel,   setPanel]   =useState(null);
   const [expFlt,  setExpFlt]  =useSessionState("sol-flt-status","all");
   const [expSrc,  setExpSrc]  =useState("");
-  const [catFlt,  setCatFlt]  =useSessionState("sol-flt-cat","");   // category name or ""
-  const [submFlt, setSubmFlt] =useSessionState("sol-flt-subm","");   // userId or ""
+  const [catFlt,  setCatFlt]  =useSessionState("sol-flt-cat","all");   // category name or "all"
+  const [submFlt, setSubmFlt] =useSessionState("sol-flt-subm","all");   // userId or "all"
   const [dateFrom,setDateFrom]=useSessionState("sol-flt-from","");   // YYYY-MM-DD or ""
   const [dateTo,  setDateTo]  =useSessionState("sol-flt-to","");   // YYYY-MM-DD or ""
   const [expKindFlt,setExpKindFlt]=useSessionState("sol-flt-kind","all");
@@ -6414,8 +6734,8 @@ export default function App(){
       ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
     }catch(e){}
     setExpFlt("all");
-    setCatFlt("");
-    setSubmFlt("");
+    setCatFlt("all");
+    setSubmFlt("all");
     setDateFrom("");
     setDateTo("");
     setExpSrc("");
@@ -6445,6 +6765,7 @@ export default function App(){
   const [formError, setFormError] =useState("");
   const [submitting, setSubmitting] =useState(false);
   const [sessionExpired, setSessionExpired]=useState(false);
+  const [userMenuOpen,setUserMenuOpen]=useState(false);
   const [idleTrackingEnabled,setIdleTrackingEnabled]=useState(false);
   const [online,setOnline]=useState(()=>typeof navigator!=="undefined"&&navigator.onLine);
   const [toasts,setToasts]=useState([]);
@@ -6487,6 +6808,7 @@ export default function App(){
   const capturingRef=useRef(false);
   const canvasRef=useRef(null);
   const fileRef  =useRef(null);
+  const camFileRef=useRef(null);
   /** When set, receipt file/camera targets edit form (DetailPanel) instead of new expense. */
   const receiptAltHandlerRef=useRef(null);
   const importRef=useRef(null);
@@ -6507,7 +6829,7 @@ export default function App(){
 
   const clearMyExpenseFilter=useCallback(()=>{
     myExpFilterClearedRef.current=true;
-    setSubmFlt("");
+    setSubmFlt("all");
   },[setSubmFlt]);
   const onSignOut=useCallback(()=>{
     myExpFilterClearedRef.current=false;
@@ -6729,7 +7051,7 @@ export default function App(){
       try{
         const de=await API.get("/expenses");
         if(cancelled)return;
-        setExpenses(mapExpensesFromApi(de.expenses||[]));
+        applyExpensesApiPayload(de,{setUsers,setExpenses});
       }catch(e){
         if(!cancelled)dispatchSolanaToast(e.message||"Error al cargar gastos y facturas.","error");
       }finally{
@@ -6784,7 +7106,7 @@ export default function App(){
         }catch(e){}
         if(cancelled)return;
         const de=await API.get("/expenses");
-        setExpenses(mapExpensesFromApi(de.expenses||[]));
+        applyExpensesApiPayload(de,{setUsers,setExpenses});
       }catch(e){
         migrAttemptRef.current=false;
         dispatchSolanaToast(e.message||"No se pudo migrar datos locales.","error");
@@ -6824,6 +7146,10 @@ export default function App(){
     }
   };
   const startCam=async()=>{
+    if(isMobileReceiptCapture()){
+      camFileRef.current?.click();
+      return;
+    }
     await openCamStream();
   };
   useEffect(()=>{
@@ -7011,15 +7337,19 @@ export default function App(){
   const submitExp=()=>{
     if (submitting) return;
     setSubmitting(true);
+    const failSubmit=(msg)=>{
+      if(msg)setFormError(msg);
+      setSubmitting(false);
+    };
     const ownerId = String(form.ownerId || user?.id || "").trim();
     const ownerExists = users.find(u => u.id === ownerId);
     if (!ownerExists) {
-      setFormError("Selecciona un titular válido.");
+      failSubmit("Selecciona un titular válido.");
       return;
     }
     const amount=parseMoney(form.amount);
     if(!amount||amount<=0||!String(form.description||"").trim()||!String(form.category||"").trim()||!String(form.date||"").trim()||!form.departmentId||!ownerId){
-      setFormError("Completa los campos obligatorios marcados con *");
+      failSubmit("Completa los campos obligatorios marcados con *");
       return;
     }
     const expDate = new Date(form.date);
@@ -7027,18 +7357,18 @@ export default function App(){
     const minDate = new Date(now.getFullYear() - 5, 0, 1);
     const maxDate = new Date(now.getFullYear() + 1, 11, 31);
     if(!form.date || isNaN(expDate.getTime()) || expDate < minDate || expDate > maxDate) {
-      setFormError("La fecha debe estar entre los últimos 5 años y el próximo año.");
+      failSubmit("La fecha debe estar entre los últimos 5 años y el próximo año.");
       return;
     }
     const isInvSubmit=form.expenseType==="invoice";
     const proveedorSubmit=String(form.proveedor||"").trim();
-    if(isInvSubmit&&!proveedorSubmit){setFormError("Indica el proveedor.");return;}
+    if(isInvSubmit&&!proveedorSubmit){failSubmit("Indica el proveedor.");return;}
     const condicionesPagoSubmit=String(form.paymentTermMode||"0");
     const fechaVencimientoSubmit=condicionesPagoSubmit==="custom"
       ? String(form.invoiceDueDateDirect||"").slice(0,10)
       : addDaysToISODate(form.date, Number(condicionesPagoSubmit)||0);
-    if(isInvSubmit&&condicionesPagoSubmit==="custom"&&!fechaVencimientoSubmit){setFormError("Indica la fecha de vencimiento.");return;}
-    if(isInvSubmit&&!String(form.vendor||"").trim()){setFormError("Indica el proveedor.");return;}
+    if(isInvSubmit&&condicionesPagoSubmit==="custom"&&!fechaVencimientoSubmit){failSubmit("Indica la fecha de vencimiento.");return;}
+    if(isInvSubmit&&!String(form.vendor||"").trim()){failSubmit("Indica el proveedor.");return;}
     const cadSubmit=cadenceToRecurringPayload(form);
     const ptdSubmit=paymentTermDaysFromForm(form);
     const computedDueIso=computeInvoiceDueISO(form);
@@ -7063,14 +7393,17 @@ export default function App(){
     const recExtras=cadSubmit.recurring?{recurring:1,recurrenceRule:cadSubmit.recurrenceRule}:{recurring:0,recurrenceRule:null};
     let paidBy=[{userId:ownerId,amount,pct:100}];
     let splitModeOut=undefined;
-    if(splitOn&&splits.filter(s=>s.checked).length>1){
-      const sel=splits.filter(s=>s.checked);
-      if(sel.length<2){setFormError(t("split.minParticipants"));return;}
+    const splitsForSubmit=(splitOn&&splits.filter(s=>s.checked).length>=2&&spMode==="amount")
+      ?calcEqual(splits,amount)
+      :splits;
+    if(splitOn&&splitsForSubmit.filter(s=>s.checked).length>1){
+      const sel=splitsForSubmit.filter(s=>s.checked);
+      if(sel.length<2){failSubmit(t("split.minParticipants"));return;}
       if(spMode==="amount"){
         const sumAmt=sel.reduce((s,x)=>s+(Number(x.value)||0),0);
-        if(Math.abs(sumAmt-amount)>0.01){setFormError(t("msg.valueMustMatch")+fmt(amount));return;}
+        if(Math.abs(sumAmt-amount)>0.01){failSubmit(t("msg.valueMustMatch")+fmt(amount));return;}
       }
-      paidBy=buildPaidByFromSplitState(splits.filter(s=>users.some(u=>u.id===s.userId)),amount,spMode);
+      paidBy=buildPaidByFromSplitState(splitsForSubmit.filter(s=>users.some(u=>u.id===s.userId)),amount,spMode);
       if(paidBy.length>1)splitModeOut=spMode;
     }
     if(!paidBy.length||paidBy.some(p=>!users.some(u=>u.id===p.userId))){
@@ -7127,6 +7460,14 @@ export default function App(){
           const newExp = expenseFromApi(d.expense);
           saveExp(prev => [newExp, ...(Array.isArray(prev) ? prev.filter(x => x.id !== newExp.id) : [])]);
 
+          if (d.budgetExceeded && d.budgetExceeded.exceeded) {
+            const deptName = d.budgetExceeded.departmentName || "Departamento";
+            dispatchSolanaToast(
+              `Presupuesto excedido: ${deptName} · ${fmt(Number(d.budgetExceeded.spent) || 0)} de ${fmt(Number(d.budgetExceeded.budget) || 0)}`,
+              "warning"
+            );
+          }
+
           let finalExp = newExp;
           if (receipt?.b64) {
             try {
@@ -7146,9 +7487,7 @@ export default function App(){
           }
 
           API.get("/expenses").then(full => {
-            if (full && Array.isArray(full.expenses)) {
-              saveExp(full.expenses.map(expenseFromApi));
-            }
+            if (full) applyExpensesApiPayload(full, { setUsers, setExpenses });
           }).catch(() => {});
 
           console.log('[submitExp] opening detail:', {
@@ -7311,10 +7650,12 @@ export default function App(){
           await API.delete("/expenses/"+encodeURIComponent(expId));
           saveExp(expenses.filter(e=>e.id!==expId));
           setDetailId(null);setPanel(null);
+          dispatchSolanaToast("Gasto eliminado correctamente.","success");
         }catch(e){
           if(isOfflineQueuedError(e)){
             saveExp(expenses.filter(x=>x.id!==expId));
             setDetailId(null);setPanel(null);
+            dispatchSolanaToast("Gasto eliminado correctamente.","success");
             return;
           }
           dispatchSolanaToast(e.message||"No se pudo eliminar.","error");
@@ -7323,6 +7664,7 @@ export default function App(){
       }
       saveExp(expenses.filter(e=>e.id!==expId));
       setDetailId(null);setPanel(null);
+      dispatchSolanaToast("Gasto eliminado correctamente.","success");
     })();
   };
 
@@ -7363,7 +7705,7 @@ export default function App(){
               { category: updates.category || oldExp.category }, cats, users
             );
           }
-          await API.put("/expenses/"+encodeURIComponent(expId),body);
+          const putRes=await API.put("/expenses/"+encodeURIComponent(expId),body);
           if(updates.receipt){
             await API.post("/expenses/"+encodeURIComponent(expId)+"/receipt",{
               b64:updates.receipt,
@@ -7371,7 +7713,12 @@ export default function App(){
             });
           }
           const full=await API.get("/expenses");
-          saveExp((full.expenses||[]).map(expenseFromApi));
+          applyExpensesApiPayload(full,{setUsers,setExpenses});
+          if(putRes?.reapprovalRequired){
+            dispatchSolanaToast("Cambios guardados. Los aprobadores han sido notificados para revisar de nuevo.","info");
+          }else{
+            dispatchSolanaToast("Cambios guardados correctamente.","success");
+          }
         }catch(e){
           if(isOfflineQueuedError(e)){
             saveExp(expenses.map(e=>e.id!==expId?e:{...e,...updates}));
@@ -7437,7 +7784,7 @@ export default function App(){
           const expApproverIdsRs=effectiveExpenseApproverIds(exp,cats,users);
           await API.put("/expenses/"+encodeURIComponent(expId),{status:"submitted",approvalRequired:expApproverIdsRs});
           const full=await API.get("/expenses");
-          saveExp((full.expenses||[]).map(expenseFromApi));
+          applyExpensesApiPayload(full,{setUsers,setExpenses});
         }catch(e){
           if(isOfflineQueuedError(e)){
             const expApproverIdsRs=effectiveExpenseApproverIds(exp,cats,users);
@@ -7473,7 +7820,7 @@ export default function App(){
         try{
           await API.post("/expenses/"+encodeURIComponent(expId)+"/comments",{text:tx});
           const full=await API.get("/expenses");
-          saveExp((full.expenses||[]).map(expenseFromApi));
+          applyExpensesApiPayload(full,{setUsers,setExpenses});
         }catch(e){
           if(isCommentPostUnavailable(e)){
             dispatchSolanaToast(t("expense.commentRetryHint"),"error");
@@ -7565,10 +7912,18 @@ export default function App(){
       }
       void (async()=>{
         try{
-          if(action==="approved")await API.post("/expenses/"+encodeURIComponent(itemId)+"/approve",{note:note||undefined});
+          let approveResult;
+          if(action==="approved")approveResult=await API.post("/expenses/"+encodeURIComponent(itemId)+"/approve",{note:note||undefined});
           else await API.post("/expenses/"+encodeURIComponent(itemId)+"/reject",{note:note||undefined});
+          if(action==="approved"&&approveResult?.budgetExceeded?.exceeded){
+            const be=approveResult.budgetExceeded;
+            dispatchSolanaToast(
+              `Presupuesto excedido: ${be.departmentName||"Departamento"} · ${fmt(Number(be.spent)||0)} de ${fmt(Number(be.budget)||0)}`,
+              "warning"
+            );
+          }
           const full=await API.get("/expenses");
-          saveExp(mapExpensesFromApi(full.expenses||[]));
+          applyExpensesApiPayload(full,{setUsers,setExpenses});
         }catch(e){
           if(isOfflineQueuedError(e)){
             saveExp(expenses.map(x=>{
@@ -7612,6 +7967,7 @@ export default function App(){
   if(user.mustChangePassword)return<ForcePasswordChange
     user={user} passwords={passwords} savePasswords={savePasswords}
     saveUsers={saveUsers} users={users}
+    onSignOut={onSignOut}
     onDone={updated=>{setUser(updated);appLog("info","auth:forced_pw_done",{userId:updated.id});}}
   />;
   // auth:session logged only at login transition — not on every render
@@ -7634,8 +7990,8 @@ export default function App(){
       const matchVendor=e.expenseType==="invoice"&&String(e.vendor||"").toLowerCase().includes(src);
       if(!matchDesc&&!matchCode&&!matchVendor)return false;
     }
-    if(catFlt&&e.category!==catFlt)return false;
-    if(submFlt){
+    if(catFlt&&catFlt!=="all"&&e.category!==catFlt)return false;
+    if(submFlt&&submFlt!=="all"){
       const matchesSubm=e.submittedBy===submFlt;
       const matchesOwner=e.ownerId===submFlt;
       if(!matchesSubm&&!matchesOwner)return false;
@@ -7660,8 +8016,13 @@ export default function App(){
   }
   const filtered=recurringFiltered;
   const dateFilterActive = dateFrom !== "" || dateTo !== "";
-  const activeFilterCount = [catFlt, submFlt, dateFilterActive?"range":"", expKindFlt!=="all"?"kind":"", recurringFlt!=="all"?"recurring":""]
-    .filter(Boolean).length;
+  const activeFilterCount = [
+    catFlt && catFlt !== "all" ? catFlt : "",
+    submFlt && submFlt !== "all" ? submFlt : "",
+    dateFilterActive ? "range" : "",
+    expKindFlt !== "all" ? "kind" : "",
+    recurringFlt !== "all" ? "recurring" : "",
+  ].filter(Boolean).length;
   const isApprover = (cats || []).some(c =>
     Array.isArray(c.approverIds) &&
     c.approverIds.includes(user?.id)
@@ -7889,19 +8250,19 @@ export default function App(){
         <div className="dt-only" style={{width:198,background:G,display:"flex",flexDirection:"column",padding:"15px 8px",flexShrink:0,overflowY:"auto"}}>
           <div style={{padding:"3px 6px 14px",borderBottom:"1px solid rgba(255,255,255,0.09)",marginBottom:9,cursor:"pointer"}} onClick={()=>go("dashboard")}>
             <SolanaLogo theme="light" size="md"/>
-            <div style={{fontSize:8,color:"rgba(250,247,242,0.28)",marginTop:4,paddingLeft:1,letterSpacing:"0.06em",textTransform:"uppercase"}}>Gestión de Gastos</div>
+            <div style={{fontSize:8,color:"rgba(250,247,242,0.28)",marginTop:4,paddingLeft:1,letterSpacing:"0.06em",textTransform:"uppercase"}}>Gestión de gastos</div>
           </div>
           {navItems.map(n=>(
             <div key={n.id} onClick={()=>go(n.id)} style={{padding:"6px 9px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:500,marginBottom:2,transition:"background 0.15s",background:view===n.id?"rgba(250,247,242,0.12)":"transparent",color:view===n.id?"#FAF7F2":"rgba(250,247,242,0.5)",borderLeft:`3px solid ${view===n.id?T:"transparent"}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+              <span style={{position:"relative",display:"inline-block",paddingRight:n.badge>0?10:0}}>
                 <span>{n.label}</span>
+                {n.badge>0&&<span style={{position:"absolute",top:-5,right:-2,background:BL,color:"#fff",borderRadius:"50%",minWidth:15,height:15,padding:"0 3px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
               </span>
-              {n.badge>0&&<span style={{background:BL,color:"#fff",borderRadius:"50%",width:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0}}>{n.badge}</span>}
             </div>
           ))}
-          <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)",position:"relative"}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
-              <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,borderRadius:7,padding:"4px 6px",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent"}}>
+              <button type="button" onClick={()=>setUserMenuOpen(v=>!v)} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,borderRadius:7,padding:"4px 6px",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                 {user.avatar
                   ?<img src={user.avatar} alt="" style={{width:28,height:28,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1.5px solid rgba(250,247,242,0.25)"}}/>
                   :<div style={{width:28,height:28,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0}}>{inits(user.name)}</div>
@@ -7911,9 +8272,15 @@ export default function App(){
                   <div style={{fontSize:8,color:"rgba(250,247,242,0.75)"}}>{user.role==="superadmin"?t("role.superadmin"):isAdmin?t("role.admin"):t("role.user")}</div>
                 </div>
                 <div style={{fontSize:10,color:"#FAF7F2",opacity:0.75,fontWeight:600}}>···</div>
-              </div>
+              </button>
             </div>
-            <button style={{width:"100%",padding:4,borderRadius:4,border:"1px solid rgba(250,247,242,0.18)",background:"transparent",color:"rgba(250,247,242,0.75)",fontSize:9,cursor:"pointer",fontFamily:"inherit"}} onClick={onSignOut}>{t("nav.signOut")}</button>
+            {userMenuOpen&&(
+              <div style={{position:"absolute",bottom:"100%",left:8,right:8,marginBottom:6,background:"#52114B",border:"1px solid rgba(250,247,242,0.15)",borderRadius:8,overflow:"hidden",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,0.25)"}}>
+                {[{label:"Mi perfil",fn:()=>{setUserMenuOpen(false);go("settings");}},{label:"Ajustes",fn:()=>{setUserMenuOpen(false);go("settings");}},{label:t("nav.signOut"),fn:()=>{setUserMenuOpen(false);onSignOut();}}].map((item,i,arr)=>(
+                  <button key={item.label} type="button" onClick={item.fn} style={{width:"100%",padding:"8px 10px",border:"none",borderBottom:i<arr.length-1?"1px solid rgba(250,247,242,0.1)":"none",background:"transparent",color:"#FAF7F2",fontSize:10,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}>{item.label}</button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -7951,10 +8318,10 @@ export default function App(){
           <div className="mob-only" style={{background:"#fff",borderTop:"1px solid #E5DDD2",display:"flex",flexShrink:0,position:"fixed",bottom:0,left:0,right:0,zIndex:50}}>
             {mobNav.map(n=>(
               <div key={n.id} style={{flex:1,padding:"8px 2px 6px",textAlign:"center",cursor:"pointer",borderTop:`2px solid ${view===n.id?G:"transparent"}`}} onClick={()=>go(n.id)}>
-                <div style={{display:"inline-flex",alignItems:"center",gap:2,flexWrap:"wrap",justifyContent:"center"}}>
-                  <span style={{fontSize:11,fontWeight:view===n.id?700:500,color:view===n.id?G:"#6B7B72"}}>{n.label}</span>
-                  {n.badge>0&&<span style={{background:BL,color:"#fff",borderRadius:"50%",width:13,height:13,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0}}>{n.badge}</span>}
-                </div>
+                <span style={{position:"relative",display:"inline-block",fontSize:11,fontWeight:view===n.id?700:500,color:view===n.id?G:"#6B7B72",paddingRight:n.badge>0?8:0}}>
+                  {n.label}
+                  {n.badge>0&&<span style={{position:"absolute",top:-6,right:-4,background:BL,color:"#fff",borderRadius:"50%",minWidth:13,height:13,padding:"0 2px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
+                </span>
               </div>
             ))}
           </div>
@@ -7999,7 +8366,8 @@ export default function App(){
           r.readAsText(f);e.target.value="";
         }}/>
         {/* Hidden file ref for receipt upload */}
-        <input ref={fileRef} type="file" accept="*/*" style={{display:"none"}} onChange={handleReceiptFile}/>
+        <input ref={fileRef} type="file" accept="image/*,.heic,.heif,application/pdf" style={{display:"none"}} onChange={handleReceiptFile}/>
+        <input ref={camFileRef} type="file" accept="image/*,.heic,.heif" capture="environment" style={{display:"none"}} onChange={handleReceiptFile}/>
 
         {camOn&&(
           <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000",zIndex:9999,display:"flex",flexDirection:"column"}}>

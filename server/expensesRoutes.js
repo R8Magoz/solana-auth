@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('./db');
+const { warnIfNoChanges } = require('./userStore');
 const receiptStorage = require('./receiptStorage');
 const settingsCache = require('./lib/settingsCache');
 
@@ -209,7 +210,7 @@ function resolveApproverIdsForCreate(body) {
 function computeSubmittedVotes(submitterId, approverIds) {
   const votes = {};
   if (approverIds.includes(submitterId)) votes[submitterId] = 'approved';
-  const allDone = approverIds.length > 0 && approverIds.every((id) => votes[id] === 'approved');
+  const allDone = allApproversVotedApproved(approverIds, votes);
   return { votes, allDone };
 }
 
@@ -253,12 +254,92 @@ function remapVotesWithCanonicalKeys(votesRaw, userStore) {
   return out;
 }
 
+function anyRejectionVote(votes) {
+  if (!votes || typeof votes !== 'object') return false;
+  return Object.values(votes).some((v) => v === 'rejected');
+}
+
+/** True only when every listed approver has an explicit approve vote. */
+function allApproversVotedApproved(approverIds, votes) {
+  if (!Array.isArray(approverIds) || approverIds.length === 0) return false;
+  return approverIds.every((id) => votes[id] === 'approved');
+}
+
 function userIdInRawApproverList(approverTokens, userId, userStore) {
   const uid = String(userId || '');
   for (const tok of approverTokens || []) {
     if (resolveApproverTokenToUserId(tok, userStore) === uid) return true;
   }
   return false;
+}
+
+const EXPENSE_EDIT_TRACKED = [
+  'amount', 'description', 'category', 'date', 'notes', 'departmentId',
+  'ivaRate', 'ivaAmount', 'vendor', 'dueDate', 'expenseType',
+];
+
+function normEditVal(field, val) {
+  if (field === 'amount' || field === 'ivaRate' || field === 'ivaAmount') {
+    if (val == null || val === '') return null;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (field === 'expenseType') return String(val || 'expense').toLowerCase();
+  if (val == null) return null;
+  return String(val);
+}
+
+/** Field-level diff for audit_log edit backlog. */
+function buildExpenseFieldDiff(prev, next) {
+  const changes = [];
+  for (const field of EXPENSE_EDIT_TRACKED) {
+    const from = normEditVal(field, prev[field]);
+    const to = normEditVal(field, next[field]);
+    if (from !== to) changes.push({ field, from, to });
+  }
+  const prevPaid = prev.paidByJson != null ? String(prev.paidByJson) : null;
+  const nextPaid = next.paidByJson != null ? String(next.paidByJson) : null;
+  if (prevPaid !== nextPaid) changes.push({ field: 'paidBy', from: prevPaid, to: nextPaid });
+  const prevSplit = prev.splitMode != null ? String(prev.splitMode) : null;
+  const nextSplit = next.splitMode != null ? String(next.splitMode) : null;
+  if (prevSplit !== nextSplit) changes.push({ field: 'splitMode', from: prevSplit, to: nextSplit });
+  return changes;
+}
+
+function collectReferencedUserIds(expenseRows) {
+  const ids = new Set();
+  for (const e of expenseRows || []) {
+    if (e.userId) ids.add(e.userId);
+    if (e.ownerId) ids.add(e.ownerId);
+    if (e.approvedBy) ids.add(e.approvedBy);
+    if (e.rejectedBy) ids.add(e.rejectedBy);
+    if (e.paidConfirmedBy) ids.add(e.paidConfirmedBy);
+    for (const id of parseJsonArray(e.approversJson)) ids.add(id);
+    try {
+      const paidBy = JSON.parse(e.paidByJson || '[]');
+      if (Array.isArray(paidBy)) {
+        for (const p of paidBy) {
+          if (p && p.userId) ids.add(p.userId);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  ids.delete('system');
+  return [...ids];
+}
+
+function resolveExpenseApproverIdsForAuth(exp, userStore) {
+  const raw = parseJsonArray(exp && exp.approversJson);
+  if (raw.length > 0) return canonicalizeApproverIds(raw, userStore);
+  return canonicalizeApproverIds(getApproverIdsForCategory(exp && exp.category), userStore);
+}
+
+function canUserActOnExpenseApproval(exp, userId, userRole, userStore) {
+  if (!isAdminRole(userRole)) return false;
+  const approverIds = resolveExpenseApproverIdsForAuth(exp, userStore);
+  return approverIds.includes(String(userId || ''));
 }
 
 /**
@@ -318,6 +399,72 @@ function normalizePaidByFromBody(body, submitterId, totalEur, userStore) {
 
 function isAdminRole(role) {
   return role === 'admin' || role === 'superadmin';
+}
+
+/** Approved expenses + invoices (any payment status); rejected/deleted excluded. */
+function deptApprovedSpendEur(departmentId, excludeExpenseId = null) {
+  if (!departmentId) return 0;
+  if (excludeExpenseId) {
+    const row = db.prepare(`
+      SELECT COALESCE(SUM(COALESCE(amountEUR, amount)), 0) AS spent
+      FROM expenses
+      WHERE departmentId = ? AND status = 'approved' AND id != ?
+    `).get(departmentId, excludeExpenseId);
+    return Number(row?.spent) || 0;
+  }
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(COALESCE(amountEUR, amount)), 0) AS spent
+    FROM expenses
+    WHERE departmentId = ? AND status = 'approved'
+  `).get(departmentId);
+  return Number(row?.spent) || 0;
+}
+
+function getDepartmentBudgetRow(departmentId) {
+  return db.prepare('SELECT id, name, budget FROM departments WHERE id = ?').get(departmentId) || null;
+}
+
+function adminAndSuperadminUserIds() {
+  return db.prepare(
+    "SELECT id FROM users WHERE role IN ('admin', 'superadmin') AND id != 'system'"
+  ).all().map((r) => r.id);
+}
+
+/**
+ * When an approval pushes department spend over budget, audit one row per recipient.
+ * @returns {{ exceeded: boolean, notified?: boolean, budget?: number, spent?: number, departmentName?: string }}
+ */
+function maybeNotifyBudgetExceeded({ audit, departmentId, expenseId, actorUserId, submitterUserId, ip }) {
+  const dept = getDepartmentBudgetRow(departmentId);
+  if (!dept) return { exceeded: false };
+  const budget = Number(dept.budget) || 0;
+  if (budget <= 0) return { exceeded: false };
+
+  const afterSpent = deptApprovedSpendEur(departmentId);
+  const beforeSpent = expenseId ? deptApprovedSpendEur(departmentId, expenseId) : afterSpent;
+
+  if (beforeSpent > budget || afterSpent <= budget) {
+    return { exceeded: afterSpent > budget, budget, spent: afterSpent, departmentName: dept.name };
+  }
+
+  const recipients = new Set(adminAndSuperadminUserIds());
+  if (submitterUserId) recipients.add(submitterUserId);
+
+  for (const uid of recipients) {
+    audit('department_budget_exceeded', {
+      userId: uid,
+      targetId: dept.id,
+      expenseId,
+      departmentName: dept.name,
+      budget,
+      spent: afterSpent,
+      actorUserId,
+      submitterUserId,
+      ip,
+    });
+  }
+
+  return { exceeded: true, notified: true, budget, spent: afterSpent, departmentName: dept.name };
 }
 
 function rowToExpense(r) {
@@ -427,116 +574,48 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   router.get('/', (req, res) => {
     try {
       const expenses = listExpenses(req);
-      res.json({ expenses });
+      const refIds = collectReferencedUserIds(expenses);
+      const users = userStore.getPublicUsersByIds
+        ? userStore.getPublicUsersByIds(refIds)
+        : [];
+      res.json({ expenses, users });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'Error al listar gastos.' });
     }
   });
 
-  /** PDF export for Informes — requireAuth (not admin-only). Same row set as client CSV for from/to/status. */
-  router.get('/export/pdf', (req, res) => {
-    if (!PDFDocument) {
-      return res.status(503).json({
-        error: 'PDF no disponible. Ejecuta npm install en el servidor (paquete pdfkit).',
+  router.get('/budget-alerts', (req, res) => {
+    try {
+      const lim = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+      const rows = db.prepare(`
+        SELECT id, ts, event, userId, targetId, detail
+        FROM audit_log
+        WHERE event = 'department_budget_exceeded' AND userId = ?
+        ORDER BY id DESC
+        LIMIT ?
+      `).all(req.userId, lim);
+
+      const alerts = rows.map((r) => {
+        let detail = {};
+        if (r.detail) {
+          try { detail = JSON.parse(r.detail); } catch { /* ignore */ }
+        }
+        return {
+          id: r.id,
+          ts: r.ts,
+          departmentId: r.targetId || detail.departmentId,
+          departmentName: detail.departmentName,
+          expenseId: detail.expenseId,
+          budget: detail.budget,
+          spent: detail.spent,
+        };
       });
+      res.json({ alerts });
+    } catch (e) {
+      console.error('[expenses/budget-alerts]', e);
+      res.status(500).json({ error: 'Error al leer alertas de presupuesto.' });
     }
-    const range = validateReportRange(req, res);
-    if (!range) return;
-
-    const statusFilter = String(req.query.status || 'all').trim().toLowerCase().slice(0, 16);
-    if (!['all', 'approved', 'pending'].includes(statusFilter)) {
-      return res.status(400).json({ error: 'status debe ser all, approved o pending.' });
-    }
-    const typeFilter = String(req.query.type || 'all').trim().toLowerCase().slice(0, 16);
-    if (!['all', 'expenses', 'bills', 'invoices'].includes(typeFilter)) {
-      return res.status(400).json({ error: 'type debe ser all, expenses o bills.' });
-    }
-
-    const { from, to } = range;
-    const userMap = buildUserNameMap(userStore);
-
-    const allRows = db.prepare(`
-      SELECT * FROM expenses
-      WHERE status != 'deleted'
-      ORDER BY date ASC, id ASC
-    `).all();
-
-    const rows = allRows.filter((row) => {
-      const ref = reportRefDateISO(row);
-      if (!ref || ref < from || ref > to) return false;
-      if (!rowMatchesReportStatus(row, statusFilter)) return false;
-      if (!rowMatchesReportType(row, typeFilter)) return false;
-      return true;
-    });
-
-    const doc = new PDFDocument({ margin: 48, size: 'A4', bufferPages: true });
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="report-${from}-to-${to}.pdf"`,
-    );
-    doc.pipe(res);
-    doc.on('error', (err) => {
-      console.error('[expenses/export/pdf]', err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'No se pudo generar el PDF.' });
-      } else {
-        res.end();
-      }
-    });
-
-    doc.fontSize(16).fillColor('#1a1a1a').text('Informe de gastos', { align: 'center' });
-    doc.moveDown(0.3);
-    doc.fontSize(10).fillColor('#444444').text(`Período: ${from} — ${to}`, { align: 'center' });
-    doc.fontSize(9).fillColor('#666666').text(`Generado: ${new Date().toISOString()}`, { align: 'center' });
-    doc.moveDown(0.8);
-
-    const totalEur = rows.reduce((s, r) => s + eurAmountRow(r), 0);
-    doc.fontSize(10).fillColor('#000000');
-    doc.text(`Líneas: ${rows.length}`);
-    doc.text(`Total (EUR): ${totalEur.toFixed(2)}`);
-    doc.moveDown(0.6);
-
-    const headers = ['Fecha', 'Tipo', 'Descripción', 'Categoría', 'Estado', 'Titular', 'Importe EUR'];
-    const colW = [58, 44, 150, 72, 52, 72, 58];
-    let y = doc.y;
-    let x = 48;
-    doc.fontSize(8).fillColor('#333333').font('Helvetica-Bold');
-    headers.forEach((h, i) => {
-      doc.text(h, x, y, { width: colW[i] });
-      x += colW[i];
-    });
-    doc.font('Helvetica');
-    y += 14;
-
-    const pageBottom = () => doc.page.height - 56;
-    for (const row of rows) {
-      if (y + 14 > pageBottom()) {
-        doc.addPage();
-        y = 48;
-      }
-      const tipo = row.expenseType === 'invoice' ? 'Factura' : 'Gasto';
-      const ownerId = row.ownerId || row.userId;
-      const cells = [
-        row.date || '',
-        tipo,
-        String(row.description || '').slice(0, 80),
-        String(row.category || ''),
-        String(row.status || ''),
-        userMap[ownerId] || ownerId || '—',
-        eurAmountRow(row).toFixed(2),
-      ];
-      x = 48;
-      doc.fontSize(7).fillColor('#000000');
-      cells.forEach((cell, i) => {
-        doc.text(String(cell), x, y, { width: colW[i], ellipsis: true });
-        x += colW[i];
-      });
-      y += 12;
-    }
-
-    doc.end();
   });
 
   router.post('/', async (req, res) => {
@@ -802,7 +881,22 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     const expense = getExpenseById(id);
     audit('expense_created', { userId: req.userId, targetId: id, amount, currency: cur, status: finalStatus });
-    res.json({ ok: true, expense });
+    let budgetExceeded;
+    if (finalStatus === 'approved' && dept.id) {
+      budgetExceeded = maybeNotifyBudgetExceeded({
+        audit,
+        departmentId: dept.id,
+        expenseId: id,
+        actorUserId: req.userId,
+        submitterUserId: req.userId,
+        ip: req.ip,
+      });
+    }
+    res.json({
+      ok: true,
+      expense,
+      ...(budgetExceeded && budgetExceeded.exceeded ? { budgetExceeded } : {}),
+    });
     } catch (e) {
       console.error('[POST /expenses] UNHANDLED ERROR:', e && (e.stack || e.message || e));
       console.error('[expenses/create]', e);
@@ -859,14 +953,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   router.post('/:id/comments', (req, res) => {
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
-    const canComment =
-      exp.userId === req.userId ||
-      exp.ownerId === req.userId ||
-      isAdminRole(req.userRole) ||
-      parseJsonArray(exp.approversJson).includes(req.userId);
-    if (!canComment) {
-      return res.status(403).json({ error: 'No autorizado para comentar.' });
-    }
     if (exp.status === 'deleted') {
       return res.status(400).json({ error: 'Gasto eliminado.' });
     }
@@ -884,11 +970,14 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     };
     list.push(entry);
     const now = Date.now();
-    db.prepare('UPDATE expenses SET commentsJson = ?, updatedAt = ? WHERE id = ?').run(
+    const info = db.prepare('UPDATE expenses SET commentsJson = ?, updatedAt = ? WHERE id = ?').run(
       JSON.stringify(list),
       now,
       exp.id,
     );
+    if (warnIfNoChanges(info, 'expense_comment', { expenseId: exp.id, userId: req.userId })) {
+      return res.status(404).json({ error: 'Gasto no encontrado.' });
+    }
     const updated = getExpenseById(exp.id);
     audit('expense_comment_added', { userId: req.userId, targetId: exp.id });
     res.json({ ok: true, expense: updated });
@@ -1026,7 +1115,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     const curExpCur = String(exp.currency || 'EUR').toUpperCase();
-    const totalForIva = curExpCur === 'EUR'
+    const nextAmountEUR = curExpCur === 'EUR'
       ? nextAmount
       : (exp.amountEUR != null && Number.isFinite(Number(exp.amountEUR)) ? Number(exp.amountEUR) : nextAmount);
 
@@ -1035,7 +1124,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (Number.isNaN(nextIvaRate)) nextIvaRate = null;
     if (Number.isNaN(nextIvaAmount)) nextIvaAmount = null;
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'ivaRate')) {
-      const iv = ivaFromBody(req.body, totalForIva);
+      const iv = ivaFromBody(req.body, curExpCur === 'EUR' ? nextAmount : nextAmountEUR);
       if (iv.error) return res.status(400).json({ error: iv.error });
       nextIvaRate = iv.ivaRate;
       nextIvaAmount = iv.ivaAmount;
@@ -1087,9 +1176,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       }
     }
 
-    db.prepare(`
+    const updateInfo = db.prepare(`
       UPDATE expenses SET
-        amount = ?, description = ?, category = ?, date = ?, notes = ?, status = ?, departmentId = ?,
+        amount = ?, amountEUR = ?, description = ?, category = ?, date = ?, notes = ?, status = ?, departmentId = ?,
         approversJson = ?, approvalVotesJson = ?,
         paidByJson = ?, splitMode = ?,
         ivaRate = ?, ivaAmount = ?,
@@ -1102,7 +1191,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         updatedAt = ?
       WHERE id = ?
     `).run(
-      nextAmount, nextDesc, nextCat, nextDate, nextNotes, finalStatus, nextDeptId,
+      nextAmount, nextAmountEUR, nextDesc, nextCat, nextDate, nextNotes, finalStatus, nextDeptId,
       nextApproversJson, nextVotesJson,
       nextPaidByJson, nextSplitMode,
       nextIvaRate, nextIvaAmount,
@@ -1115,6 +1204,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       String(req.body.cadenceCustomMonths || '1').trim().slice(0, 8),
       now, exp.id,
     );
+    if (warnIfNoChanges(updateInfo, 'expense_update', { expenseId: exp.id, userId: req.userId })) {
+      return res.status(404).json({ error: 'Gasto no encontrado.' });
+    }
     // If deferredPayment changed, sync paymentStatus accordingly
     const deferredChanged = exp.deferredPayment !== nextDeferredPayment;
     if (nextExpenseType === 'invoice' && deferredChanged) {
@@ -1132,14 +1224,57 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     const updated = getExpenseById(exp.id);
-    audit('expense_updated', {
-      userId: req.userId,
-      targetId: exp.id,
-      previous: prev,
-      changes: updated,
-    });
-    res.json({ ok: true, expense: updated });
+    if (fieldChanges.length > 0) {
+      audit('expense_edited', {
+        userId: req.userId,
+        targetId: exp.id,
+        changes: fieldChanges,
+      });
+      if (wasApproved) {
+        audit('expense_reapproval_required', {
+          userId: req.userId,
+          targetId: exp.id,
+          approverIds: parseJsonArray(nextApproversJson),
+        });
+      }
+    } else {
+      audit('expense_updated', { userId: req.userId, targetId: exp.id });
+    }
+    res.json({ ok: true, expense: updated, reapprovalRequired: wasApproved && fieldChanges.length > 0 });
   }
+
+  router.get('/:id/audit', (req, res) => {
+    const exp = getExpenseById(req.params.id);
+    if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
+    if (!canAccessExpense(req, exp)) {
+      return res.status(403).json({ error: 'No autorizado.' });
+    }
+    const rows = db.prepare(`
+      SELECT id, ts, event, userId, targetId, detail
+      FROM audit_log
+      WHERE targetId = ?
+      ORDER BY ts ASC, id ASC
+    `).all(exp.id);
+    const entries = rows.map((r) => {
+      const entry = {
+        id: r.id,
+        ts: r.ts,
+        event: r.event,
+        userId: r.userId,
+        targetId: r.targetId,
+      };
+      if (r.detail) {
+        try {
+          const parsed = JSON.parse(r.detail);
+          if (parsed && typeof parsed === 'object') Object.assign(entry, parsed);
+        } catch {
+          entry.detailRaw = r.detail;
+        }
+      }
+      return entry;
+    });
+    res.json({ ok: true, entries });
+  });
 
   router.put('/:id', putOrPatchExpense);
   router.patch('/:id', putOrPatchExpense);
@@ -1171,9 +1306,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   });
 
   router.post('/:id/approve', requireAuth, (req, res) => {
-    if (!isAdminRole(req.userRole)) {
-      return res.status(403).json({ error: 'No autorizado.' });
-    }
     let exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
@@ -1186,27 +1318,47 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       if (!defaultIds.includes(req.userId) && !isAdminRole(req.userRole)) {
         return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
       }
-      const votes = {};
+      const votes = remapVotesWithCanonicalKeys(parseJsonObject(exp.approvalVotesJson), userStore);
       votes[req.userId] = 'approved';
-      const allDone = defaultIds.length > 0 && defaultIds.every(id => votes[id] === 'approved');
+      const allDone = allApproversVotedApproved(defaultIds, votes);
       if (allDone) {
-        db.prepare(`UPDATE expenses SET status='approved', approvedBy=?, approvedAt=?,
+        const approveInfo = db.prepare(`UPDATE expenses SET status='approved', approversJson=?, approvalVotesJson=?, approvedBy=?, approvedAt=?,
           rejectedBy=NULL, rejectedAt=NULL, rejectionNote=NULL, updatedAt=? WHERE id=?`)
-          .run(req.userId, now, now, exp.id);
+          .run(JSON.stringify(defaultIds), JSON.stringify(votes), req.userId, now, now, exp.id);
+        if (warnIfNoChanges(approveInfo, 'expense_approve', { expenseId: exp.id, userId: req.userId })) {
+          return res.status(404).json({ error: 'Gasto no encontrado.' });
+        }
         if (exp.expenseType === 'invoice' && exp.paymentStatus === 'pending_approval') {
-          // Only flip to 'unpaid' if this was a deferred payment invoice.
-          // If paymentStatus is already 'paid' (non-deferred), leave it alone.
           db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
             .run(Date.now(), exp.id);
         }
       } else {
-        db.prepare(`UPDATE expenses SET approversJson=?, approvalVotesJson=?, updatedAt=? WHERE id=?`)
+        const partialInfo = db.prepare(`UPDATE expenses SET status='submitted', approversJson=?, approvalVotesJson=?, updatedAt=? WHERE id=?`)
           .run(JSON.stringify(defaultIds), JSON.stringify(votes), now, exp.id);
+        if (warnIfNoChanges(partialInfo, 'expense_approve_partial', { expenseId: exp.id, userId: req.userId })) {
+          return res.status(404).json({ error: 'Gasto no encontrado.' });
+        }
       }
       const updated = getExpenseById(exp.id);
       audit('expense_approved', { userId: req.userId, targetId: exp.id });
-      return res.json({ ok: true, expense: updated });
+      let budgetExceeded;
+      if (allDone && updated.status === 'approved' && updated.departmentId) {
+        budgetExceeded = maybeNotifyBudgetExceeded({
+          audit,
+          departmentId: updated.departmentId,
+          expenseId: updated.id,
+          actorUserId: req.userId,
+          submitterUserId: updated.userId,
+          ip: req.ip,
+        });
+      }
+      return res.json({
+        ok: true,
+        expense: updated,
+        ...(budgetExceeded && budgetExceeded.exceeded ? { budgetExceeded } : {}),
+      });
     }
+    const approversCanon = resolveExpenseApproverIdsForAuth(exp, userStore);
 
     const canApprove = exp.status === 'submitted' ||
       (exp.status === 'rejected' && isAdminRole(req.userRole));
@@ -1221,17 +1373,40 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       // reload
       exp = getExpenseById(exp.id);
     }
-    if (!userIdInRawApproverList(approversRaw, adminId, userStore)) {
-      return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
-    }
-
-    const approversCanon = canonicalizeApproverIds(approversRaw, userStore);
     const votes = remapVotesWithCanonicalKeys(parseJsonObject(exp.approvalVotesJson), userStore);
     votes[adminId] = 'approved';
-    const allDone = approversCanon.length > 0 && approversCanon.every((id) => votes[id] === 'approved');
+
+    if (anyRejectionVote(votes)) {
+      const rejectInfo = db.prepare(`
+        UPDATE expenses SET
+          status = 'rejected',
+          approversJson = ?,
+          approvalVotesJson = ?,
+          rejectedBy = ?, rejectedAt = ?, rejectionNote = COALESCE(rejectionNote, ?),
+          approvedBy = NULL, approvedAt = NULL,
+          updatedAt = ?
+        WHERE id = ?
+      `).run(
+        JSON.stringify(approversCanon),
+        JSON.stringify(votes),
+        adminId,
+        now,
+        'Rechazado por voto de aprobador.',
+        now,
+        exp.id,
+      );
+      if (warnIfNoChanges(rejectInfo, 'expense_approve_reject_vote', { expenseId: exp.id, userId: adminId })) {
+        return res.status(404).json({ error: 'Gasto no encontrado.' });
+      }
+      const updated = getExpenseById(exp.id);
+      audit('expense_rejected', { userId: adminId, targetId: exp.id, via: 'approval_vote' });
+      return res.json({ ok: true, expense: updated });
+    }
+
+    const allDone = allApproversVotedApproved(approversCanon, votes);
 
     if (allDone) {
-      db.prepare(`
+      const approveInfo = db.prepare(`
         UPDATE expenses SET
           status = 'approved',
           approversJson = ?,
@@ -1241,28 +1416,44 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
           updatedAt = ?
         WHERE id = ?
       `).run(JSON.stringify(approversCanon), JSON.stringify(votes), adminId, now, now, exp.id);
+      if (warnIfNoChanges(approveInfo, 'expense_approve', { expenseId: exp.id, userId: adminId })) {
+        return res.status(404).json({ error: 'Gasto no encontrado.' });
+      }
       if (exp.expenseType === 'invoice' && exp.paymentStatus === 'pending_approval') {
-        // Only flip to 'unpaid' if this was a deferred payment invoice.
-        // If paymentStatus is already 'paid' (non-deferred), leave it alone.
         db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
           .run(Date.now(), exp.id);
       }
     } else {
-      db.prepare(`
-        UPDATE expenses SET approversJson = ?, approvalVotesJson = ?, updatedAt = ?
+      const partialInfo = db.prepare(`
+        UPDATE expenses SET status = 'submitted', approversJson = ?, approvalVotesJson = ?, updatedAt = ?
         WHERE id = ?
       `).run(JSON.stringify(approversCanon), JSON.stringify(votes), now, exp.id);
+      if (warnIfNoChanges(partialInfo, 'expense_approve_partial', { expenseId: exp.id, userId: adminId })) {
+        return res.status(404).json({ error: 'Gasto no encontrado.' });
+      }
     }
     const updated = getExpenseById(exp.id);
     const approveNote = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : undefined;
     audit('expense_approved', { userId: adminId, targetId: exp.id, note: approveNote });
-    res.json({ ok: true, expense: updated });
+    let budgetExceeded;
+    if (allDone && updated.status === 'approved' && updated.departmentId) {
+      budgetExceeded = maybeNotifyBudgetExceeded({
+        audit,
+        departmentId: updated.departmentId,
+        expenseId: updated.id,
+        actorUserId: adminId,
+        submitterUserId: updated.userId,
+        ip: req.ip,
+      });
+    }
+    res.json({
+      ok: true,
+      expense: updated,
+      ...(budgetExceeded && budgetExceeded.exceeded ? { budgetExceeded } : {}),
+    });
   });
 
   router.post('/:id/reject', requireAuth, (req, res) => {
-    if (!isAdminRole(req.userRole)) {
-      return res.status(403).json({ error: 'No autorizado.' });
-    }
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
@@ -1281,32 +1472,30 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       }
       const votes = {};
       votes[req.userId] = 'rejected';
-      db.prepare(`
+      const rejectInfo = db.prepare(`
         UPDATE expenses SET
           status = 'rejected',
           approversJson = ?,
           approvalVotesJson = ?,
           rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
+          approvedBy = NULL, approvedAt = NULL,
           updatedAt = ?
         WHERE id = ?
       `).run(JSON.stringify(defaultIds), JSON.stringify(votes), req.userId, now, note, now, exp.id);
+      if (warnIfNoChanges(rejectInfo, 'expense_reject', { expenseId: exp.id, userId: req.userId })) {
+        return res.status(404).json({ error: 'Gasto no encontrado.' });
+      }
       const updated = getExpenseById(exp.id);
       audit('expense_rejected', { userId: req.userId, targetId: exp.id, note });
       return res.json({ ok: true, expense: updated });
     }
-
-    if (approversRaw.length > 0) {
-      const canReject = exp.status === 'submitted' ||
-        (exp.status === 'approved' && isAdminRole(req.userRole));
-      if (!canReject) {
-        return res.status(400).json({ error: 'No se puede rechazar en este estado.' });
-      }
-      if (!userIdInRawApproverList(approversRaw, adminId, userStore)) {
-        return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
-      }
+    const canReject = exp.status === 'submitted' ||
+      (exp.status === 'approved' && isAdminRole(req.userRole));
+    if (!canReject) {
+      return res.status(400).json({ error: 'No se puede rechazar en este estado.' });
     }
 
-    db.prepare(`
+    const rejectInfo = db.prepare(`
       UPDATE expenses SET
         status = 'rejected',
         rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
@@ -1315,7 +1504,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         approvalVotesJson = ?,
         updatedAt = ?
       WHERE id = ?
-    `).run(adminId, now, note, JSON.stringify({}), now, exp.id);
+    `).run(adminId, now, note, JSON.stringify({ [adminId]: 'rejected' }), now, exp.id);
+    if (warnIfNoChanges(rejectInfo, 'expense_reject', { expenseId: exp.id, userId: adminId })) {
+      return res.status(404).json({ error: 'Gasto no encontrado.' });
+    }
     if (exp.expenseType === 'invoice' &&
         exp.paymentStatus === 'unpaid') {
       db.prepare("UPDATE expenses SET paymentStatus = 'pending_approval', updatedAt = ? WHERE id = ?")
