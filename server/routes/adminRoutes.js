@@ -617,7 +617,7 @@ function createAdminRouter(deps) {
     await upsertSeedUser({
       id: 'bootstrap-admin', email: adminEmail,
       name: adminName || 'Bootstrap Admin',
-      password: adminPassword, role: 'admin', color: '#3C0A37',
+      password: adminPassword, role: 'admin', color: '#cc4e00',
       accountStatus: 'active', approvalStatus: 'approved',
     });
 

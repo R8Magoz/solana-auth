@@ -193,51 +193,6 @@ function createAuthRouter(deps) {
   });
 
   /**
-   * POST /auth/refresh
-   * Bearer: valid token, or token expired within SESSION_REFRESH_GRACE_MS → new sessionToken (8h).
-   */
-  router.post('/refresh', (req, res) => {
-    const auth = req.headers['authorization'] || '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-    const data = verifySessionToken(token, true);
-    if (!data || !data.userId) {
-      return res.status(401).json({ error: 'Sesión no válida.' });
-    }
-    const sessionToken = signSessionToken(data.userId, data.role);
-    audit('session_refreshed', { userId: data.userId });
-    res.json({ ok: true, sessionToken });
-  });
-
-  /**
-   * POST /auth/logout
-   * Bearer: stateless tokens — no server-side session to destroy; audit for traceability.
-   */
-  router.post('/logout', (req, res) => {
-    const auth = req.headers['authorization'] || '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-    const data = verifySessionToken(token, true);
-    if (data && data.userId) {
-      audit('session_logout', { userId: data.userId });
-    }
-    res.json({ ok: true });
-  });
-
-  /**
-   * GET /auth/team
-   * Any logged-in user: full team list with display fields only (no password hash).
-   * Lets the SPA resolve expense/bill userId → name when IDs come from SQLite (e.g. u_…).
-   */
-  router.get('/team', requireAuth, (req, res) => {
-    try {
-      const users = userStore.getAllUsersPublic();
-      res.json({ users });
-    } catch (e) {
-      console.error('[auth/team]', e);
-      res.status(500).json({ error: 'No se pudo cargar el equipo.' });
-    }
-  });
-
-  /**
    * POST /auth/change-password
    * Body: { userId, newPassword }
    * Auth: Bearer session token — user can only change their own password.
@@ -382,7 +337,7 @@ function createAuthRouter(deps) {
           passwordHash:     tempHash,
           tempPasswordExp:  tempExpiry,
           role:             'admin',
-          color:            '#3C0A37',
+          color:            '#cc4e00',
           accountStatus:    'active',
           approvalStatus:   'approved',
           emailVerifiedAt:  now,

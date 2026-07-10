@@ -97,7 +97,7 @@ async function buildSeedUsers() {
       name:          'Bootstrap Admin',
       passwordHash:  await bcrypt.hash(ADMIN_PASSWORD, BCRYPT_ROUNDS),
       role:          'superadmin',
-      color:         '#3C0A37',
+      color:         '#cc4e00',
       accountStatus: 'active',
       approvalStatus:'approved',
       emailVerifiedAt: now,

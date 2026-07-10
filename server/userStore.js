@@ -179,9 +179,10 @@ function listUsersBySeedTagForStatus(seedTag) {
 }
 
 function updatePasswordAfterChange(userId, passwordHash) {
-  db.prepare(`
+  const info = db.prepare(`
     UPDATE users SET passwordHash = ?, mustChangePassword = 0, tempPasswordExp = NULL WHERE id = ?
   `).run(passwordHash, userId);
+  warnIfNoChanges(info, 'updatePasswordAfterChange', { userId });
 }
 
 /**
@@ -192,27 +193,30 @@ function updateOwnProfile(userId, { name, email, phone, avatar }) {
     avatar != null && String(avatar).trim() !== ''
       ? String(avatar).slice(0, AVATAR_MAX_LEN)
       : null;
-  db.prepare(
+  const info = db.prepare(
     `UPDATE users SET name = ?, email = ?, phone = ?, avatar = ? WHERE id = ?`,
   ).run(name, email, phone, av, userId);
+  warnIfNoChanges(info, 'updateOwnProfile', { userId });
 }
 
 /** Superadmin: set a new temp password and force change on next login. */
 function setPasswordForceChange(userId, passwordHash) {
-  db.prepare(
+  const info = db.prepare(
     `UPDATE users SET passwordHash = ?, mustChangePassword = 1, tempPasswordExp = NULL WHERE id = ?`,
   ).run(passwordHash, userId);
+  warnIfNoChanges(info, 'setPasswordForceChange', { userId });
 }
 
 function updateAdminTempPassword(userId, passwordHash, tempExpiry) {
-  db.prepare(`
+  const info = db.prepare(`
     UPDATE users SET passwordHash = ?, tempPasswordExp = ? WHERE id = ?
   `).run(passwordHash, tempExpiry, userId);
+  warnIfNoChanges(info, 'updateAdminTempPassword', { userId });
 }
 
 function updateUserApproved(userId, approvedBy) {
   const now = Date.now();
-  db.prepare(`
+  const info = db.prepare(`
     UPDATE users SET
       accountStatus = 'active',
       approvalStatus = 'approved',
@@ -220,11 +224,12 @@ function updateUserApproved(userId, approvedBy) {
       approvedBy = ?
     WHERE id = ?
   `).run(now, approvedBy || 'admin', userId);
+  warnIfNoChanges(info, 'updateUserApproved', { userId, approvedBy });
 }
 
 function updateUserDenied(userId, deniedBy, reason) {
   const now = Date.now();
-  db.prepare(`
+  const info = db.prepare(`
     UPDATE users SET
       accountStatus = 'denied',
       approvalStatus = 'denied',
@@ -233,6 +238,7 @@ function updateUserDenied(userId, deniedBy, reason) {
       deniedReason = ?
     WHERE id = ?
   `).run(now, deniedBy || 'admin', reason || null, userId);
+  warnIfNoChanges(info, 'updateUserDenied', { userId, deniedBy });
 }
 
 function replaceUserById(u) {

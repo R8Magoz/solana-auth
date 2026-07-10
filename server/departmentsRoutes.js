@@ -3,6 +3,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('./db');
+const { warnIfNoChanges } = require('./userStore');
 
 const EUR_SUM = `COALESCE(amountEUR, CASE WHEN UPPER(COALESCE(currency, 'EUR')) = 'EUR' THEN amount ELSE 0 END)`;
 
@@ -103,12 +104,15 @@ function createDepartmentsRouter({ audit, requireAuth, requireSuperAdmin }) {
     }
     let nextArchived = !!row.archived;
     if (archived !== undefined) nextArchived = !!archived;
-    db.prepare('UPDATE departments SET name = ?, budget = ?, archived = ? WHERE id = ?').run(
+    const updateInfo = db.prepare('UPDATE departments SET name = ?, budget = ?, archived = ? WHERE id = ?').run(
       nextName,
       nextBud,
       nextArchived ? 1 : 0,
       row.id,
     );
+    if (warnIfNoChanges(updateInfo, 'department_update', { departmentId: row.id, userId: req.userId })) {
+      return res.status(404).json({ error: 'Departamento no encontrado.' });
+    }
     const updated = db.prepare('SELECT id, name, budget, archived, createdAt FROM departments WHERE id = ?').get(row.id);
     audit('department_updated', { userId: req.userId, targetId: row.id });
     res.json({ ok: true, department: rowWithStats(updated) });

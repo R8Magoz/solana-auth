@@ -1103,10 +1103,13 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
     const now = Date.now();
     const paidMs = parsePaidAtFromBody(req.body, now);
-    db.prepare(`
+    const markPaidInfo = db.prepare(`
       UPDATE expenses SET paymentStatus = 'paid', paidAt = ?, paidConfirmedBy = ?, updatedAt = ?
       WHERE id = ?
     `).run(paidMs, req.userId, now, exp.id);
+    if (warnIfNoChanges(markPaidInfo, 'expense_mark_paid', { expenseId: exp.id, userId: req.userId })) {
+      return res.status(404).json({ error: 'Gasto no encontrado.' });
+    }
     // Prevent job from re-spawning this specific item
     db.prepare(
       "UPDATE expenses SET recurring = 0, updatedAt = ? WHERE id = ? AND expenseType = 'invoice'"
@@ -1502,7 +1505,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     const prev = { ...exp };
     const now = Date.now();
-    db.prepare(`UPDATE expenses SET status = 'deleted', updatedAt = ? WHERE id = ?`).run(now, exp.id);
+    const deleteInfo = db.prepare(`UPDATE expenses SET status = 'deleted', updatedAt = ? WHERE id = ?`).run(now, exp.id);
+    if (warnIfNoChanges(deleteInfo, 'expense_soft_delete', { expenseId: exp.id, userId: req.userId })) {
+      return res.status(404).json({ error: 'Gasto no encontrado.' });
+    }
     try {
       await receiptStorage.removeReceiptAsset(exp.receiptPath, DATA_DIR);
     } catch (e) {
@@ -1627,7 +1633,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         amount: exp.amountEUR,
       });
       const now = Date.now();
-      db.prepare(`UPDATE expenses SET receiptPath = ?, updatedAt = ? WHERE id = ?`).run(receiptPath, now, exp.id);
+      const receiptInfo = db.prepare(`UPDATE expenses SET receiptPath = ?, updatedAt = ? WHERE id = ?`).run(receiptPath, now, exp.id);
+      if (warnIfNoChanges(receiptInfo, 'expense_receipt_path', { expenseId: exp.id, userId: req.userId })) {
+        return res.status(404).json({ error: 'Gasto no encontrado.' });
+      }
       audit('expense_receipt_uploaded', { userId: req.userId, targetId: exp.id, receiptPath });
       return res.json({ ok: true, receiptPath });
     } catch (e) {
