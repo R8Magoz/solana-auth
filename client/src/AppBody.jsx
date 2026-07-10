@@ -81,7 +81,9 @@ function confirmUI(message) {
 }
 
 /* ── HELPERS (remainder in file; currency/amount helpers in helpers.js) ───── */
-export function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,noBottomMargin}){
+/** Expense form field class — invalid border + shake on failed submit. */
+const expenseInpClass=(bad)=>"inp"+(bad?" inp--invalid inp--shake":"");
+export function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,noBottomMargin,animateLoad=false}){
   const spentN=Number(spent)||0;
   const budgetN=Number(budget)||0;
   const pctRaw=budgetN>0?(spentN/budgetN)*100:(spentN>0?100:0);
@@ -107,7 +109,16 @@ export function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barCol
         </span>
       </div>
       <div className="budget-bar-track">
-        {spentN>0&&<div className="budget-bar-fill" style={{width:pctBar+"%",background:barColor}}/>}
+        {spentN>0&&(
+          <div
+            className={`budget-bar-fill${animateLoad?" budget-bar-fill--load":""}`}
+            style={{
+              background:barColor,
+              "--budget-scale":pctBar/100,
+              ...(animateLoad?{}:{transform:`scaleX(${pctBar/100})`}),
+            }}
+          />
+        )}
       </div>
       <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
         <span style={{color:"#9CAA9F"}}>{isEmpty?"Sin gastos":Math.round(pctRaw)+"% utilizado"}</span>
@@ -1350,6 +1361,60 @@ function SidebarUserMenu({items}){
   );
 }
 
+/* ── TOAST (single slot, replace with fade) ─────────────────────────────────── */
+function ToastContainer(){
+  const [slot,setSlot]=useState({toast:null,phase:"hidden"});
+  const slotRef=useRef(slot);
+  slotRef.current=slot;
+  const timersRef=useRef([]);
+  const clearTimers=useCallback(()=>{
+    timersRef.current.forEach(id=>clearTimeout(id));
+    timersRef.current=[];
+  },[]);
+  const schedule=useCallback((fn,ms)=>{
+    const id=setTimeout(fn,ms);
+    timersRef.current.push(id);
+  },[]);
+  const present=useCallback((payload,dismissMs)=>{
+    setSlot({toast:payload,phase:"enter"});
+    schedule(()=>setSlot(s=>({...s,phase:"visible"})),20);
+    schedule(()=>{
+      setSlot(s=>({...s,phase:"exit"}));
+      schedule(()=>setSlot({toast:null,phase:"hidden"}),200);
+    },dismissMs);
+  },[schedule]);
+  const enqueue=useCallback((message,kind,durationMs)=>{
+    clearTimers();
+    const payload={id:"t_"+Date.now(),message,kind:kind||"info"};
+    const dismissMs=Number.isFinite(Number(durationMs))?Math.max(500,Number(durationMs)):4200;
+    const cur=slotRef.current;
+    if(cur.toast&&(cur.phase==="visible"||cur.phase==="enter"||cur.phase==="exit")){
+      setSlot(s=>({...s,phase:"exit"}));
+      schedule(()=>present(payload,dismissMs),200);
+    }else{
+      present(payload,dismissMs);
+    }
+  },[clearTimers,present,schedule]);
+  useEffect(()=>{
+    const h=(ev)=>{
+      const{message,kind,durationMs}=ev.detail||{};
+      if(message)enqueue(message,kind,durationMs);
+    };
+    window.addEventListener("solana-toast",h);
+    return()=>{
+      window.removeEventListener("solana-toast",h);
+      clearTimers();
+    };
+  },[enqueue,clearTimers]);
+  if(!slot.toast&&slot.phase==="hidden")return null;
+  const phaseClass=slot.phase==="enter"?" toast-slot--enter":slot.phase==="exit"?" toast-slot--exit":"";
+  return(
+    <div className={`toast-slot${phaseClass}`}>
+      <div className={`toast toast--${slot.toast.kind}`}>{slot.toast.message}</div>
+    </div>
+  );
+}
+
 /* ── SIDEBAR NAV ITEM ──────────────────────────────────────────────────────── */
 function SidebarNavItem({active,label,badge,onClick}){
   const [hovered,setHovered]=useState(false);
@@ -1694,13 +1759,14 @@ function AttachmentViewer({receipt, receiptType, receiptPath, apiExpenseId, item
           <div style={{fontSize:10,color:"#9CAA9F",marginTop:4,textAlign:"center"}}>{t?t("receipt.tapEnlarge"):"Toca para ver a tamaño completo"}</div>
           {imgZoom&&ReactDOM.createPortal(
             <div role="dialog" aria-modal="true" aria-label={t?t("label.receipt"):"Recibo"}
-              style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(0,0,0,0.9)",display:"flex",alignItems:"center",justifyContent:"center",padding:12,boxSizing:"border-box"}}
+              className="modal-overlay modal-overlay--open"
+              style={{zIndex:99999,background:"rgba(0,0,0,0.9)",padding:12}}
               onClick={()=>setImgZoom(false)}>
               <button type="button" onClick={()=>setImgZoom(false)}
                 style={{position:"absolute",top:10,right:10,zIndex:1,fontSize:12,padding:"6px 12px",borderRadius:6,border:"1px solid rgba(255,255,255,0.35)",background:"rgba(0,0,0,0.45)",color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
                 {t?t("receipt.closeZoom"):"Cerrar"}
               </button>
-              <img src={srcUrl} alt="" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",pointerEvents:"none"}} onClick={e=>e.stopPropagation()}/>
+              <img src={srcUrl} alt="" className="modal-panel" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",pointerEvents:"none",background:"transparent",boxShadow:"none",padding:0}} onClick={e=>e.stopPropagation()}/>
             </div>,
             document.body
           )}
@@ -2736,7 +2802,7 @@ function ExpenseFormFields({
   t, form, setForm,
   ownerId, ownerUser,
   activeCats, departments, users, ivaRates,
-  hi, rs,
+  hi,
   actionColor,
   splitOn, setSplitOn, splits, setSplits, spMode, setSpMode,
   splitSubmitBlocked, submitAttempt,
@@ -2768,7 +2834,7 @@ function ExpenseFormFields({
     <div className="expense-form-fields-wrap" style={{["--expense-action"]:actionColor}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
         <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.description")} <span style={{color:"#A32D2D"}}>*</span></label>
-          <input className="inp" placeholder={t("label.description")} value={form.description} style={rs(hi&&!String(form.description||"").trim())} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
+          <input className={expenseInpClass(hi&&!String(form.description||"").trim())} placeholder={t("label.description")} value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
         </div>
         <div style={{gridColumn:"1/-1",padding:"8px 0",...(isInv?{borderLeft:`3px solid ${actionColor}`,paddingLeft:8,borderRadius:6,transition:"border-color 0.2s ease"}:{})}}>
           <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",margin:0}}>
@@ -2788,30 +2854,30 @@ function ExpenseFormFields({
         </div>
         {isInv&&(
           <div style={{gridColumn:"1/-1"}}><label className="lbl">Proveedor <span style={{color:"#A32D2D"}}>*</span></label>
-            <input className="inp" value={form.proveedor||""} style={rs(hi&&!String(form.proveedor||"").trim())} onChange={e=>{const v=e.target.value;setForm(p=>({...p,proveedor:v,vendor:p.expenseType==="invoice"?v:p.vendor}));}}/>
+            <input className={expenseInpClass(hi&&!String(form.proveedor||"").trim())} value={form.proveedor||""} onChange={e=>{const v=e.target.value;setForm(p=>({...p,proveedor:v,vendor:p.expenseType==="invoice"?v:p.vendor}));}}/>
           </div>
         )}
         <div><label className="lbl">{t("label.amount")} <span style={{color:"#A32D2D"}}>*</span></label>
-          <input className="inp" type="text" inputMode="decimal" placeholder="0.00" value={form.amount} style={rs(hi&&!amountOk)}
+          <input className={expenseInpClass(hi&&!amountOk)} type="text" inputMode="decimal" placeholder="0.00" value={form.amount}
             onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setForm(p=>({...p,amount:v}));}}/>
         </div>
         <div><label className="lbl">{t("label.date")} <span style={{color:"#A32D2D"}}>*</span></label>
-          <input className="inp" type="date" value={form.date} style={rs(hi&&!String(form.date||"").trim())} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
+          <input className={expenseInpClass(hi&&!String(form.date||"").trim())} type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
         </div>
         <div><label className="lbl">{t("label.category")} <span style={{color:"#A32D2D"}}>*</span></label>
-          <select className="inp" value={form.category} style={rs(hi&&!String(form.category||"").trim())} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
+          <select className={expenseInpClass(hi&&!String(form.category||"").trim())} value={form.category} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
             <option value="" disabled hidden>{t("label.category")}</option>
             {activeCats.map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
           </select>
         </div>
         <div><label className="lbl">{t("label.department")} <span style={{color:"#A32D2D"}}>*</span></label>
-          <select className="inp" value={form.departmentId||""} style={rs(hi&&!String(form.departmentId||"").trim())} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))}>
+          <select className={expenseInpClass(hi&&!String(form.departmentId||"").trim())} value={form.departmentId||""} onChange={e=>setForm(p=>({...p,departmentId:e.target.value}))}>
             <option value="" disabled hidden>{departments.length===0?t("msg.deptRequired"):t("label.department")}</option>
             {departments.filter(d=>!d.archived).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </div>
         <div><label className="lbl">Titular del gasto <span style={{color:"#A32D2D"}}>*</span></label>
-          <select className="inp" value={ownerId} style={rs(hi&&!ownerId)} onChange={e=>setForm(p=>({...p,ownerId:e.target.value}))}>
+          <select className={expenseInpClass(hi&&!ownerId)} value={ownerId} onChange={e=>setForm(p=>({...p,ownerId:e.target.value}))}>
             {pickableUsers(users).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         </div>
@@ -2901,10 +2967,9 @@ function ExpenseFormFields({
               <div style={{gridColumn:"1/-1",fontSize:12,color:"#4B5E52"}}>
                 <label className="lbl">{t("expenses.dueDate")}</label>
                 <input
-                  className="inp"
+                  className={expenseInpClass(hi&&!duePickOk)}
                   type="date"
                   value={String(form.invoiceDueDateDirect||"").slice(0,10)}
-                  style={rs(hi&&!duePickOk)}
                   onChange={e=>setForm(p=>({...p,invoiceDueDateDirect:e.target.value}))}
                 />
               </div>
@@ -2989,7 +3054,6 @@ function NewPanel(){
   }, [users]);
   useEffect(()=>{if(expenseValid)setSubmitAttempt(false);},[expenseValid]);
   const hi=submitAttempt&&!expenseValid;
-  const rs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
   const draftTimer=useRef(null);
   const ivaScanB64Ref=useRef(null);
   useEffect(()=>{
@@ -3046,7 +3110,6 @@ function NewPanel(){
         users={pickableUsers(users)}
         ivaRates={ivaRates}
         hi={hi}
-        rs={rs}
         actionColor={actionColor}
         splitOn={splitOn}
         setSplitOn={setSplitOn}
@@ -3445,7 +3508,6 @@ function DetailPanel(){
   const editAmtSumBad=efSplitOn&&efSpMode==="amount"&&editExpAmt>0&&Math.abs(editTotVal-editExpAmt)>0.01;
   const editSplitBlocked=efSplitOn&&(users.length<2||editCheckedSplit<2||editAmtSumBad);
   const editHi=editSubmitAttempt&&!editExpenseValid;
-  const editRs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
   const editActionColor=editIsInv?FACTURA:G;
   const editSubmitHoverBg=editIsInv?FACTURA_HOVER:GH;
   return(
@@ -3474,7 +3536,6 @@ function DetailPanel(){
             users={pickableUsers(users)}
             ivaRates={ivaRates}
             hi={editHi}
-            rs={editRs}
             actionColor={editActionColor}
             splitOn={efSplitOn}
             setSplitOn={v=>{setEfSplitOn(v);if(!v)setEfSpMode("amount");setEfDirty(true);}}
@@ -3515,6 +3576,7 @@ function DetailPanel(){
       {/* READ MODE */}
       {!editMode&&<div style={{minWidth:0,overflow:"visible",minHeight:"auto"}}>
       <div
+        className={st!=="approved"?statusToneClass(st):""}
         style={{
           display:"inline-block",
           background:detailTopStatusTone.bg,
@@ -3525,6 +3587,8 @@ function DetailPanel(){
           borderRadius:20,
           letterSpacing:"0.06em",
           marginBottom:7,
+          transition:"background-color 0.25s ease-in-out,color 0.25s ease-in-out",
+          ...(statusToneClass(st)?{background:undefined,color:undefined}:{}),
         }}
       >{t("status."+st).toUpperCase()}</div>
       <div style={{fontSize:15,fontWeight:700,marginBottom:2}}>{e.description}</div>
@@ -3845,6 +3909,11 @@ export function DashboardView(){
   const budgetRemainingTotal=budgetTotalActive-spentActive;
   const budgetProgressPct=budgetTotalActive>0 ? (spentActive/budgetTotalActive)*100 : 0;
   const [billsWindow,setBillsWindow]=useState("15d");
+  const [dashBudgetAnim,setDashBudgetAnim]=useState(true);
+  useEffect(()=>{
+    const t=setTimeout(()=>setDashBudgetAnim(false),450);
+    return()=>clearTimeout(t);
+  },[]);
   const billsWindowCfg=UPCOMING_BILL_WINDOWS[billsWindow]||UPCOMING_BILL_WINDOWS["15d"];
   const upcomingBills=[];
   expenses.filter(e=>e.expenseType==="invoice"&&e.paymentStatus==="unpaid"&&e.dueDate).forEach(e=>{
@@ -3915,8 +3984,15 @@ export function DashboardView(){
                 </div>
                 {showProgress&&(
                   <>
-                  <div style={{height:8,background:progressTrack,borderRadius:4,marginTop:10}}>
-                    <div style={{height:"100%",width:`${Math.max(0,Math.min(100,budgetProgressPct))}%`,background:progressFill,borderRadius:4}}/>
+                  <div style={{height:8,background:progressTrack,borderRadius:4,marginTop:10,overflow:"hidden"}}>
+                    <div
+                      className={`kpi-progress-fill${dashBudgetAnim?" kpi-progress-fill--load":""}`}
+                      style={{
+                        background:progressFill,
+                        "--budget-scale":Math.max(0,Math.min(100,budgetProgressPct))/100,
+                        ...(dashBudgetAnim?{}:{transform:`scaleX(${Math.max(0,Math.min(100,budgetProgressPct))/100})`}),
+                      }}
+                    />
                   </div>
                   <div style={{fontSize:11,color:progressLabelColor,marginTop:5}}>{progressLabel}</div>
                   </>
@@ -3981,7 +4057,7 @@ export function DashboardView(){
         </div>
         {rejCnt>0&&<button type="button" style={{width:"100%",marginTop:10,background:"none",border:"none",color:T,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}} onClick={goToMyRejected}>{t("dash.fixRejectedLink").replace("{n}",String(rejCnt))}</button>}
       </div>
-      <DepartmentBudgetBars t={t} rows={departmentsWithStats} title={t("dash.deptBudgetsTitle")}/>
+      <DepartmentBudgetBars t={t} rows={departmentsWithStats} title={t("dash.deptBudgetsTitle")} animateLoad={dashBudgetAnim}/>
       {watchDepts.length>0&&(
         <div className="card" style={{marginBottom:11}}>
           <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>{t("dash.budgetStatus")}</div>
@@ -5761,7 +5837,7 @@ function DepartmentBudgetTrackerSection({t}){
 }
 
 /* ── DEPARTMENT BUDGET BARS (dashboard + presupuestos view) ───────────────── */
-function DepartmentBudgetBars({t,rows,title}){
+function DepartmentBudgetBars({t,rows,title,animateLoad=false}){
   if(!rows||rows.length===0)return null;
   const visible=rows.filter(d=>!d.archived&&(Number(d.budget)||0)>0);
   if(visible.length===0)return null;
@@ -5769,7 +5845,7 @@ function DepartmentBudgetBars({t,rows,title}){
     <div className="card" style={{marginBottom:14}}>
       {title&&<div style={{fontWeight:600,fontSize:13,marginBottom:10}}>{title}</div>}
       {visible.map((d,i)=>(
-        <BudgetVsActualRow key={d.id} t={t} name={d.name} spent={d.spent} budget={d.budget} remaining={d.remaining} noBottomMargin={i===visible.length-1}/>
+        <BudgetVsActualRow key={d.id} t={t} name={d.name} spent={d.spent} budget={d.budget} remaining={d.remaining} noBottomMargin={i===visible.length-1} animateLoad={animateLoad}/>
       ))}
     </div>
   );
@@ -6787,8 +6863,8 @@ export default function App(){
   const [userMenuOpen,setUserMenuOpen]=useState(false);
   const [idleTrackingEnabled,setIdleTrackingEnabled]=useState(false);
   const [online,setOnline]=useState(()=>typeof navigator!=="undefined"&&navigator.onLine);
-  const [toasts,setToasts]=useState([]);
   const [confirmModal,setConfirmModal]=useState(null);
+  const [confirmModalClosing,setConfirmModalClosing]=useState(false);
   const [idleWarning,   setIdleWarning]   =useState(false);
   const idleTimer   =useRef(null);
   const idleDeadlineRef = useRef(0);
@@ -6842,11 +6918,27 @@ export default function App(){
   const migrAttemptRef=useRef(false);
 
   const confirmHandler = useCallback((message) => new Promise((resolve) => {
+    setConfirmModalClosing(false);
     setConfirmModal({
       message: String(message || '').trim() || '¿Confirmar?',
       resolve,
     });
   }), []);
+  const confirmClosingRef=useRef(false);
+  const closeConfirmModal=useCallback((result)=>{
+    setConfirmModal(prev=>{
+      if(!prev||confirmClosingRef.current)return prev;
+      confirmClosingRef.current=true;
+      setConfirmModalClosing(true);
+      window.setTimeout(()=>{
+        try{prev.resolve(result);}catch(e){}
+        setConfirmModal(null);
+        setConfirmModalClosing(false);
+        confirmClosingRef.current=false;
+      },200);
+      return prev;
+    });
+  },[]);
   useEffect(()=>{
     _confirmHandler = confirmHandler;
     return ()=>{
@@ -6980,18 +7072,6 @@ export default function App(){
     return()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
   },[]);
 
-  useEffect(()=>{
-    const h=(ev)=>{
-      const{message,kind,durationMs}=ev.detail||{};
-      if(!message)return;
-      const id="t_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
-      setToasts(p=>[...p,{id,message,kind:kind||"info"}]);
-      const dismissMs = Number.isFinite(Number(durationMs)) ? Math.max(500, Number(durationMs)) : 4200;
-      setTimeout(()=>setToasts(p=>p.filter(x=>x.id!==id)),dismissMs);
-    };
-    window.addEventListener("solana-toast",h);
-    return()=>window.removeEventListener("solana-toast",h);
-  },[]);
 
   useEffect(()=>{
     if(!AUTH_URL||!user||!API.token)return;
@@ -8176,37 +8256,15 @@ export default function App(){
             Sin conexión, los cambios se guardarán localmente
           </div>
         )}
-        {toasts.length>0&&(
-          <div style={{position:"fixed",bottom:16,left:"50%",transform:"translateX(-50%)",zIndex:7600,display:"flex",flexDirection:"column",gap:8,maxWidth:"min(92vw,380px)",pointerEvents:"none"}}>
-            {toasts.map(t=>(
-              <div key={t.id} style={{
-                pointerEvents:"auto",
-                padding:"10px 14px",
-                borderRadius:8,
-                fontSize:12,
-                fontWeight:500,
-                boxShadow:"0 4px 14px rgba(0,0,0,0.12)",
-                background:t.kind==="error"?"#FEE2E2":t.kind==="conflict"?"#FEF3C7":t.kind==="sync"?"#E8F5E9":t.kind==="offline"?"#E0F2FE":"#fff",
-                color:t.kind==="error"?"#7F1D1D":t.kind==="conflict"?"#92400E":"#1a1008",
-                border:t.kind==="sync"?"1px solid #A7F3D0":t.kind==="offline"?"1px solid #7DD3FC":"1px solid rgba(0,0,0,0.06)",
-              }}>{t.message}</div>
-            ))}
-          </div>
-        )}
+        <ToastContainer/>
         {confirmModal&&(
-          <div style={{position:"fixed",inset:0,zIndex:7700,background:"rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-            <div className="fade-in" style={{width:"min(92vw,420px)",background:"#fff",borderRadius:12,padding:"16px 16px 14px",boxShadow:"0 10px 30px rgba(0,0,0,0.25)"}}>
+          <div className={`modal-overlay${confirmModalClosing?" modal-overlay--closing":" modal-overlay--open"}`}>
+            <div className="modal-panel">
               <div style={{fontWeight:700,fontSize:14,color:G,marginBottom:8}}>Confirmación</div>
               <div style={{fontSize:13,color:"#1a1008",lineHeight:1.35,marginBottom:14,whiteSpace:"pre-wrap"}}>{confirmModal.message}</div>
               <div style={{display:"flex",gap:8}}>
-                <button type="button" className="btn-secondary" style={{flex:1,fontSize:12,padding:"7px 10px"}} onClick={()=>{
-                  try{confirmModal.resolve(false);}catch(e){}
-                  setConfirmModal(null);
-                }}>Cancelar</button>
-                <button type="button" className={confirmModal.destructive?"btn-danger":"btn-primary"} style={{flex:1,fontSize:12,padding:"7px 10px"}} onClick={()=>{
-                  try{confirmModal.resolve(true);}catch(e){}
-                  setConfirmModal(null);
-                }}>{confirmModal.confirmLabel||"Confirmar"}</button>
+                <button type="button" className="btn-secondary" style={{flex:1,fontSize:12,padding:"7px 10px"}} onClick={()=>closeConfirmModal(false)}>Cancelar</button>
+                <button type="button" className={confirmModal.destructive?"btn-danger":"btn-primary"} style={{flex:1,fontSize:12,padding:"7px 10px"}} onClick={()=>closeConfirmModal(true)}>{confirmModal.confirmLabel||"Confirmar"}</button>
               </div>
             </div>
           </div>
@@ -8244,7 +8302,7 @@ export default function App(){
           .card{transition:box-shadow 0.15s;}
           .card:hover{box-shadow:0 3px 10px rgba(0,0,0,0.09);}
           .row-hover{transition:background 0.1s;}
-          .btn-primary,.btn-secondary,.btn-danger,.btn-sm{transition:opacity 0.15s,transform 0.1s,background 0.15s;}
+          .btn-primary,.btn-secondary,.btn-danger,.btn-sm{transition:opacity 0.15s,transform 0.15s ease-out,background 0.15s;}
           .btn-primary:active,.btn-secondary:active,.btn-danger:active,.btn-sm:active{transform:scale(0.97);}
           /* Right panel slide */
           .panel-slide{animation:slideIn 0.2s cubic-bezier(0.22,1,0.36,1);}

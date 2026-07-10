@@ -10,9 +10,13 @@
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
+  transition: background 0.15s ease, transform 0.15s ease-out, opacity 0.15s ease;
 }
 .btn-primary:hover {
   background: var(--color-brand-hover);
+}
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .btn-secondary {
@@ -23,6 +27,10 @@
   cursor: pointer;
   font-family: inherit;
   font-weight: 600;
+  transition: background 0.15s ease, transform 0.15s ease-out, opacity 0.15s ease;
+}
+.btn-secondary:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .btn-ghost {
@@ -68,6 +76,14 @@
 .status-rejected {
   background: #FEE2E2;
   color: #991B1B;
+}
+.status-approved,
+.status-pending,
+.status-rejected,
+.badge.status-approved,
+.badge.status-pending,
+.badge.status-rejected {
+  transition: background-color 0.25s ease-in-out, color 0.25s ease-in-out;
 }
 
 .input {
@@ -115,8 +131,14 @@
 }
 .budget-bar-fill {
   height: 100%;
+  width: 100%;
   border-radius: 4px;
-  transition: width 0.4s;
+  transform-origin: left center;
+  transform: scaleX(var(--budget-scale, 0));
+  transition: transform 0.4s ease-out;
+}
+.budget-bar-fill--load {
+  animation: budgetBarFill 400ms ease-out forwards;
 }
 
 .split-breakdown-wrap {
