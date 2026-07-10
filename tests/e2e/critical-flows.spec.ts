@@ -593,6 +593,14 @@ async function clickSidebarGastos(page: Page) {
   await clickSidebarSection(page, 'Gastos');
 }
 
+async function openSettingsViaUserMenu(page: Page) {
+  // Settings is reached via the username card at the bottom of the sidebar (desktop E2E viewport).
+  const userCard = page.locator('.dt-only button').filter({ hasText: /Admin QA|User QA|Manager/i }).first();
+  await userCard.click();
+  await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Ajustes/i }).first()).toBeVisible({ timeout: 10_000 });
+}
+
 async function filterExpenseListToInvoices(page: Page) {
   await page.getByText('Gastos', { exact: true }).first().click();
   await page.waitForTimeout(500);
@@ -1217,30 +1225,16 @@ test.describe('C — Permissions and profile', () => {
   test('C4) Superadmin can assign approvers to categories in Settings', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
-    await page.getByText('Mi perfil', { exact: true }).first().click();
-    await page.waitForTimeout(500);
-    await page.getByText('Ajustes', { exact: true }).first().click();
-    // Settings page must load
-    await expect(page.getByText(/Ajustes|Configuración|Settings/i).first()).toBeVisible();
+    await openSettingsViaUserMenu(page);
     // Approver assignment section
     const approverSection = page.getByText(/Parámetros|Aprobadores|Categorías|Approvers/i).first();
     await expect(approverSection).toBeVisible({ timeout: 10000 });
   });
 
-  test('C3) Regular user can access Mi perfil and change password', async ({ page }) => {
+  test('C3) Regular user can access settings and change password', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'user@solana.test');
-    const profileLink = page.getByText(/Mi perfil|Perfil|Profile/i).first();
-    const avatarBtn = page
-      .locator('[data-testid="avatar"], [aria-label*="perfil"], [aria-label*="profile"], [class*="avatar"]')
-      .first();
-    if (await profileLink.isVisible().catch(() => false)) {
-      await profileLink.click();
-    } else {
-      await avatarBtn.click();
-      await page.getByText(/Mi perfil|Perfil/i).first().click();
-    }
-    await page.waitForTimeout(400);
+    await openSettingsViaUserMenu(page);
     // Expand "Cambiar contraseña" accordion
     await page.getByText('Cambiar contraseña').first().click();
     await page.waitForTimeout(500);

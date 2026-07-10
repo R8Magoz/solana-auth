@@ -1068,11 +1068,19 @@ const inits=n=>n.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase();
    Drop-in replacement for every inline initials-div across the app.
    Props: user (required), size (px, default 24), fontSize (px, default auto)
 ─────────────────────────────────────────────────────────────────────────── */
+function isRenderableAvatarSrc(src){
+  if(!src||typeof src!=="string")return false;
+  const s=src.trim();
+  return s.startsWith("data:image/")||/^https?:\/\//i.test(s)||s.startsWith("blob:");
+}
 function UserAvatar({user, size=24, fontSize=null}){
   if(!user)return null;
   const fs=fontSize||Math.max(6,Math.round(size*0.32));
-  if(user.avatar)return(
-    <img src={user.avatar} alt={user.name||""} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1.5px solid rgba(0,0,0,0.06)"}}/>
+  const [imgFailed,setImgFailed]=useState(false);
+  const src=user.avatar;
+  const showPhoto=isRenderableAvatarSrc(src)&&!imgFailed;
+  if(showPhoto)return(
+    <img src={src} alt={user.name||""} onError={()=>setImgFailed(true)} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1.5px solid rgba(0,0,0,0.06)"}}/>
   );
   return(
     <div style={{width:size,height:size,borderRadius:"50%",background:user.color||"#6B7280",display:"flex",alignItems:"center",justifyContent:"center",fontSize:fs,fontWeight:700,color:"#fff",flexShrink:0}}>
@@ -1246,9 +1254,30 @@ const pickableUsers=(users)=>(users||[]).filter(u=>u&&u.accountStatus==="active"
 const mergeUsersById=(prev,next)=>{
   const map=new Map((prev||[]).map(u=>[u.id,u]));
   for(const u of next||[]){
-    if(u&&u.id)map.set(u.id,normalizeItem(u,"user"));
+    if(u&&u.id){
+      const prevU=map.get(u.id);
+      const normalized=normalizeItem(u,"user");
+      if(prevU){
+        if(!normalized.avatar&&prevU.avatar)normalized.avatar=prevU.avatar;
+        if(!normalized.name&&prevU.name)normalized.name=prevU.name;
+        if(!normalized.email&&prevU.email)normalized.email=prevU.email;
+      }
+      map.set(u.id,normalized);
+    }
   }
   return [...map.values()];
+};
+/** Session user reconciled with roster (avatar/name from latest team/expense payload). */
+const resolveSessionUser=(sessionUser,users)=>{
+  if(!sessionUser)return null;
+  const roster=(users||[]).find(u=>u.id===sessionUser.id);
+  if(!roster)return sessionUser;
+  return normalizeItem({
+    ...sessionUser,
+    ...roster,
+    avatar:roster.avatar??sessionUser.avatar??null,
+    role:sessionUser.role??roster.role,
+  },"user");
 };
 const applyExpensesApiPayload=(de,{setUsers,setExpenses})=>{
   if(de&&Array.isArray(de.users)&&de.users.length){
@@ -6700,23 +6729,24 @@ function SettingsView(){
   const [editId,setEditId]=useState(null);
   const [ef,setEf]=useState({});
   const [addU,setAddU]=useState(false);
-  const [nu,setNu]=useState({name:"",title:"",email:"",phone:"",role:"user",color:"#6B7280",tempPw:"",showTempPw:false});
+  const [nu,setNu]=useState({name:"",email:"",role:"user",color:"#6B7280",tempPw:"",showTempPw:false});
   const [nuErr,setNuErr]=useState("");
   const [delC,setDelC]=useState(null);
   const [dSelf,setDSelf]=useState(false);
-  const [sf,setSf]=useState({name:user?.name||"",email:user?.email||"",phone:user?.phone||"",avatar:user?.avatar||null});
+  const [sf,setSf]=useState({name:user?.name||"",email:user?.email||"",avatar:user?.avatar||null});
   const profileBaseline=useMemo(()=>({
     name:(user?.name||"").trim(),
     email:(user?.email||"").trim(),
-    phone:(user?.phone||"").trim(),
     avatar:user?.avatar??null,
-  }),[user?.id,user?.name,user?.email,user?.phone,user?.avatar]);
+  }),[user?.id,user?.name,user?.email,user?.avatar]);
   const profileDirty=useMemo(()=>(
     (sf.name||"").trim()!==profileBaseline.name
     ||(sf.email||"").trim()!==profileBaseline.email
-    ||(sf.phone||"").trim()!==profileBaseline.phone
     ||(sf.avatar??null)!==profileBaseline.avatar
   ),[sf,profileBaseline]);
+  useEffect(()=>{
+    setSf({name:user?.name||"",email:user?.email||"",avatar:user?.avatar||null});
+  },[user?.id,user?.name,user?.email,user?.avatar]);
   const [catEdit,setCatEdit]=useState(null);
   const [catForm,setCatForm]=useState({});
   const [addCat,setAddCat]=useState(false);
@@ -6874,7 +6904,7 @@ function SettingsView(){
   };
   const saveProfile=async()=>{
     if(profileSaving)return;
-    const payload={name:(sf.name||"").trim(),email:(sf.email||"").trim(),phone:(sf.phone||"").trim(),avatar:sf.avatar||null};
+    const payload={name:(sf.name||"").trim(),email:(sf.email||"").trim(),avatar:sf.avatar||null};
     if(!payload.name){dispatchSolanaToast(t("msg.genericShort"),"error");return;}
     if(AUTH_URL){
       setProfileSaving(true);
@@ -6891,7 +6921,7 @@ function SettingsView(){
         const merged=normalizeItem({...user,...d.user},"user");
         setUser(merged);
         saveUsers(users.map(u=>u.id===user.id?merged:u));
-        setSf({name:merged.name||"",email:merged.email||"",phone:merged.phone||"",avatar:merged.avatar??null});
+        setSf({name:merged.name||"",email:merged.email||"",avatar:merged.avatar??null});
         dispatchSolanaToast(t("msg.profileUpdated"),"success",5000);
       }catch(e){
         dispatchSolanaToast(t("signup.serverDown"),"error");
@@ -6950,16 +6980,13 @@ function SettingsView(){
 
   return(
     <div style={{maxWidth:540}}>
-      <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:12}}>{isSA?t("settings.title"):"Mi perfil"}</h1>
+      <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:12}}>{t("nav.settings")}</h1>
 
-      {/* ── Mi perfil (all users) ── */}
-      <AccordionSection title="Mi perfil">
+      {/* ── Profile (all users) ── */}
+      <AccordionSection title={t("settings.accordion.profile")}>
         {/* Avatar upload */}
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-          {sf.avatar
-            ?<img src={sf.avatar} alt="" style={{width:52,height:52,borderRadius:"50%",objectFit:"cover",border:"2px solid #EDE8E0",flexShrink:0}}/>
-            :<div style={{width:52,height:52,borderRadius:"50%",background:user.color||T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:700,color:"#fff",flexShrink:0}}>{inits(user.name)}</div>
-          }
+          <UserAvatar user={{...user,avatar:sf.avatar||user?.avatar}} size={52} fontSize={16}/>
           <div>
             <label style={{display:"inline-block",padding:"5px 10px",borderRadius:6,border:"1.5px solid #DDD6CC",fontSize:11,fontWeight:600,color:G,cursor:"pointer",fontFamily:"inherit",background:"transparent"}}>
               {sf.avatar?t("action.changePhoto"):t("action.upload")}
@@ -6971,7 +6998,6 @@ function SettingsView(){
         <div style={{display:"grid",gap:8}}>
           <div><label className="lbl">{t("label.name")}</label><input className="inp" value={sf.name} onChange={e=>setSf(p=>({...p,name:e.target.value}))}/></div>
           <div><label className="lbl">{t("label.email")}</label><input className="inp" type="email" value={sf.email} onChange={e=>setSf(p=>({...p,email:e.target.value}))}/></div>
-          <div><label className="lbl">{t("label.phone")}</label><input className="inp" value={sf.phone} onChange={e=>setSf(p=>({...p,phone:e.target.value}))}/></div>
           <div style={{marginTop:2}}>
             <label className="lbl">Rol</label>
             <div style={{fontSize:14,fontWeight:600,color:G}}>{user?.role==="superadmin"?t("role.superadmin"):user?.role==="admin"?t("role.admin"):t("role.user")}</div>
@@ -7030,10 +7056,8 @@ function SettingsView(){
             <div style={{background:"#F5F0EA",borderRadius:9,padding:12,marginBottom:10}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
                 <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.name")}</label><input className="inp" style={{fontSize:14}} value={nu.name} onChange={e=>setNu(p=>({...p,name:e.target.value}))} placeholder="Name"/></div>
-                <div><label className="lbl">{t("label.title")}</label><input className="inp" style={{fontSize:14}} value={nu.title} onChange={e=>setNu(p=>({...p,title:e.target.value}))} placeholder="Role"/></div>
-                <div><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:14}} value={nu.role} onChange={e=>setNu(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option></select></div>
+                <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:14}} value={nu.role} onChange={e=>setNu(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option></select></div>
                 <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.email")}</label><input className="inp" style={{fontSize:14}} type="email" value={nu.email} onChange={e=>setNu(p=>({...p,email:e.target.value}))} placeholder="email@example.com"/></div>
-                <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.phone")}</label><input className="inp" style={{fontSize:14}} value={nu.phone} onChange={e=>setNu(p=>({...p,phone:e.target.value}))} placeholder="+34..."/></div>
                 <div style={{gridColumn:"1/-1",marginTop:4}}>
                   <label className="lbl">{t("label.tempPassword")}</label>
                   <div style={{position:"relative"}}>
@@ -7064,7 +7088,7 @@ function SettingsView(){
                       const r=await fetch(AUTH_URL+"/admin/users/create",{
                         method:"POST",
                         headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionToken},
-                        body:JSON.stringify({name:nu.name,email:nu.email,tempPassword:nu.tempPw,role:nu.role,title:nu.title,phone:nu.phone,color:nu.color})
+                        body:JSON.stringify({name:nu.name,email:nu.email,tempPassword:nu.tempPw,role:nu.role,color:nu.color})
                       });
                       const d=await r.json();
                       if(!r.ok){setNuErr(d.error||"Error al crear usuario en el servidor.");return;}
@@ -7082,7 +7106,7 @@ function SettingsView(){
                     saveUsers([...users,newUser]);
                     savePasswords({...passwords,[newId]:nu.tempPw});
                   }
-                  setNu({name:"",title:"",email:"",phone:"",role:"user",color:"#6B7280",tempPw:"",showTempPw:false,adminKey:""});
+                  setNu({name:"",email:"",role:"user",color:"#6B7280",tempPw:"",showTempPw:false,adminKey:""});
                   setNuErr("");
                   setAddU(false);
                 }}>{t("action.add")}</button>
@@ -7096,7 +7120,7 @@ function SettingsView(){
                 <UserAvatar user={u} size={28} fontSize={8}/>
                 <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"N/A"} · {u.role==="superadmin"?t("role.superadmin"):u.role==="admin"?t("role.admin"):t("role.user")}</div></div>
                 <div style={{display:"flex",gap:3,flexShrink:0,flexWrap:"wrap"}}>
-                  <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(u.id);setEf({name:u.name,title:u.title||"",email:u.email||"",phone:u.phone||"",role:u.role,color:u.color});}}>{t("action.edit")}</button>
+                  <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(u.id);setEf({name:u.name,email:u.email||"",role:u.role,color:u.color});}}>{t("action.edit")}</button>
                   {AUTH_URL&&u.id!==user.id&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #C4B5FD",background:"transparent",color:"#5B21B6",cursor:"pointer"}} onClick={()=>{setResetFor(resetFor===u.id?null:u.id);setResetPwInput("");}}>{t("team.resetPassword")}</button>}
                   {AUTH_URL&&u.id!==user.id&&(
                     u.accountStatus==="active"
@@ -7185,17 +7209,15 @@ function SettingsView(){
                 <div style={{background:"#F5F0EA",borderRadius:9,padding:10,margin:"4px 0"}}>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
                     <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.name")}</label><input className="inp" style={{fontSize:14}} value={ef.name} onChange={e=>setEf(p=>({...p,name:e.target.value}))}/></div>
-                    <div><label className="lbl">{t("label.title")}</label><input className="inp" style={{fontSize:14}} value={ef.title} onChange={e=>setEf(p=>({...p,title:e.target.value}))}/></div>
-                    <div><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:14}} value={ef.role} onChange={e=>setEf(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option><option value="superadmin">{t("role.superadmin")}</option></select></div>
+                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:14}} value={ef.role} onChange={e=>setEf(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option><option value="superadmin">{t("role.superadmin")}</option></select></div>
                     <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.email")}</label><input className="inp" style={{fontSize:14}} type="email" value={ef.email} onChange={e=>setEf(p=>({...p,email:e.target.value}))}/></div>
-                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.phone")}</label><input className="inp" style={{fontSize:14}} value={ef.phone} onChange={e=>setEf(p=>({...p,phone:e.target.value}))}/></div>
                   </div>
                   <div style={{display:"flex",gap:7,marginTop:7}}><button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>void (async()=>{
                     if(AUTH_URL){
                       const tok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
                       if(!tok){dispatchSolanaToast(t("msg.sessionExpired"),"error");return;}
                       try{
-                        const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(editId),{method:"PUT",headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},body:JSON.stringify({name:ef.name,email:ef.email,phone:ef.phone,title:ef.title,role:ef.role,color:ef.color})});
+                        const r=await fetch(AUTH_URL+"/admin/users/"+encodeURIComponent(editId),{method:"PUT",headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},body:JSON.stringify({name:ef.name,email:ef.email,role:ef.role,color:ef.color})});
                         const d=await r.json().catch(()=>({}));
                         if(!r.ok){dispatchSolanaToast(d.error||t("msg.genericShort"),"error");return;}
                         const prev=users.find(x=>x.id===editId);
@@ -7548,6 +7570,14 @@ function SolanaExpenses(){
     if(!user)return;
     void refreshDepartments();
   },[user?.id,refreshDepartments]);
+  useEffect(()=>{
+    if(!user?.id||!users?.length)return;
+    const resolved=resolveSessionUser(user,users);
+    if(!resolved)return;
+    if(resolved.avatar!==user.avatar||resolved.name!==user.name||resolved.email!==user.email){
+      setUser(resolved);
+    }
+  },[users,user?.id,user?.avatar,user?.name,user?.email]);
   const departmentsWithStats=React.useMemo(
     ()=>enrichDepartmentsForUI(departments,expenses,cats,users,false),
     [departments,expenses,cats,users],
@@ -8849,15 +8879,14 @@ function SolanaExpenses(){
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
     {id:"reports",label:t("nav.reports")},
-    {id:"settings",label:"Mi perfil",badge:0},
   ];
   const mobNav=[
     {id:"dashboard",label:t("nav.dashboard"),badge:0},
     {id:"expenses", label:t("nav.expenses"),badge:expenseNavBadge},
     {id:"approvals",label:t("nav.approvals"),badge:(isApprover||isAdmin)?totalBadge:0},
     {id:"reports",label:t("nav.reports"),badge:0},
-    {id:"settings",label:"Mi perfil",badge:0},
   ];
+  const sessionUser=resolveSessionUser(user,users);
 
   /* ── CONTEXT VALUE ──────────────────────────────────────────────────────── */
   const ctxVal={
@@ -9008,29 +9037,25 @@ function SolanaExpenses(){
           </div>
           {navItems.map(n=>(
             <div key={n.id} onClick={()=>go(n.id)} style={{padding:"6px 9px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:500,marginBottom:2,transition:"background 0.15s",background:view===n.id?"rgba(250,247,242,0.12)":"transparent",color:view===n.id?"#FAF7F2":"rgba(250,247,242,0.5)",borderLeft:`3px solid ${view===n.id?T:"transparent"}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{position:"relative",display:"inline-block",paddingRight:n.badge>0?10:0}}>
-                <span>{n.label}</span>
-                {n.badge>0&&<span style={{position:"absolute",top:-5,right:-2,background:BL,color:"#fff",borderRadius:"50%",minWidth:15,height:15,padding:"0 3px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
+              <span style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.label}</span>
+                {n.badge>0&&<span style={{background:BL,color:"#fff",borderRadius:10,minWidth:16,height:16,padding:"0 4px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
               </span>
             </div>
           ))}
           <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)",position:"relative"}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
               <button type="button" onClick={()=>setUserMenuOpen(v=>!v)} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,borderRadius:7,padding:"4px 6px",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                {user.avatar
-                  ?<img src={user.avatar} alt="" style={{width:28,height:28,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1.5px solid rgba(250,247,242,0.25)"}}/>
-                  :<div style={{width:28,height:28,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0}}>{inits(user.name)}</div>
-                }
+                <UserAvatar user={sessionUser||user} size={28} fontSize={9}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:10,fontWeight:600,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</div>
                   <div style={{fontSize:8,color:"rgba(250,247,242,0.75)"}}>{user.role==="superadmin"?t("role.superadmin"):isAdmin?t("role.admin"):t("role.user")}</div>
                 </div>
-                <div style={{fontSize:10,color:"#FAF7F2",opacity:0.75,fontWeight:600}}>···</div>
               </button>
             </div>
             {userMenuOpen&&(
               <div style={{position:"absolute",bottom:"100%",left:8,right:8,marginBottom:6,background:"#52114B",border:"1px solid rgba(250,247,242,0.15)",borderRadius:8,overflow:"hidden",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,0.25)"}}>
-                {[{label:"Mi perfil",fn:()=>{setUserMenuOpen(false);go("settings");}},{label:"Ajustes",fn:()=>{setUserMenuOpen(false);go("settings");}},{label:t("nav.signOut"),fn:()=>{setUserMenuOpen(false);onSignOut();}}].map((item,i,arr)=>(
+                {[{label:t("nav.settings"),fn:()=>{setUserMenuOpen(false);go("settings");}},{label:t("nav.signOut"),fn:()=>{setUserMenuOpen(false);onSignOut();}}].map((item,i,arr)=>(
                   <button key={item.label} type="button" onClick={item.fn} style={{width:"100%",padding:"8px 10px",border:"none",borderBottom:i<arr.length-1?"1px solid rgba(250,247,242,0.1)":"none",background:"transparent",color:"#FAF7F2",fontSize:10,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}>{item.label}</button>
                 ))}
               </div>
@@ -9044,12 +9069,9 @@ function SolanaExpenses(){
           <div className="mob-only" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="light" size="sm"/></div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div style={{flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%"}}>
-                {user.avatar
-                  ?<img src={user.avatar} alt="" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(250,247,242,0.5)"}}/>
-                  :<div style={{width:34,height:34,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>{inits(user.name)}</div>
-                }
-              </div>
+              <button type="button" onClick={()=>go("settings")} style={{flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",border:"none",background:"transparent",cursor:"pointer",padding:0}} aria-label={t("nav.settings")}>
+                <UserAvatar user={sessionUser||user} size={34} fontSize={11}/>
+              </button>
             </div>
           </div>
 
@@ -9068,13 +9090,13 @@ function SolanaExpenses(){
             )}
           </div>
 
-          {/* Mobile bottom nav */}
+          {/* Mobile bottom nav — badge inline, no absolute positioning */}
           <div className="mob-only" style={{background:"#fff",borderTop:"1px solid #E5DDD2",display:"flex",flexShrink:0,position:"fixed",bottom:0,left:0,right:0,zIndex:50}}>
             {mobNav.map(n=>(
               <div key={n.id} style={{flex:1,padding:"8px 2px 6px",textAlign:"center",cursor:"pointer",borderTop:`2px solid ${view===n.id?G:"transparent"}`}} onClick={()=>go(n.id)}>
-                <span style={{position:"relative",display:"inline-block",fontSize:11,fontWeight:view===n.id?700:500,color:view===n.id?G:"#6B7B72",paddingRight:n.badge>0?8:0}}>
-                  {n.label}
-                  {n.badge>0&&<span style={{position:"absolute",top:-6,right:-4,background:BL,color:"#fff",borderRadius:"50%",minWidth:13,height:13,padding:"0 2px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
+                <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4,fontSize:11,fontWeight:view===n.id?700:500,color:view===n.id?G:"#6B7B72",maxWidth:"100%"}}>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.label}</span>
+                  {n.badge>0&&<span style={{background:BL,color:"#fff",borderRadius:10,minWidth:14,height:14,padding:"0 3px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
                 </span>
               </div>
             ))}
