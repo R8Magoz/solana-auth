@@ -1256,9 +1256,43 @@ function readLocalDepartments(){
 const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
   expenseType:"expense",vendor:"",deferredPayment:false,paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months",proveedor:""};
 const DRAFT_KEY="sol-session-draft";
-function makeBlankForm(expenseType,{user,defaultDeptId,departments}){
-  const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
-  return{...BF,expenseType,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId};
+function makeBlankForm(expenseType,{user}){
+  return{...BF,expenseType,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:""};
+}
+
+/* ── SIDEBAR USER MENU ─────────────────────────────────────────────────────── */
+function SidebarUserMenu({items}){
+  const [hovered,setHovered]=useState(null);
+  return(
+    <div className="fade-in" style={{position:"absolute",bottom:"100%",left:8,right:8,marginBottom:6,background:"#52114B",border:"1px solid rgba(250,247,242,0.15)",borderRadius:10,overflow:"hidden",zIndex:20,boxShadow:"0 12px 32px rgba(0,0,0,0.28),0 2px 8px rgba(0,0,0,0.12)",padding:"4px 0"}}>
+      {items.map((item,i)=>(
+        <button
+          key={item.key}
+          type="button"
+          onMouseEnter={()=>setHovered(i)}
+          onMouseLeave={()=>setHovered(null)}
+          onClick={item.fn}
+          style={{
+            width:"100%",
+            minHeight:40,
+            padding:"10px 14px",
+            border:"none",
+            borderBottom:i<items.length-1?"1px solid rgba(250,247,242,0.08)":"none",
+            background:hovered===i?(item.destructive?"rgba(220,38,38,0.18)":"rgba(250,247,242,0.12)"):"transparent",
+            color:item.destructive?(hovered===i?"#FECACA":"rgba(250,247,242,0.92)"):"#FAF7F2",
+            fontSize:11,
+            fontWeight:item.destructive?600:500,
+            textAlign:"left",
+            cursor:"pointer",
+            fontFamily:"inherit",
+            transition:"background 0.15s ease,color 0.15s ease",
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -2493,12 +2527,12 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
     }
   };
   return(
-    <div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:0,opacity:users.length<2?0.92:1}} title={users.length<2?t("split.minTwoTeam"):""}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:splitOn?9:0}}>
-        <div>
+    <div style={{background:"#F5F0EA",borderRadius:9,padding:12,marginTop:4,marginBottom:14,opacity:users.length<2?0.92:1}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:splitOn?10:0}}>
+        <div style={{flex:1,minWidth:0,paddingRight:10}}>
           <div style={{fontWeight:600,fontSize:12}}>{t("label.splitExpense")}</div>
-          {!splitOn&&<div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{users.length<2?t("split.minTwoTeam"):t("label.divideTeam")}</div>}
-          {splitOn&&checkedCount<2&&<div style={{fontSize:9,color:"#6B7B72",marginTop:3}}>Selecciona al menos 2 participantes</div>}
+          {!splitOn&&<div style={{fontSize:10,color:"#9CAA9F",marginTop:users.length<2?5:3,lineHeight:1.45}}>{users.length<2?t("split.minTwoTeam"):t("label.divideTeam")}</div>}
+          {splitOn&&checkedCount<2&&<div style={{fontSize:9,color:"#6B7B72",marginTop:4}}>Selecciona al menos 2 participantes</div>}
         </div>
         <div onClick={toggleSplit} style={{width:36,height:20,borderRadius:10,background:splitOn?actionColor:(users.length<2?"#E5E0D8":"#C9C0B4"),cursor:users.length<2?"not-allowed":"pointer",position:"relative",transition:"background 0.2s ease",flexShrink:0,opacity:users.length<2?0.65:1}}>
           <div style={{position:"absolute",top:2,left:splitOn?18:2,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
@@ -3722,11 +3756,6 @@ export function DashboardView(){
   const rejCnt=rejList.length;
   const watchCats=cats.filter(c=>!c.archived&&c.budget!=null&&c.budget>0&&effectiveExpenseApproverIds({category:c.name},cats,users)[0]===user.id);
   const [drillPerson,setDrillPerson]=useState(null);
-  const [fixedTipOpen,setFixedTipOpen]=useState(false);
-  const [fixedTipHover,setFixedTipHover]=useState(false);
-  const [fixedTipPos,setFixedTipPos]=useState({top:0,left:0});
-  const fixedTipIconRef=useRef(null);
-  const fixedTipRef=useRef(null);
   const deptBudgetActive=(departmentsWithStats||[]).filter(d=>!d.archived&&Number(d.budget)>0);
   const budgetTotalActive=deptBudgetActive.reduce((s,d)=>s+Number(d.budget||0),0);
   const spentActive=deptBudgetActive.reduce((s,d)=>s+Number(d.spent||0),0);
@@ -3740,7 +3769,6 @@ export function DashboardView(){
     if(diff!=null&&diff>=0&&diff<=billsWindowCfg.days)upcomingBills.push({...e,name:e.vendor||e.description,daysUntil:diff});
   });
   upcomingBills.sort((a,b)=>a.daysUntil-b.daysUntil);
-  const fixedTipActive=fixedTipOpen||fixedTipHover;
   const alerts=React.useMemo(()=>{
     return (departmentsWithStats||[]).filter(d => {
       if(!d.budget || Number(d.budget) <= 0 || d.archived) return false;
@@ -3753,23 +3781,6 @@ export function DashboardView(){
       return { ...d, spent, pct };
     }).sort((a,b) => b.pct - a.pct);
   },[departmentsWithStats]);
-  useEffect(()=>{
-    if(!fixedTipActive||!fixedTipIconRef.current)return;
-    const r=fixedTipIconRef.current.getBoundingClientRect();
-    setFixedTipPos({top:r.top-8,left:r.left+r.width/2});
-  },[fixedTipActive]);
-  useEffect(()=>{
-    if(!fixedTipActive)return;
-    const onDocClick=e=>{
-      const n=e.target;
-      if(fixedTipIconRef.current&&fixedTipIconRef.current.contains(n))return;
-      if(fixedTipRef.current&&fixedTipRef.current.contains(n))return;
-      setFixedTipOpen(false);
-      setFixedTipHover(false);
-    };
-    document.addEventListener("click",onDocClick);
-    return()=>document.removeEventListener("click",onDocClick);
-  },[fixedTipActive]);
   return(
     <div>
       {drillPerson&&<PersonDrilldown userId={drillPerson} onClose={()=>setDrillPerson(null)}/>}
@@ -3800,20 +3811,7 @@ export function DashboardView(){
 
           const totalKpiLabel="Total gastado";
           const budgetKpiLabel="Presupuesto disponible";
-          const fixedKpiLabel=(
-            <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
-              <span>Coste fijo mensual</span>
-              <span style={{display:"inline-flex",alignItems:"center"}}>
-                <span
-                  ref={fixedTipIconRef}
-                  style={{fontSize:11,color:"#9CAA9F",lineHeight:1,cursor:"pointer"}}
-                  onMouseEnter={()=>setFixedTipHover(true)}
-                  onMouseLeave={()=>setFixedTipHover(false)}
-                  onClick={e=>{e.stopPropagation();setFixedTipOpen(v=>!v);}}
-                >ⓘ</span>
-              </span>
-            </span>
-          );
+          const fixedKpiLabel="Coste fijo mensual";
 
           const totalKpiBg="#FECACA";
           const totalKpiText="#7F1D1D";
@@ -3852,15 +3850,6 @@ export function DashboardView(){
 
           return(
             <>
-              {fixedTipActive&&(
-                <div
-                  ref={fixedTipRef}
-                  onClick={e=>e.stopPropagation()}
-                  style={{position:"fixed",top:fixedTipPos.top,left:fixedTipPos.left,transform:"translate(-50%,-100%)",background:"#1F2937",color:"#fff",fontSize:10,lineHeight:1.3,padding:"6px 8px",borderRadius:999,whiteSpace:"nowrap",zIndex:99999,pointerEvents:"auto"}}
-                >
-                  Suma mensual de gastos recurrentes activos (aprobados). Semanal × 4,33; anual ÷ 12; personalizado según intervalo.
-                </div>
-              )}
               {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,"#DC2626",true,28,"#7F1D1D","#991B1B","#FCA5A5",`${budgetProgressPct.toFixed(1)}% usado`,"#7F1D1D")}
               {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetSub,"#059669",true,28,"#064E3B","#065F46","#6EE7B7",`${budgetProgressPct.toFixed(1)}% disponible`,"#064E3B")}
               {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,monthSub,null,false,22,"#78350F","#78350F")}
@@ -7504,7 +7493,7 @@ export default function App(){
       const expReceiptTrail=receipt?[...expTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:receipt.type}}]:expTrail;
       const ivaRate=parseFormIvaRateString(form.ivaRate);
       const ivaAmount=calcIvaParts(amount,ivaRate).iva;
-      const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID,
+      const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId,
         ...facturaExtras,
         ...invExtras,
         ...recExtras,
@@ -8089,7 +8078,7 @@ export default function App(){
         )}
         {confirmModal&&(
           <div style={{position:"fixed",inset:0,zIndex:7700,background:"rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-            <div style={{width:"min(92vw,420px)",background:"#fff",borderRadius:12,padding:"16px 16px 14px",boxShadow:"0 10px 30px rgba(0,0,0,0.25)"}}>
+            <div className="fade-in" style={{width:"min(92vw,420px)",background:"#fff",borderRadius:12,padding:"16px 16px 14px",boxShadow:"0 10px 30px rgba(0,0,0,0.25)"}}>
               <div style={{fontWeight:700,fontSize:14,color:G,marginBottom:8}}>Confirmación</div>
               <div style={{fontSize:13,color:"#1A0E18",lineHeight:1.35,marginBottom:14,whiteSpace:"pre-wrap"}}>{confirmModal.message}</div>
               <div style={{display:"flex",gap:8}}>
@@ -8097,10 +8086,10 @@ export default function App(){
                   try{confirmModal.resolve(false);}catch(e){}
                   setConfirmModal(null);
                 }}>Cancelar</button>
-                <button type="button" className="btn-primary" style={{flex:1,fontSize:12,padding:"7px 10px"}} onClick={()=>{
+                <button type="button" className={confirmModal.destructive?"btn-danger":"btn-primary"} style={{flex:1,fontSize:12,padding:"7px 10px"}} onClick={()=>{
                   try{confirmModal.resolve(true);}catch(e){}
                   setConfirmModal(null);
-                }}>Confirmar</button>
+                }}>{confirmModal.confirmLabel||"Confirmar"}</button>
               </div>
             </div>
           </div>
@@ -8198,11 +8187,18 @@ export default function App(){
               </button>
             </div>
             {userMenuOpen&&(
-              <div style={{position:"absolute",bottom:"100%",left:8,right:8,marginBottom:6,background:"#52114B",border:"1px solid rgba(250,247,242,0.15)",borderRadius:8,overflow:"hidden",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,0.25)"}}>
-                {[{label:t("nav.settings"),fn:()=>{setUserMenuOpen(false);go("settings");}},{label:t("nav.signOut"),fn:()=>{setUserMenuOpen(false);onSignOut();}}].map((item,i,arr)=>(
-                  <button key={item.label} type="button" onClick={item.fn} style={{width:"100%",padding:"8px 10px",border:"none",borderBottom:i<arr.length-1?"1px solid rgba(250,247,242,0.1)":"none",background:"transparent",color:"#FAF7F2",fontSize:10,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}>{item.label}</button>
-                ))}
-              </div>
+              <SidebarUserMenu items={[
+                {key:"settings",label:t("nav.settings"),fn:()=>{setUserMenuOpen(false);go("settings");}},
+                {key:"signout",label:t("nav.signOut"),destructive:true,fn:()=>{
+                  setUserMenuOpen(false);
+                  setConfirmModal({
+                    message:"¿Cerrar sesión?",
+                    confirmLabel:t("nav.signOut"),
+                    destructive:true,
+                    resolve:(ok)=>{if(ok)onSignOut();},
+                  });
+                }},
+              ]}/>
             )}
           </div>
         </div>
