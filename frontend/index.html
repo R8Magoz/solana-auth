@@ -38,6 +38,16 @@
       box-shadow:none!important;
       border:none!important;
     }
+    .sidebar-tagline{
+      font-size:8px;
+      color:#FAF7F2;
+      font-weight:500;
+      margin-top:4px;
+      padding-left:1px;
+      letter-spacing:0.06em;
+      text-transform:uppercase;
+      opacity:1;
+    }
   </style>
 </head>
 <body>
@@ -1063,21 +1073,7 @@ function expenseTimelineEditedFieldLabels(meta,t){
 }
 // parseMoney: accepts "12,50" or "12.50" → 12.5 (shared utility used by all amount inputs)
 const parseMoney=s=>{if(s===null||s===undefined||s==="")return 0;const n=String(s).trim().replace(/\./g,"").replace(",",".");const v=parseFloat(n);return isNaN(v)?0:v;};
-const inits=n=>n.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase();
 
-/* ── USER AVATAR ────────────────────────────────────────────────────────────
-   Colored initials circle (user.color). Profile photos are no longer shown.
-   Props: user (required), size (px, default 24), fontSize (px, default auto)
-─────────────────────────────────────────────────────────────────────────── */
-function UserAvatar({user, size=24, fontSize=null}){
-  if(!user)return null;
-  const fs=fontSize||Math.max(6,Math.round(size*0.32));
-  return(
-    <div style={{width:size,height:size,borderRadius:"50%",background:user.color||"#6B7280",display:"flex",alignItems:"center",justifyContent:"center",fontSize:fs,fontWeight:700,color:"#fff",flexShrink:0}}>
-      {inits(user.name||"?")}
-    </div>
-  );
-}
 /** Fork / split — for expense reparto UI */
 function SplitDivergeIcon({size=16,color="#4B5E52"}){
   return(
@@ -1130,7 +1126,7 @@ function ExpenseSplitBreakdown({e,t,users,alwaysInline=false}){
             const u=getU(p.userId);
             return(
               <div key={p.userId} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,fontSize:11,marginBottom:6}}>
-                <span style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}><UserAvatar user={u} size={22} fontSize={8}/><span style={{fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</span></span>
+                <span style={{fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</span>
                 <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(p.amount)}<span style={{color:"#9CAA9F",fontWeight:500,fontSize:10}}> · {pct}%</span></span>
               </div>
             );
@@ -3493,7 +3489,6 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
               const u=users.find(x=>x.id===s.userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
               return(
                 <div key={s.userId} onClick={()=>toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+actionColor):"1.5px solid #DDD6CC",background:s.checked?(actionColor===F?FT:GL):"#fff",cursor:"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s,border-color 0.2s ease,background-color 0.2s ease"}}>
-                  <UserAvatar user={u} size={20} fontSize={7}/>
                   <span style={{fontSize:12,fontWeight:s.checked?600:400}}>{u.name.split(" ")[0]}</span>
                 </div>
               );
@@ -4573,7 +4568,6 @@ function PersonDrilldown({userId, onClose}){
         display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(204,78,0,0.2)"}}>
         {/* Header */}
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 16px",borderBottom:"1px solid #EDE8E0",flexShrink:0}}>
-          <UserAvatar user={u} size={34} fontSize={11}/>
           <div style={{flex:1}}>
             <div style={{fontFamily:"'Playfair Display',serif",fontWeight:700,fontSize:15,color:G}}>{t("person.drillTitle").replace("{name}",u.name)}</div>
             <div style={{fontSize:11,color:"#9CAA9F",marginTop:1}}>Total atribuido: <strong style={{color:G}}>{fmt(total)}</strong></div>
@@ -4822,7 +4816,6 @@ function DashboardView(){
         <p style={{fontSize:10,color:"#9CAA9F",marginBottom:9,lineHeight:1.45}}>{t("reports.personLogHint")}</p>
         {(()=>{const denom=perPerson.reduce((s,u)=>s+(Number(u.total)||0),0);return perPerson.map(u=>(
           <div key={u.id} className="row-hover" style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,cursor:"pointer",borderRadius:7,padding:"3px 4px",margin:"0 -4px 7px"}} onClick={()=>setDrillPerson(u.id)}>
-            <UserAvatar user={u} size={24} fontSize={7}/>
             <div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:2,fontSize:11}}><span style={{fontWeight:500}}>{u.name}</span><span style={{fontWeight:700,color:G}}>{fmt(u.total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:u.color,width:denom>0?`${Math.min(100,u.total/denom*100)}%`:"0%",transition:"width 0.4s"}}/></div></div>
             <div style={{fontSize:9,color:"#9CAA9F"}}>›</div>
           </div>
@@ -5705,7 +5698,6 @@ function ReportsView(){
                   style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:"#FAF7F4",borderBottom:"1px solid #EDE8E0",cursor:"pointer"}}
                   onClick={()=>setOpenPersonLog(p=>({...p,[u.id]:!p[u.id]}))}
                 >
-                  <UserAvatar user={u} size={36} fontSize={14}/>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:14,color:"#1a1a1a"}}>{u.name}</div>
                     <div style={{fontSize:11,color:"#9CAA9F"}}>
@@ -6932,10 +6924,6 @@ function SettingsView(){
 
       {/* ── Profile (all users) ── */}
       <AccordionSection title={t("settings.accordion.profile")}>
-        {/* Profile preview */}
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-          <UserAvatar user={user} size={52} fontSize={16}/>
-        </div>
         <div style={{display:"grid",gap:8}}>
           <div><label className="lbl">{t("label.name")}</label><input className="inp" value={sf.name} onChange={e=>setSf(p=>({...p,name:e.target.value}))}/></div>
           <div><label className="lbl">{t("label.email")}</label><input className="inp" type="email" value={sf.email} onChange={e=>setSf(p=>({...p,email:e.target.value}))}/></div>
@@ -7058,7 +7046,6 @@ function SettingsView(){
           {users.filter(u=>u.accountStatus!=="deleted").map(u=>(
             <div key={u.id}>
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA"}}>
-                <UserAvatar user={u} size={28} fontSize={8}/>
                 <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"N/A"} · {u.role==="admin"?t("role.admin"):t("role.user")}</div></div>
                 <div style={{display:"flex",gap:3,flexShrink:0,flexWrap:"wrap"}}>
                   <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(u.id);setEf({name:u.name,email:u.email||"",role:u.role,color:u.color});}}>{t("action.edit")}</button>
@@ -8970,15 +8957,14 @@ function SolanaExpenses(){
         <div className="dt-only" style={{width:198,background:G,display:"flex",flexDirection:"column",padding:"15px 8px",flexShrink:0,overflowY:"auto"}}>
           <div style={{padding:"3px 6px 14px",borderBottom:"1px solid rgba(255,255,255,0.09)",marginBottom:9,cursor:"pointer"}} onClick={()=>go("dashboard")}>
             <SolanaLogo theme="light" size="md"/>
-            <div style={{fontSize:8,color:"rgba(250,247,242,0.28)",marginTop:4,paddingLeft:1,letterSpacing:"0.06em",textTransform:"uppercase"}}>Gestión de gastos</div>
+            <div className="sidebar-tagline">Gestión de gastos</div>
           </div>
           {navItems.map(n=>(
             <SidebarNavItem key={n.id} active={view===n.id} label={n.label} badge={n.badge} onClick={()=>go(n.id)}/>
           ))}
           <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)",position:"relative"}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
-              <button type="button" onClick={()=>setUserMenuOpen(v=>!v)} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,borderRadius:7,padding:"4px 6px",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                <UserAvatar user={sessionUser||user} size={28} fontSize={9}/>
+              <button type="button" onClick={()=>setUserMenuOpen(v=>!v)} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",borderRadius:7,padding:"4px 6px",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:10,fontWeight:600,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</div>
                 </div>
@@ -9007,8 +8993,8 @@ function SolanaExpenses(){
           <div className="mob-only" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="light" size="sm"/></div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <button type="button" onClick={()=>go("settings")} style={{flexShrink:0,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",border:"none",background:"transparent",cursor:"pointer",padding:0}} aria-label={t("nav.settings")}>
-                <UserAvatar user={sessionUser||user} size={34} fontSize={11}/>
+              <button type="button" onClick={()=>go("settings")} style={{flexShrink:0,maxWidth:140,padding:"4px 8px",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit"}} aria-label={t("nav.settings")}>
+                <span style={{fontSize:11,fontWeight:600,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</span>
               </button>
             </div>
           </div>
