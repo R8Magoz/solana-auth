@@ -277,6 +277,14 @@ function createAuthRouter(deps) {
     const pwError = checkPassword(newPassword);
     if (pwError) return res.status(400).json({ error: pwError });
 
+    const sameAsCurrent = await bcrypt.compare(newPassword, user.passwordHash);
+    if (sameAsCurrent) {
+      audit('password_change_reused', { userId: uid, ip: req.ip });
+      return res.status(400).json({
+        error: 'La nueva contraseña no puede ser igual a la anterior.',
+      });
+    }
+
     const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     userStore.updatePasswordAfterChange(uid, newHash);
     audit('password_changed', { userId: uid, ip: req.ip });

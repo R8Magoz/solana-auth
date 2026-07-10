@@ -765,6 +765,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'user@solana.test');
 
     await clickSidebarSection(page, 'Aprobaciones');
+    await expect(page.getByRole('combobox').first()).toHaveValue('all');
     await expect(page.getByText('Server bill import').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Revisar' })).toHaveCount(0);
     await page.getByText('Server bill import').click();
@@ -780,6 +781,7 @@ test.describe('Critical business flows', () => {
     await createBillViaUi(page, 'Factura AWS QA', '260');
 
     await clickSidebarSection(page, 'Aprobaciones');
+    await expect(page.getByRole('combobox').first()).toHaveValue('mine');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).first().click();
 
