@@ -4,6 +4,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const maintenanceLock = require('../lib/maintenanceLock');
+const { autoApprovePendingForRemovedUser } = require('../expensesRoutes');
 
 /**
  * @param {object} deps
@@ -78,6 +79,10 @@ function createAdminRouter(deps) {
     if (refs > 0) {
       const soft = userStore.softDeleteUserById(removed.id);
       if (!soft.ok) return res.status(500).json({ error: 'No se pudo desactivar el usuario.' });
+      autoApprovePendingForRemovedUser(removed.id, {
+        audit,
+        userStore: { findUserById: userStore.findUserByIdPublic },
+      });
       audit('admin_user_soft_deleted', { targetId: id, by: req.userId, references: refs });
       return res.json({ ok: true, softDeleted: true, user: userStore.findUserByIdPublic(removed.id) });
     }
@@ -250,6 +255,10 @@ function createAdminRouter(deps) {
     if (refs > 0) {
       const soft = userStore.softDeleteUserById(id);
       if (!soft.ok) return res.status(500).json({ error: 'No se pudo desactivar el usuario.' });
+      autoApprovePendingForRemovedUser(id, {
+        audit,
+        userStore: { findUserById: userStore.findUserByIdPublic },
+      });
       audit('admin_user_soft_deleted', { targetId: id, by: req.userId, ip: req.ip, references: refs });
       return res.json({ ok: true, softDeleted: true, user: userStore.findUserByIdPublic(id) });
     }

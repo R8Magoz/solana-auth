@@ -342,6 +342,188 @@ function canUserActOnExpenseApproval(exp, userId, userRole, userStore) {
   return approverIds.includes(String(userId || ''));
 }
 
+/** When amount changes on edit without a new paidBy[], scale existing split to the new total. */
+function recalculatePaidByForNewTotal(paidByJson, splitMode, newTotalEur, submitterId, userStore) {
+  const total = Number(newTotalEur);
+  if (!Number.isFinite(total) || total <= 0) return { error: 'Importe total inválido para el reparto.' };
+  let rows;
+  try {
+    rows = JSON.parse(paidByJson || '[]');
+  } catch {
+    rows = [];
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    const submit = String(submitterId || '').trim();
+    return {
+      paidBy: [{ userId: submit, amount: Math.round(total * 100) / 100, pct: 100 }],
+      splitMode: null,
+    };
+  }
+  if (rows.length === 1) {
+    const uid = resolveApproverTokenToUserId(rows[0].userId, userStore);
+    return {
+      paidBy: [{ userId: uid, amount: Math.round(total * 100) / 100, pct: 100 }],
+      splitMode: null,
+    };
+  }
+  const mode = splitMode === 'percentage' || splitMode === 'amount' || splitMode === 'equal'
+    ? splitMode
+    : 'equal';
+  const resolved = rows.map((r) => ({
+    userId: resolveApproverTokenToUserId(r.userId, userStore),
+    amount: Number(r.amount) || 0,
+    pct: typeof r.pct === 'number' && Number.isFinite(r.pct) ? r.pct : null,
+  }));
+  const out = [];
+  if (mode === 'percentage') {
+    const pcts = resolved.map((r) => (r.pct != null ? r.pct : 100 / resolved.length));
+    const pctSum = pcts.reduce((s, p) => s + p, 0) || 100;
+    let sum = 0;
+    for (let i = 0; i < resolved.length; i++) {
+      const amt = i === resolved.length - 1
+        ? Math.round((total - sum) * 100) / 100
+        : Math.round(total * (pcts[i] / pctSum) * 100) / 100;
+      out.push({ userId: resolved[i].userId, amount: amt, pct: pcts[i] });
+      sum += amt;
+    }
+    return { paidBy: out, splitMode: 'percentage' };
+  }
+  if (mode === 'amount') {
+    const oldSum = resolved.reduce((s, r) => s + r.amount, 0);
+    if (oldSum > 0) {
+      let sum = 0;
+      for (let i = 0; i < resolved.length; i++) {
+        const amt = i === resolved.length - 1
+          ? Math.round((total - sum) * 100) / 100
+          : Math.round(total * (resolved[i].amount / oldSum) * 100) / 100;
+        out.push({ userId: resolved[i].userId, amount: amt });
+        sum += amt;
+      }
+      return { paidBy: out, splitMode: 'amount' };
+    }
+  }
+  const n = resolved.length;
+  const share = Math.floor((total / n) * 100) / 100;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const amt = i === n - 1 ? Math.round((total - sum) * 100) / 100 : share;
+    out.push({ userId: resolved[i].userId, amount: amt });
+    sum += amt;
+  }
+  return { paidBy: out, splitMode: 'equal' };
+}
+
+function finalizeFromApprovalVotes(exp, approversCanon, votes, actorUserId, now, rejectionNote) {
+  const hasReject = anyRejectionVote(votes);
+  const allDone = !hasReject && allApproversVotedApproved(approversCanon, votes);
+  const base = {
+    approversJson: JSON.stringify(approversCanon),
+    approvalVotesJson: JSON.stringify(votes),
+    updatedAt: now,
+  };
+  if (hasReject) {
+    const rejectorEntry = Object.entries(votes).find(([, v]) => v === 'rejected');
+    const rejectedBy = rejectorEntry ? rejectorEntry[0] : actorUserId;
+    return {
+      ...base,
+      status: 'rejected',
+      approvedBy: null,
+      approvedAt: null,
+      rejectedBy,
+      rejectedAt: now,
+      rejectionNote: rejectionNote != null
+        ? rejectionNote
+        : (exp.rejectionNote || 'Rechazado por voto de aprobador.'),
+      invoicePay: exp.expenseType === 'invoice' ? 'pending_approval' : null,
+    };
+  }
+  if (allDone) {
+    return {
+      ...base,
+      status: 'approved',
+      approvedBy: actorUserId,
+      approvedAt: now,
+      rejectedBy: null,
+      rejectedAt: null,
+      rejectionNote: null,
+      invoicePay: exp.expenseType === 'invoice' && exp.paymentStatus === 'pending_approval' ? 'unpaid' : null,
+    };
+  }
+  return {
+    ...base,
+    status: 'submitted',
+    approvedBy: null,
+    approvedAt: null,
+    rejectedBy: null,
+    rejectedAt: null,
+    rejectionNote: null,
+    invoicePay: null,
+  };
+}
+
+function persistApprovalFinalize(exp, fin, auditFn, req, actorUserId) {
+  const info = db.prepare(`
+    UPDATE expenses SET
+      status = ?, approversJson = ?, approvalVotesJson = ?,
+      approvedBy = ?, approvedAt = ?,
+      rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
+      updatedAt = ?
+    WHERE id = ?
+  `).run(
+    fin.status, fin.approversJson, fin.approvalVotesJson,
+    fin.approvedBy, fin.approvedAt,
+    fin.rejectedBy, fin.rejectedAt, fin.rejectionNote,
+    fin.updatedAt, exp.id,
+  );
+  if (warnIfNoChanges(info, 'expense_approval_finalize', { expenseId: exp.id, userId: actorUserId })) {
+    return { error: 'Gasto no encontrado.', status: 404 };
+  }
+  if (fin.invoicePay === 'unpaid') {
+    db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
+      .run(Date.now(), exp.id);
+  } else if (fin.invoicePay === 'pending_approval') {
+    db.prepare("UPDATE expenses SET paymentStatus = 'pending_approval', updatedAt = ? WHERE id = ?")
+      .run(Date.now(), exp.id);
+  }
+  const updated = getExpenseById(exp.id);
+  let budgetExceeded;
+  if (fin.status === 'approved' && updated.departmentId) {
+    budgetExceeded = maybeNotifyBudgetExceeded({
+      audit: auditFn,
+      departmentId: updated.departmentId,
+      expenseId: updated.id,
+      actorUserId,
+      submitterUserId: updated.userId,
+      ip: req && req.ip,
+    });
+  }
+  return { updated, budgetExceeded };
+}
+
+/** After soft-delete: auto-approve pending slots for removed approvers and re-evaluate status. */
+function autoApprovePendingForRemovedUser(removedUserId, { audit, userStore }) {
+  const uid = String(removedUserId || '').trim();
+  if (!uid) return { updated: 0 };
+  const rows = db.prepare(
+    "SELECT * FROM expenses WHERE status IN ('submitted', 'approved', 'rejected')",
+  ).all();
+  let updated = 0;
+  const now = Date.now();
+  for (const row of rows) {
+    const exp = rowToExpense(row);
+    const approversCanon = resolveExpenseApproverIdsForAuth(exp, userStore);
+    if (!approversCanon.includes(uid)) continue;
+    const votes = remapVotesWithCanonicalKeys(parseJsonObject(exp.approvalVotesJson), userStore);
+    if (votes[uid]) continue;
+    votes[uid] = 'approved';
+    audit('expense_approver_removed_autoapprove', { userId: uid, targetId: exp.id });
+    const fin = finalizeFromApprovalVotes(exp, approversCanon, votes, uid, now, null);
+    const result = persistApprovalFinalize(exp, fin, audit, null, uid);
+    if (!result.error) updated++;
+  }
+  return { updated };
+}
+
 /**
  * Validate client paidBy[] against total EUR; resolve legacy user tokens.
  * @returns {{ paidBy: Array<{userId:string,amount:number,pct?:number}>, splitMode: string|null }|{ error: string }}
@@ -1132,15 +1314,22 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     let nextPaidByJson = exp.paidByJson ?? null;
     let nextSplitMode = exp.splitMode ?? null;
+    const curExpCurSplit = String(exp.currency || 'EUR').toUpperCase();
+    const totalForSplit = curExpCurSplit === 'EUR'
+      ? nextAmount
+      : (exp.amountEUR != null && Number.isFinite(Number(exp.amountEUR)) ? Number(exp.amountEUR) : nextAmount);
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'paidBy')) {
-      const curExp = String(exp.currency || 'EUR').toUpperCase();
-      const totalForSplit = curExp === 'EUR'
-        ? nextAmount
-        : (exp.amountEUR != null && Number.isFinite(Number(exp.amountEUR)) ? Number(exp.amountEUR) : nextAmount);
       const pn = normalizePaidByFromBody(req.body, exp.userId, totalForSplit, userStore);
       if (pn.error) return res.status(400).json({ error: pn.error });
       nextPaidByJson = JSON.stringify(pn.paidBy);
       nextSplitMode = pn.splitMode;
+    } else if (amount !== undefined && Number(amount) !== Number(exp.amount)) {
+      const recalc = recalculatePaidByForNewTotal(
+        exp.paidByJson, exp.splitMode, totalForSplit, exp.userId, userStore,
+      );
+      if (recalc.error) return res.status(400).json({ error: recalc.error });
+      nextPaidByJson = JSON.stringify(recalc.paidBy);
+      nextSplitMode = recalc.splitMode;
     }
 
     let finalStatus = nextStatus;
@@ -1151,6 +1340,39 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     let nextRejectedBy = exp.rejectedBy ?? null;
     let nextRejectedAt = exp.rejectedAt ?? null;
     let nextRejectionNote = exp.rejectionNote ?? null;
+
+    const nextSnapshot = {
+      amount: nextAmount,
+      description: nextDesc,
+      category: nextCat,
+      date: nextDate,
+      notes: nextNotes,
+      departmentId: nextDeptId,
+      ivaRate: nextIvaRate,
+      ivaAmount: nextIvaAmount,
+      vendor: nextVendor,
+      dueDate: nextDue,
+      expenseType: nextExpenseType,
+      paidByJson: nextPaidByJson,
+      splitMode: nextSplitMode,
+    };
+    const fieldChanges = buildExpenseFieldDiff(prev, nextSnapshot);
+    const wasApproved = exp.status === 'approved';
+    const materialEdit = fieldChanges.length > 0
+      && ['submitted', 'approved', 'rejected'].includes(exp.status);
+
+    if (materialEdit) {
+      nextVotesJson = JSON.stringify({});
+      nextApprovedBy = null;
+      nextApprovedAt = null;
+      nextRejectedBy = null;
+      nextRejectedAt = null;
+      nextRejectionNote = null;
+      finalStatus = 'submitted';
+      if (nextExpenseType === 'invoice' && String(exp.paymentStatus) === 'unpaid') {
+        nextPayStat = 'pending_approval';
+      }
+    }
 
     const becomingSubmitted = finalStatus === 'submitted'
       && (exp.status === 'rejected' || exp.status === 'draft');
@@ -1230,7 +1452,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         targetId: exp.id,
         changes: fieldChanges,
       });
-      if (wasApproved) {
+      if (materialEdit || wasApproved) {
         audit('expense_reapproval_required', {
           userId: req.userId,
           targetId: exp.id,
@@ -1240,7 +1462,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     } else {
       audit('expense_updated', { userId: req.userId, targetId: exp.id });
     }
-    res.json({ ok: true, expense: updated, reapprovalRequired: wasApproved && fieldChanges.length > 0 });
+    res.json({ ok: true, expense: updated, reapprovalRequired: materialEdit });
   }
 
   router.get('/:id/audit', (req, res) => {
@@ -1306,150 +1528,46 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   });
 
   router.post('/:id/approve', requireAuth, (req, res) => {
-    let exp = getExpenseById(req.params.id);
+    const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
     const now = Date.now();
-    const adminId = req.userId || null;
-    const approversRaw = parseJsonArray(exp.approversJson);
-
-    if (approversRaw.length === 0) {
-      const defaultIds = getApproverIdsForCategory(exp.category);
-      if (!defaultIds.includes(req.userId) && !isAdminRole(req.userRole)) {
-        return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
-      }
-      const votes = remapVotesWithCanonicalKeys(parseJsonObject(exp.approvalVotesJson), userStore);
-      votes[req.userId] = 'approved';
-      const allDone = allApproversVotedApproved(defaultIds, votes);
-      if (allDone) {
-        const approveInfo = db.prepare(`UPDATE expenses SET status='approved', approversJson=?, approvalVotesJson=?, approvedBy=?, approvedAt=?,
-          rejectedBy=NULL, rejectedAt=NULL, rejectionNote=NULL, updatedAt=? WHERE id=?`)
-          .run(JSON.stringify(defaultIds), JSON.stringify(votes), req.userId, now, now, exp.id);
-        if (warnIfNoChanges(approveInfo, 'expense_approve', { expenseId: exp.id, userId: req.userId })) {
-          return res.status(404).json({ error: 'Gasto no encontrado.' });
-        }
-        if (exp.expenseType === 'invoice' && exp.paymentStatus === 'pending_approval') {
-          db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
-            .run(Date.now(), exp.id);
-        }
-      } else {
-        const partialInfo = db.prepare(`UPDATE expenses SET status='submitted', approversJson=?, approvalVotesJson=?, updatedAt=? WHERE id=?`)
-          .run(JSON.stringify(defaultIds), JSON.stringify(votes), now, exp.id);
-        if (warnIfNoChanges(partialInfo, 'expense_approve_partial', { expenseId: exp.id, userId: req.userId })) {
-          return res.status(404).json({ error: 'Gasto no encontrado.' });
-        }
-      }
-      const updated = getExpenseById(exp.id);
-      audit('expense_approved', { userId: req.userId, targetId: exp.id });
-      let budgetExceeded;
-      if (allDone && updated.status === 'approved' && updated.departmentId) {
-        budgetExceeded = maybeNotifyBudgetExceeded({
-          audit,
-          departmentId: updated.departmentId,
-          expenseId: updated.id,
-          actorUserId: req.userId,
-          submitterUserId: updated.userId,
-          ip: req.ip,
-        });
-      }
-      return res.json({
-        ok: true,
-        expense: updated,
-        ...(budgetExceeded && budgetExceeded.exceeded ? { budgetExceeded } : {}),
-      });
-    }
-    const approversCanon = resolveExpenseApproverIdsForAuth(exp, userStore);
-
-    const canApprove = exp.status === 'submitted' ||
-      (exp.status === 'rejected' && isAdminRole(req.userRole));
-    if (!canApprove) {
-      return res.status(400).json({ error: 'No se puede aprobar en este estado.' });
-    }
-    if (exp.status === 'rejected') {
-      // reopen first
-      db.prepare(
-        "UPDATE expenses SET status='submitted', rejectedBy=NULL, rejectedAt=NULL, rejectionNote=NULL, updatedAt=? WHERE id=?"
-      ).run(Date.now(), exp.id);
-      // reload
-      exp = getExpenseById(exp.id);
+    const actorId = req.userId || null;
+    const approversCanon = parseJsonArray(exp.approversJson).length > 0
+      ? resolveExpenseApproverIdsForAuth(exp, userStore)
+      : canonicalizeApproverIds(getApproverIdsForCategory(exp.category), userStore);
+    if (!canUserActOnExpenseApproval(
+      { ...exp, approversJson: JSON.stringify(approversCanon) },
+      actorId,
+      req.userRole,
+      userStore,
+    )) {
+      return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
     }
     const votes = remapVotesWithCanonicalKeys(parseJsonObject(exp.approvalVotesJson), userStore);
-    votes[adminId] = 'approved';
-
-    if (anyRejectionVote(votes)) {
-      const rejectInfo = db.prepare(`
-        UPDATE expenses SET
-          status = 'rejected',
-          approversJson = ?,
-          approvalVotesJson = ?,
-          rejectedBy = ?, rejectedAt = ?, rejectionNote = COALESCE(rejectionNote, ?),
-          approvedBy = NULL, approvedAt = NULL,
-          updatedAt = ?
-        WHERE id = ?
-      `).run(
-        JSON.stringify(approversCanon),
-        JSON.stringify(votes),
-        adminId,
-        now,
-        'Rechazado por voto de aprobador.',
-        now,
-        exp.id,
-      );
-      if (warnIfNoChanges(rejectInfo, 'expense_approve_reject_vote', { expenseId: exp.id, userId: adminId })) {
-        return res.status(404).json({ error: 'Gasto no encontrado.' });
-      }
-      const updated = getExpenseById(exp.id);
-      audit('expense_rejected', { userId: adminId, targetId: exp.id, via: 'approval_vote' });
-      return res.json({ ok: true, expense: updated });
-    }
-
-    const allDone = allApproversVotedApproved(approversCanon, votes);
-
-    if (allDone) {
-      const approveInfo = db.prepare(`
-        UPDATE expenses SET
-          status = 'approved',
-          approversJson = ?,
-          approvalVotesJson = ?,
-          approvedBy = ?, approvedAt = ?,
-          rejectedBy = NULL, rejectedAt = NULL, rejectionNote = NULL,
-          updatedAt = ?
-        WHERE id = ?
-      `).run(JSON.stringify(approversCanon), JSON.stringify(votes), adminId, now, now, exp.id);
-      if (warnIfNoChanges(approveInfo, 'expense_approve', { expenseId: exp.id, userId: adminId })) {
-        return res.status(404).json({ error: 'Gasto no encontrado.' });
-      }
-      if (exp.expenseType === 'invoice' && exp.paymentStatus === 'pending_approval') {
-        db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
-          .run(Date.now(), exp.id);
-      }
-    } else {
-      const partialInfo = db.prepare(`
-        UPDATE expenses SET status = 'submitted', approversJson = ?, approvalVotesJson = ?, updatedAt = ?
-        WHERE id = ?
-      `).run(JSON.stringify(approversCanon), JSON.stringify(votes), now, exp.id);
-      if (warnIfNoChanges(partialInfo, 'expense_approve_partial', { expenseId: exp.id, userId: adminId })) {
-        return res.status(404).json({ error: 'Gasto no encontrado.' });
-      }
-    }
-    const updated = getExpenseById(exp.id);
-    const approveNote = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : undefined;
-    audit('expense_approved', { userId: adminId, targetId: exp.id, note: approveNote });
-    let budgetExceeded;
-    if (allDone && updated.status === 'approved' && updated.departmentId) {
-      budgetExceeded = maybeNotifyBudgetExceeded({
-        audit,
-        departmentId: updated.departmentId,
-        expenseId: updated.id,
-        actorUserId: adminId,
-        submitterUserId: updated.userId,
-        ip: req.ip,
+    const oldVote = votes[actorId] || null;
+    votes[actorId] = 'approved';
+    if (oldVote !== 'approved') {
+      audit('expense_vote_changed', {
+        userId: actorId,
+        targetId: exp.id,
+        from: oldVote,
+        to: 'approved',
       });
     }
-    res.json({
+    const fin = finalizeFromApprovalVotes(exp, approversCanon, votes, actorId, now, null);
+    const result = persistApprovalFinalize(exp, fin, audit, req, actorId);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    const approveNote = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : undefined;
+    if (fin.status === 'approved') {
+      audit('expense_approved', { userId: actorId, targetId: exp.id, note: approveNote });
+    } else if (fin.status === 'rejected') {
+      audit('expense_rejected', { userId: actorId, targetId: exp.id, via: 'approval_vote' });
+    }
+    return res.json({
       ok: true,
-      expense: updated,
-      ...(budgetExceeded && budgetExceeded.exceeded ? { budgetExceeded } : {}),
+      expense: result.updated,
+      ...(result.budgetExceeded && result.budgetExceeded.exceeded ? { budgetExceeded: result.budgetExceeded } : {}),
     });
   });
 
@@ -1458,64 +1576,46 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
     const now = Date.now();
-    const adminId = req.userId || null;
+    const actorId = req.userId || null;
     const note = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : null;
     if (!note || note.length < 10) {
       return res.status(400).json({ error: 'El motivo del rechazo es obligatorio (mínimo 10 caracteres).' });
     }
-    const approversRaw = parseJsonArray(exp.approversJson);
-
-    if (approversRaw.length === 0) {
-      const defaultIds = getApproverIdsForCategory(exp.category);
-      if (!defaultIds.includes(req.userId) && !isAdminRole(req.userRole)) {
-        return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
-      }
-      const votes = {};
-      votes[req.userId] = 'rejected';
-      const rejectInfo = db.prepare(`
-        UPDATE expenses SET
-          status = 'rejected',
-          approversJson = ?,
-          approvalVotesJson = ?,
-          rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
-          approvedBy = NULL, approvedAt = NULL,
-          updatedAt = ?
-        WHERE id = ?
-      `).run(JSON.stringify(defaultIds), JSON.stringify(votes), req.userId, now, note, now, exp.id);
-      if (warnIfNoChanges(rejectInfo, 'expense_reject', { expenseId: exp.id, userId: req.userId })) {
-        return res.status(404).json({ error: 'Gasto no encontrado.' });
-      }
-      const updated = getExpenseById(exp.id);
-      audit('expense_rejected', { userId: req.userId, targetId: exp.id, note });
-      return res.json({ ok: true, expense: updated });
+    const approversCanon = parseJsonArray(exp.approversJson).length > 0
+      ? resolveExpenseApproverIdsForAuth(exp, userStore)
+      : canonicalizeApproverIds(getApproverIdsForCategory(exp.category), userStore);
+    if (!canUserActOnExpenseApproval(
+      { ...exp, approversJson: JSON.stringify(approversCanon) },
+      actorId,
+      req.userRole,
+      userStore,
+    )) {
+      return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
     }
-    const canReject = exp.status === 'submitted' ||
-      (exp.status === 'approved' && isAdminRole(req.userRole));
-    if (!canReject) {
-      return res.status(400).json({ error: 'No se puede rechazar en este estado.' });
+    const votes = remapVotesWithCanonicalKeys(parseJsonObject(exp.approvalVotesJson), userStore);
+    const oldVote = votes[actorId] || null;
+    votes[actorId] = 'rejected';
+    if (oldVote !== 'rejected') {
+      audit('expense_vote_changed', {
+        userId: actorId,
+        targetId: exp.id,
+        from: oldVote,
+        to: 'rejected',
+      });
     }
-
-    const rejectInfo = db.prepare(`
-      UPDATE expenses SET
-        status = 'rejected',
-        rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
-        approvedBy = NULL,
-        approvedAt = NULL,
-        approvalVotesJson = ?,
-        updatedAt = ?
-      WHERE id = ?
-    `).run(adminId, now, note, JSON.stringify({ [adminId]: 'rejected' }), now, exp.id);
-    if (warnIfNoChanges(rejectInfo, 'expense_reject', { expenseId: exp.id, userId: adminId })) {
-      return res.status(404).json({ error: 'Gasto no encontrado.' });
+    const fin = finalizeFromApprovalVotes(exp, approversCanon, votes, actorId, now, note);
+    const result = persistApprovalFinalize(exp, fin, audit, req, actorId);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    if (fin.status === 'rejected') {
+      audit('expense_rejected', { userId: actorId, targetId: exp.id, note });
+    } else if (fin.status === 'approved') {
+      audit('expense_approved', { userId: actorId, targetId: exp.id });
     }
-    if (exp.expenseType === 'invoice' &&
-        exp.paymentStatus === 'unpaid') {
-      db.prepare("UPDATE expenses SET paymentStatus = 'pending_approval', updatedAt = ? WHERE id = ?")
-        .run(Date.now(), exp.id);
-    }
-    const updated = getExpenseById(exp.id);
-    audit('expense_rejected', { userId: adminId, targetId: exp.id, note });
-    res.json({ ok: true, expense: updated });
+    return res.json({
+      ok: true,
+      expense: result.updated,
+      ...(result.budgetExceeded && result.budgetExceeded.exceeded ? { budgetExceeded: result.budgetExceeded } : {}),
+    });
   });
 
   const receiptJson = express.json({ limit: '100mb' });
@@ -1628,4 +1728,4 @@ function markOverdueInvoices() {
   `).run(now, today);
 }
 
-module.exports = { createExpensesRouter, markOverdueInvoices };
+module.exports = { createExpensesRouter, markOverdueInvoices, autoApprovePendingForRemovedUser };
