@@ -7,13 +7,18 @@ export const BRAND_TINT = 'var(--color-brand-tint)';
 export const BRAND_HEX = '#cc4e00';
 export const ACCENT_HEX = '#C4622D';
 export const BADGE_HEX = '#b85c1a';
+export const FACTURA_HEX = '#5B21B6';
+
+export const FACTURA = 'var(--color-factura)';
+export const FACTURA_HOVER = 'var(--color-factura-hover)';
+export const FACTURA_TINT = 'var(--color-factura-tint)';
 
 // Backwards-compatible aliases used throughout the monolith
 export const G = BRAND; // brand primary
 export const GH = BRAND_HOVER; // primary hover
 export const GL = BRAND_TINT; // primary tint
 export const T = 'var(--color-accent)'; // accent
-export const BILL_COLOR = '#C2622A'; // orange for facturas (kept as hex)
+export const BILL_COLOR = FACTURA_HEX; // factura color for SVG/canvas
 export const BL = 'var(--color-badge)'; // notification badge
 /** Shown when a user id is not in the local users list (e.g. server sync lag). */
 export const UNKNOWN_USER_NAME="Usuario";

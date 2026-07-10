@@ -4,8 +4,11 @@
 :root {
   /* Brand */
   --color-brand: #cc4e00;
-  --color-brand-hover: #e35900;
+  --color-brand-hover: #a83f00;
   --color-brand-tint: rgba(204, 78, 0, 0.07);
+  --color-factura: #5B21B6;
+  --color-factura-hover: #4a1a92;
+  --color-factura-tint: rgba(91, 33, 182, 0.10);
   --color-accent: #C4622D;
   --color-badge: #b85c1a;
 

@@ -7,7 +7,10 @@ import {
   GH,
   GL,
   T,
-  BILL_COLOR,
+  FACTURA,
+  FACTURA_HOVER,
+  FACTURA_HEX,
+  FACTURA_TINT,
   BL,
   UNKNOWN_USER_NAME,
   DATA_VERSION,
@@ -1757,7 +1760,7 @@ const AUTH={
   btnPrimary:{width:"100%",background:"#cc4e00",color:"#FAF7F2",border:"none",
     borderRadius:9,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",
     fontFamily:"inherit",transition:"background 0.15s,transform 0.1s,opacity 0.15s"},
-  btnPrimaryHover:{background:"#e35900"},
+  btnPrimaryHover:{background:"#a83f00"},
   btnPrimaryLoading:{opacity:0.55,cursor:"default"},
   /* Divider */
   divider:{borderTop:"1px solid #EDE8E0",margin:"20px 0"},
@@ -2549,7 +2552,7 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
             {splits.map(s=>{
               const u=users.find(x=>x.id===s.userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
               return(
-                <div key={s.userId} onClick={()=>toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+actionColor):"1.5px solid #DDD6CC",background:s.checked?(actionColor==="#D97706"?"rgba(217,119,6,0.10)":"rgba(204,78,0,0.06)"):"#fff",cursor:"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s,border-color 0.2s ease,background-color 0.2s ease"}}>
+                <div key={s.userId} onClick={()=>toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+actionColor):"1.5px solid #DDD6CC",background:s.checked?(actionColor===FACTURA?FACTURA_TINT:GL):"#fff",cursor:"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s,border-color 0.2s ease,background-color 0.2s ease"}}>
                   <UserAvatar user={u} size={20} fontSize={7}/>
                   <span style={{fontSize:12,fontWeight:s.checked?600:400}}>{u.name.split(" ")[0]}</span>
                 </div>
@@ -2676,8 +2679,7 @@ function ExpenseFormFields({
     onReceiptClear();
     if(hasApiPrev&&onClearApiReceiptPreview)onClearApiReceiptPreview();
   };
-  const invTint=actionColor==="#D97706";
-  const ivaBandBg=invTint?"rgba(217, 119, 6, 0.08)":GL;
+  const ivaBandBg=isInv?FACTURA_TINT:GL;
   return(
     <div className="expense-form-fields-wrap" style={{["--expense-action"]:actionColor}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
@@ -2885,8 +2887,8 @@ function NewPanel(){
   const amountNum=parseMoney(form.amount);
   const amountOk=amountNum>0;
   const isInv=form.expenseType==="invoice";
-  const actionColor=isInv?"#D97706":G;
-  const submitHoverBg=isInv?"#B45309":GH;
+  const actionColor=isInv?FACTURA:G;
+  const submitHoverBg=isInv?FACTURA_HOVER:GH;
   const vendorOk=!isInv||String(form.vendor||"").trim().length>0;
   const proveedorOk=!isInv||String(form.proveedor||"").trim().length>0;
   const duePickOk=!isInv||!form.deferredPayment||(String(form.paymentTermMode||"0")!=="custom")||String(form.invoiceDueDateDirect||"").trim().length>=10;
@@ -3091,7 +3093,7 @@ function DetailPanel(){
   };
   const approverIds=effectiveExpenseApproverIds(e,cats,users);
   const st=getItemStatus(e,cats,users);
-  const detailAccent = e && e.expenseType === 'invoice' ? '#C4622D' : '#cc4e00';
+  const detailAccent = e && e.expenseType === 'invoice' ? FACTURA : G;
   const detailSublistStatusTone = (s) =>
     ST[s] || (s === 'deleted' ? { bg: '#F3F4F6', color: '#6B7280' } : ST.pending);
   const detailTopStatusTone =
@@ -3360,8 +3362,8 @@ function DetailPanel(){
   const editSplitBlocked=efSplitOn&&(users.length<2||editCheckedSplit<2||editAmtSumBad);
   const editHi=editSubmitAttempt&&!editExpenseValid;
   const editRs=bad=>(bad?{borderColor:"#DC2626",boxShadow:"0 0 0 1px #DC2626"}:{});
-  const editActionColor=editIsInv?"#D97706":G;
-  const editSubmitHoverBg=editIsInv?"#B45309":GH;
+  const editActionColor=editIsInv?FACTURA:G;
+  const editSubmitHoverBg=editIsInv?FACTURA_HOVER:GH;
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11}}>
@@ -3793,7 +3795,7 @@ export function DashboardView(){
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:16}}>
-        {[{bg:G,label:t("dash.addExpense"),sub:t("dash.logCost"),fn:openNew},{bg:T,label:t("dash.newInvoice"),sub:t("dash.newInvoiceSub"),fn:openNewInvoice}].map((a,i)=>(
+        {[{bg:G,label:t("dash.addExpense"),sub:t("dash.logCost"),fn:openNew},{bg:FACTURA,label:t("dash.newInvoice"),sub:t("dash.newInvoiceSub"),fn:openNewInvoice}].map((a,i)=>(
           <div key={i} style={{background:a.bg,borderRadius:11,padding:"12px 13px",cursor:"pointer"}} onClick={a.fn}
             onMouseEnter={e=>e.currentTarget.style.opacity="0.88"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
             <div style={{fontSize:16,color:"rgba(250,247,242,0.4)",lineHeight:1,marginBottom:3}}>+</div>
@@ -3949,7 +3951,7 @@ export function DashboardView(){
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
-                <div style={{fontSize:11,color:b.daysUntil<=3?"#C4622D":"#9CAA9F",marginTop:1,fontWeight:b.daysUntil<=3?600:400}}>{dueTxt}</div>
+                <div style={{fontSize:11,color:b.daysUntil<=3?FACTURA:"#9CAA9F",marginTop:1,fontWeight:b.daysUntil<=3?600:400}}>{dueTxt}</div>
                 </div>
                 <div style={{fontWeight:700,color:G,fontSize:12,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmtExpenseAmt(b)}</div>
               </div>
@@ -4193,7 +4195,7 @@ export function ExpensesView(){
                   <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                     <span style={{fontSize:12,fontWeight:600}}>{rowTitle}</span>
                     {isInvRow&&(
-                      <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:"#C4622D",color:"#fff",flexShrink:0,display:"inline-block"}}>FACTURA</span>
+                      <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:FACTURA,color:"#fff",flexShrink:0,display:"inline-block"}}>FACTURA</span>
                     )}
                     {!isInvRow&&expKindFlt!=="invoice"&&(
                       <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:"#cc4e00",color:"#fff",flexShrink:0,display:"inline-block"}}>GASTO</span>
@@ -4387,8 +4389,8 @@ export function ApprovalsView(){
             ["invoice",t("expenses.filterInvoices"),cInv],
           ].map(([k,lb,cnt])=>{
             const active=typeFilter===k;
-            const fill=k==="invoice"&&active?"#C4622D":active?"#cc4e00":"#fff";
-            const border=active?(k==="invoice"?"#C4622D":"#cc4e00"):"#DDD6CC";
+            const fill=k==="invoice"&&active?FACTURA_HEX:active?"#cc4e00":"#fff";
+            const border=active?(k==="invoice"?FACTURA_HEX:"#cc4e00"):"#DDD6CC";
             const color=active?"#fff":"#4B5E52";
             return(
               <button key={k} type="button" style={{padding:"3px 12px",borderRadius:18,fontSize:11,fontWeight:600,border:`1.5px solid ${border}`,background:fill,color,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setTypeFilter(k)}>
@@ -4438,7 +4440,7 @@ export function ApprovalsView(){
                       <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
                         <span style={{fontWeight:600,fontSize:16,color:"#4B5E52"}}>{rowTitle}</span>
                         {isInv&&(
-                          <span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,background:"#C4622D",color:"#fff",display:"inline-block"}}>FACTURA</span>
+                          <span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,background:FACTURA,color:"#fff",display:"inline-block"}}>FACTURA</span>
                         )}
                       </div>
                       <div style={{fontSize:13,fontWeight:700,color:"#4B5E52",marginTop:2}}>Titular: {titularNames}</div>
@@ -4563,7 +4565,7 @@ function PaymentCalendar({reportExpenses}){
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
         {cells.map((d,i)=>(
           <div key={i} onClick={()=>d&&setSelDay(selDay===d?null:d)} style={{minHeight:32,borderRadius:5,background:d&&isToday(d)?"rgba(204,78,0,0.08)":d&&events[d]?"#FFFBF5":"#FAFAF8",border:d&&isToday(d)?`1.5px solid ${G}`:d&&selDay===d?"1.5px solid "+T:"1px solid transparent",padding:"3px 2px",cursor:d?"pointer":"default",transition:"border 0.1s"}}>
-            {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(events[d]||[]).map((ev,j)=><div key={j} title={ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?"#C4622D":"#cc4e00"}}/>)}</div></>}
+            {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(events[d]||[]).map((ev,j)=><div key={j} title={ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?FACTURA_HEX:"#cc4e00"}}/>)}</div></>}
           </div>
         ))}
       </div>
@@ -4574,7 +4576,7 @@ function PaymentCalendar({reportExpenses}){
             ?<div style={{fontSize:11,color:"#9CAA9F"}}>Sin movimientos</div>
             :(events[selDay]||[]).map((ev,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,marginBottom:3,gap:6}}>
-              <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?"#C4622D":"#cc4e00",display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
+              <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?FACTURA_HEX:"#cc4e00",display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
               <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(ev.amount)}</span>
               <button style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{resetForm();go("expenses");setTimeout(()=>{setDetailId(ev.id);setPanel("detail");},50);}}>{t("action.viewAll")}</button>
             </div>
@@ -4582,7 +4584,7 @@ function PaymentCalendar({reportExpenses}){
         </div>
       )}
       <div style={{display:"flex",gap:12,marginTop:8,fontSize:9}}>
-        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#C4622D",display:"inline-block"}}/>{t("expenses.typeInvoice")}</span>
+        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:FACTURA_HEX,display:"inline-block"}}/>{t("expenses.typeInvoice")}</span>
         <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#cc4e00",display:"inline-block"}}/>{t("nav.expenses")}</span>
       </div>
     </div>
@@ -4796,7 +4798,7 @@ export function ReportsView(){
             <span style={{fontSize:11,color:"#4B5E52"}}>Gastos</span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:5}}>
-            <div style={{width:10,height:10,borderRadius:2,background:"#C4622D"}}/>
+            <div style={{width:10,height:10,borderRadius:2,background:FACTURA_HEX}}/>
             <span style={{fontSize:11,color:"#4B5E52"}}>Facturas</span>
           </div>
         </div>
@@ -4841,7 +4843,7 @@ export function ReportsView(){
                     <title>{m.label} Gastos: {fmt(m.gastos)}</title>
                   </rect>}
                   {fH>0&&<rect x={x+BAR_W+BAR_GAP} y={fY} width={BAR_W} height={fH}
-                    fill="#C4622D" rx="2" opacity="0.9">
+                    fill={FACTURA_HEX} rx="2" opacity="0.9">
                     <title>{m.label} Facturas: {fmt(m.facturas)}</title>
                   </rect>}
                   {gH>0&&<text x={x+BAR_W/2} y={gY-4}
@@ -4849,7 +4851,7 @@ export function ReportsView(){
                     {fmt(m.gastos)}
                   </text>}
                   {fH>0&&<text x={x+BAR_W+BAR_GAP+BAR_W/2} y={fY-4}
-                    textAnchor="middle" fontSize="7" fill="#C4622D" fontWeight="600">
+                    textAnchor="middle" fontSize="7" fill={FACTURA_HEX} fontWeight="600">
                     {fmt(m.facturas)}
                   </text>}
                   <text x={SIDE_PAD + i * GROUP_W + GROUP_W / 2} y={TOP_PAD+CHART_H+14}
@@ -4920,7 +4922,7 @@ export function ReportsView(){
                             style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:i<userRows.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}}
                             onClick={()=>{resetForm();setView("expenses");setDetailId(row.id);setPanel("detail");}}
                           >
-                            <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#FEE2CC":"#fde8d6",color:kind==="invoice"?"#C4622D":"#cc4e00"}}>
+                            <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#EDE9FE":"#fde8d6",color:kind==="invoice"?FACTURA:"#cc4e00"}}>
                               {kind==="invoice"?"FACTURA":"GASTO"}
                             </span>
                             <div style={{flex:1,minWidth:0}}>
@@ -6248,7 +6250,7 @@ export function SettingsView(){
                 <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"N/A"} · {u.role==="admin"?t("role.admin"):t("role.user")}</div></div>
                 <div style={{display:"flex",gap:3,flexShrink:0,flexWrap:"wrap"}}>
                   <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(u.id);setEf({name:u.name,email:u.email||"",role:u.role,color:u.color});}}>{t("action.edit")}</button>
-                  {AUTH_URL&&u.id!==user.id&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #C4B5FD",background:"transparent",color:"#5B21B6",cursor:"pointer"}} onClick={()=>{setResetFor(resetFor===u.id?null:u.id);setResetPwInput("");}}>{t("team.resetPassword")}</button>}
+                  {AUTH_URL&&u.id!==user.id&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #C4B5FD",background:"transparent",color:FACTURA,cursor:"pointer"}} onClick={()=>{setResetFor(resetFor===u.id?null:u.id);setResetPwInput("");}}>{t("team.resetPassword")}</button>}
                   {AUTH_URL&&u.id!==user.id&&(
                     u.accountStatus==="active"
                       ? <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #FCA5A5",background:"transparent",color:"#DC2626",cursor:"pointer"}}
