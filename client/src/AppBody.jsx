@@ -23,6 +23,7 @@ const TR_LABEL_PATCH = {
   'dash.addExpense': 'Añadir gasto',
   'settings.categories': 'Categorías y reglas de aprobación',
   'login.subtitle': 'Gestión de gastos',
+  'login.adminManaged': 'Contacta con tu admin para obtener acceso.',
   'settings.apiIntegrations': 'API e integraciones',
 };
 
@@ -166,24 +167,12 @@ function expenseTimelineEditedFieldLabels(meta,t){
 }
 
 /* ── USER AVATAR ────────────────────────────────────────────────────────────
-   Renders profile photo if set, otherwise falls back to colored initials circle.
-   Drop-in replacement for every inline initials-div across the app.
+   Colored initials circle (user.color). Profile photos are no longer shown.
    Props: user (required), size (px, default 24), fontSize (px, default auto)
 ─────────────────────────────────────────────────────────────────────────── */
-function isRenderableAvatarSrc(src){
-  if(!src||typeof src!=="string")return false;
-  const s=src.trim();
-  return s.startsWith("data:image/")||/^https?:\/\//i.test(s)||s.startsWith("blob:");
-}
 export function UserAvatar({user, size=24, fontSize=null}){
   if(!user)return null;
   const fs=fontSize||Math.max(6,Math.round(size*0.32));
-  const [imgFailed,setImgFailed]=useState(false);
-  const src=user.avatar;
-  const showPhoto=isRenderableAvatarSrc(src)&&!imgFailed;
-  if(showPhoto)return(
-    <img src={src} alt={user.name||""} onError={()=>setImgFailed(true)} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1.5px solid rgba(0,0,0,0.06)"}}/>
-  );
   return(
     <div className="user-avatar-initials" style={{width:size,height:size,background:user.color||"#6B7280",fontSize:fs}}>
       {inits(user.name||"?")}
@@ -340,8 +329,8 @@ const approvalVoteFor=(approvals,canonicalUserId,users)=>{
   return undefined;
 };
 /** Derive admin IDs from live user list — no hardcoded constant needed */
-const getAdminIds=users=>{const u=Array.isArray(users)?users:[];return u.filter(x=>x.role==="admin"||x.role==="superadmin").map(x=>x.id);};
-/** Drop approver IDs not on the roster; if fewer than 2 remain, use all admin/superadmin ids. */
+const getAdminIds=users=>{const u=Array.isArray(users)?users:[];return u.filter(x=>x.role==="admin").map(x=>x.id);};
+/** Drop approver IDs not on the roster; if fewer than 2 remain, use all admin ids. */
 const finalizeApproverIdList=(canonicalIds,users)=>{
   const u=Array.isArray(users)?users:[];
   const list=Array.isArray(canonicalIds)?[...canonicalIds]:[];
@@ -360,7 +349,6 @@ const mergeUsersById=(prev,next)=>{
       const prevU=map.get(u.id);
       const normalized=normalizeItem(u,"user");
       if(prevU){
-        if(!normalized.avatar&&prevU.avatar)normalized.avatar=prevU.avatar;
         if(!normalized.name&&prevU.name)normalized.name=prevU.name;
         if(!normalized.email&&prevU.email)normalized.email=prevU.email;
       }
@@ -369,7 +357,7 @@ const mergeUsersById=(prev,next)=>{
   }
   return [...map.values()];
 };
-/** Session user reconciled with roster (avatar/name from latest team/expense payload). */
+/** Session user reconciled with roster (name/email from latest team/expense payload). */
 const resolveSessionUser=(sessionUser,users)=>{
   if(!sessionUser)return null;
   const roster=(users||[]).find(u=>u.id===sessionUser.id);
@@ -377,7 +365,6 @@ const resolveSessionUser=(sessionUser,users)=>{
   return normalizeItem({
     ...sessionUser,
     ...roster,
-    avatar:roster.avatar??sessionUser.avatar??null,
     role:sessionUser.role??roster.role,
   },"user");
 };
@@ -416,11 +403,11 @@ const effectiveExpenseApproverIds=(exp,cats,users)=>{
     return canonicalApproverIdList(cat.approverIds,users);
   }
   return (users || [])
-    .filter(u => u.role === 'superadmin')
+    .filter(u => u.role === 'admin')
     .map(u => u.id);
 };
-const canUserReviewExpense=(item,{user,isAdmin,cats,users})=>{
-  if(!isAdmin||!item||!user?.id)return false;
+const canUserReviewExpense=(item,{user,cats,users})=>{
+  if(!item||!user?.id)return false;
   const approverIds=effectiveExpenseApproverIds(item,cats,users);
   if(!approverIds.includes(user.id))return false;
   if(item._apiType==="expense"){
@@ -966,21 +953,21 @@ const tCat=(name,t)=>{const k="cat."+name.toLowerCase().replace(/[^a-z]/g,"");co
 /* ══════════════════════════════════════════════════════════════════════════════
    PERMISSIONS MATRIX
    ─────────────────────────────────────────────────────────────────────────────
-   Role         │ user  │ admin │ superadmin
-   ─────────────┼───────┼───────┼───────────
-   submit exp   │  ✓    │  ✓    │  ✓
-   edit exp*    │  own  │  own  │  any        *pending only, not yet implemented
-   delete exp*  │  own  │  any  │  any        *pending only
-   approve exp  │  –    │  ✓†   │  ✓†         †only if in category approverIds
-   reject exp   │  –    │  ✓†   │  ✓†
-   submit bill  │  ✓    │  ✓    │  ✓
-   pause bill   │  –    │  ✓    │  ✓
-   delete bill  │  –    │  ✓    │  ✓
-   approve bill │  –    │  ✓†   │  ✓†
-   upload att.  │  ✓    │  ✓    │  ✓          own submissions only
-   export Excel │  ✓    │  ✓    │  ✓
-   manage users │  –    │  –    │  ✓
-   manage cats  │  –    │  –    │  ✓
+   Role         │ user  │ admin
+   ─────────────┼───────┼───────
+   submit exp   │  ✓    │  ✓
+   edit exp*    │  own  │  any        *pending only, not yet implemented
+   delete exp*  │  own  │  any        *pending only
+   approve exp  │  ✓†   │  ✓†         †only if designated approver
+   reject exp   │  ✓†   │  ✓†
+   submit bill  │  ✓    │  ✓
+   pause bill   │  –    │  ✓
+   delete bill  │  –    │  ✓
+   approve bill │  ✓†   │  ✓†
+   upload att.  │  ✓    │  ✓          own submissions only
+   export Excel │  ✓    │  ✓
+   manage users │  –    │  ✓
+   manage cats  │  –    │  ✓
    ─────────────────────────────────────────────────────────────────────────────
 ══════════════════════════════════════════════════════════════════════════════ */
 
@@ -1025,42 +1012,6 @@ function isMobileReceiptCapture(){
   return /iPhone|iPad|iPod|Android|Mobile/i.test(ua)||(typeof window!=="undefined"&&window.innerWidth<768);
 }
 
-/** Resize profile photos so base64 fits SQLite avatar column (500k chars). */
-function compressAvatarDataUrl(file){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>{
-      const img=new Image();
-      img.onload=()=>{
-        const maxDim=256;
-        let w=img.naturalWidth||maxDim;
-        let h=img.naturalHeight||maxDim;
-        if(w>maxDim||h>maxDim){
-          if(w>=h){h=Math.max(1,Math.round(h*maxDim/w));w=maxDim;}
-          else{w=Math.max(1,Math.round(w*maxDim/h));h=maxDim;}
-        }
-        const canvas=document.createElement("canvas");
-        canvas.width=w;
-        canvas.height=h;
-        const ctx=canvas.getContext("2d");
-        if(!ctx){resolve(String(reader.result));return;}
-        ctx.drawImage(img,0,0,w,h);
-        let quality=0.85;
-        let out=canvas.toDataURL("image/jpeg",quality);
-        while(out.length>480000&&quality>0.45){
-          quality-=0.1;
-          out=canvas.toDataURL("image/jpeg",quality);
-        }
-        resolve(out);
-      };
-      img.onerror=()=>reject(new Error("No se pudo procesar la imagen."));
-      img.src=String(reader.result);
-    };
-    reader.onerror=()=>reject(new Error("No se pudo leer el archivo."));
-    reader.readAsDataURL(file);
-  });
-}
-
 const UPLOAD_RULES={
   receipt:{
     maxBytes: 20*1024*1024,
@@ -1068,11 +1019,6 @@ const UPLOAD_RULES={
     allowedExts: [],
     inferFromExtension: false,
     rejectHint: "",
-  },
-  avatar:{
-    maxBytes:1*1024*1024,   // 1 MB — profile images don't need to be large
-    allowedTypes:["image/jpeg","image/jpg","image/png","image/webp"],
-    allowedExts:[".jpg",".jpeg",".png",".webp"],
   },
 };
 function receiptMimeOkForServerUpload(mediaType){
@@ -1310,9 +1256,43 @@ function readLocalDepartments(){
 const BF={amount:"",description:"",category:"",date:new Date().toISOString().slice(0,10),notes:"",ivaRate:"21",departmentId:"",ownerId:"",
   expenseType:"expense",vendor:"",deferredPayment:false,paymentTermMode:"0",paymentTermCustomDays:"30",invoiceDueDateDirect:"",cadenceKey:"once",cadenceCustomMonths:"1",cadenceCustomAmount:"1",cadenceCustomUnit:"months",proveedor:""};
 const DRAFT_KEY="sol-session-draft";
-function makeBlankForm(expenseType,{user,defaultDeptId,departments}){
-  const firstActiveDeptId=defaultDeptId||(departments.find(d=>!d.archived)?.id||"");
-  return{...BF,expenseType,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:firstActiveDeptId};
+function makeBlankForm(expenseType,{user}){
+  return{...BF,expenseType,ivaRate:ivaRateToFormString(readIvaDefault()),ownerId:user?.id||"",departmentId:""};
+}
+
+/* ── SIDEBAR USER MENU ─────────────────────────────────────────────────────── */
+function SidebarUserMenu({items}){
+  const [hovered,setHovered]=useState(null);
+  return(
+    <div className="fade-in" style={{position:"absolute",bottom:"100%",left:8,right:8,marginBottom:6,background:"#52114B",border:"1px solid rgba(250,247,242,0.15)",borderRadius:10,overflow:"hidden",zIndex:20,boxShadow:"0 12px 32px rgba(0,0,0,0.28),0 2px 8px rgba(0,0,0,0.12)",padding:"4px 0"}}>
+      {items.map((item,i)=>(
+        <button
+          key={item.key}
+          type="button"
+          onMouseEnter={()=>setHovered(i)}
+          onMouseLeave={()=>setHovered(null)}
+          onClick={item.fn}
+          style={{
+            width:"100%",
+            minHeight:40,
+            padding:"10px 14px",
+            border:"none",
+            borderBottom:i<items.length-1?"1px solid rgba(250,247,242,0.08)":"none",
+            background:hovered===i?(item.destructive?"rgba(220,38,38,0.18)":"rgba(250,247,242,0.12)"):"transparent",
+            color:item.destructive?(hovered===i?"#FECACA":"rgba(250,247,242,0.92)"):"#FAF7F2",
+            fontSize:11,
+            fontWeight:item.destructive?600:500,
+            textAlign:"left",
+            cursor:"pointer",
+            fontFamily:"inherit",
+            transition:"background 0.15s ease,color 0.15s ease",
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -2368,28 +2348,30 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
           </div>
 
           {/* Password */}
-          <div style={{ marginBottom: 6, position: "relative" }}>
+          <div style={{ marginBottom: 6 }}>
             <label style={AUTH.lbl}>{tl("login.password")}</label>
-            <input
-              {...pwF}
-              style={{ ...pwF.style, paddingRight: 58 }}
-              type={showPw ? "text" : "password"}
-              placeholder={tl("login.enterPassword")}
-              value={pw}
-              onChange={e => {
-                setPw(e.target.value);
-                setErr(""); 
-              }}
-              onKeyDown={e => e.key === "Enter" && doLogin()}
-              autoComplete="current-password"
-            />
-            <button
-              type="button"
-              style={PW_TOGGLE_STYLE}
-              onClick={() => setShowPw(v => !v)}
-            >
-              {showPw ? tl("login.hidePw") : tl("login.showPw")}
-            </button>
+            <div style={{ position: "relative" }}>
+              <input
+                {...pwF}
+                style={{ ...pwF.style, paddingRight: 58 }}
+                type={showPw ? "text" : "password"}
+                placeholder={tl("login.enterPassword")}
+                value={pw}
+                onChange={e => {
+                  setPw(e.target.value);
+                  setErr(""); 
+                }}
+                onKeyDown={e => e.key === "Enter" && doLogin()}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                style={PW_TOGGLE_STYLE}
+                onClick={() => setShowPw(v => !v)}
+              >
+                {showPw ? tl("login.hidePw") : tl("login.showPw")}
+              </button>
+            </div>
           </div>
 
           {/* Forgot password Toggle */}
@@ -2545,12 +2527,12 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
     }
   };
   return(
-    <div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:0,opacity:users.length<2?0.92:1}} title={users.length<2?t("split.minTwoTeam"):""}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:splitOn?9:0}}>
-        <div>
+    <div style={{background:"#F5F0EA",borderRadius:9,padding:12,marginTop:4,marginBottom:14,opacity:users.length<2?0.92:1}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:splitOn?10:0}}>
+        <div style={{flex:1,minWidth:0,paddingRight:10}}>
           <div style={{fontWeight:600,fontSize:12}}>{t("label.splitExpense")}</div>
-          {!splitOn&&<div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{users.length<2?t("split.minTwoTeam"):t("label.divideTeam")}</div>}
-          {splitOn&&checkedCount<2&&<div style={{fontSize:9,color:"#6B7B72",marginTop:3}}>Selecciona al menos 2 participantes</div>}
+          {!splitOn&&<div style={{fontSize:10,color:"#9CAA9F",marginTop:users.length<2?5:3,lineHeight:1.45}}>{users.length<2?t("split.minTwoTeam"):t("label.divideTeam")}</div>}
+          {splitOn&&checkedCount<2&&<div style={{fontSize:9,color:"#6B7B72",marginTop:4}}>Selecciona al menos 2 participantes</div>}
         </div>
         <div onClick={toggleSplit} style={{width:36,height:20,borderRadius:10,background:splitOn?actionColor:(users.length<2?"#E5E0D8":"#C9C0B4"),cursor:users.length<2?"not-allowed":"pointer",position:"relative",transition:"background 0.2s ease",flexShrink:0,opacity:users.length<2?0.65:1}}>
           <div style={{position:"absolute",top:2,left:splitOn?18:2,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
@@ -3559,15 +3541,13 @@ function DetailPanel(){
           </div>
         );})}
       </div>
-      {canUserReviewExpense(e,{user,isAdmin,cats,users})&&(
+      {canUserReviewExpense(e,{user,cats,users})&&(
         <div style={{marginTop:9,borderTop:`1px solid ${detailAccent}`,paddingTop:9}}>
           <label className="lbl" style={{marginBottom:3,color:detailAccent}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
           <div style={{display:"flex",gap:6}}>
             <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:detailAccent}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button>
-            {isAdmin && (
-              <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,background:"transparent",color:"#DC2626",border:"2px solid #DC2626",fontWeight:700}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
-            )}
+            <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,background:"transparent",color:"#DC2626",border:"2px solid #DC2626",fontWeight:700}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
           </div>
         </div>
       )}
@@ -3774,11 +3754,6 @@ export function DashboardView(){
   const rejCnt=rejList.length;
   const watchCats=cats.filter(c=>!c.archived&&c.budget!=null&&c.budget>0&&effectiveExpenseApproverIds({category:c.name},cats,users)[0]===user.id);
   const [drillPerson,setDrillPerson]=useState(null);
-  const [fixedTipOpen,setFixedTipOpen]=useState(false);
-  const [fixedTipHover,setFixedTipHover]=useState(false);
-  const [fixedTipPos,setFixedTipPos]=useState({top:0,left:0});
-  const fixedTipIconRef=useRef(null);
-  const fixedTipRef=useRef(null);
   const deptBudgetActive=(departmentsWithStats||[]).filter(d=>!d.archived&&Number(d.budget)>0);
   const budgetTotalActive=deptBudgetActive.reduce((s,d)=>s+Number(d.budget||0),0);
   const spentActive=deptBudgetActive.reduce((s,d)=>s+Number(d.spent||0),0);
@@ -3792,7 +3767,6 @@ export function DashboardView(){
     if(diff!=null&&diff>=0&&diff<=billsWindowCfg.days)upcomingBills.push({...e,name:e.vendor||e.description,daysUntil:diff});
   });
   upcomingBills.sort((a,b)=>a.daysUntil-b.daysUntil);
-  const fixedTipActive=fixedTipOpen||fixedTipHover;
   const alerts=React.useMemo(()=>{
     return (departmentsWithStats||[]).filter(d => {
       if(!d.budget || Number(d.budget) <= 0 || d.archived) return false;
@@ -3805,23 +3779,6 @@ export function DashboardView(){
       return { ...d, spent, pct };
     }).sort((a,b) => b.pct - a.pct);
   },[departmentsWithStats]);
-  useEffect(()=>{
-    if(!fixedTipActive||!fixedTipIconRef.current)return;
-    const r=fixedTipIconRef.current.getBoundingClientRect();
-    setFixedTipPos({top:r.top-8,left:r.left+r.width/2});
-  },[fixedTipActive]);
-  useEffect(()=>{
-    if(!fixedTipActive)return;
-    const onDocClick=e=>{
-      const n=e.target;
-      if(fixedTipIconRef.current&&fixedTipIconRef.current.contains(n))return;
-      if(fixedTipRef.current&&fixedTipRef.current.contains(n))return;
-      setFixedTipOpen(false);
-      setFixedTipHover(false);
-    };
-    document.addEventListener("click",onDocClick);
-    return()=>document.removeEventListener("click",onDocClick);
-  },[fixedTipActive]);
   return(
     <div>
       {drillPerson&&<PersonDrilldown userId={drillPerson} onClose={()=>setDrillPerson(null)}/>}
@@ -3852,20 +3809,7 @@ export function DashboardView(){
 
           const totalKpiLabel="Total gastado";
           const budgetKpiLabel="Presupuesto disponible";
-          const fixedKpiLabel=(
-            <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
-              <span>Coste fijo mensual</span>
-              <span style={{display:"inline-flex",alignItems:"center"}}>
-                <span
-                  ref={fixedTipIconRef}
-                  style={{fontSize:11,color:"#9CAA9F",lineHeight:1,cursor:"pointer"}}
-                  onMouseEnter={()=>setFixedTipHover(true)}
-                  onMouseLeave={()=>setFixedTipHover(false)}
-                  onClick={e=>{e.stopPropagation();setFixedTipOpen(v=>!v);}}
-                >ⓘ</span>
-              </span>
-            </span>
-          );
+          const fixedKpiLabel="Coste fijo mensual";
 
           const totalKpiBg="#FECACA";
           const totalKpiText="#7F1D1D";
@@ -3904,15 +3848,6 @@ export function DashboardView(){
 
           return(
             <>
-              {fixedTipActive&&(
-                <div
-                  ref={fixedTipRef}
-                  onClick={e=>e.stopPropagation()}
-                  style={{position:"fixed",top:fixedTipPos.top,left:fixedTipPos.left,transform:"translate(-50%,-100%)",background:"#1F2937",color:"#fff",fontSize:10,lineHeight:1.3,padding:"6px 8px",borderRadius:999,whiteSpace:"nowrap",zIndex:99999,pointerEvents:"auto"}}
-                >
-                  Suma mensual de gastos recurrentes activos (aprobados). Semanal × 4,33; anual ÷ 12; personalizado según intervalo.
-                </div>
-              )}
               {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,totalSub,"#DC2626",true,28,"#7F1D1D","#991B1B","#FCA5A5",`${budgetProgressPct.toFixed(1)}% usado`,"#7F1D1D")}
               {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetSub,"#059669",true,28,"#064E3B","#065F46","#6EE7B7",`${budgetProgressPct.toFixed(1)}% disponible`,"#064E3B")}
               {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,monthSub,null,false,22,"#78350F","#78350F")}
@@ -4486,7 +4421,7 @@ export function ApprovalsView(){
           const cardBorder = priorityForItem(item) === 0
             ? '1.5px solid #f0c4a8'
             : '1px solid transparent';
-          const canActOnRow=canUserReviewExpense(item,{user,isAdmin,cats,users});
+          const canActOnRow=canUserReviewExpense(item,{user,cats,users});
           const payBadge=invoicePaymentBadge(item);
           return(
             <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
@@ -5110,9 +5045,8 @@ function AdminReadme(){
 
           <div style={S.heading}>ROLES</div>
           <div style={S.body}>
-            <b>user</b> puede enviar gastos y facturas, subir recibos, exportar.<br/>
-            <b>admin</b> todo lo anterior + aprobar/rechazar ítems de sus categorías, pausar/eliminar facturas.<br/>
-            <b>superadmin</b> todo lo anterior + gestionar usuarios, categorías, ver el App Log y aprobar cuentas nuevas.
+            <b>user</b> puede enviar gastos y facturas, subir recibos, exportar y aprobar/rechazar si está designado como aprobador.<br/>
+            <b>admin</b> todo lo anterior + gestionar usuarios, categorías, presupuestos, ajustes, ver el App Log y aprobar cuentas nuevas.
           </div>
 
           <div style={S.heading}>CÓDIGOS DE ÍTEM</div>
@@ -5611,7 +5545,7 @@ function barColorForPctUsed(pct){
 
 /* ── DEPARTMENTS PANEL: budget tracker (reports/summary byDepartment) ─────── */
 function DepartmentBudgetTrackerSection({t}){
-  const{view,departments,expenses,cats,users,refreshDepartments,isSA}=useApp();
+  const{view,departments,expenses,cats,users,refreshDepartments,isAdmin}=useApp();
   const active=(departments||[]).filter(d=>!d.archived);
   const [byM,setByM]=useState({});
   const [byY,setByY]=useState({});
@@ -5653,7 +5587,7 @@ function DepartmentBudgetTrackerSection({t}){
   },[view,active.length,deptSig,expenses,cats,users,t,sessionTok]);
   useEffect(()=>{if(view==="settings")void load();},[load,view]);
   const saveBudget=async dept=>{
-    if(!AUTH_URL||!isSA)return;
+    if(!AUTH_URL||!isAdmin)return;
     const b=parseFloat(String(budDraft).replace(",","."))||0;
     if(!Number.isFinite(b)){setErr(t("msg.genericShort"));return;}
     try{API.ensureSessionToken();}catch(e){}
@@ -5703,7 +5637,7 @@ function DepartmentBudgetTrackerSection({t}){
                       if(skipBlurSaveRef.current){skipBlurSaveRef.current=false;return;}
                       if(budEdit===d.id)void saveBudget(d);
                     }}/>
-                ):isSA?(
+                ):isAdmin?(
                   <button type="button" onClick={()=>{setBudEdit(d.id);setBudDraft(String(budget));}} style={{
                     border:"none",background:"transparent",padding:0,cursor:"pointer",fontSize:13,fontWeight:700,color:G,
                     textAlign:"left",fontVariantNumeric:"tabular-nums",
@@ -5758,7 +5692,7 @@ function DepartmentBudgetBars({t,rows,title}){
 
 /* ── DEPARTMENTS CRUD (superadmin, settings) ───────────────────────────────── */
 function DepartmentsSettingsBlock({t}){
-  const{departments,refreshDepartments,isSA,isAdmin}=useApp();
+  const{departments,refreshDepartments,isAdmin}=useApp();
   const [name,setName]=useState("");
   const [bud,setBud]=useState("");
   const [editId,setEditId]=useState(null);
@@ -5767,7 +5701,7 @@ function DepartmentsSettingsBlock({t}){
   const [err,setErr]=useState("");
   const [delId,setDelId]=useState(null);
   const [showArchived,setShowArchived]=useState(false);
-  if(!isSA&&!isAdmin)return null;
+  if(!isAdmin)return null;
   const sessionTok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
   const saveLocal=(next)=>{
     lsSet(DEPTS_LS_KEY,next.map(x=>({id:x.id,name:x.name,budget:Number(x.budget)||0,archived:!!x.archived,createdAt:x.createdAt||Date.now()})));
@@ -5880,7 +5814,7 @@ function DepartmentsSettingsBlock({t}){
               </div>
               <div style={{display:"flex",gap:4}}>
                 <button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(d.id);setEf({name:d.name,budget:String(d.budget!=null?d.budget:"")});setDelId(null);}}>{t("action.edit")}</button>
-                {isSA&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>{void (async()=>{if(await confirmUI("¿Archivar este departamento? No aparecerá en el panel ni en nuevos gastos, pero los gastos existentes se mantienen."))void setArchived(d,true);})();}}>Archivar</button>}
+                {isAdmin&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>{void (async()=>{if(await confirmUI("¿Archivar este departamento? No aparecerá en el panel ni en nuevos gastos, pero los gastos existentes se mantienen."))void setArchived(d,true);})();}}>Archivar</button>}
               </div>
             </div>
           )}
@@ -5901,8 +5835,8 @@ function DepartmentsSettingsBlock({t}){
                     <div style={{fontSize:10,color:"#9CAA9F"}}>{fmt(Number(d.budget)||0)}</div>
                   </div>
                   <div style={{display:"flex",gap:4}}>
-                    {isSA&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>void setArchived(d,false)}>Restaurar</button>}
-                    {isSA&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelId(d.id)}>{t("action.delete")}</button>}
+                    {isAdmin&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>void setArchived(d,false)}>Restaurar</button>}
+                    {isAdmin&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer"}} onClick={()=>setDelId(d.id)}>{t("action.delete")}</button>}
                   </div>
                 </div>
                 {delId===d.id&&(
@@ -5927,8 +5861,7 @@ function DepartmentsSettingsBlock({t}){
 export function SettingsView(){
   const{t,user,users,expenses,cats,saveCats,saveUsers,saveExp,
         onSignOut,passwords,savePasswords,ivaRates,saveIvaRates,setUser}=useApp();
-  const isSA=user?.role==="superadmin";
-  const isAdmin=user?.role==="admin"||user?.role==="superadmin";
+  const isAdmin=user?.role==="admin";
   const [editId,setEditId]=useState(null);
   const [ef,setEf]=useState({});
   const [addU,setAddU]=useState(false);
@@ -5936,20 +5869,18 @@ export function SettingsView(){
   const [nuErr,setNuErr]=useState("");
   const [delC,setDelC]=useState(null);
   const [dSelf,setDSelf]=useState(false);
-  const [sf,setSf]=useState({name:user?.name||"",email:user?.email||"",avatar:user?.avatar||null});
+  const [sf,setSf]=useState({name:user?.name||"",email:user?.email||""});
   const profileBaseline=useMemo(()=>({
     name:(user?.name||"").trim(),
     email:(user?.email||"").trim(),
-    avatar:user?.avatar??null,
-  }),[user?.id,user?.name,user?.email,user?.avatar]);
+  }),[user?.id,user?.name,user?.email]);
   const profileDirty=useMemo(()=>(
     (sf.name||"").trim()!==profileBaseline.name
     ||(sf.email||"").trim()!==profileBaseline.email
-    ||(sf.avatar??null)!==profileBaseline.avatar
   ),[sf,profileBaseline]);
   useEffect(()=>{
-    setSf({name:user?.name||"",email:user?.email||"",avatar:user?.avatar||null});
-  },[user?.id,user?.name,user?.email,user?.avatar]);
+    setSf({name:user?.name||"",email:user?.email||""});
+  },[user?.id,user?.name,user?.email]);
   const [catEdit,setCatEdit]=useState(null);
   const [catForm,setCatForm]=useState({});
   const [addCat,setAddCat]=useState(false);
@@ -5989,7 +5920,7 @@ export function SettingsView(){
   useEffect(()=>{setAppCatsDraft(cats.map(c=>({...c})));},[cats]);
   const appSettingsToken=()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return"";}};
   const loadBackups=useCallback(async()=>{
-    if(!isSA||!AUTH_URL)return;
+    if(!isAdmin||!AUTH_URL)return;
     setBackupsLoading(true);setBackupsError("");
     try{
       API.ensureSessionToken();
@@ -5998,8 +5929,8 @@ export function SettingsView(){
       setBackups(Array.isArray(d.backups)?d.backups:[]);
     }catch(e){setBackupsError(e.message||t("signup.serverDown"));}
     finally{setBackupsLoading(false);}
-  },[isSA,t]);
-  useEffect(()=>{if(isSA&&AUTH_URL)void loadBackups();},[isSA,AUTH_URL,loadBackups]);
+  },[isAdmin,t]);
+  useEffect(()=>{if(isAdmin&&AUTH_URL)void loadBackups();},[isAdmin,AUTH_URL,loadBackups]);
   const runBackupNow=async()=>{
     setBackupsError("");setBackupsMsg("");
     try{
@@ -6107,7 +6038,7 @@ export function SettingsView(){
   };
   const saveProfile=async()=>{
     if(profileSaving)return;
-    const payload={name:(sf.name||"").trim(),email:(sf.email||"").trim(),avatar:sf.avatar||null};
+    const payload={name:(sf.name||"").trim(),email:(sf.email||"").trim()};
     if(!payload.name){dispatchSolanaToast(t("msg.genericShort"),"error");return;}
     if(AUTH_URL){
       setProfileSaving(true);
@@ -6124,7 +6055,7 @@ export function SettingsView(){
         const merged=normalizeItem({...user,...d.user},"user");
         setUser(merged);
         saveUsers(users.map(u=>u.id===user.id?merged:u));
-        setSf({name:merged.name||"",email:merged.email||"",avatar:merged.avatar??null});
+        setSf({name:merged.name||"",email:merged.email||""});
         dispatchSolanaToast(t("msg.profileUpdated"),"success",5000);
       }catch(e){
         dispatchSolanaToast(t("signup.serverDown"),"error");
@@ -6187,23 +6118,16 @@ export function SettingsView(){
 
       {/* ── Profile (all users) ── */}
       <AccordionSection title={t("settings.accordion.profile")}>
-        {/* Avatar upload */}
+        {/* Profile preview */}
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-          <UserAvatar user={{...user,avatar:sf.avatar||user?.avatar}} size={52} fontSize={16}/>
-          <div>
-            <label style={{display:"inline-block",padding:"5px 10px",borderRadius:6,border:"1.5px solid #DDD6CC",fontSize:11,fontWeight:600,color:G,cursor:"pointer",fontFamily:"inherit",background:"transparent"}}>
-              {sf.avatar?t("action.changePhoto"):t("action.upload")}
-              <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const err=validateUpload(f,UPLOAD_RULES.avatar);if(err){dispatchSolanaToast(err,"error");e.target.value="";return;}void compressAvatarDataUrl(f).then(dataUrl=>setSf(p=>({...p,avatar:dataUrl}))).catch(ex=>dispatchSolanaToast(ex?.message||"No se pudo procesar la imagen.","error")).finally(()=>{e.target.value="";});}}/>
-            </label>
-            {sf.avatar&&<button style={{marginLeft:7,fontSize:10,color:"#991B1B",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setSf(p=>({...p,avatar:null}))}>✕</button>}
-          </div>
+          <UserAvatar user={user} size={52} fontSize={16}/>
         </div>
         <div style={{display:"grid",gap:8}}>
           <div><label className="lbl">{t("label.name")}</label><input className="inp" value={sf.name} onChange={e=>setSf(p=>({...p,name:e.target.value}))}/></div>
           <div><label className="lbl">{t("label.email")}</label><input className="inp" type="email" value={sf.email} onChange={e=>setSf(p=>({...p,email:e.target.value}))}/></div>
           <div style={{marginTop:2}}>
             <label className="lbl">Rol</label>
-            <div style={{fontSize:14,fontWeight:600,color:G}}>{user?.role==="superadmin"?t("role.superadmin"):user?.role==="admin"?t("role.admin"):t("role.user")}</div>
+            <div style={{fontSize:14,fontWeight:600,color:G}}>{user?.role==="admin"?t("role.admin"):t("role.user")}</div>
           </div>
         </div>
         <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={profileSaving||!profileDirty} onClick={()=>void saveProfile()}>{profileSaving?"…":t("action.saveChanges")}</button>
@@ -6248,7 +6172,7 @@ export function SettingsView(){
         <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={pwSaving} onClick={()=>void savePw()}>{pwSaving?"…":(passwords?.[user.id]?t("action.changePassword"):t("action.setPassword"))}</button>
       </AccordionSection>
 
-      {isSA&&(
+      {isAdmin&&(
       <>
       {/* ── Team members ── */}
       <AccordionSection title={t("settings.accordion.team")}>
@@ -6321,7 +6245,7 @@ export function SettingsView(){
             <div key={u.id}>
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #F5F0EA"}}>
                 <UserAvatar user={u} size={28} fontSize={8}/>
-                <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"N/A"} · {u.role==="superadmin"?t("role.superadmin"):u.role==="admin"?t("role.admin"):t("role.user")}</div></div>
+                <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{u.name}</div><div style={{fontSize:10,color:"#9CAA9F",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email||"N/A"} · {u.role==="admin"?t("role.admin"):t("role.user")}</div></div>
                 <div style={{display:"flex",gap:3,flexShrink:0,flexWrap:"wrap"}}>
                   <button style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #DDD6CC",background:"transparent",color:"#4B5E52",cursor:"pointer"}} onClick={()=>{setEditId(u.id);setEf({name:u.name,email:u.email||"",role:u.role,color:u.color});}}>{t("action.edit")}</button>
                   {AUTH_URL&&u.id!==user.id&&<button type="button" style={{fontSize:9,padding:"2px 6px",borderRadius:4,border:"1px solid #C4B5FD",background:"transparent",color:"#5B21B6",cursor:"pointer"}} onClick={()=>{setResetFor(resetFor===u.id?null:u.id);setResetPwInput("");}}>{t("team.resetPassword")}</button>}
@@ -6379,9 +6303,9 @@ export function SettingsView(){
                 <div style={{background:"#F5F3FF",borderRadius:7,padding:"10px 12px",margin:"4px 0",border:"1px solid #DDD6EE"}}>
                   <div style={{fontSize:10,color:"#6B7B72",marginBottom:8,lineHeight:1.4}}>{t("team.resetPasswordHint")}</div>
                   <label className="lbl">{t("label.tempPassword")}</label>
-                  <div style={{position:"relative"}}>
-                    <input className="inp" style={{fontSize:14,marginBottom:8,paddingRight:52}} type={showResetPw?"text":"password"} value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
-                    <button type="button" style={{...SETTINGS_PW_TOGGLE_STYLE,top:"42%"}} onClick={()=>setShowResetPw(v=>!v)}>{showResetPw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+                  <div style={{position:"relative",marginBottom:8}}>
+                    <input className="inp" style={{fontSize:14,paddingRight:52}} type={showResetPw?"text":"password"} value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
+                    <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowResetPw(v=>!v)}>{showResetPw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
                   </div>
                   <div style={{display:"flex",gap:6}}>
                     <button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} disabled={resetBusy} onClick={async()=>{
@@ -6412,7 +6336,7 @@ export function SettingsView(){
                 <div style={{background:"#F5F0EA",borderRadius:9,padding:10,margin:"4px 0"}}>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
                     <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.name")}</label><input className="inp" style={{fontSize:14}} value={ef.name} onChange={e=>setEf(p=>({...p,name:e.target.value}))}/></div>
-                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:14}} value={ef.role} onChange={e=>setEf(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option><option value="superadmin">{t("role.superadmin")}</option></select></div>
+                    <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:14}} value={ef.role} onChange={e=>setEf(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option></select></div>
                     <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.email")}</label><input className="inp" style={{fontSize:14}} type="email" value={ef.email} onChange={e=>setEf(p=>({...p,email:e.target.value}))}/></div>
                   </div>
                   <div style={{display:"flex",gap:7,marginTop:7}}><button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>void (async()=>{
@@ -6777,10 +6701,10 @@ export default function App(){
     if(!user?.id||!users?.length)return;
     const resolved=resolveSessionUser(user,users);
     if(!resolved)return;
-    if(resolved.avatar!==user.avatar||resolved.name!==user.name||resolved.email!==user.email){
+    if(resolved.name!==user.name||resolved.email!==user.email){
       setUser(resolved);
     }
-  },[users,user?.id,user?.avatar,user?.name,user?.email]);
+  },[users,user?.id,user?.name,user?.email]);
   const departmentsWithStats=React.useMemo(
     ()=>enrichDepartmentsForUI(departments,expenses,cats,users,false),
     [departments,expenses,cats,users],
@@ -6891,8 +6815,7 @@ export default function App(){
   /* ── HELPERS ────────────────────────────────────────────────────────────── */
   const getUser   =id=>users.find(u=>u.id===id)||{id,name:UNKNOWN_USER_NAME,color:"#999",role:"user",title:"",avatar:null};
   const adminIds  =React.useMemo(()=>getAdminIds(users),[users]); // dynamic, never hardcoded
-  const isAdmin   =user?.role==="admin"||user?.role==="superadmin";
-  const isSA      =user?.role==="superadmin";
+  const isAdmin   =user?.role==="admin";
 
   /* Sync token from storage when user is set — never wipe API.token with null/empty
      (login sets sessionStorage + API.token before setUser; a blind ||null here caused 403). */
@@ -7565,7 +7488,7 @@ export default function App(){
       const expReceiptTrail=receipt?[...expTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:receipt.type}}]:expTrail;
       const ivaRate=parseFormIvaRateString(form.ivaRate);
       const ivaAmount=calcIvaParts(amount,ivaRate).iva;
-      const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId||DEFAULT_DEPT_ID,
+      const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId,
         ...facturaExtras,
         ...invExtras,
         ...recExtras,
@@ -8099,7 +8022,7 @@ export default function App(){
     t,user,users,expenses,cats,passwords,ivaRates,saveIvaRates,
     saveUsers,saveExp,saveCats,savePasswords,
     departments,departmentsWithStats,refreshDepartments,defaultDeptId,
-    isAdmin,isApprover,isSA,getUser,ledgerLoading,markExpensePaid,
+    isAdmin,isApprover,getUser,ledgerLoading,markExpensePaid,
     view,setView,go,panel,setPanel,openNew,openNewInvoice,
     detailId,setDetailId,
     form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
@@ -8150,7 +8073,7 @@ export default function App(){
         )}
         {confirmModal&&(
           <div style={{position:"fixed",inset:0,zIndex:7700,background:"rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-            <div style={{width:"min(92vw,420px)",background:"#fff",borderRadius:12,padding:"16px 16px 14px",boxShadow:"0 10px 30px rgba(0,0,0,0.25)"}}>
+            <div className="fade-in" style={{width:"min(92vw,420px)",background:"#fff",borderRadius:12,padding:"16px 16px 14px",boxShadow:"0 10px 30px rgba(0,0,0,0.25)"}}>
               <div style={{fontWeight:700,fontSize:14,color:G,marginBottom:8}}>Confirmación</div>
               <div style={{fontSize:13,color:"#1a1008",lineHeight:1.35,marginBottom:14,whiteSpace:"pre-wrap"}}>{confirmModal.message}</div>
               <div style={{display:"flex",gap:8}}>
@@ -8158,10 +8081,10 @@ export default function App(){
                   try{confirmModal.resolve(false);}catch(e){}
                   setConfirmModal(null);
                 }}>Cancelar</button>
-                <button type="button" className="btn-primary" style={{flex:1,fontSize:12,padding:"7px 10px"}} onClick={()=>{
+                <button type="button" className={confirmModal.destructive?"btn-danger":"btn-primary"} style={{flex:1,fontSize:12,padding:"7px 10px"}} onClick={()=>{
                   try{confirmModal.resolve(true);}catch(e){}
                   setConfirmModal(null);
-                }}>Confirmar</button>
+                }}>{confirmModal.confirmLabel||"Confirmar"}</button>
               </div>
             </div>
           </div>
@@ -8255,16 +8178,22 @@ export default function App(){
                 <UserAvatar user={sessionUser||user} size={28} fontSize={9}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:10,fontWeight:600,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</div>
-                  <div style={{fontSize:8,color:"rgba(250,247,242,0.75)"}}>{user.role==="superadmin"?t("role.superadmin"):isAdmin?t("role.admin"):t("role.user")}</div>
                 </div>
               </button>
             </div>
             {userMenuOpen&&(
-              <div style={{position:"absolute",bottom:"100%",left:8,right:8,marginBottom:6,background:"#e35900",border:"1px solid rgba(250,247,242,0.15)",borderRadius:8,overflow:"hidden",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,0.25)"}}>
-                {[{label:t("nav.settings"),fn:()=>{setUserMenuOpen(false);go("settings");}},{label:t("nav.signOut"),fn:()=>{setUserMenuOpen(false);onSignOut();}}].map((item,i,arr)=>(
-                  <button key={item.label} type="button" onClick={item.fn} style={{width:"100%",padding:"8px 10px",border:"none",borderBottom:i<arr.length-1?"1px solid rgba(250,247,242,0.1)":"none",background:"transparent",color:"#FAF7F2",fontSize:10,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}>{item.label}</button>
-                ))}
-              </div>
+              <SidebarUserMenu items={[
+                {key:"settings",label:t("nav.settings"),fn:()=>{setUserMenuOpen(false);go("settings");}},
+                {key:"signout",label:t("nav.signOut"),destructive:true,fn:()=>{
+                  setUserMenuOpen(false);
+                  setConfirmModal({
+                    message:"¿Cerrar sesión?",
+                    confirmLabel:t("nav.signOut"),
+                    destructive:true,
+                    resolve:(ok)=>{if(ok)onSignOut();},
+                  });
+                }},
+              ]}/>
             )}
           </div>
         </div>
