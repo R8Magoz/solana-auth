@@ -29,7 +29,16 @@ function safeJson(raw: string | null): any {
 async function attachMockApi(page: Page, state: {
   tokens: Map<string, Session>;
   expenses: Expense[];
+  expenseMutation?: Promise<void>;
 }) {
+  if (!state.expenseMutation) state.expenseMutation = Promise.resolve();
+
+  const runExpenseMutation = <T,>(fn: () => T | Promise<T>): Promise<T> => {
+    const next = state.expenseMutation!.then(fn);
+    state.expenseMutation = next.then(() => undefined, () => undefined);
+    return next;
+  };
+
   await page.route(`${AUTH_BASE}/**`, async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -91,32 +100,36 @@ async function attachMockApi(page: Page, state: {
     if (/^\/expenses\/[^/]+\/approve$/.test(path) && method === 'POST') {
       if (!session) return json(401, { error: 'No autorizado.' });
       const id = path.split('/')[2];
-      const exp = state.expenses.find((e) => e.id === id);
-      if (!exp) return json(404, { error: 'Gasto no encontrado.' });
-      const votes = safeJson(exp.approvalVotesJson || '{}');
-      votes[session.userId] = 'approved';
-      exp.approvalVotesJson = JSON.stringify(votes);
-      exp.status = 'approved';
-      exp.updatedAt = Date.now();
-      return json(200, { ok: true, expense: exp });
+      return runExpenseMutation(() => {
+        const exp = state.expenses.find((e) => e.id === id);
+        if (!exp) return json(404, { error: 'Gasto no encontrado.' });
+        const votes = safeJson(exp.approvalVotesJson || '{}');
+        votes[session.userId] = 'approved';
+        exp.approvalVotesJson = JSON.stringify(votes);
+        exp.status = 'approved';
+        exp.updatedAt = Date.now();
+        return json(200, { ok: true, expense: exp });
+      });
     }
 
     if (/^\/expenses\/[^/]+$/.test(path) && method === 'PUT') {
       if (!session) return json(401, { error: 'No autorizado.' });
       const id = path.split('/')[2];
-      const exp = state.expenses.find((e) => e.id === id);
-      if (!exp) return json(404, { error: 'Gasto no encontrado.' });
+      return runExpenseMutation(() => {
+        const exp = state.expenses.find((e) => e.id === id);
+        if (!exp) return json(404, { error: 'Gasto no encontrado.' });
 
-      // Simulate realistic re-approval behavior when a pending/approved item is edited.
-      if (typeof body.description === 'string') exp.description = body.description.slice(0, 256);
-      if (typeof body.amount === 'number') {
-        exp.amount = body.amount;
-        exp.amountEUR = body.amount;
-      }
-      exp.status = 'pending';
-      exp.approvalVotesJson = '{}';
-      exp.updatedAt = Date.now();
-      return json(200, { ok: true, expense: exp });
+        // Simulate realistic re-approval behavior when a pending/approved item is edited.
+        if (typeof body.description === 'string') exp.description = body.description.slice(0, 256);
+        if (typeof body.amount === 'number') {
+          exp.amount = body.amount;
+          exp.amountEUR = body.amount;
+        }
+        exp.status = 'pending';
+        exp.approvalVotesJson = '{}';
+        exp.updatedAt = Date.now();
+        return json(200, { ok: true, expense: exp });
+      });
     }
 
     return json(200, { ok: true });
@@ -139,6 +152,7 @@ test('concurrent submit/approve/edit keeps consistent final state', async ({ bro
       ['tok_editor', { userId: 'u_editor', role: 'user' }],
     ]),
     expenses: [] as Expense[],
+    expenseMutation: Promise.resolve() as Promise<void>,
   };
 
   const submitterCtx = await browser.newContext();
@@ -193,6 +207,8 @@ test('concurrent submit/approve/edit keeps consistent final state', async ({ bro
       });
     }, expenseId),
     editorPage.evaluate(async (id) => {
+      // Slight delay so approve is queued first; shared mutation lock preserves ordering.
+      await new Promise((r) => setTimeout(r, 25));
       const tok = sessionStorage.getItem('sol-session-token');
       await fetch(`https://solana-auth.onrender.com/expenses/${encodeURIComponent(id)}`, {
         method: 'PUT',
@@ -214,4 +230,3 @@ test('concurrent submit/approve/edit keeps consistent final state', async ({ bro
 
   await Promise.all([submitterCtx.close(), approverCtx.close(), editorCtx.close()]);
 });
-
