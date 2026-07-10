@@ -1307,17 +1307,11 @@ test.describe('D — Informes (Reports)', () => {
     await expect(page.getByText(/Informes|Resumen|Reports|Gasto total/i).first()).toBeVisible();
   });
 
-  test('D2) Date range filter affects Total del período', async ({ page }) => {
+  test('D2) Informes has no date range filter', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await clickSidebarSection(page, 'Informes');
-    // Locate date inputs and set a narrow range
-    const fromInput = page.locator('input[type="date"]').first();
-    const toInput = page.locator('input[type="date"]').last();
-    await fromInput.fill('2026-01-01');
-    await toInput.fill('2026-01-31');
-    await page.waitForTimeout(600);
-    // Total label must be visible (value may be 0 — we only assert the UI responded)
+    await expect(page.locator('input[type="date"]')).toHaveCount(0);
     await expect(page.getByText(/Total del período|Total período|Total/i).first()).toBeVisible();
   });
 

@@ -5433,40 +5433,24 @@ function PaymentCalendar({reportExpenses}){
 }
 
 /* ── REPORTS VIEW ──────────────────────────────────────────────────────────── */
+/** Full date span for server PDF export (no UI date filter). */
+function reportsApiDateRange(){
+  const pad2=(n)=>String(n).padStart(2,"0");
+  const now=new Date();
+  return{
+    from:"2000-01-01",
+    to:`${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`,
+  };
+}
 function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel,resetForm}=useApp();
   const [statusFilter, setStatusFilter] = useState("all");
   const [ivaFilter, setIvaFilter] = useState("with");
   const [exportSel, setExportSel] = useState("");
-  const [reportFrom, setReportFrom] = React.useState("");
-  const [reportTo, setReportTo] = React.useState(new Date().toISOString().slice(0,10));
-  React.useEffect(()=>{
-    const allDates = (expenses||[])
-      .filter(e => e.status !== "deleted" && e.date && e.date.length >= 10)
-      .map(e => e.date.slice(0,10))
-      .sort();
-    if(allDates.length > 0){
-      setReportFrom(prev=>prev||allDates[0]);
-    } else {
-      setReportFrom(prev=>prev||"2000-01-01");
-    }
-  }, [expenses]);
-  const rangeFilteredExpenses=useMemo(()=>{
-    const getRefDate=e=>{
-      return ((e.expenseType==="invoice"?(e.dueDate||e.date):e.date)||"").slice(0,10);
-    };
-    return expenses.filter(e=>{
-      const d=getRefDate(e);
-      if(!d)return false;
-      if(reportFrom&&d<reportFrom)return false;
-      if(reportTo&&d>reportTo)return false;
-      return true;
-    });
-  },[expenses,reportFrom,reportTo]);
-  const displayExpenses = rangeFilteredExpenses.filter(e => {
+  const displayExpenses = (expenses || []).filter(e => {
     if (statusFilter === "approved") return e.status === "approved";
     if (statusFilter === "pending") return e.status !== "approved" && e.status !== "rejected" && e.status !== "deleted";
-    return true;
+    return e.status !== "deleted";
   });
   const filterLabel = statusFilter==="all" ? ""
     : statusFilter==="approved" ? ` — ${t("reports.approvedOnly")}`
@@ -5570,7 +5554,7 @@ function ReportsView(){
     try{API.ensureSessionToken();}catch(e){}
     const tok=API.token||(typeof sessionStorage!=="undefined"?sessionStorage.getItem("sol-session-token"):"")||"";
     if(!tok){dispatchSolanaToast(t("msg.sessionExpired"),"error");return;}
-    const {from,to}={ from: reportFrom, to: reportTo };
+    const {from,to}=reportsApiDateRange();
     const qs=new URLSearchParams({from,to,type:"all",status:statusFilter});
     let r;
     try{
@@ -5624,16 +5608,6 @@ function ReportsView(){
             <option value="csv">Exportar CSV</option>
             {AUTH_URL && <option value="pdf">Exportar PDF</option>}
           </select>
-        </div>
-      </div>
-      <div className="card" style={{marginBottom:11,padding:"10px 12px"}}>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          <label style={{fontSize:11}}>Desde</label>
-          <input type="date" className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
-            value={reportFrom} onChange={e=>setReportFrom(e.target.value)}/>
-          <label style={{fontSize:11}}>Hasta</label>
-          <input type="date" className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
-            value={reportTo} onChange={e=>setReportTo(e.target.value)}/>
         </div>
       </div>
       <div className="card" style={{marginBottom:11,width:"100%"}}>
@@ -5718,7 +5692,7 @@ function ReportsView(){
           </div>
         </div>
         <div style={{display:"flex",justifyContent:"space-between",marginTop:8,fontSize:12}}>
-          <span style={{color:"#6B7B72"}}>Total del período</span>
+          <span style={{color:"#6B7B72"}}>{t("reports.total")}</span>
           <span style={{fontWeight:700,color:G}}>{fmt(totalPeriodo)}</span>
         </div>
       </div>
