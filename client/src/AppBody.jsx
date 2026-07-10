@@ -4306,12 +4306,12 @@ export function ApprovalsView(){
 
 
 /* ── PAYMENT CALENDAR ──────────────────────────────────────────────────────── */
-function PaymentCalendar({reportExpenses}){
-  const{expenses,cats,users,t,go,setDetailId,setPanel,resetForm}=useApp();
-  const srcExpenses=Array.isArray(reportExpenses)?reportExpenses:expenses;
-  const [cur,setCur]=useState(()=>new Date());
-  const year=cur.getFullYear(),mon=cur.getMonth();
-  const firstDay=(new Date(year,mon,1).getDay()+6)%7; // Monday-first
+function calendarMonthKey(date){
+  return `${date.getFullYear()}-${date.getMonth()}`;
+}
+function buildCalendarMonth(date,srcExpenses,cats,users){
+  const year=date.getFullYear(),mon=date.getMonth();
+  const firstDay=(new Date(year,mon,1).getDay()+6)%7;
   const daysInMonth=new Date(year,mon+1,0).getDate();
   const events={};
   srcExpenses.forEach(e=>{
@@ -4335,38 +4335,84 @@ function PaymentCalendar({reportExpenses}){
   const cells=[];
   for(let i=0;i<firstDay;i++)cells.push(null);
   for(let d=1;d<=daysInMonth;d++)cells.push(d);
+  const monthName=(()=>{const mn=date.toLocaleString("es-ES",{month:"long"});const yr=date.getFullYear();return mn.charAt(0).toUpperCase()+mn.slice(1)+" "+yr;})();
+  return{year,mon,events,cells,monthTotal,monthName};
+}
+function PaymentCalendar({reportExpenses}){
+  const{expenses,cats,users,t,go,setDetailId,setPanel,resetForm}=useApp();
+  const srcExpenses=Array.isArray(reportExpenses)?reportExpenses:expenses;
+  const [cur,setCur]=useState(()=>new Date());
+  const [leaving,setLeaving]=useState(null);
+  const [slideDir,setSlideDir]=useState(0);
+  const [slideActive,setSlideActive]=useState(false);
+  const year=cur.getFullYear(),mon=cur.getMonth();
+  const currentMonth=buildCalendarMonth(cur,srcExpenses,cats,users);
   const today=new Date();
-  const isToday=d=>d===today.getDate()&&mon===today.getMonth()&&year===today.getFullYear();
-  const monthName=(()=>{const mn=cur.toLocaleString("es-ES",{month:"long"});const yr=cur.getFullYear();return mn.charAt(0).toUpperCase()+mn.slice(1)+" "+yr;})();
   const dayLabels=["cal.mon","cal.tue","cal.wed","cal.thu","cal.fri","cal.sat","cal.sun"].map(k=>t(k));
   const [selDay,setSelDay]=useState(null);
   useEffect(()=>{setSelDay(null);},[year,mon]);
+  const navigateMonth=(delta)=>{
+    setLeaving({date:new Date(cur.getTime()),key:calendarMonthKey(cur)});
+    setSlideDir(delta);
+    setCur(new Date(cur.getFullYear(),cur.getMonth()+delta,1));
+    setSlideActive(false);
+    requestAnimationFrame(()=>requestAnimationFrame(()=>setSlideActive(true)));
+  };
+  const onLeaveTransitionEnd=(e)=>{
+    if(e.target!==e.currentTarget)return;
+    if(e.propertyName!=="transform"&&e.propertyName!=="opacity")return;
+    setLeaving(null);
+    setSlideActive(false);
+    setSlideDir(0);
+  };
+  const slideClass=slideDir>0?"calendar-month-panel--dir-next":slideDir<0?"calendar-month-panel--dir-prev":"";
+  const renderMonthPanel=(date,isLeave)=>{
+    const md=buildCalendarMonth(date,srcExpenses,cats,users);
+    const isToday=d=>d===today.getDate()&&md.mon===today.getMonth()&&md.year===today.getFullYear();
+  return(
+      <div
+        key={isLeave?`leave-${calendarMonthKey(date)}`:`enter-${calendarMonthKey(date)}`}
+        className={[
+          "calendar-month-panel",
+          isLeave?"calendar-month-panel--leave":"calendar-month-panel--enter",
+          leaving?slideClass:"",
+          slideActive?"calendar-month-panel--active":"",
+        ].filter(Boolean).join(" ")}
+        onTransitionEnd={isLeave?onLeaveTransitionEnd:undefined}
+      >
+        <div style={{textAlign:"center"}}>
+          <div style={{fontWeight:700,fontSize:13,textTransform:"capitalize"}}>{md.monthName}</div>
+          <div style={{fontSize:13,color:"#1A2B1E",fontWeight:400,marginTop:2,fontVariantNumeric:"tabular-nums"}}>{fmt(md.monthTotal)}</div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:3,marginTop:12}}>
+          {dayLabels.map((d,i)=><div key={i} style={{textAlign:"center",fontSize:8,fontWeight:600,color:"#9CAA9F",padding:"2px 0"}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+          {md.cells.map((d,i)=>(
+            <div key={i} onClick={()=>!isLeave&&d&&setSelDay(selDay===d?null:d)} style={{minHeight:32,borderRadius:5,background:d&&isToday(d)?"rgba(204,78,0,0.08)":d&&md.events[d]?"#FFFBF5":"#FAFAF8",border:d&&isToday(d)?`1.5px solid ${G}`:!isLeave&&d&&selDay===d?"1.5px solid "+T:"1px solid transparent",padding:"3px 2px",cursor:!isLeave&&d?"pointer":"default",transition:"border 0.1s"}}>
+              {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(md.events[d]||[]).map((ev,j)=><div key={j} title={ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?FACTURA_HEX:G}}/>)}</div></>}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <button style={{border:"none",background:"#F5F0EA",borderRadius:6,padding:"4px 10px",fontSize:14,cursor:"pointer",fontWeight:600}} onClick={()=>setCur(new Date(year,mon-1,1))}>‹</button>
-        <div style={{textAlign:"center",flex:1}}>
-          <div style={{fontWeight:700,fontSize:13,textTransform:"capitalize"}}>{monthName}</div>
-          <div style={{fontSize:13,color:"#1A2B1E",fontWeight:400,marginTop:2,fontVariantNumeric:"tabular-nums"}}>{fmt(monthTotal)}</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,gap:4}}>
+        <button style={{border:"none",background:"#F5F0EA",borderRadius:6,padding:"4px 10px",fontSize:14,cursor:"pointer",fontWeight:600,marginTop:2,flexShrink:0}} onClick={()=>navigateMonth(-1)}>‹</button>
+        <div className="calendar-month-viewport" style={{flex:1,minWidth:0}}>
+          {leaving&&renderMonthPanel(leaving.date,true)}
+          {renderMonthPanel(cur,false)}
         </div>
-        <button style={{border:"none",background:"#F5F0EA",borderRadius:6,padding:"4px 10px",fontSize:14,cursor:"pointer",fontWeight:600}} onClick={()=>setCur(new Date(year,mon+1,1))}>›</button>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:3}}>
-        {dayLabels.map((d,i)=><div key={i} style={{textAlign:"center",fontSize:8,fontWeight:600,color:"#9CAA9F",padding:"2px 0"}}>{d}</div>)}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
-        {cells.map((d,i)=>(
-          <div key={i} onClick={()=>d&&setSelDay(selDay===d?null:d)} style={{minHeight:32,borderRadius:5,background:d&&isToday(d)?"rgba(204,78,0,0.08)":d&&events[d]?"#FFFBF5":"#FAFAF8",border:d&&isToday(d)?`1.5px solid ${G}`:d&&selDay===d?"1.5px solid "+T:"1px solid transparent",padding:"3px 2px",cursor:d?"pointer":"default",transition:"border 0.1s"}}>
-            {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(events[d]||[]).map((ev,j)=><div key={j} title={ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?FACTURA_HEX:G}}/>)}</div></>}
-          </div>
-        ))}
+        <button style={{border:"none",background:"#F5F0EA",borderRadius:6,padding:"4px 10px",fontSize:14,cursor:"pointer",fontWeight:600,marginTop:2,flexShrink:0}} onClick={()=>navigateMonth(1)}>›</button>
       </div>
       {selDay!=null&&(
         <div style={{marginTop:10,background:"#F5F0EA",borderRadius:8,padding:"10px 12px"}}>
           <div style={{fontWeight:600,fontSize:11,marginBottom:6,color:G}}>{selDay} {cur.toLocaleString("es-ES",{month:"long"})}</div>
-          {(events[selDay]||[]).length===0
+          {(currentMonth.events[selDay]||[]).length===0
             ?<div style={{fontSize:11,color:"#9CAA9F"}}>Sin movimientos</div>
-            :(events[selDay]||[]).map((ev,i)=>(
+            :(currentMonth.events[selDay]||[]).map((ev,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,marginBottom:3,gap:6}}>
               <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?FACTURA_HEX:G,display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
               <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(ev.amount)}</span>
