@@ -2472,6 +2472,9 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
   
 function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,showSplitError=false,actionColor=G}){
   const expAmt=Number(totalAmount)||0;
+  const [manualEditedIds,setManualEditedIds]=useState(()=>new Set());
+  const [equalSplitActive,setEqualSplitActive]=useState(false);
+  const resetSplitMeta=()=>{setManualEditedIds(new Set());setEqualSplitActive(false);};
   useEffect(()=>{if(spMode==="percentage")setSpMode("amount");},[spMode,setSpMode]);
   const calcEq=(arr,amt)=>{
     const on=arr.filter(s=>s.checked);
@@ -2495,23 +2498,51 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
   useEffect(()=>{
     if(!splitOn||splits.length===0)return;
     if(splits.filter(s=>s.checked).length<2)return;
+    if(manualEditedIds.size>0)return;
     setSplits(prev=>calcEq(prev,expAmt));
+    setEqualSplitActive(true);
   },[expAmt,splitOn]);
   const checkedCount=splits.filter(s=>s.checked).length;
-  const totAmt=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
-  const amtMismatch=splitOn&&spMode==="amount"&&expAmt>0&&Math.abs(totAmt-expAmt)>0.01;
+  const checkedSplits=splits.filter(s=>s.checked);
+  const totAmt=checkedSplits.reduce((a,s)=>a+(Number(s.value)||0),0);
+  const remainder=parseFloat((expAmt-totAmt).toFixed(2));
+  const isBalanced=expAmt>0&&Math.abs(remainder)<=0.01;
+  const amtMismatch=splitOn&&spMode==="amount"&&expAmt>0&&!isBalanced;
+  const autoTargets=checkedSplits.filter(s=>!manualEditedIds.has(s.userId));
+  const canAutoFill=!equalSplitActive&&remainder>0.01&&autoTargets.length>0;
+  const showAutoFillHint=!equalSplitActive&&amtMismatch&&!canAutoFill;
+  const distributeRemainder=()=>{
+    if(!canAutoFill)return;
+    const targets=checkedSplits.filter(s=>!manualEditedIds.has(s.userId));
+    let assigned=0;
+    const per=parseFloat((remainder/targets.length).toFixed(2));
+    setSplits(splits.map(s=>{
+      if(!s.checked||manualEditedIds.has(s.userId))return s;
+      const idx=targets.findIndex(tg=>tg.userId===s.userId);
+      if(idx===-1)return s;
+      const add=idx===targets.length-1?parseFloat((remainder-assigned).toFixed(2)):per;
+      assigned+=add;
+      return{...s,value:parseFloat(((Number(s.value)||0)+add).toFixed(2))};
+    }));
+  };
   const toggleSplit=()=>{
     if(users.length<2)return;
-    if(splitOn){setSplitOn(false);setSplits([]);setSpMode("amount");return;}
+    if(splitOn){setSplitOn(false);setSplits([]);setSpMode("amount");resetSplitMeta();return;}
     setSpMode("amount");
     setSplits(users.map(u=>({userId:u.id,checked:false,percent:0,value:0})));
     setSplitOn(true);
+    resetSplitMeta();
   };
   const toggleUser=uid=>{
     const next=splits.map(s=>s.userId===uid?{...s,checked:!s.checked}:s);
     const nOn=next.filter(s=>s.checked).length;
-    if(nOn>=2)setSplits(calcEq(next,expAmt));
-    else setSplits(next.map(s=>({...s,percent:0,value:0})));
+    if(nOn>=2){
+      if(manualEditedIds.size>0)setSplits(next);
+      else{setSplits(calcEq(next,expAmt));setEqualSplitActive(true);}
+    }else{
+      setSplits(next.map(s=>({...s,percent:0,value:0})));
+      resetSplitMeta();
+    }
   };
   return(
     <div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:0,opacity:users.length<2?0.92:1}} title={users.length<2?t("split.minTwoTeam"):""}>
@@ -2554,7 +2585,7 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
                       {spMode==="amount"&&(
                         <div style={{display:"flex",alignItems:"center",border:"1px solid #DDD6CC",borderRadius:6,overflow:"hidden"}}>
-                          <input className="inp" type="number" step="0.01" min="0" style={{border:"none",outline:"none",padding:"6px 8px",width:72,fontSize:13,textAlign:"right",background:"transparent",borderColor:(showSplitError&&amtMismatch)?"#DC2626":undefined}} value={amt} onChange={e=>setSplits(splits.map(x=>x.userId===s.userId?{...x,value:Math.max(0,Number(e.target.value)||0)}:x))}/>
+                          <input className="inp" type="number" step="0.01" min="0" style={{border:"none",outline:"none",padding:"6px 8px",width:72,fontSize:13,textAlign:"right",background:"transparent",borderColor:(showSplitError&&amtMismatch)?"#DC2626":undefined}} value={amt} onChange={e=>{const v=Math.max(0,Number(e.target.value)||0);const isFirstManual=manualEditedIds.size===0;setManualEditedIds(prev=>new Set(prev).add(s.userId));setEqualSplitActive(false);setSplits(splits.map(x=>{if(x.userId===s.userId)return{...x,value:v};if(isFirstManual&&x.checked&&!manualEditedIds.has(x.userId))return{...x,value:0,percent:0};return x;}));}}/>
                           <span style={{padding:"0 8px",fontSize:13,color:"#6B7B72",background:"#F5F0EA",borderLeft:"1px solid #DDD6CC",userSelect:"none"}}>€</span>
                         </div>
                       )}
@@ -2565,9 +2596,23 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
             </div>
           )}
           {spMode==="amount"&&(
-            <div style={{fontSize:11,marginTop:6,color:(amtMismatch&&showSplitError)?"#A32D2D":"#6B7B72"}}>
-              Suma: {fmt(totAmt)} de {fmt(expAmt)}
-              {amtMismatch&&showSplitError&&<span> · Debe coincidir con el total.</span>}
+            <div style={{marginTop:6}}>
+              <div style={{fontSize:11,color:isBalanced?"#065F46":((amtMismatch&&showSplitError)?"#A32D2D":"#92400E"),display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <span>
+                  Suma: {fmt(totAmt)} de {fmt(expAmt)}
+                  {!isBalanced&&remainder>0.01&&<span> — quedan {fmt(remainder)} por repartir</span>}
+                </span>
+                {isBalanced&&<span aria-hidden="true" style={{fontWeight:700}}>✓</span>}
+                {amtMismatch&&showSplitError&&<span> · Debe coincidir con el total.</span>}
+              </div>
+              {!equalSplitActive&&(
+                <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:4,alignItems:"flex-start"}}>
+                  <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 10px"}} disabled={!canAutoFill} onClick={distributeRemainder}>
+                    Repartir el resto equitativamente
+                  </button>
+                  {showAutoFillHint&&<span style={{fontSize:10,color:"#9CAA9F"}}>Ajusta un importe para continuar.</span>}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -4698,17 +4743,16 @@ export function ReportsView(){
       const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
       const ym = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
       const label = d.toLocaleDateString("es-ES",{month:"short",year:"2-digit"});
-      const rows = (expenses||[]).filter(e =>
-        e.status !== "deleted" &&
+      const rows = (displayExpenses||[]).filter(e =>
         e.date &&
         e.date.startsWith(ym)
       );
-      const gastos = rows.filter(e=>e.expenseType!=="invoice").reduce((s,e)=>s+(Number(e.amount)||0),0);
-      const facturas = rows.filter(e=>e.expenseType==="invoice").reduce((s,e)=>s+(Number(e.amount)||0),0);
+      const gastos = rows.filter(e=>e.expenseType!=="invoice").reduce((s,e)=>s+eurForExpense(e),0);
+      const facturas = rows.filter(e=>e.expenseType==="invoice").reduce((s,e)=>s+eurForExpense(e),0);
       months.push({ym, label, gastos, facturas, total:gastos+facturas});
     }
     return months;
-  }, [expenses]);
+  }, [displayExpenses]);
   const monthlyChart = React.useMemo(()=>{
     const dataMonthCount = fullMonthlyData.filter(m=>m.total>0).length;
     if(dataMonthCount===0){
@@ -4804,7 +4848,7 @@ export function ReportsView(){
       )}
       <div className="card" style={{marginBottom:11,width:"100%"}}>
         <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:10}}>
-          {monthlyChart.sparse ? "Actividad mensual" : "Actividad mensual (12 meses)"}
+          {monthlyChart.sparse ? "Gasto por mes" : "Gasto por mes (12 meses)"}
         </div>
         {monthlyChart.sparse && (
           <div style={{fontSize:10,color:"#9CAA9F",marginBottom:8,lineHeight:1.35}}>
