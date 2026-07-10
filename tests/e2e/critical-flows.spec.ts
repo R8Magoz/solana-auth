@@ -98,13 +98,143 @@ function writeAudit(row: ExpenseRow, entries: any[]) {
   row.auditTrailJson = JSON.stringify(entries);
 }
 
-function pushAudit(row: ExpenseRow, entry: { action: string; by?: string; at?: string; note?: string }) {
+function pushAudit(row: ExpenseRow, entry: { action: string; by?: string; at?: string; note?: string; meta?: Record<string, unknown> }) {
   const prev = parseAudit(row);
   prev.push({
     ...entry,
     at: entry.at || new Date().toISOString(),
   });
   writeAudit(row, prev);
+}
+
+function parsePaidBy(row: ExpenseRow): any[] {
+  try {
+    const pj = JSON.parse(row.paidByJson || 'null');
+    return Array.isArray(pj) ? pj : [];
+  } catch {
+    return [];
+  }
+}
+
+function recalculatePaidByForNewTotal(
+  paidByJson: string | null | undefined,
+  splitMode: string | null | undefined,
+  newTotal: number,
+  submitterId: string,
+): { paidBy: any[]; splitMode: string | null } {
+  const total = Number(newTotal);
+  if (!Number.isFinite(total) || total <= 0) {
+    return { paidBy: [{ userId: submitterId, amount: total, pct: 100 }], splitMode: null };
+  }
+  let rows: any[];
+  try {
+    rows = JSON.parse(paidByJson || '[]');
+  } catch {
+    rows = [];
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { paidBy: [{ userId: submitterId, amount: Math.round(total * 100) / 100, pct: 100 }], splitMode: null };
+  }
+  if (rows.length === 1) {
+    return {
+      paidBy: [{ userId: String(rows[0].userId), amount: Math.round(total * 100) / 100, pct: 100 }],
+      splitMode: null,
+    };
+  }
+  const mode = splitMode === 'percentage' || splitMode === 'amount' || splitMode === 'equal' ? splitMode : 'equal';
+  const resolved = rows.map((r) => ({
+    userId: String(r.userId),
+    amount: Number(r.amount) || 0,
+    pct: typeof r.pct === 'number' && Number.isFinite(r.pct) ? r.pct : null,
+  }));
+  const out: any[] = [];
+  if (mode === 'percentage') {
+    const pcts = resolved.map((r) => (r.pct != null ? r.pct : 100 / resolved.length));
+    const pctSum = pcts.reduce((s, p) => s + p, 0) || 100;
+    let sum = 0;
+    for (let i = 0; i < resolved.length; i++) {
+      const amt = i === resolved.length - 1
+        ? Math.round((total - sum) * 100) / 100
+        : Math.round(total * (pcts[i] / pctSum) * 100) / 100;
+      out.push({ userId: resolved[i].userId, amount: amt, pct: pcts[i] });
+      sum += amt;
+    }
+    return { paidBy: out, splitMode: 'percentage' };
+  }
+  if (mode === 'amount') {
+    const oldSum = resolved.reduce((s, r) => s + r.amount, 0);
+    if (oldSum > 0) {
+      let sum = 0;
+      for (let i = 0; i < resolved.length; i++) {
+        const amt = i === resolved.length - 1
+          ? Math.round((total - sum) * 100) / 100
+          : Math.round(total * (resolved[i].amount / oldSum) * 100) / 100;
+        out.push({ userId: resolved[i].userId, amount: amt });
+        sum += amt;
+      }
+      return { paidBy: out, splitMode: 'amount' };
+    }
+  }
+  const n = resolved.length;
+  const share = Math.floor((total / n) * 100) / 100;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const amt = i === n - 1 ? Math.round((total - sum) * 100) / 100 : share;
+    out.push({ userId: resolved[i].userId, amount: amt });
+    sum += amt;
+  }
+  return { paidBy: out, splitMode: 'equal' };
+}
+
+function finalizeFromApprovalVotes(
+  e: ExpenseRow,
+  approverIds: string[],
+  votes: Record<string, string>,
+  actorUserId: string,
+  rejectionNote?: string | null,
+) {
+  const hasReject = Object.values(votes).some((v) => v === 'rejected');
+  const allDone = !hasReject && approverIds.length > 0 && approverIds.every((aid) => votes[aid] === 'approved');
+  e.approvalVotesJson = JSON.stringify(votes);
+  if (hasReject) {
+    e.status = 'rejected';
+    e.rejectionNote = rejectionNote || e.rejectionNote || 'Rechazado por voto de aprobador.';
+    if (e.expenseType === 'invoice') e.paymentStatus = 'pending_approval';
+    return;
+  }
+  if (allDone) {
+    e.status = 'approved';
+    e.rejectionNote = null;
+    if (e.expenseType === 'invoice' && e.deferredPayment) {
+      e.paymentStatus = 'unpaid';
+    } else if (e.expenseType === 'invoice') {
+      e.paymentStatus = 'paid';
+    }
+    return;
+  }
+  e.status = 'submitted';
+  e.rejectionNote = null;
+}
+
+const EXPENSE_EDIT_TRACKED = [
+  'amount', 'description', 'category', 'date', 'notes', 'departmentId',
+  'ivaRate', 'ivaAmount', 'vendor', 'dueDate', 'expenseType',
+];
+
+function buildExpenseFieldDiff(prev: ExpenseRow, next: ExpenseRow): { field: string; from: unknown; to: unknown }[] {
+  const changes: { field: string; from: unknown; to: unknown }[] = [];
+  for (const field of EXPENSE_EDIT_TRACKED) {
+    const from = prev[field] ?? null;
+    const to = next[field] ?? null;
+    if (from !== to) changes.push({ field, from, to });
+  }
+  const prevPaid = prev.paidByJson != null ? String(prev.paidByJson) : null;
+  const nextPaid = next.paidByJson != null ? String(next.paidByJson) : null;
+  if (prevPaid !== nextPaid) changes.push({ field: 'paidBy', from: prevPaid, to: nextPaid });
+  const prevSplit = prev.splitMode != null ? String(prev.splitMode) : null;
+  const nextSplit = next.splitMode != null ? String(next.splitMode) : null;
+  if (prevSplit !== nextSplit) changes.push({ field: 'splitMode', from: prevSplit, to: nextSplit });
+  return changes;
 }
 
 function parseComments(row: ExpenseRow): any[] {
@@ -390,27 +520,26 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
           return json(403, { error: 'No eres aprobador designado para este gasto.' });
         }
         const votes = parseVotes(e);
+        const oldVote = votes[session.userId] || null;
         votes[session.userId] = 'approved';
-        e.approvalVotesJson = JSON.stringify(votes);
+        if (oldVote !== 'approved') {
+          pushAudit(e, {
+            action: 'expense_vote_changed',
+            by: session.userId,
+            meta: { from: oldVote, to: 'approved' },
+          });
+        }
         const approverIds = parseApprovers(e);
-        const allDone = approverIds.length > 0 && approverIds.every((aid) => votes[aid] === 'approved');
-        if (allDone) {
-          e.status = 'approved';
-          if (e.expenseType === 'invoice' && e.deferredPayment) {
-            e.paymentStatus = 'unpaid';
-          } else if (e.expenseType === 'invoice') {
-            e.paymentStatus = 'paid';
-          }
-          const notePayload = safeJson(req.postData()).note;
-          const auditArrApprove = parseAudit(e);
-          auditArrApprove.push({
+        finalizeFromApprovalVotes(e, approverIds, votes, session.userId, null);
+        const notePayload = safeJson(req.postData()).note;
+        if (e.status === 'approved') {
+          pushAudit(e, {
             action: 'approved',
             by: session.userId,
-            at: new Date().toISOString(),
             ...(notePayload != null ? { note: notePayload } : {}),
           });
-          writeAudit(e, auditArrApprove);
-          (e as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = auditArrApprove;
+        } else if (e.status === 'rejected') {
+          pushAudit(e, { action: 'rejected', by: session.userId, via: 'approval_vote' });
         }
         e.updatedAt = Date.now();
         (e as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = parseAudit(e);
@@ -421,13 +550,24 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
           return json(403, { error: 'No eres aprobador designado para este gasto.' });
         }
         const body = safeJson(req.postData());
-        e.status = 'rejected';
-        e.rejectionNote = String(body.note || body.rejectionNote || '');
-        e.approvalVotesJson = '{}';
-        if (e.expenseType === 'invoice') {
-          e.paymentStatus = 'pending_approval';
+        const note = String(body.note || body.rejectionNote || '');
+        const votes = parseVotes(e);
+        const oldVote = votes[session.userId] || null;
+        votes[session.userId] = 'rejected';
+        if (oldVote !== 'rejected') {
+          pushAudit(e, {
+            action: 'expense_vote_changed',
+            by: session.userId,
+            meta: { from: oldVote, to: 'rejected' },
+          });
         }
-        pushAudit(e, { action: 'rejected', by: session.userId, note: e.rejectionNote });
+        const approverIds = parseApprovers(e);
+        finalizeFromApprovalVotes(e, approverIds, votes, session.userId, note);
+        if (e.status === 'rejected') {
+          pushAudit(e, { action: 'rejected', by: session.userId, note });
+        } else if (e.status === 'approved') {
+          pushAudit(e, { action: 'approved', by: session.userId });
+        }
         e.updatedAt = Date.now();
         (e as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = parseAudit(e);
         return json(200, { ok: true, expense: e });
@@ -482,6 +622,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         return json(403, { error: 'No autorizado.' });
       }
       const body = safeJson(req.postData());
+      const prevSnapshot = { ...e };
       if (typeof body.description === 'string') e.description = body.description;
       if (typeof body.amount === 'number') {
         e.amount = body.amount;
@@ -494,7 +635,19 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       if (body.departmentId) e.departmentId = body.departmentId;
       if (typeof body.vendor === 'string') e.vendor = body.vendor;
       if (typeof body.ownerId === 'string') e.ownerId = body.ownerId;
-      if (body.paidBy) e.paidByJson = JSON.stringify(body.paidBy);
+      if (body.paidBy) {
+        e.paidByJson = JSON.stringify(body.paidBy);
+        if (body.splitMode) e.splitMode = body.splitMode;
+      } else if (typeof body.amount === 'number' && Number(body.amount) !== Number(prevSnapshot.amount)) {
+        const recalc = recalculatePaidByForNewTotal(
+          e.paidByJson,
+          e.splitMode,
+          Number(body.amount),
+          String(e.ownerId || e.userId || session.userId),
+        );
+        e.paidByJson = JSON.stringify(recalc.paidBy);
+        e.splitMode = recalc.splitMode;
+      }
       if (body.expenseType) e.expenseType = body.expenseType;
       if (body.deferredPayment != null) e.deferredPayment = !!body.deferredPayment;
       if (body.paymentTermDays != null) e.paymentTermDays = Number(body.paymentTermDays);
@@ -502,6 +655,17 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       if (Array.isArray(body.approvalRequired)) {
         e.approversJson = JSON.stringify(body.approvalRequired.filter(Boolean));
         e.approvalVotesJson = '{}';
+      }
+      const fieldChanges = buildExpenseFieldDiff(prevSnapshot, e);
+      const materialEdit = fieldChanges.length > 0
+        && ['submitted', 'approved', 'rejected'].includes(String(prevSnapshot.status));
+      if (materialEdit) {
+        e.approvalVotesJson = '{}';
+        e.status = 'submitted';
+        e.rejectionNote = null;
+        if (e.expenseType === 'invoice' && String(e.paymentStatus) === 'unpaid') {
+          e.paymentStatus = 'pending_approval';
+        }
       }
       if (body.status !== undefined && body.status !== null) {
         e.status = body.status;
@@ -516,7 +680,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       writeAudit(e, auditArrEdit);
       (e as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = auditArrEdit;
       e.updatedAt = Date.now();
-      return json(200, { ok: true, expense: e });
+      return json(200, { ok: true, expense: e, reapprovalRequired: materialEdit });
     }
 
     // GET /expenses — return seeded list

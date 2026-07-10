@@ -1292,12 +1292,11 @@ const canUserReviewExpense=(item,{user,isAdmin,cats,users})=>{
   if(!isAdmin||!item||!user?.id)return false;
   const approverIds=effectiveExpenseApproverIds(item,cats,users);
   if(!approverIds.includes(user.id))return false;
-  if(approvalVoteFor(item.approvals||{},user.id,users)==="approved")return false;
   if(item._apiType==="expense"){
-    return item.status==="submitted"||item.status==="approved";
+    return item.status==="submitted"||item.status==="approved"||item.status==="rejected";
   }
   const st=getItemStatus(item,cats,users);
-  return st==="pending"||st==="approved";
+  return st==="pending"||st==="approved"||st==="rejected";
 };
 const getItemStatus=(item,cats,users)=>{
   if (item && item._apiType === 'expense' && item.status) {
@@ -3988,6 +3987,8 @@ function DetailPanel(){
       expense_marked_paid:"paid",
       expense_deleted:"deleted",
       expense_reapproval_required:"reapproval_required",
+      expense_vote_changed:"vote_changed",
+      expense_approver_removed_autoapprove:"approver_removed_autoapprove",
     };
     serverAudit.forEach(entry=>{
       if(entry.event==="expense_edited"&&Array.isArray(entry.changes)&&entry.changes.length>0){
@@ -4064,6 +4065,8 @@ function DetailPanel(){
     'expense_comment_added':'Nota añadida',
     'expense_recurring_spawned': 'Nueva ocurrencia generada',
     'reapproval_required':  'Requiere nueva revisión',
+    'vote_changed':         'Voto actualizado',
+    'approver_removed_autoapprove': 'Aprobador eliminado (voto automático)',
     'deleted':              'Eliminado',
   })[action] || action;
   const startEdit=()=>{
@@ -4146,6 +4149,10 @@ function DetailPanel(){
     if(efSplitOn&&efSplits.filter(s=>s.checked).length>1){
       efPaidBy=buildPaidByFromSplitState(efSplits,amt,efSpMode);
       efSplitMode=efPaidBy.length>1?efSpMode:undefined;
+    }else{
+      const ownerId=ef.ownerId||e.ownerId||e.submittedBy||user.id;
+      efPaidBy=[{userId:ownerId,amount:amt,pct:100}];
+      efSplitMode=undefined;
     }
     const ivaRate=parseFormIvaRateString(ef.ivaRate);
     const ivaAmount=calcIvaParts(amt,ivaRate).iva;
@@ -4383,7 +4390,7 @@ function DetailPanel(){
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
           <div style={{display:"flex",gap:6}}>
             <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:detailAccent}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button>
-            {isAdmin && approverIds.includes(user.id) && st !== 'rejected' && st !== 'deleted' && (
+            {isAdmin && (
               <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,background:"transparent",color:"#DC2626",border:"2px solid #DC2626",fontWeight:700}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
             )}
           </div>
@@ -5318,7 +5325,7 @@ function ApprovalsView(){
                           {t("status."+st)}
                         </span>
                         {payBadge&&<span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,display:"inline-block",background:payBadge.bg,color:payBadge.color}}>{payBadge.text}</span>}
-                        {st !== 'rejected' && canActOnRow&&(
+                        {canActOnRow&&(
                           <button
                             type="button"
                             className="btn-sm"
@@ -8494,6 +8501,7 @@ function SolanaExpenses(){
     });
     const wasApproved=getItemStatus(oldExp,cats,users)==="approved";
     const wasRejected=getItemStatus(oldExp,cats,users)==="rejected";
+    const wasSubmitted=oldExp.status==="submitted"||(oldExp._apiType==="expense"&&oldExp.status==="submitted");
     const now=new Date().toISOString();
     let newTrail=[...(oldExp.auditTrail||[]),{action:"edited",by:user.id,at:now,
       meta:{fields:REAPPROVAL_FIELDS.filter(k=>{
@@ -8507,21 +8515,17 @@ function SolanaExpenses(){
       })}}];
     let newApprovals=oldExp.approvals;
     let nextSeen=oldExp.seenBy||[];
-    if(wasApproved&&relevantChanged){
+    if((wasApproved||wasRejected||wasSubmitted)&&relevantChanged){
       newApprovals={};
       const approverIdsRc=effectiveExpenseApproverIds({category:updates.category||oldExp.category},cats,users);
       let trailExtra=[...newTrail];
-      if(approverIdsRc.includes(user.id)){
+      if(wasApproved&&approverIdsRc.includes(user.id)){
         newApprovals={[user.id]:"approved"};
         trailExtra=[...trailExtra,{action:"auto_approved",by:user.id,at:now,meta:{reason:"submitter_is_approver"}}];
       }
       newTrail=[...trailExtra,{action:"reapproval_required",by:user.id,at:now}];
       nextSeen=seenByAfterActor(user.id);
       appLog("info","expense_reapproval",{itemCode:oldExp.itemCode,userId:user.id});
-    } else if(wasRejected&&relevantChanged){
-      newApprovals={};
-      newTrail=[...newTrail,{action:"resubmitted",by:user.id,at:now}];
-      nextSeen=seenByAfterActor(user.id);
     }
     const updated={...oldExp,...updates,approvals:newApprovals,auditTrail:newTrail,seenBy:nextSeen};
     saveExp(expenses.map(e=>e.id===expId?updated:e));
