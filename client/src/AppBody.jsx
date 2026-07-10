@@ -430,6 +430,94 @@ const shareEurInExpense=(e,userId)=>{
   return(Number(p.amount)||0)/base*tot;
 };
 const fmtExpenseAmt=e=>fmt(Number(e?.amount)||0);
+
+function expenseSortDate(e){
+  const raw=e.expenseType==="invoice"?(e.dueDate||e.date):e.date;
+  return String(raw||"").slice(0,10);
+}
+function expenseMonthKey(e){return expenseSortDate(e).slice(0,7);}
+function formatMonthGroupLabel(ym){
+  if(!ym||ym.length<7)return ym||"";
+  const parts=ym.split("-");
+  const d=new Date(Number(parts[0]),Number(parts[1])-1,1);
+  const label=d.toLocaleDateString("es-ES",{month:"long",year:"numeric"});
+  return label.charAt(0).toUpperCase()+label.slice(1);
+}
+function groupExpensesByMonth(list){
+  const sorted=[...list].sort((a,b)=>expenseSortDate(b).localeCompare(expenseSortDate(a)));
+  const groups=[];
+  const indexByYm=new Map();
+  for(const e of sorted){
+    const ym=expenseMonthKey(e);
+    if(!indexByYm.has(ym)){
+      indexByYm.set(ym,groups.length);
+      groups.push({ym,label:formatMonthGroupLabel(ym),items:[],total:0});
+    }
+    const g=groups[indexByYm.get(ym)];
+    g.items.push(e);
+    g.total+=eurForExpense(e);
+  }
+  return groups;
+}
+function downloadExpensesCsv(src,{cats,users,t,user,ivaM="both",fileTag="expenses",saveExp,expenses}){
+  const now=new Date().toISOString();
+  if(!AUTH_URL&&saveExp&&expenses){
+    const updatedSrc=src.map(e=>({...e,auditTrail:[...(e.auditTrail||[]),{action:"exported",by:user.id,at:now,meta:{format:"csv",ivaMode:ivaM}}]}));
+    saveExp(expenses.map(e=>{const u=updatedSrc.find(x=>x.id===e.id);return u||e;}));
+  }
+  appLog("info","csv_exported",{ivaMode:ivaM,count:src.length,userId:user.id,codes:src.map(e=>e.itemCode||e.id)});
+  const headerBase=[
+    t("item.code"),
+    t("csv.itemType"),
+    t("label.date"),
+    t("label.description"),
+    t("label.category"),
+    t("label.status"),
+    t("filter.submitter"),
+    t("label.paidBy"),
+    t("label.notes"),
+    t("label.approvers"),
+  ];
+  const amountHeaders=
+    ivaM==="with_iva"?["Total con IVA"]
+    :ivaM==="without_iva"?["Base imponible"]
+    :["Base imponible","Cuota IVA","Total con IVA"];
+  const rows=[
+    [...headerBase,...amountHeaders],
+    ...src.map(e=>{
+      const approverIds=effectiveExpenseApproverIds(e,cats,users);
+      const amtEur=eurForExpense(e);
+      const ivaAmt=e.ivaAmount!=null?Number(e.ivaAmount):0;
+      const base=e.ivaRate!=null?Math.round((amtEur-ivaAmt)*100)/100:amtEur;
+      const tipo=e.expenseType==="invoice"?"Factura":"Gasto";
+      const commonFields=[
+        e.itemCode||e.id,
+        tipo,
+        e.date,
+        e.description,
+        e.category,
+        getItemStatus(e,cats,users),
+        (users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name,
+        e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),
+        e.notes||"",
+        approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";"),
+      ];
+      if(ivaM==="with_iva")return[...commonFields,amtEur];
+      if(ivaM==="without_iva")return[...commonFields,base];
+      return[...commonFields,base,ivaAmt,amtEur];
+    }),
+  ];
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`solana-${fileTag}-${ivaM}-${new Date().toISOString().slice(0,10)}.csv`});
+  a.click();URL.revokeObjectURL(a.href);
+}
+const UPCOMING_BILL_WINDOWS={
+  "15d":{days:15,title:"Próximas facturas · 15 días"},
+  "1m":{days:30,title:"Próximas facturas · 1 mes"},
+  "3m":{days:90,title:"Próximas facturas · 3 meses"},
+  "6m":{days:180,title:"Próximas facturas · 6 meses"},
+  "1y":{days:365,title:"Próximas facturas · 1 año"},
+};
 function guessMimeFromReceiptPath(p){
   if(!p) return 'application/octet-stream';
   let stem = String(p);
@@ -3410,12 +3498,14 @@ export function DashboardView(){
   const spentActive=deptBudgetActive.reduce((s,d)=>s+Number(d.spent||0),0);
   const budgetRemainingTotal=budgetTotalActive-spentActive;
   const budgetProgressPct=budgetTotalActive>0 ? (spentActive/budgetTotalActive)*100 : 0;
-  const upcoming15=[];
+  const [billsWindow,setBillsWindow]=useState("15d");
+  const billsWindowCfg=UPCOMING_BILL_WINDOWS[billsWindow]||UPCOMING_BILL_WINDOWS["15d"];
+  const upcomingBills=[];
   expenses.filter(e=>e.expenseType==="invoice"&&e.paymentStatus==="unpaid"&&e.dueDate).forEach(e=>{
     const diff=daysUntilISO(String(e.dueDate).slice(0,10));
-    if(diff!=null&&diff>=0&&diff<=15)upcoming15.push({...e,name:e.vendor||e.description,daysUntil:diff});
+    if(diff!=null&&diff>=0&&diff<=billsWindowCfg.days)upcomingBills.push({...e,name:e.vendor||e.description,daysUntil:diff});
   });
-  upcoming15.sort((a,b)=>a.daysUntil-b.daysUntil);
+  upcomingBills.sort((a,b)=>a.daysUntil-b.daysUntil);
   const fixedTipActive=fixedTipOpen||fixedTipHover;
   const monthSpendByDept=React.useMemo(()=>{
     const now = new Date();
@@ -3625,15 +3715,24 @@ export function DashboardView(){
       </div>
       {/* Upcoming invoices · 15 days */}
       <div className="card" style={{marginBottom:11}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:9}}>{t("dash.upcomingBills")}</div>
-        {upcoming15.length===0
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:9,flexWrap:"wrap"}}>
+          <div style={{fontWeight:600,fontSize:13}}>{billsWindowCfg.title}</div>
+          <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}} value={billsWindow} onChange={e=>setBillsWindow(e.target.value)}>
+            <option value="15d">15 días</option>
+            <option value="1m">1 mes</option>
+            <option value="3m">3 meses</option>
+            <option value="6m">6 meses</option>
+            <option value="1y">1 año</option>
+          </select>
+        </div>
+        {upcomingBills.length===0
           ?<div style={{fontSize:11,color:"#9CAA9F",padding:"4px 0"}}>{t("dash.noBillsSoon")}</div>
-          :upcoming15.map((b,i)=>{
+          :upcomingBills.map((b,i)=>{
             const dueTxt=b.daysUntil===0?t("dash.dueToday"):b.daysUntil===1?t("dash.dueTomorrow"):t("dash.dueIn").replace("{n}",String(b.daysUntil));
             const dueS=String(b.dueDate||"").slice(0,10);
             const dayBox=dueS.length>=10?parseInt(dueS.slice(8,10),10):"—";
             return(
-              <div key={b.id+"-"+i} style={{display:"flex",alignItems:"center",padding:"6px 0",borderBottom:i<upcoming15.length-1?"1px solid #F5F0EA":"none",gap:9}}>
+              <div key={b.id+"-"+i} style={{display:"flex",alignItems:"center",padding:"6px 0",borderBottom:i<upcomingBills.length-1?"1px solid #F5F0EA":"none",gap:9}}>
                 <div style={{width:32,height:32,borderRadius:6,background:G,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   <div style={{fontSize:13,fontWeight:800,color:"#FAF7F2",lineHeight:1}}>{dayBox}</div>
                 </div>
@@ -3690,9 +3789,9 @@ export function ExpensesView(){
   const{t,expenses,cats,users,byStatus,filtered,expFlt,setExpFlt,expSrc,setExpSrc,
         catFlt,setCatFlt,submFlt,setSubmFlt,dateFrom,setDateFrom,dateTo,setDateTo,activeFilterCount,
         detailId,setDetailId,panel,setPanel,openNew,resetForm,isAdmin,user,aNote,setANote,approve,clearMyExpenseFilter,totApproved,
-        expKindFlt,setExpKindFlt,markExpensePaid,recurringFlt,setRecurringFlt}=useApp();
+        expKindFlt,setExpKindFlt,markExpensePaid,recurringFlt,setRecurringFlt,saveExp}=useApp();
   const [payOpenId,setPayOpenId]=useState(null);
-  const [filtersOpen,setFiltersOpen]=useState(false);
+  const [filtersOpen,setFiltersOpen]=useState(true);
   const [payDate,setPayDate]=useState(()=>new Date().toISOString().slice(0,10));
   const pendingTotal=expenses.filter(e=>getItemStatus(e,cats)==="pending").reduce((s,e)=>s+eurForExpense(e),0);
   const naturalFrom = expenses.length
@@ -3706,6 +3805,11 @@ export function ExpensesView(){
   const [pendingTo,   setPendingTo]   = React.useState(naturalTo);
 
   const isDefaultRange = pendingFrom === naturalFrom && pendingTo === naturalTo;
+  const monthGroups=useMemo(()=>groupExpensesByMonth(filtered),[filtered]);
+  const exportFilteredCsv=()=>{
+    downloadExpensesCsv(filtered,{cats,users,t,user,ivaM:"both",fileTag:"gastos-filtrados",saveExp,expenses});
+    dispatchSolanaToast(t("action.exportCSV"),"success",3000);
+  };
   return(
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
@@ -3738,6 +3842,7 @@ export function ExpensesView(){
           <option value="invoice">Facturas</option>
         </select>
         <button className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} onClick={openNew}>{t("action.newExpense")}</button>
+        <button type="button" className="btn-secondary" style={{fontSize:12,padding:"6px 12px"}} disabled={filtered.length===0} onClick={exportFilteredCsv}>{t("action.exportCSV")}</button>
       </div>
       <div style={{fontSize:11,color:"#9CAA9F",marginBottom:6}}>
         {cPending} pendiente{cPending!==1?"s":""} · {cApproved} aprobado{cApproved!==1?"s":""}
@@ -3842,7 +3947,13 @@ export function ExpensesView(){
       })()}
       <div className="card" style={{padding:0,overflow:"hidden"}}>
         {filtered.length===0&&<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{t("empty.expenses")}</div>}
-        {filtered.map((e,idx)=>{
+        {monthGroups.map(group=>(
+          <div key={group.ym}>
+            <div style={{position:"sticky",top:0,zIndex:2,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 13px",background:"#F5F0EA",borderBottom:"1px solid #EDE8E0",fontSize:11,fontWeight:600,color:"#4B5E52"}}>
+              <span>{group.label}</span>
+              <span style={{fontVariantNumeric:"tabular-nums",color:G}}>{fmt(group.total)}</span>
+            </div>
+            {group.items.map((e,idx)=>{
           const st=getItemStatus(e,cats,users),sel=detailId===e.id&&panel==="detail";
           const approverIds=effectiveExpenseApproverIds(e,cats,users);
           const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
@@ -3861,9 +3972,11 @@ export function ExpensesView(){
             e.paymentStatus !== "paid";
           const rowTitle=isInvRow?(e.vendor||e.description):e.description;
           const metaDate=isInvRow&&e.dueDate?`${t("expenses.vence")} ${fmtDate(e.dueDate)} · `:fmtDate(e.date)+" · ";
+          const isLastInGroup=idx===group.items.length-1;
+          const isLastGroup=group.ym===monthGroups[monthGroups.length-1]?.ym;
           return(
             <div key={e.id}>
-              <div className="row-hover" style={{padding:"9px 13px",borderBottom:(payOpenId===e.id||idx<filtered.length-1)?"1px solid #F5F0EA":"none",cursor:"pointer",background: isOverdue ? "#FFF1F2" : isDueToday ? "#FFFBEB" : undefined,borderLeft: isOverdue ? "3px solid #DC2626" : undefined,display:"flex",alignItems:"flex-start",gap:8}}
+              <div className="row-hover" style={{padding:"9px 13px",borderBottom:(payOpenId===e.id||!isLastInGroup||!isLastGroup)?"1px solid #F5F0EA":"none",cursor:"pointer",background: isOverdue ? "#FFF1F2" : isDueToday ? "#FFFBEB" : undefined,borderLeft: isOverdue ? "3px solid #DC2626" : undefined,display:"flex",alignItems:"flex-start",gap:8}}
                 onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
@@ -3938,7 +4051,7 @@ export function ExpensesView(){
                 </div>
               </div>
               {payOpenId===e.id&&(
-                <div style={{padding:"8px 13px",background:"#FFFBEB",borderBottom:idx<filtered.length-1?"1px solid #F5F0EA":"none",display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,fontSize:11}}
+                <div style={{padding:"8px 13px",background:"#FFFBEB",borderBottom:!isLastInGroup||!isLastGroup?"1px solid #F5F0EA":"none",display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,fontSize:11}}
                   onClick={ev=>ev.stopPropagation()}>
                   <span style={{color:"#78350F"}}>{t("expenses.confirmMarkPaid")}</span>
                   <label style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:"#6B7B72"}}>{t("expenses.paidDateLabel")}</span>
@@ -3951,6 +4064,8 @@ export function ExpensesView(){
             </div>
           );
         })}
+          </div>
+        ))}
       </div>
       {panel==="detail"&&detailId&&<div className="mob-only" style={{marginTop:11,background:"#fff",borderRadius:11,padding:14}}><DetailPanel/></div>}
     </div>
@@ -3993,6 +4108,7 @@ function ReceiptThumb({expenseId}){
 export function ApprovalsView(){
   const{t,expenses,cats,users,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel}=useApp();
   const [typeFilter,setTypeFilter]=useState("all");
+  const [assigneeFilter,setAssigneeFilter]=useState("");
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const priorityForItem=(item)=>{
     const ids=effectiveExpenseApproverIds(item,cats,users);
@@ -4025,7 +4141,16 @@ export function ApprovalsView(){
     if(typeFilter==="expense")return e.expenseType!=="invoice";
     return e.expenseType==="invoice";
   });
-  const activeRows=sortByPriority(kindFiltered);
+  const pendingMineFilter=(item)=>{
+    const ids=effectiveExpenseApproverIds(item,cats,users);
+    if(!ids.includes(user.id))return false;
+    const vote=approvalVoteFor(item.approvals||{},user.id,users);
+    return vote!=="approved"&&vote!=="rejected";
+  };
+  const hasPendingMine=kindFiltered.some(pendingMineFilter);
+  const effectiveAssigneeFilter=assigneeFilter||(hasPendingMine?"mine":"all");
+  const assigneeFiltered=effectiveAssigneeFilter==="mine"?kindFiltered.filter(pendingMineFilter):kindFiltered;
+  const activeRows=sortByPriority(assigneeFiltered);
   const cAll=baseList.length;
   const cExp=baseList.filter(e=>e.expenseType!=="invoice").length;
   const cInv=baseList.filter(e=>e.expenseType==="invoice").length;
@@ -4040,6 +4165,10 @@ export function ApprovalsView(){
         </p>
       )}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+        <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 10px"}} value={effectiveAssigneeFilter} onChange={e=>setAssigneeFilter(e.target.value)}>
+          <option value="mine">Pendientes de mí</option>
+          <option value="all">Todas</option>
+        </select>
         <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
           {[
             ["all",t("expenses.filterAll"),cAll],
@@ -4420,59 +4549,7 @@ export function ReportsView(){
   const chartMinWidthPx = Math.ceil(SVG_W);
   const exportCSV=(includeIva=true)=>{
     const ivaM=includeIva ? (ivaFilter==="with" ? "with_iva" : "both") : "without_iva";
-    const data=statusFilter;
-    const src=displayExpenses;
-    const now=new Date().toISOString();
-    const exportedUser=user;
-    if(!AUTH_URL){
-      const updatedSrc=src.map(e=>({...e,auditTrail:[...(e.auditTrail||[]),{action:"exported",by:exportedUser.id,at:now,meta:{format:"csv",filter:data,ivaMode:ivaM}}]}));
-      saveExp(expenses.map(e=>{const u=updatedSrc.find(x=>x.id===e.id);return u||e;}));
-    }
-    appLog("info","csv_exported",{filter:data,ivaMode:ivaM,count:src.length,userId:exportedUser.id,codes:src.map(e=>e.itemCode||e.id)});
-    const headerBase=[
-      t("item.code"),
-      t("csv.itemType"),
-      t("label.date"),
-      t("label.description"),
-      t("label.category"),
-      t("label.status"),
-      t("filter.submitter"),
-      t("label.paidBy"),
-      t("label.notes"),
-      t("label.approvers"),
-    ];
-    const amountHeaders=
-      ivaM==="with_iva"?["Total con IVA"]
-      :ivaM==="without_iva"?["Base imponible"]
-      :["Base imponible","Cuota IVA","Total con IVA"];
-    const rows=[
-      [...headerBase,...amountHeaders],
-      ...src.map(e=>{
-        const approverIds=effectiveExpenseApproverIds(e,cats,users);
-        const amtEur=eurForExpense(e);
-        const ivaAmt=e.ivaAmount!=null?Number(e.ivaAmount):0;
-        const base=e.ivaRate!=null?Math.round((amtEur-ivaAmt)*100)/100:amtEur;
-        const tipo=e.expenseType==="invoice"?"Factura":"Gasto";
-        const commonFields=[
-          e.itemCode||e.id,
-          tipo,
-          e.date,
-          e.description,
-          e.category,
-          getItemStatus(e,cats,users),
-          (users.find(u=>u.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name,
-          e.paidBy.map(p=>`${(users.find(u=>u.id===p.userId)||{name:UNKNOWN_USER_NAME}).name}:${fmt(p.amount)}`).join(";"),
-          e.notes||"",
-          approverIds.map(id=>(users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME}).name).join(";"),
-        ];
-        if(ivaM==="with_iva")return[...commonFields,amtEur];
-        if(ivaM==="without_iva")return[...commonFields,base];
-        return[...commonFields,base,ivaAmt,amtEur];
-      }),
-    ];
-    const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`solana-${data}-${ivaM}-${new Date().toISOString().slice(0,10)}.csv`});
-    a.click();URL.revokeObjectURL(a.href);
+    downloadExpensesCsv(displayExpenses,{cats,users,t,user,ivaM,fileTag:statusFilter,saveExp,expenses});
   };
   const downloadPdf=async()=>{
     if(!AUTH_URL)return;
@@ -4564,7 +4641,7 @@ export function ReportsView(){
         </div>
         {trendErr&&<div style={{fontSize:11,color:"#991B1B",marginBottom:6}}>{trendErr}</div>}
         {!trendErr&&sparklinePts&&(
-          <svg width="280" height="56" viewBox="0 0 280 56" style={{display:"block",maxWidth:"100%"}} aria-hidden="true">
+          <svg width="100%" height="56" viewBox="0 0 280 56" preserveAspectRatio="none" style={{display:"block"}} aria-hidden="true">
             <rect x="0" y="0" width="280" height="56" fill="none"/>
             <line x1="4" y1="50" x2="276" y2="50" stroke="#E5E0D8" strokeWidth="1"/>
             <polyline fill="none" stroke="#3C0A37" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={sparklinePts}/>
@@ -4573,7 +4650,7 @@ export function ReportsView(){
         {!trendLoad&&!trendErr&&!sparklinePts&&<div style={{fontSize:11,color:"#9CAA9F"}}>—</div>}
       </div>
       )}
-      <div className="card" style={{marginBottom:11}}>
+      <div className="card" style={{marginBottom:11,width:"100%"}}>
         <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:10}}>
           {monthlyChart.sparse ? "Actividad mensual" : "Actividad mensual (12 meses)"}
         </div>
@@ -5664,6 +5741,18 @@ export function SettingsView(){
   const [delC,setDelC]=useState(null);
   const [dSelf,setDSelf]=useState(false);
   const [sf,setSf]=useState({name:user?.name||"",email:user?.email||"",phone:user?.phone||"",avatar:user?.avatar||null});
+  const profileBaseline=useMemo(()=>({
+    name:(user?.name||"").trim(),
+    email:(user?.email||"").trim(),
+    phone:(user?.phone||"").trim(),
+    avatar:user?.avatar??null,
+  }),[user?.id,user?.name,user?.email,user?.phone,user?.avatar]);
+  const profileDirty=useMemo(()=>(
+    (sf.name||"").trim()!==profileBaseline.name
+    ||(sf.email||"").trim()!==profileBaseline.email
+    ||(sf.phone||"").trim()!==profileBaseline.phone
+    ||(sf.avatar??null)!==profileBaseline.avatar
+  ),[sf,profileBaseline]);
   const [catEdit,setCatEdit]=useState(null);
   const [catForm,setCatForm]=useState({});
   const [addCat,setAddCat]=useState(false);
@@ -5835,7 +5924,7 @@ export function SettingsView(){
         setUser(merged);
         saveUsers(users.map(u=>u.id===user.id?merged:u));
         setSf({name:merged.name||"",email:merged.email||"",phone:merged.phone||"",avatar:merged.avatar??null});
-        dispatchSolanaToast(t("msg.profileUpdated"),"info");
+        dispatchSolanaToast(t("msg.profileUpdated"),"success",5000);
       }catch(e){
         dispatchSolanaToast(t("signup.serverDown"),"error");
       }finally{
@@ -5846,7 +5935,7 @@ export function SettingsView(){
     const merged=normalizeItem({...user,...sf},"user");
     saveUsers(users.map(u=>u.id===user.id?merged:u));
     setUser(merged);
-    dispatchSolanaToast(t("msg.profileUpdated"),"info");
+    dispatchSolanaToast(t("msg.profileUpdated"),"success",5000);
   };
 
   const savePw=async()=>{
@@ -5914,7 +6003,7 @@ export function SettingsView(){
             <div style={{fontSize:14,fontWeight:600,color:G}}>{user?.role==="superadmin"?t("role.superadmin"):user?.role==="admin"?t("role.admin"):t("role.user")}</div>
           </div>
         </div>
-        <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={profileSaving} onClick={()=>void saveProfile()}>{profileSaving?"…":t("action.saveChanges")}</button>
+        <button type="button" className="btn-primary" style={{marginTop:9,fontSize:12,padding:"6px 12px"}} disabled={profileSaving||!profileDirty} onClick={()=>void saveProfile()}>{profileSaving?"…":t("action.saveChanges")}</button>
         <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #EDE8E0"}}>
           <div style={{fontWeight:600,fontSize:12,color:"#991B1B",marginBottom:4}}>{t("settings.deleteAccount")}</div>
           {!dSelf?<button className="btn-danger" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setDSelf(true)}>{t("settings.requestDeletion")}</button>:(
@@ -6429,6 +6518,7 @@ export default function App(){
   const [formError, setFormError] =useState("");
   const [submitting, setSubmitting] =useState(false);
   const [sessionExpired, setSessionExpired]=useState(false);
+  const [userMenuOpen,setUserMenuOpen]=useState(false);
   const [idleTrackingEnabled,setIdleTrackingEnabled]=useState(false);
   const [online,setOnline]=useState(()=>typeof navigator!=="undefined"&&navigator.onLine);
   const [toasts,setToasts]=useState([]);
@@ -7877,15 +7967,15 @@ export default function App(){
           </div>
           {navItems.map(n=>(
             <div key={n.id} onClick={()=>go(n.id)} style={{padding:"6px 9px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:500,marginBottom:2,transition:"background 0.15s",background:view===n.id?"rgba(250,247,242,0.12)":"transparent",color:view===n.id?"#FAF7F2":"rgba(250,247,242,0.5)",borderLeft:`3px solid ${view===n.id?T:"transparent"}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+              <span style={{position:"relative",display:"inline-block",paddingRight:n.badge>0?10:0}}>
                 <span>{n.label}</span>
+                {n.badge>0&&<span style={{position:"absolute",top:-5,right:-2,background:BL,color:"#fff",borderRadius:"50%",minWidth:15,height:15,padding:"0 3px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
               </span>
-              {n.badge>0&&<span style={{background:BL,color:"#fff",borderRadius:"50%",width:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0}}>{n.badge}</span>}
             </div>
           ))}
-          <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.07)",position:"relative"}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8}}>
-              <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,borderRadius:7,padding:"4px 6px",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent"}}>
+              <button type="button" onClick={()=>setUserMenuOpen(v=>!v)} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,borderRadius:7,padding:"4px 6px",background:view==="settings"?"rgba(250,247,242,0.12)":"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                 {user.avatar
                   ?<img src={user.avatar} alt="" style={{width:28,height:28,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"1.5px solid rgba(250,247,242,0.25)"}}/>
                   :<div style={{width:28,height:28,borderRadius:"50%",background:T,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0}}>{inits(user.name)}</div>
@@ -7895,9 +7985,15 @@ export default function App(){
                   <div style={{fontSize:8,color:"rgba(250,247,242,0.75)"}}>{user.role==="superadmin"?t("role.superadmin"):isAdmin?t("role.admin"):t("role.user")}</div>
                 </div>
                 <div style={{fontSize:10,color:"#FAF7F2",opacity:0.75,fontWeight:600}}>···</div>
-              </div>
+              </button>
             </div>
-            <button style={{width:"100%",padding:4,borderRadius:4,border:"1px solid rgba(250,247,242,0.18)",background:"transparent",color:"rgba(250,247,242,0.75)",fontSize:9,cursor:"pointer",fontFamily:"inherit"}} onClick={onSignOut}>{t("nav.signOut")}</button>
+            {userMenuOpen&&(
+              <div style={{position:"absolute",bottom:"100%",left:8,right:8,marginBottom:6,background:"#52114B",border:"1px solid rgba(250,247,242,0.15)",borderRadius:8,overflow:"hidden",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,0.25)"}}>
+                {[{label:"Mi perfil",fn:()=>{setUserMenuOpen(false);go("settings");}},{label:"Ajustes",fn:()=>{setUserMenuOpen(false);go("settings");}},{label:t("nav.signOut"),fn:()=>{setUserMenuOpen(false);onSignOut();}}].map((item,i,arr)=>(
+                  <button key={item.label} type="button" onClick={item.fn} style={{width:"100%",padding:"8px 10px",border:"none",borderBottom:i<arr.length-1?"1px solid rgba(250,247,242,0.1)":"none",background:"transparent",color:"#FAF7F2",fontSize:10,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}>{item.label}</button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -7935,10 +8031,10 @@ export default function App(){
           <div className="mob-only" style={{background:"#fff",borderTop:"1px solid #E5DDD2",display:"flex",flexShrink:0,position:"fixed",bottom:0,left:0,right:0,zIndex:50}}>
             {mobNav.map(n=>(
               <div key={n.id} style={{flex:1,padding:"8px 2px 6px",textAlign:"center",cursor:"pointer",borderTop:`2px solid ${view===n.id?G:"transparent"}`}} onClick={()=>go(n.id)}>
-                <div style={{display:"inline-flex",alignItems:"center",gap:2,flexWrap:"wrap",justifyContent:"center"}}>
-                  <span style={{fontSize:11,fontWeight:view===n.id?700:500,color:view===n.id?G:"#6B7B72"}}>{n.label}</span>
-                  {n.badge>0&&<span style={{background:BL,color:"#fff",borderRadius:"50%",width:13,height:13,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0}}>{n.badge}</span>}
-                </div>
+                <span style={{position:"relative",display:"inline-block",fontSize:11,fontWeight:view===n.id?700:500,color:view===n.id?G:"#6B7B72",paddingRight:n.badge>0?8:0}}>
+                  {n.label}
+                  {n.badge>0&&<span style={{position:"absolute",top:-6,right:-4,background:BL,color:"#fff",borderRadius:"50%",minWidth:13,height:13,padding:"0 2px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
+                </span>
               </div>
             ))}
           </div>
