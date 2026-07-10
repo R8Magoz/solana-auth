@@ -925,6 +925,48 @@ function receiptEffectiveMime(file){
   return RECEIPT_EXT_TO_MIME[ext]||raw||"";
 }
 
+function isMobileReceiptCapture(){
+  if(typeof navigator==="undefined")return false;
+  const ua=navigator.userAgent||"";
+  return /iPhone|iPad|iPod|Android|Mobile/i.test(ua)||(typeof window!=="undefined"&&window.innerWidth<768);
+}
+
+/** Resize profile photos so base64 fits SQLite avatar column (500k chars). */
+function compressAvatarDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        const maxDim=256;
+        let w=img.naturalWidth||maxDim;
+        let h=img.naturalHeight||maxDim;
+        if(w>maxDim||h>maxDim){
+          if(w>=h){h=Math.max(1,Math.round(h*maxDim/w));w=maxDim;}
+          else{w=Math.max(1,Math.round(w*maxDim/h));h=maxDim;}
+        }
+        const canvas=document.createElement("canvas");
+        canvas.width=w;
+        canvas.height=h;
+        const ctx=canvas.getContext("2d");
+        if(!ctx){resolve(String(reader.result));return;}
+        ctx.drawImage(img,0,0,w,h);
+        let quality=0.85;
+        let out=canvas.toDataURL("image/jpeg",quality);
+        while(out.length>480000&&quality>0.45){
+          quality-=0.1;
+          out=canvas.toDataURL("image/jpeg",quality);
+        }
+        resolve(out);
+      };
+      img.onerror=()=>reject(new Error("No se pudo procesar la imagen."));
+      img.src=String(reader.result);
+    };
+    reader.onerror=()=>reject(new Error("No se pudo leer el archivo."));
+    reader.readAsDataURL(file);
+  });
+}
+
 const UPLOAD_RULES={
   receipt:{
     maxBytes: 20*1024*1024,
@@ -2332,33 +2374,46 @@ export function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted
   
 function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,showSplitError=false,actionColor=G}){
   const expAmt=Number(totalAmount)||0;
-  const ownerId=user?.id||"";
   useEffect(()=>{if(spMode==="percentage")setSpMode("amount");},[spMode,setSpMode]);
   const calcEq=(arr,amt)=>{
-    const on=arr.filter(s=>s.checked);const n=on.length||1;
-    const eqPct=parseFloat((100/n).toFixed(2));
-    const eqAmt=parseFloat(((amt||0)/n).toFixed(2));
-    return arr.map(s=>s.checked?{...s,percent:eqPct,value:eqAmt}:{...s,percent:0,value:0});
+    const on=arr.filter(s=>s.checked);
+    const n=on.length;
+    if(!n)return arr.map(s=>({...s,percent:0,value:0}));
+    const rows=on.map(s=>{
+      const eqAmt=parseFloat(((amt||0)/n).toFixed(2));
+      const eqPct=parseFloat((100/n).toFixed(2));
+      return{...s,percent:eqPct,value:eqAmt};
+    });
+    const sum=rows.reduce((a,r)=>a+r.value,0);
+    if(rows.length&&amt>0&&Math.abs(sum-amt)>0.01){
+      const last={...rows[rows.length-1]};
+      last.value=parseFloat((last.value+(amt-sum)).toFixed(2));
+      last.percent=Math.round((last.value/amt)*10000)/100;
+      rows[rows.length-1]=last;
+    }
+    const byId=Object.fromEntries(rows.map(r=>[r.userId,r]));
+    return arr.map(s=>byId[s.userId]||{...s,percent:0,value:0});
   };
+  useEffect(()=>{
+    if(!splitOn||splits.length===0)return;
+    if(splits.filter(s=>s.checked).length<2)return;
+    setSplits(prev=>calcEq(prev,expAmt));
+  },[expAmt,splitOn]);
   const checkedCount=splits.filter(s=>s.checked).length;
   const totAmt=splits.filter(s=>s.checked).reduce((a,s)=>a+(Number(s.value)||0),0);
   const amtMismatch=splitOn&&spMode==="amount"&&expAmt>0&&Math.abs(totAmt-expAmt)>0.01;
   const toggleSplit=()=>{
     if(users.length<2)return;
-    if(splitOn){setSplitOn(false);setSpMode("amount");return;}
-    const n=users.length;
-    const pct=parseFloat((100/n).toFixed(2));
-    const next=users.map(u=>({userId:u.id,checked:true,percent:pct,value:0}));
+    if(splitOn){setSplitOn(false);setSplits([]);setSpMode("amount");return;}
     setSpMode("amount");
-    setSplits(calcEq(next,expAmt));
+    setSplits(users.map(u=>({userId:u.id,checked:false,percent:0,value:0})));
     setSplitOn(true);
   };
   const toggleUser=uid=>{
-    if(uid===ownerId)return;
     const next=splits.map(s=>s.userId===uid?{...s,checked:!s.checked}:s);
     const nOn=next.filter(s=>s.checked).length;
-    if(nOn<2){setSplitOn(false);setSplits([]);setSpMode("amount");return;}
-    setSplits(calcEq(next,expAmt));
+    if(nOn>=2)setSplits(calcEq(next,expAmt));
+    else setSplits(next.map(s=>({...s,percent:0,value:0})));
   };
   return(
     <div style={{background:"#F5F0EA",borderRadius:9,padding:11,marginBottom:0,opacity:users.length<2?0.92:1}} title={users.length<2?t("split.minTwoTeam"):""}>
@@ -2366,7 +2421,7 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
         <div>
           <div style={{fontWeight:600,fontSize:12}}>{t("label.splitExpense")}</div>
           {!splitOn&&<div style={{fontSize:10,color:"#9CAA9F",marginTop:1}}>{users.length<2?t("split.minTwoTeam"):t("label.divideTeam")}</div>}
-          {splitOn&&<div style={{fontSize:9,color:"#6B7B72",marginTop:3}}>{t("split.submitterLocked")}</div>}
+          {splitOn&&checkedCount<2&&<div style={{fontSize:9,color:"#6B7B72",marginTop:3}}>Selecciona al menos 2 participantes</div>}
         </div>
         <div onClick={toggleSplit} style={{width:36,height:20,borderRadius:10,background:splitOn?actionColor:(users.length<2?"#E5E0D8":"#C9C0B4"),cursor:users.length<2?"not-allowed":"pointer",position:"relative",transition:"background 0.2s ease",flexShrink:0,opacity:users.length<2?0.65:1}}>
           <div style={{position:"absolute",top:2,left:splitOn?18:2,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
@@ -2382,12 +2437,10 @@ function SplitAllocationEditor({t,user,users,totalAmount,splitOn,setSplitOn,spli
           <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
             {splits.map(s=>{
               const u=users.find(x=>x.id===s.userId)||{name:UNKNOWN_USER_NAME,color:"#999"};
-              const locked=s.userId===ownerId;
               return(
-                <div key={s.userId} onClick={()=>!locked&&toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+actionColor):"1.5px solid #DDD6CC",background:s.checked?(actionColor==="#D97706"?"rgba(217,119,6,0.10)":"rgba(60,10,55,0.06)"):"#fff",cursor:locked?"default":"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s,border-color 0.2s ease,background-color 0.2s ease"}}>
+                <div key={s.userId} onClick={()=>toggleUser(s.userId)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:20,border:s.checked?("2px solid "+actionColor):"1.5px solid #DDD6CC",background:s.checked?(actionColor==="#D97706"?"rgba(217,119,6,0.10)":"rgba(60,10,55,0.06)"):"#fff",cursor:"pointer",opacity:s.checked?1:0.55,transition:"all 0.15s,border-color 0.2s ease,background-color 0.2s ease"}}>
                   <UserAvatar user={u} size={20} fontSize={7}/>
                   <span style={{fontSize:12,fontWeight:s.checked?600:400}}>{u.name.split(" ")[0]}</span>
-                  {locked&&<span style={{fontSize:9,color:"#9CAA9F"}}>*</span>}
                 </div>
               );
             })}
@@ -6041,7 +6094,7 @@ export function SettingsView(){
           <div>
             <label style={{display:"inline-block",padding:"5px 10px",borderRadius:6,border:"1.5px solid #DDD6CC",fontSize:11,fontWeight:600,color:G,cursor:"pointer",fontFamily:"inherit",background:"transparent"}}>
               {sf.avatar?t("action.changePhoto"):t("action.upload")}
-              <input type="file" accept="image/jpeg,image/png,image/webp" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const err=validateUpload(f,UPLOAD_RULES.avatar);if(err){dispatchSolanaToast(err,"error");e.target.value="";return;}const r=new FileReader();r.onload=ev=>setSf(p=>({...p,avatar:ev.target.result}));r.readAsDataURL(f);e.target.value="";}}/>
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const err=validateUpload(f,UPLOAD_RULES.avatar);if(err){dispatchSolanaToast(err,"error");e.target.value="";return;}void compressAvatarDataUrl(f).then(dataUrl=>setSf(p=>({...p,avatar:dataUrl}))).catch(ex=>dispatchSolanaToast(ex?.message||"No se pudo procesar la imagen.","error")).finally(()=>{e.target.value="";});}}/>
             </label>
             {sf.avatar&&<button style={{marginLeft:7,fontSize:10,color:"#991B1B",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setSf(p=>({...p,avatar:null}))}>✕</button>}
           </div>
@@ -6636,6 +6689,7 @@ export default function App(){
   const capturingRef=useRef(false);
   const canvasRef=useRef(null);
   const fileRef  =useRef(null);
+  const camFileRef=useRef(null);
   /** When set, receipt file/camera targets edit form (DetailPanel) instead of new expense. */
   const receiptAltHandlerRef=useRef(null);
   const importRef=useRef(null);
@@ -6973,6 +7027,10 @@ export default function App(){
     }
   };
   const startCam=async()=>{
+    if(isMobileReceiptCapture()){
+      camFileRef.current?.click();
+      return;
+    }
     await openCamStream();
   };
   useEffect(()=>{
@@ -7160,15 +7218,19 @@ export default function App(){
   const submitExp=()=>{
     if (submitting) return;
     setSubmitting(true);
+    const failSubmit=(msg)=>{
+      if(msg)setFormError(msg);
+      setSubmitting(false);
+    };
     const ownerId = String(form.ownerId || user?.id || "").trim();
     const ownerExists = users.find(u => u.id === ownerId);
     if (!ownerExists) {
-      setFormError("Selecciona un titular válido.");
+      failSubmit("Selecciona un titular válido.");
       return;
     }
     const amount=parseMoney(form.amount);
     if(!amount||amount<=0||!String(form.description||"").trim()||!String(form.category||"").trim()||!String(form.date||"").trim()||!form.departmentId||!ownerId){
-      setFormError("Completa los campos obligatorios marcados con *");
+      failSubmit("Completa los campos obligatorios marcados con *");
       return;
     }
     const expDate = new Date(form.date);
@@ -7176,18 +7238,18 @@ export default function App(){
     const minDate = new Date(now.getFullYear() - 5, 0, 1);
     const maxDate = new Date(now.getFullYear() + 1, 11, 31);
     if(!form.date || isNaN(expDate.getTime()) || expDate < minDate || expDate > maxDate) {
-      setFormError("La fecha debe estar entre los últimos 5 años y el próximo año.");
+      failSubmit("La fecha debe estar entre los últimos 5 años y el próximo año.");
       return;
     }
     const isInvSubmit=form.expenseType==="invoice";
     const proveedorSubmit=String(form.proveedor||"").trim();
-    if(isInvSubmit&&!proveedorSubmit){setFormError("Indica el proveedor.");return;}
+    if(isInvSubmit&&!proveedorSubmit){failSubmit("Indica el proveedor.");return;}
     const condicionesPagoSubmit=String(form.paymentTermMode||"0");
     const fechaVencimientoSubmit=condicionesPagoSubmit==="custom"
       ? String(form.invoiceDueDateDirect||"").slice(0,10)
       : addDaysToISODate(form.date, Number(condicionesPagoSubmit)||0);
-    if(isInvSubmit&&condicionesPagoSubmit==="custom"&&!fechaVencimientoSubmit){setFormError("Indica la fecha de vencimiento.");return;}
-    if(isInvSubmit&&!String(form.vendor||"").trim()){setFormError("Indica el proveedor.");return;}
+    if(isInvSubmit&&condicionesPagoSubmit==="custom"&&!fechaVencimientoSubmit){failSubmit("Indica la fecha de vencimiento.");return;}
+    if(isInvSubmit&&!String(form.vendor||"").trim()){failSubmit("Indica el proveedor.");return;}
     const cadSubmit=cadenceToRecurringPayload(form);
     const ptdSubmit=paymentTermDaysFromForm(form);
     const computedDueIso=computeInvoiceDueISO(form);
@@ -7212,14 +7274,17 @@ export default function App(){
     const recExtras=cadSubmit.recurring?{recurring:1,recurrenceRule:cadSubmit.recurrenceRule}:{recurring:0,recurrenceRule:null};
     let paidBy=[{userId:ownerId,amount,pct:100}];
     let splitModeOut=undefined;
-    if(splitOn&&splits.filter(s=>s.checked).length>1){
-      const sel=splits.filter(s=>s.checked);
-      if(sel.length<2){setFormError(t("split.minParticipants"));return;}
+    const splitsForSubmit=(splitOn&&splits.filter(s=>s.checked).length>=2&&spMode==="amount")
+      ?calcEqual(splits,amount)
+      :splits;
+    if(splitOn&&splitsForSubmit.filter(s=>s.checked).length>1){
+      const sel=splitsForSubmit.filter(s=>s.checked);
+      if(sel.length<2){failSubmit(t("split.minParticipants"));return;}
       if(spMode==="amount"){
         const sumAmt=sel.reduce((s,x)=>s+(Number(x.value)||0),0);
-        if(Math.abs(sumAmt-amount)>0.01){setFormError(t("msg.valueMustMatch")+fmt(amount));return;}
+        if(Math.abs(sumAmt-amount)>0.01){failSubmit(t("msg.valueMustMatch")+fmt(amount));return;}
       }
-      paidBy=buildPaidByFromSplitState(splits.filter(s=>users.some(u=>u.id===s.userId)),amount,spMode);
+      paidBy=buildPaidByFromSplitState(splitsForSubmit.filter(s=>users.some(u=>u.id===s.userId)),amount,spMode);
       if(paidBy.length>1)splitModeOut=spMode;
     }
     if(!paidBy.length||paidBy.some(p=>!users.some(u=>u.id===p.userId))){
@@ -8160,7 +8225,8 @@ export default function App(){
           r.readAsText(f);e.target.value="";
         }}/>
         {/* Hidden file ref for receipt upload */}
-        <input ref={fileRef} type="file" accept="*/*" style={{display:"none"}} onChange={handleReceiptFile}/>
+        <input ref={fileRef} type="file" accept="image/*,.heic,.heif,application/pdf" style={{display:"none"}} onChange={handleReceiptFile}/>
+        <input ref={camFileRef} type="file" accept="image/*,.heic,.heif" capture="environment" style={{display:"none"}} onChange={handleReceiptFile}/>
 
         {camOn&&(
           <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000",zIndex:9999,display:"flex",flexDirection:"column"}}>
