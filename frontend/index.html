@@ -1792,12 +1792,29 @@ function invoiceForecastMonthlyEUR(e){
 }
 function daysUntilISO(iso){
   if(!iso||String(iso).length<10)return null;
-  const t=new Date();
-  t.setHours(0,0,0,0);
-  const d=new Date(String(iso).slice(0,10)+"T12:00:00");
-  if(isNaN(d.getTime()))return null;
-  d.setHours(0,0,0,0);
-  return Math.ceil((d-t)/86400000);
+  const todayKey=new Date().toISOString().slice(0,10);
+  const dueKey=String(iso).slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dueKey))return null;
+  const tParts=todayKey.split("-").map(Number);
+  const dParts=dueKey.split("-").map(Number);
+  const tUtc=Date.UTC(tParts[0],tParts[1]-1,tParts[2]);
+  const dUtc=Date.UTC(dParts[0],dParts[1]-1,dParts[2]);
+  return Math.round((dUtc-tUtc)/86400000);
+}
+function invoiceIsUpcomingUnpaid(e,cats,users){
+  if(!e||e.expenseType!=="invoice"||!e.dueDate)return false;
+  const st=getItemStatus(e,cats,users);
+  if(st==="rejected"||st==="deleted")return false;
+  const ps=String(e.paymentStatus||"").toLowerCase();
+  if(ps==="paid"||ps==="na")return false;
+  return true;
+}
+function parseCalendarDayParts(iso){
+  const s=String(iso||"").slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return null;
+  const [y,m,d]=s.split("-").map(Number);
+  if(!y||m<1||m>12||d<1||d>31)return null;
+  return{y,m:m-1,d};
 }
 const ST = {
   approved: { bg: '#D1FAE5', color: '#065F46' },
@@ -5353,7 +5370,7 @@ function ApprovalsView(){
 
 /* ── PAYMENT CALENDAR ──────────────────────────────────────────────────────── */
 function PaymentCalendar({reportExpenses}){
-  const{expenses,cats,t,go,setDetailId,setPanel}=useApp();
+  const{expenses,cats,users,t,go,setDetailId,setPanel}=useApp();
   const srcExpenses=Array.isArray(reportExpenses)?reportExpenses:expenses;
   const [cur,setCur]=useState(()=>new Date());
   const year=cur.getFullYear(),mon=cur.getMonth();
@@ -5361,22 +5378,21 @@ function PaymentCalendar({reportExpenses}){
   const daysInMonth=new Date(year,mon+1,0).getDate();
   const events={};
   srcExpenses.forEach(e=>{
+    if(getItemStatus(e,cats,users)==="deleted")return;
     const isInv=e.expenseType==="invoice";
     const dateRaw=isInv?(e.dueDate||e.date):e.date;
     if(!dateRaw)return;
-    try{
-      const dt=new Date(String(dateRaw).slice(0,10)+"T12:00:00");
-      if(dt.getFullYear()===year&&dt.getMonth()===mon){
-        const day=dt.getDate();
-        if(!events[day])events[day]=[];
-        events[day].push({
-          type:isInv?"invoice":"expense",
-          id:e.id,
-          label:isInv?(e.vendor||e.proveedor||e.description):e.description,
-          amount:eurForExpense(e),
-        });
-      }
-    }catch(err){}
+    const parts=parseCalendarDayParts(dateRaw);
+    if(parts&&parts.y===year&&parts.m===mon){
+      const day=parts.d;
+      if(!events[day])events[day]=[];
+      events[day].push({
+        type:isInv?"invoice":"expense",
+        id:e.id,
+        label:isInv?(e.vendor||e.proveedor||e.description):e.description,
+        amount:eurForExpense(e),
+      });
+    }
   });
   const cells=[];
   for(let i=0;i<firstDay;i++)cells.push(null);
@@ -5386,6 +5402,7 @@ function PaymentCalendar({reportExpenses}){
   const monthName=(()=>{const mn=cur.toLocaleString("es-ES",{month:"long"});const yr=cur.getFullYear();return mn.charAt(0).toUpperCase()+mn.slice(1)+" "+yr;})();
   const dayLabels=["cal.mon","cal.tue","cal.wed","cal.thu","cal.fri","cal.sat","cal.sun"].map(k=>t(k));
   const [selDay,setSelDay]=useState(null);
+  useEffect(()=>{setSelDay(null);},[year,mon]);
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -5403,10 +5420,12 @@ function PaymentCalendar({reportExpenses}){
           </div>
         ))}
       </div>
-      {selDay&&events[selDay]&&(
+      {selDay!=null&&(
         <div style={{marginTop:10,background:"#F5F0EA",borderRadius:8,padding:"10px 12px"}}>
           <div style={{fontWeight:600,fontSize:11,marginBottom:6,color:G}}>{selDay} {cur.toLocaleString("es-ES",{month:"long"})}</div>
-          {events[selDay].map((ev,i)=>(
+          {(events[selDay]||[]).length===0
+            ?<div style={{fontSize:11,color:"#9CAA9F"}}>Sin movimientos</div>
+            :(events[selDay]||[]).map((ev,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,marginBottom:3,gap:6}}>
               <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?"#C4622D":"#3C0A37",display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
               <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(ev.amount)}</span>
@@ -5437,24 +5456,9 @@ function ReportsView(){
       .map(e => e.date.slice(0,10))
       .sort();
     if(allDates.length > 0){
-      setReportFrom(allDates[0]);
-    } else if(AUTH_URL){
-      // try to fetch oldest from server
-      const tok = (()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
-      if(tok){
-        fetch(AUTH_URL+"/expenses?limit=1&sort=date&order=asc", {headers:{Authorization:"Bearer "+tok}})
-          .then(r=>r.json())
-          .catch(()=>({}))
-          .then(j=>{
-            const first = (j.expenses||[])[0];
-            if(first&&first.date) setReportFrom(first.date.slice(0,10));
-            else setReportFrom("2000-01-01");
-          });
-      } else {
-        setReportFrom("2000-01-01");
-      }
+      setReportFrom(prev=>prev||allDates[0]);
     } else {
-      setReportFrom("2000-01-01");
+      setReportFrom(prev=>prev||"2000-01-01");
     }
   }, [expenses]);
   const rangeFilteredExpenses=useMemo(()=>{
@@ -5577,10 +5581,10 @@ function ReportsView(){
     const tok=API.token||(typeof sessionStorage!=="undefined"?sessionStorage.getItem("sol-session-token"):"")||"";
     if(!tok){dispatchSolanaToast(t("msg.sessionExpired"),"error");return;}
     const {from,to}={ from: reportFrom, to: reportTo };
-    const qs=new URLSearchParams({from,to,type:"all"});
+    const qs=new URLSearchParams({from,to,type:"all",status:statusFilter});
     let r;
     try{
-      r=await fetch(AUTH_URL+"/reports/export/pdf?"+qs.toString(),{headers:{Authorization:"Bearer "+tok}});
+      r=await fetch(AUTH_URL+"/expenses/export/pdf?"+qs.toString(),{headers:{Authorization:"Bearer "+tok}});
     }catch(e){
       dispatchSolanaToast(t("msg.genericShort"),"error");
       return;

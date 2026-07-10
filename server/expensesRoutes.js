@@ -13,6 +13,81 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
 const { nextDueDate, RECURRENCE_RULES, isValidRecurrenceRule } = require('./recurrence');
 
+let PDFDocument;
+try {
+  PDFDocument = require('pdfkit');
+} catch (e) {
+  PDFDocument = null;
+}
+
+const RECURRENCE_RULES_ACCEPTED = [...RECURRENCE_RULES, 'daily'];
+
+/** daily is valid for create/update but lives outside recurrence.js RECURRENCE_RULES. */
+function isAllowedRecurrenceRule(rule) {
+  const r = String(rule || '').trim();
+  if (!r) return false;
+  if (r === 'daily') return true;
+  return isValidRecurrenceRule(r);
+}
+
+function reportRefDateISO(row) {
+  if (!row) return '';
+  if (row.expenseType === 'invoice') {
+    return String(row.dueDate || row.date || '').slice(0, 10);
+  }
+  return String(row.date || '').slice(0, 10);
+}
+
+function validateReportRange(req, res) {
+  const from = String(req.query.from ?? '').trim().slice(0, 10);
+  const to = String(req.query.to ?? '').trim().slice(0, 10);
+  if (!from || !to || !DATE_RE.test(from) || !DATE_RE.test(to)) {
+    res.status(400).json({ error: 'Parámetros from y to obligatorios (YYYY-MM-DD).' });
+    return null;
+  }
+  if (from > to) {
+    res.status(400).json({ error: 'from no puede ser posterior a to.' });
+    return null;
+  }
+  return { from, to };
+}
+
+function eurAmountRow(row) {
+  if (row.amountEUR != null && !Number.isNaN(Number(row.amountEUR))) {
+    return Number(row.amountEUR);
+  }
+  return Number(row.amount) || 0;
+}
+
+function rowMatchesReportStatus(row, statusFilter) {
+  const st = String(row.status || '').trim();
+  if (statusFilter === 'approved') return st === 'approved';
+  if (statusFilter === 'pending') {
+    return st !== 'approved' && st !== 'rejected' && st !== 'deleted';
+  }
+  return st !== 'deleted';
+}
+
+function rowMatchesReportType(row, typeFilter) {
+  const inv = row.expenseType === 'invoice';
+  if (typeFilter === 'expenses') return !inv;
+  if (typeFilter === 'bills' || typeFilter === 'invoices') return inv;
+  return true;
+}
+
+function buildUserNameMap(userStore) {
+  const map = {};
+  try {
+    const users = userStore.getAllUsersPublic ? userStore.getAllUsersPublic() : [];
+    for (const u of users) {
+      if (u && u.id) map[u.id] = u.name || u.email || u.id;
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  return map;
+}
+
 /** Reads numeric app_settings keys (e.g. approval_threshold) via settingsCache. */
 function parseAppSettingFloat(key, defaultVal) {
   try {
@@ -656,8 +731,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const rec = recurring === true || recurring === 1 || recurring === '1';
     let rule = recurrenceRule != null ? String(recurrenceRule).trim().slice(0, 48) : null;
     if (rec) {
-      if (!rule || !isValidRecurrenceRule(rule)) {
-        return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES.join(' | ')} | custom:N[weeks|months|years] | custom:N` });
+      if (!rule || !isAllowedRecurrenceRule(rule)) {
+        return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES_ACCEPTED.join(' | ')} | custom:N[weeks|months|years] | custom:N` });
       }
     } else {
       rule = null;
@@ -1031,8 +1106,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         nextRule = recurrenceRule != null ? String(recurrenceRule).trim().slice(0, 48) : null;
       }
       if (nextRec) {
-        if (!nextRule || !isValidRecurrenceRule(nextRule)) {
-          return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES.join(' | ')} | custom:N[weeks|months|years] | custom:N` });
+        if (!nextRule || !isAllowedRecurrenceRule(nextRule)) {
+          return res.status(400).json({ error: `recurrenceRule: ${RECURRENCE_RULES_ACCEPTED.join(' | ')} | custom:N[weeks|months|years] | custom:N` });
         }
       } else {
         nextRule = null;
