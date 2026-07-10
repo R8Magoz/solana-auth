@@ -105,7 +105,12 @@ body {
   text-align: left;
   transition: background 0.15s ease;
 }
-.sidebar-user-row--hover,
+.sidebar-user-row--hover {
+  background: rgba(250, 247, 242, 0.12);
+}
+.sidebar-user-row--open {
+  background: rgba(0, 0, 0, 0.18);
+}
 .sidebar-user-row--active {
   background: rgba(250, 247, 242, 0.12);
 }
@@ -128,6 +133,50 @@ body {
 }
 .sidebar-user-row__chevron--open {
   transform: rotate(180deg);
+}
+
+.sidebar-user-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 8px;
+  right: 8px;
+  margin-bottom: 6px;
+  background: var(--color-brand);
+  border: 1px solid rgba(250, 247, 242, 0.15);
+  border-radius: 10px;
+  overflow: hidden;
+  z-index: 20;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.12);
+  padding: 4px 0;
+}
+.sidebar-user-menu__item {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: #faf7f2;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.sidebar-user-menu__item--bordered {
+  border-bottom: 1px solid rgba(250, 247, 242, 0.08);
+}
+.sidebar-user-menu__item:hover {
+  background: rgba(250, 247, 242, 0.12);
+}
+.sidebar-user-menu__item--destructive {
+  font-weight: 600;
+  color: rgba(250, 247, 242, 0.92);
+}
+.sidebar-user-menu__item--destructive:hover {
+  background: rgba(220, 38, 38, 0.18);
+  color: #fecaca;
 }
 
 /* ── Motion system (Batch 10) ─────────────────────────────────────────────── */
