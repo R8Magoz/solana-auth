@@ -1300,11 +1300,12 @@ function makeBlankForm(expenseType,{user}){
 /* ── SIDEBAR USER MENU ─────────────────────────────────────────────────────── */
 function SidebarUserRow({name,active,open,onToggle}){
   const [hovered,setHovered]=useState(false);
-  const showHover=hovered&&!active;
+  const showHover=hovered&&!open&&!active;
   const nameColor="#FAF7F2";
   const rowClass=[
     "sidebar-user-row",
-    active?" sidebar-user-row--active":"",
+    open?" sidebar-user-row--open":"",
+    active&&!open?" sidebar-user-row--active":"",
     showHover?" sidebar-user-row--hover":"",
   ].join("");
   return(
@@ -1324,31 +1325,18 @@ function SidebarUserRow({name,active,open,onToggle}){
   );
 }
 function SidebarUserMenu({items}){
-  const [hovered,setHovered]=useState(null);
   return(
-    <div className="fade-in" style={{position:"absolute",bottom:"100%",left:8,right:8,marginBottom:6,background:G,border:"1px solid rgba(250,247,242,0.15)",borderRadius:10,overflow:"hidden",zIndex:20,boxShadow:"0 12px 32px rgba(0,0,0,0.28),0 2px 8px rgba(0,0,0,0.12)",padding:"4px 0"}}>
+    <div className="sidebar-user-menu fade-in">
       {items.map((item,i)=>(
         <button
           key={item.key}
           type="button"
-          onMouseEnter={()=>setHovered(i)}
-          onMouseLeave={()=>setHovered(null)}
+          className={[
+            "sidebar-user-menu__item",
+            item.destructive?"sidebar-user-menu__item--destructive":"",
+            i<items.length-1?"sidebar-user-menu__item--bordered":"",
+          ].filter(Boolean).join(" ")}
           onClick={item.fn}
-          style={{
-            width:"100%",
-            minHeight:40,
-            padding:"10px 14px",
-            border:"none",
-            borderBottom:i<items.length-1?"1px solid rgba(250,247,242,0.08)":"none",
-            background:hovered===i?(item.destructive?"rgba(220,38,38,0.18)":"rgba(250,247,242,0.12)"):"transparent",
-            color:item.destructive?(hovered===i?"#FECACA":"rgba(250,247,242,0.92)"):"#FAF7F2",
-            fontSize:11,
-            fontWeight:item.destructive?600:500,
-            textAlign:"left",
-            cursor:"pointer",
-            fontFamily:"inherit",
-            transition:"background 0.15s ease,color 0.15s ease",
-          }}
         >
           {item.label}
         </button>
