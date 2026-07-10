@@ -186,6 +186,18 @@ function userIdInRawApproverList(approverTokens, userId, userStore) {
   return false;
 }
 
+function resolveExpenseApproverIdsForAuth(exp, userStore) {
+  const raw = parseJsonArray(exp && exp.approversJson);
+  if (raw.length > 0) return canonicalizeApproverIds(raw, userStore);
+  return canonicalizeApproverIds(getApproverIdsForCategory(exp && exp.category), userStore);
+}
+
+function canUserActOnExpenseApproval(exp, userId, userRole, userStore) {
+  if (!isAdminRole(userRole)) return false;
+  const approverIds = resolveExpenseApproverIdsForAuth(exp, userStore);
+  return approverIds.includes(String(userId || ''));
+}
+
 /**
  * Validate client paidBy[] against total EUR; resolve legacy user tokens.
  * @returns {{ paidBy: Array<{userId:string,amount:number,pct?:number}>, splitMode: string|null }|{ error: string }}
@@ -991,42 +1003,15 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   });
 
   router.post('/:id/approve', requireAuth, (req, res) => {
-    if (!isAdminRole(req.userRole)) {
-      return res.status(403).json({ error: 'No autorizado.' });
-    }
     let exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
     const now = Date.now();
     const adminId = req.userId || null;
-    const approversRaw = parseJsonArray(exp.approversJson);
-
-    if (approversRaw.length === 0) {
-      const defaultIds = getApproverIdsForCategory(exp.category);
-      if (!defaultIds.includes(req.userId) && !isAdminRole(req.userRole)) {
-        return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
-      }
-      const votes = {};
-      votes[req.userId] = 'approved';
-      const allDone = defaultIds.length > 0 && defaultIds.every(id => votes[id] === 'approved');
-      if (allDone) {
-        db.prepare(`UPDATE expenses SET status='approved', approvedBy=?, approvedAt=?,
-          rejectedBy=NULL, rejectedAt=NULL, rejectionNote=NULL, updatedAt=? WHERE id=?`)
-          .run(req.userId, now, now, exp.id);
-        if (exp.expenseType === 'invoice' && exp.paymentStatus === 'pending_approval') {
-          // Only flip to 'unpaid' if this was a deferred payment invoice.
-          // If paymentStatus is already 'paid' (non-deferred), leave it alone.
-          db.prepare("UPDATE expenses SET paymentStatus = 'unpaid', updatedAt = ? WHERE id = ?")
-            .run(Date.now(), exp.id);
-        }
-      } else {
-        db.prepare(`UPDATE expenses SET approversJson=?, approvalVotesJson=?, updatedAt=? WHERE id=?`)
-          .run(JSON.stringify(defaultIds), JSON.stringify(votes), now, exp.id);
-      }
-      const updated = getExpenseById(exp.id);
-      audit('expense_approved', { userId: req.userId, targetId: exp.id });
-      return res.json({ ok: true, expense: updated });
+    if (!canUserActOnExpenseApproval(exp, adminId, req.userRole, userStore)) {
+      return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
     }
+    const approversCanon = resolveExpenseApproverIdsForAuth(exp, userStore);
 
     const canApprove = exp.status === 'submitted' ||
       (exp.status === 'rejected' && isAdminRole(req.userRole));
@@ -1041,11 +1026,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       // reload
       exp = getExpenseById(exp.id);
     }
-    if (!userIdInRawApproverList(approversRaw, adminId, userStore)) {
-      return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
-    }
-
-    const approversCanon = canonicalizeApproverIds(approversRaw, userStore);
     const votes = remapVotesWithCanonicalKeys(parseJsonObject(exp.approvalVotesJson), userStore);
     votes[adminId] = 'approved';
     const allDone = approversCanon.length > 0 && approversCanon.every((id) => votes[id] === 'approved');
@@ -1080,9 +1060,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   });
 
   router.post('/:id/reject', requireAuth, (req, res) => {
-    if (!isAdminRole(req.userRole)) {
-      return res.status(403).json({ error: 'No autorizado.' });
-    }
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
@@ -1092,38 +1069,13 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (!note || note.length < 10) {
       return res.status(400).json({ error: 'El motivo del rechazo es obligatorio (mínimo 10 caracteres).' });
     }
-    const approversRaw = parseJsonArray(exp.approversJson);
-
-    if (approversRaw.length === 0) {
-      const defaultIds = getApproverIdsForCategory(exp.category);
-      if (!defaultIds.includes(req.userId) && !isAdminRole(req.userRole)) {
-        return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
-      }
-      const votes = {};
-      votes[req.userId] = 'rejected';
-      db.prepare(`
-        UPDATE expenses SET
-          status = 'rejected',
-          approversJson = ?,
-          approvalVotesJson = ?,
-          rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
-          updatedAt = ?
-        WHERE id = ?
-      `).run(JSON.stringify(defaultIds), JSON.stringify(votes), req.userId, now, note, now, exp.id);
-      const updated = getExpenseById(exp.id);
-      audit('expense_rejected', { userId: req.userId, targetId: exp.id, note });
-      return res.json({ ok: true, expense: updated });
+    if (!canUserActOnExpenseApproval(exp, adminId, req.userRole, userStore)) {
+      return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
     }
-
-    if (approversRaw.length > 0) {
-      const canReject = exp.status === 'submitted' ||
-        (exp.status === 'approved' && isAdminRole(req.userRole));
-      if (!canReject) {
-        return res.status(400).json({ error: 'No se puede rechazar en este estado.' });
-      }
-      if (!userIdInRawApproverList(approversRaw, adminId, userStore)) {
-        return res.status(403).json({ error: 'No eres aprobador designado para este gasto.' });
-      }
+    const canReject = exp.status === 'submitted' ||
+      (exp.status === 'approved' && isAdminRole(req.userRole));
+    if (!canReject) {
+      return res.status(400).json({ error: 'No se puede rechazar en este estado.' });
     }
 
     db.prepare(`

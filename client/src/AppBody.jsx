@@ -313,24 +313,41 @@ const finalizeApproverIdList=(canonicalIds,users)=>{
   const admins=getAdminIds(u);
   return valid.length>=2?valid:admins;
 };
+const expenseApproverTokens=(exp)=>{
+  if(Array.isArray(exp?.approvalRequired)&&exp.approvalRequired.length>0)return exp.approvalRequired;
+  if(Array.isArray(exp?.approversJson)&&exp.approversJson.length>0)return exp.approversJson;
+  if(typeof exp?.approversJson==="string"){
+    try{
+      const parsed=JSON.parse(exp.approversJson||"null");
+      if(Array.isArray(parsed)&&parsed.length>0)return parsed;
+    }catch(e){}
+  }
+  if(Array.isArray(exp?.approvers)&&exp.approvers.length>0)return exp.approvers;
+  return null;
+};
 const effectiveExpenseApproverIds=(exp,cats,users)=>{
-  // First check expense's own approversJson (set at creation)
-  const fromExp = exp?.approversJson ||
-    (Array.isArray(exp?.approvers) ? exp.approvers : []);
-  if (Array.isArray(fromExp) && fromExp.length > 0) return fromExp;
-
-  // Fall back to category assignment
+  const fromExpense=expenseApproverTokens(exp);
+  if(fromExpense)return canonicalApproverIdList(fromExpense,users);
   const cat = (cats || []).find(c =>
     c.name && c.name.toLowerCase() === (exp?.category || '').toLowerCase()
   );
   if (cat && Array.isArray(cat.approverIds) && cat.approverIds.length > 0) {
-    return cat.approverIds;
+    return canonicalApproverIdList(cat.approverIds,users);
   }
-
-  // Last resort: superadmins only
   return (users || [])
     .filter(u => u.role === 'superadmin')
     .map(u => u.id);
+};
+const canUserReviewExpense=(item,{user,isAdmin,cats,users})=>{
+  if(!isAdmin||!item||!user?.id)return false;
+  const approverIds=effectiveExpenseApproverIds(item,cats,users);
+  if(!approverIds.includes(user.id))return false;
+  if(approvalVoteFor(item.approvals||{},user.id,users)==="approved")return false;
+  if(item._apiType==="expense"){
+    return item.status==="submitted"||item.status==="approved";
+  }
+  const st=getItemStatus(item,cats,users);
+  return st==="pending"||st==="approved";
 };
 const getItemStatus=(item,cats,users)=>{
   if (item && item._apiType === 'expense' && item.status === 'rejected') return 'rejected';
@@ -345,8 +362,7 @@ const getItemStatus=(item,cats,users)=>{
       const reqIdsRaw=Array.isArray(item.approvalRequired)&&item.approvalRequired.length>0?item.approvalRequired:null;
       let reqIds;
       if(reqIdsRaw&&(users&&users.length)){
-        const canon=canonicalApproverIdList(reqIdsRaw,users);
-        reqIds=finalizeApproverIdList(canon,users);
+        reqIds=canonicalApproverIdList(reqIdsRaw,users);
       }else{
         reqIds=reqIdsRaw;
       }
@@ -3280,7 +3296,7 @@ function DetailPanel(){
           </div>
         );})}
       </div>
-      {((AUTH_URL&&e._apiType==="expense"&&(e.status==="submitted"||e.status==="pending"||(isAdmin&&e.status==="approved"))&&isAdmin&&approverIds.includes(user.id)&&approvalVoteFor(e.approvals,user.id,users)!=="approved")||(!AUTH_URL&&isAdmin&&approverIds.includes(user.id)&&(st==="pending"||(isAdmin&&st==="approved"))&&approvalVoteFor(e.approvals,user.id,users)!=="approved"))&&(
+      {canUserReviewExpense(e,{user,isAdmin,cats,users})&&(
         <div style={{marginTop:9,borderTop:`1px solid ${detailAccent}`,paddingTop:9}}>
           <label className="lbl" style={{marginBottom:3,color:detailAccent}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
@@ -4210,7 +4226,7 @@ export function ApprovalsView(){
           const cardBorder = priorityForItem(item) === 0
             ? '1.5px solid #D4AED0'
             : '1px solid transparent';
-          const canActOnRow=isAdmin&&rowApproverIds.includes(user.id);
+          const canActOnRow=canUserReviewExpense(item,{user,isAdmin,cats,users});
           const payBadge=invoicePaymentBadge(item);
           return(
             <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
