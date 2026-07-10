@@ -23,7 +23,7 @@ export const TR = {
     "action.add": "Añadir",
     "action.submit": "Enviar gasto",
     "action.submitBill": "Enviar factura",
-    "action.exportCSV": "Exportar CSV",
+    "action.exportXLSX": "Exportar Excel",
     "action.downloadPdf": "Descargar PDF",
     "action.exportJSON": "Exportar JSON",
     "action.importJSON": "Importar JSON",

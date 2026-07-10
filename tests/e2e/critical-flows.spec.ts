@@ -398,6 +398,62 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       return json(200, { ok: true, totalExpenses, byCategory: {}, byDepartment: {} });
     }
 
+    if (path === '/reports/summary/trend' && method === 'GET') {
+      if (!session) return json(401, { error: 'No autorizado.' });
+      const r = session.role;
+      if (r !== 'admin' && r !== 'superadmin') return json(403, { error: 'No autorizado.' });
+      return json(200, []);
+    }
+
+    if (path === '/reports/export/xlsx' && method === 'GET') {
+      if (!session) return json(401, { error: 'No autorizado.' });
+      const idsParam = url.searchParams.get('ids') || '';
+      const idList = idsParam.split(',').map((s) => s.trim()).filter(Boolean);
+      const rows = idList.length
+        ? state.expenses.filter((ex) => idList.includes(ex.id))
+        : state.expenses;
+      const tag = (url.searchParams.get('tag') || 'export').replace(/[^a-zA-Z0-9_-]/g, '') || 'export';
+      const filename = `solana-${tag}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const ExcelJS = require('exceljs');
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Gastos');
+        const headers = [
+          'Código', 'Tipo', 'Fecha', 'Concepto', 'Categoría', 'Estado',
+          'Enviado por', 'Pagado por', 'Notas', 'Aprobadores', 'Total con IVA',
+        ];
+        const headerRow = ws.addRow(headers);
+        headerRow.font = { bold: true };
+        for (const ex of rows) {
+          ws.addRow([
+            ex.id,
+            ex.expenseType === 'invoice' ? 'Factura' : 'Gasto',
+            ex.date,
+            ex.description || '',
+            ex.category || '',
+            ex.status || '',
+            ex.userId || '',
+            '',
+            ex.notes || '',
+            '',
+            Number(ex.amountEUR || ex.amount || 0),
+          ]);
+        }
+        const buffer = await wb.xlsx.writeBuffer();
+        return route.fulfill({
+          status: 200,
+          headers: {
+            'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'content-disposition': `attachment; filename="${filename}"`,
+          },
+          body: Buffer.from(buffer),
+        });
+      } catch (e) {
+        return json(503, { error: 'Excel no disponible en pruebas.' });
+      }
+    }
+
     const expenseByIdMatch = path.match(/^\/expenses\/([^/]+)$/);
     if (expenseByIdMatch && method === 'GET') {
       if (!session) return json(401, { error: 'No autorizado.' });
@@ -1479,14 +1535,13 @@ test.describe('D — Informes (Reports)', () => {
     await expect(page.getByText(/Total del período|Total período|Total/i).first()).toBeVisible();
   });
 
-  test('D3) Export dropdown shows CSV and PDF options', async ({ page }) => {
+  test('D3) Export button shows Exportar Excel', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
     await clickSidebarSection(page, 'Informes');
-    // Export control is a <select>; CSV/PDF entries are options (often hidden until opened)
-    const exportSelect = page.getByRole('combobox').nth(2);
-    await expect(exportSelect.locator('option').filter({ hasText: 'CSV' })).toHaveCount(1);
-    await expect(exportSelect.locator('option').filter({ hasText: 'PDF' })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /Exportar Excel/i })).toBeVisible();
+    await expect(page.getByText('Exportar CSV')).toHaveCount(0);
+    await expect(page.getByText('Exportar PDF')).toHaveCount(0);
   });
 });
 
