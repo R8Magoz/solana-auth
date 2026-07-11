@@ -3,6 +3,7 @@ import {
   assertPostRefetchStatus,
   attachMockApiRoutes,
   createMockApiState,
+  defaultMockDepartments,
   expectRequestFired,
   getExpenseFromState,
   setupMockApi,
@@ -279,6 +280,19 @@ test.describe('A — Expense lifecycle', () => {
     await expect(page.getByText('Compra monitor QA').first()).toBeVisible();
     const row = page.locator('[class*="row"], [class*="card"], li').filter({ hasText: 'Compra monitor QA' }).first();
     await expect(row.getByText(/Pendiente|Enviado|pending/i).first()).toBeVisible();
+  });
+
+  test('A1b) New expense stores traceCode and shows it in detail', async ({ page }) => {
+    const state = await setupMockApi(page);
+    await loginAs(page, 'admin@solana.test');
+    await createExpenseViaUi(page, 'Trace code QA', '250');
+    const expense = state.expenses.find((e) => e.description === 'Trace code QA');
+    expect(expense?.traceCode).toBeTruthy();
+    expect(String(expense!.traceCode)).toMatch(/^\d{8}_\d{4}_250\.00EUR_[a-z0-9]{4}$/);
+    await clickSidebarGastos(page);
+    await openExpenseDetail(page, 'Trace code QA');
+    const panel = getDetailPanel(page);
+    await expect(panel.getByText(String(expense!.traceCode)).first()).toBeVisible();
   });
 
   test('A2) Submit gasto — admin approves — status turns Aprobado', async ({ page }) => {

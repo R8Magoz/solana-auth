@@ -122,6 +122,7 @@ addColumnIfMissing('expenses', 'paidByJson', 'TEXT');
 addColumnIfMissing('expenses', 'splitMode', 'TEXT');
 addColumnIfMissing('expenses', 'ivaRate', 'REAL');
 addColumnIfMissing('expenses', 'ivaAmount', 'REAL');
+addColumnIfMissing('expenses', 'traceCode', 'TEXT');
 addColumnIfMissing('expenses', 'commentsJson', 'TEXT');
 addColumnIfMissing('expenses', 'ownerId', 'TEXT');
 addColumnIfMissing('expenses', 'expenseType',    'TEXT DEFAULT \'expense\'');
