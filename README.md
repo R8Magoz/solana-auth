@@ -28,7 +28,7 @@ solana/
 
 ## Stack
 
-- **Frontend:** Single-file React SPA (`frontend/index.html`, Babel in-browser) on **Cloudflare Pages**
+- **Frontend:** Single-file React SPA (`frontend/index.html`, Babel in-browser) on **Cloudflare Pages** — sole source of truth; no parallel `client/` copy
 - **Backend:** Node.js + Express + SQLite on **Render** (`server/`)
 - **Email:** Resend
 - **Receipts:** Cloudinary (optional; otherwise local `data/receipts/` on the Render disk)

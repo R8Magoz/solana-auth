@@ -52,3 +52,42 @@ node server.js
 ```
 
 Default port **3001** unless `PORT` is set. Point the SPA at `http://localhost:3001` for `AUTH_URL` while developing.
+
+## 5. Off-disk database backups
+
+The API keeps **two** backup layers:
+
+| Layer | Schedule | Location | Purpose |
+|-------|----------|----------|---------|
+| On-disk | Startup + every 6 h | `DATA_DIR/backups/` (Render persistent disk) | Fast local restore via admin UI |
+| Off-disk | Startup + every 24 h | **Cloudinary** (`CLOUDINARY_BACKUPS_FOLDER`, default `solana-db-backups`) | Survives Render disk loss |
+
+Off-disk backups use the **better-sqlite3 `.backup()`** API (safe with an open DB), upload as **raw** files to Cloudinary, and retain the **7 most recent** copies (older ones are pruned automatically).
+
+### Required env vars (off-disk)
+
+Same as receipts — all three must be set in Render:
+
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+
+Optional:
+
+- `CLOUDINARY_BACKUPS_FOLDER` — Cloudinary folder prefix (default `solana-db-backups`)
+
+If Cloudinary is **not** configured, off-disk backups are **skipped** with a console warning; the server continues normally. On-disk backups still run.
+
+Audit events: `db_backup_succeeded` / `db_backup_failed` (with size and timestamp).
+
+### Restore from an off-disk backup
+
+1. In the [Cloudinary Media Library](https://cloudinary.com/console), open folder **`solana-db-backups`** (or your `CLOUDINARY_BACKUPS_FOLDER`).
+2. Download the desired `solana-YYYY-MM-DD-HHmm.db` file.
+3. Stop the Render service (or scale to zero) so nothing holds the live DB open.
+4. Replace the live database:
+   - Via admin API: `POST /admin/backups/restore` with a file already placed under `DATA_DIR/backups/` (copy the download there first), **or**
+   - Manually: copy the downloaded file over `DATA_DIR/solana.db` on the Render shell/disk, remove `solana.db-wal` and `solana.db-shm` if present.
+5. Restart the service and verify `GET /health`.
+
+For routine restore from **on-disk** copies (same Render disk), use **Ajustes → Copias de seguridad** or `GET /admin/backups` / `POST /admin/backup`.
