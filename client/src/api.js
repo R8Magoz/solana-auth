@@ -27,8 +27,23 @@ function writeOfflineQueue(q) {
   } catch (e) {}
 }
 
+const TOAST_DURATION_MS = { success: 3500, error: 7000, info: 4000, sync: 3500, offline: 5000, conflict: 7000 };
+
 function dispatchSolanaToast(message, kind, durationMs) {
-  window.dispatchEvent(new CustomEvent("solana-toast", { detail: { message, kind: kind || "info", durationMs } }));
+  const k = kind || "info";
+  const ms = Number.isFinite(Number(durationMs))
+    ? Number(durationMs)
+    : (TOAST_DURATION_MS[k] ?? TOAST_DURATION_MS.info);
+  window.dispatchEvent(new CustomEvent("solana-toast", { detail: { message, kind: k, durationMs: ms } }));
+}
+
+function toastSaved(label) {
+  const msg = label ? `${label} guardado correctamente` : "Guardado correctamente";
+  dispatchSolanaToast(msg, "success");
+}
+
+function toastSaveFailed(message) {
+  dispatchSolanaToast(message || "No se pudo guardar.", "error");
 }
 
 function isNetworkError(e) {
@@ -312,6 +327,9 @@ export {
   readOfflineQueue,
   writeOfflineQueue,
   dispatchSolanaToast,
+  toastSaved,
+  toastSaveFailed,
+  TOAST_DURATION_MS,
   isNetworkError,
   shouldQueueWrite,
   makeOfflineQueuedError,
