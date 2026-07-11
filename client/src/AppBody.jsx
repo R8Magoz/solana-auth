@@ -407,6 +407,212 @@ const EDIT_FIELD_LABELS={
   notes:"Notas",departmentId:"Departamento",ivaRate:"IVA",ivaAmount:"Importe IVA",
   vendor:"Proveedor",dueDate:"Vencimiento",expenseType:"Tipo",paidBy:"Reparto",splitMode:"Modo reparto",
 };
+const TIMELINE_ACTION_LABEL={
+  created:"Enviado",submitted:"Enviado",auto_approved:"Aprobado automáticamente",approved:"Aprobado",
+  rejected:"Rechazado",resubmitted:"Reenviado",edited:"Editado",updated:"Editado",
+  attachment_removed:"Adjunto eliminado",attachment_uploaded:"Adjunto subido",
+  comment_added:"Nota añadida",reapproval_required:"Requiere nueva revisión",
+  deleted:"Eliminado",vote_changed:"Voto actualizado",
+  approver_removed_autoapprove:"Aprobador eliminado (voto automático)",
+};
+const TIMELINE_HIDDEN_ACTIONS=new Set(["vote_changed","updated","exported","paid","mark_paid"]);
+const TIMELINE_COLLAPSE_ACTIONS=new Set(["approved","auto_approved","rejected","submitted","created"]);
+const SERVER_AUDIT_EVENT_TO_ACTION={
+  expense_submitted:"submitted",expense_created:"submitted",expense_approved:"approved",
+  expense_rejected:"rejected",expense_deleted:"deleted",expense_reapproval_required:"reapproval_required",
+  expense_vote_changed:"vote_changed",expense_approver_removed_autoapprove:"approver_removed_autoapprove",
+  expense_edited:"edited",expense_updated:"updated",expense_receipt_uploaded:"attachment_uploaded",
+  expense_comment_added:"comment_added",
+};
+function formatTimelineTimestamp(at){
+  try{
+    const d=new Date(at);
+    if(Number.isNaN(d.getTime()))return String(at||"");
+    return d.toLocaleString("es-ES",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  }catch(err){
+    return String(at||"");
+  }
+}
+function parseTimelineNumber(val){
+  if(val==null||val==="")return null;
+  if(typeof val==="number"&&Number.isFinite(val))return val;
+  const n=parseMoney(String(val));
+  return Number.isFinite(n)?n:null;
+}
+function formatTimelineFieldValue(field,val,ctx){
+  if(val==null||val==="")return"—";
+  if(field==="amount"||field==="ivaAmount"){
+    const n=parseTimelineNumber(val);
+    return n!=null?fmt(n):String(val);
+  }
+  if(field==="paidBy")return null;
+  if(field==="splitMode"){
+    const modes={equal:"Partes iguales",percentage:"Por porcentaje",amount:"Por importe"};
+    return modes[String(val)]||String(val);
+  }
+  if(field==="departmentId"&&ctx?.departments){
+    const hit=(ctx.departments||[]).find(d=>d.id===val);
+    return hit?.name||String(val);
+  }
+  if(field==="ivaRate"){
+    const n=Number(val);
+    if(!Number.isFinite(n))return String(val);
+    if(n===0)return"Sin IVA";
+    return`${n}%`;
+  }
+  if(field==="date"||field==="dueDate"){
+    try{return fmtDate(String(val).slice(0,10));}catch(e){return String(val);}
+  }
+  return String(val);
+}
+function summarizeEditChanges(changes,ctx){
+  const summaries=[];
+  const technical=[];
+  for(const ch of changes||[]){
+    if(!ch||!ch.field)continue;
+    technical.push({field:ch.field,from:ch.from,to:ch.to});
+    if(ch.field==="paidBy"){
+      summaries.push("Reparto actualizado");
+      continue;
+    }
+    const label=EDIT_FIELD_LABELS[ch.field]||ch.field;
+    const from=formatTimelineFieldValue(ch.field,ch.from,ctx);
+    const to=formatTimelineFieldValue(ch.field,ch.to,ctx);
+    summaries.push(`${label}: ${from} → ${to}`);
+  }
+  return{summaries,technical};
+}
+function buildEditSummaryFromMeta(meta,t){
+  const fields=meta&&Array.isArray(meta.fields)?meta.fields:[];
+  if(!fields.length)return{summaries:[],technical:null};
+  const labels=expenseTimelineEditedFieldLabels(meta,t);
+  return{
+    summaries:labels?[t("timeline.editedFields",{fields:labels})]:[],
+    technical:{fields},
+  };
+}
+function buildExpenseDetailTimelineEvents(e,serverAudit,useServerAudit,departments,t){
+  const events=[];
+  if(useServerAudit){
+    serverAudit.forEach(entry=>{
+      if(entry.event==="expense_comment_added")return;
+      const action=SERVER_AUDIT_EVENT_TO_ACTION[entry.event];
+      if(!action||TIMELINE_HIDDEN_ACTIONS.has(action))return;
+      if(entry.event==="expense_edited"&&Array.isArray(entry.changes)&&entry.changes.length>0){
+        const sum=summarizeEditChanges(entry.changes,{departments});
+        events.push({
+          id:`srv-${entry.id}`,
+          at:entry.ts,
+          action:"edited",
+          by:entry.userId,
+          editSummaries:sum.summaries,
+          technicalDetail:sum.technical,
+        });
+        return;
+      }
+      if(entry.event==="expense_updated")return;
+      events.push({
+        id:`srv-${entry.id}`,
+        at:entry.ts,
+        action,
+        by:entry.userId,
+        note:entry.note||null,
+        meta:entry,
+      });
+    });
+  }else{
+    (e.auditTrail||[]).forEach(tr=>{
+      const action=String(tr.action||"");
+      if(!action||TIMELINE_HIDDEN_ACTIONS.has(action))return;
+      let editSummaries=null,technicalDetail=null;
+      if(action==="edited"&&tr.meta){
+        if(Array.isArray(tr.meta.changes)&&tr.meta.changes.length>0){
+          const sum=summarizeEditChanges(tr.meta.changes,{departments});
+          editSummaries=sum.summaries;
+          technicalDetail=sum.technical;
+        }else if(Array.isArray(tr.meta.fields)&&tr.meta.fields.length>0){
+          const sum=buildEditSummaryFromMeta(tr.meta,t);
+          editSummaries=sum.summaries;
+          technicalDetail=sum.technical;
+        }
+      }
+      events.push({
+        id:tr.id||`local-${tr.at}-${action}`,
+        at:tr.at,
+        action,
+        by:tr.by,
+        note:tr.note||null,
+        meta:tr.meta||null,
+        editSummaries,
+        technicalDetail,
+      });
+    });
+  }
+  (e.comments||[]).forEach(c=>{
+    events.push({
+      id:c.id||`cmt-${c.at}`,
+      at:c.at||c.createdAt,
+      action:"comment_added",
+      by:c.by||c.userId,
+      note:String(c.text||"").trim(),
+    });
+  });
+  const hasSubmitted=events.some(ev=>ev.action==="submitted"||ev.action==="created");
+  if(e.createdAt&&!hasSubmitted){
+    events.push({
+      id:"syn-created",
+      at:new Date(e.createdAt).toISOString(),
+      action:"submitted",
+      by:e.submittedBy||e.userId,
+    });
+  }
+  if(!useServerAudit){
+    if(e.approvedAt&&!events.some(ev=>ev.action==="approved")){
+      events.push({
+        id:"syn-approved",
+        at:new Date(e.approvedAt).toISOString(),
+        action:"approved",
+        by:e.approvedBy,
+      });
+    }
+    if(e.rejectedAt&&!events.some(ev=>ev.action==="rejected")){
+      events.push({
+        id:"syn-rejected",
+        at:new Date(e.rejectedAt).toISOString(),
+        action:"rejected",
+        by:e.rejectedBy,
+        note:e.rejectionNote||null,
+      });
+    }
+  }
+  return events
+    .filter(ev=>!TIMELINE_HIDDEN_ACTIONS.has(ev.action))
+    .sort((a,b)=>new Date(a.at).getTime()-new Date(b.at).getTime());
+}
+function collapseTimelineEvents(events){
+  const out=[];
+  for(const ev of events){
+    const last=out[out.length-1];
+    if(last&&TIMELINE_COLLAPSE_ACTIONS.has(ev.action)&&last.action===ev.action&&String(last.by||"")===String(ev.by||"")){
+      last._collapseCount=(last._collapseCount||1)+1;
+      last._collapsedRaw=[...(last._collapsedRaw||[{id:last.id,at:last.at,by:last.by,note:last.note,meta:last.meta}]),{id:ev.id,at:ev.at,by:ev.by,note:ev.note,meta:ev.meta}];
+      last._collapsedAt=ev.at;
+      continue;
+    }
+    out.push({...ev,_collapseCount:1});
+  }
+  return out;
+}
+function timelineTechnicalPayload(ev){
+  if(ev._collapsedRaw&&ev._collapsedRaw.length>1)return{_collapsedEvents:ev._collapsedRaw};
+  if(ev.technicalDetail&&(Array.isArray(ev.technicalDetail)?ev.technicalDetail.length:Object.keys(ev.technicalDetail).length)){
+    return{changes:ev.technicalDetail};
+  }
+  if(ev.meta&&(ev.meta.fields||ev.meta.changes||ev.meta.reason)){
+    return{meta:ev.meta};
+  }
+  return null;
+}
 const expenseApproverTokens=(exp)=>{
   if(Array.isArray(exp?.approvalRequired)&&exp.approvalRequired.length>0)return exp.approvalRequired;
   if(Array.isArray(exp?.approversJson)&&exp.approversJson.length>0)return exp.approversJson;
@@ -3064,7 +3270,9 @@ function DetailPanel(){
   const [commentText,setCommentText]=useState("");
   const [serverAudit,setServerAudit]=useState([]);
   const [editSaving,setEditSaving]=useState(false);
+  const [timelineTechOpen,setTimelineTechOpen]=useState({});
   const e=expenses.find(x=>x.id===detailId);
+  useEffect(()=>{setTimelineTechOpen({});},[detailId]);
   useEffect(()=>{
     if(detailId)markExpenseRead(detailId);
   },[detailId]);
@@ -3124,85 +3332,11 @@ function DetailPanel(){
     }).catch(()=>{if(!dead)setServerAudit([]);});
     return()=>{dead=true;};
   },[detailId,e?.updatedAt,e?.status]);
-  const allEvents = React.useMemo(() => {
+  const useServerAudit=!!AUTH_URL;
+  const timelineEvents=React.useMemo(()=>{
     if(!e)return[];
-    const events = [];
-
-    // auditTrail entries
-    (e.auditTrail || []).forEach(tr => {
-      events.push({
-        id: tr.id || tr.at,
-        at: tr.at,
-        type: 'audit',
-        action: tr.action,
-        by: tr.by,
-        note: tr.note || null,
-        editChanges: tr.meta?.fields ? tr.meta.fields.map(f=>({field:f,from:null,to:null})) : null,
-      });
-    });
-
-    const auditEventToAction={
-      expense_submitted:"submitted",
-      expense_created:"created",
-      expense_approved:"approved",
-      expense_rejected:"rejected",
-      expense_comment_added:"comment_added",
-      expense_deleted:"deleted",
-      expense_reapproval_required:"reapproval_required",
-      expense_vote_changed:"vote_changed",
-      expense_approver_removed_autoapprove:"approver_removed_autoapprove",
-    };
-    serverAudit.forEach(entry=>{
-      if(entry.event==="expense_edited"&&Array.isArray(entry.changes)&&entry.changes.length>0){
-        events.push({
-          id:`srv-audit-${entry.id}`,
-          at:entry.ts,
-          type:"audit",
-          action:"edited",
-          by:entry.userId,
-          editChanges:entry.changes,
-        });
-        return;
-      }
-      const mapped=auditEventToAction[entry.event];
-      if(mapped){
-        events.push({
-          id:`srv-audit-${entry.id}`,
-          at:entry.ts,
-          type:"audit",
-          action:mapped,
-          by:entry.userId,
-          note:entry.note||null,
-        });
-      }
-    });
-
-    // comments
-    (e.comments || []).forEach(c => {
-      events.push({
-        id: c.id,
-        at: c.at || c.createdAt,
-        type: 'comment',
-        action: 'comment_added',
-        by: c.by || c.userId,
-        note: c.text,
-      });
-    });
-
-    // synthesize from known fields if auditTrail is sparse
-    if (e.createdAt && !events.some(ev => ev.action === 'created' || ev.action === 'submitted')) {
-      events.push({ id: 'created', at: e.createdAt, type: 'audit', action: 'created', by: e.submittedBy || e.userId });
-    }
-    if (e.approvedAt && !events.some(ev => ev.action === 'approved')) {
-      events.push({ id: 'approved', at: e.approvedAt, type: 'audit', action: 'approved', by: e.approvedBy });
-    }
-    if (e.rejectedAt && !events.some(ev => ev.action === 'rejected')) {
-      events.push({ id: 'rejected', at: e.rejectedAt, type: 'audit', action: 'rejected', by: e.rejectedBy, note: e.rejectionNote });
-    }
-    return events
-      .filter(ev=>ev.action!=="paid"&&ev.action!=="mark_paid")
-      .sort((a, b) => String(a.at).localeCompare(String(b.at)));
-  }, [e, serverAudit]);
+    return collapseTimelineEvents(buildExpenseDetailTimelineEvents(e,serverAudit,useServerAudit,departments,t));
+  },[e,serverAudit,useServerAudit,departments,t]);
   if(!e)return null;
   const getU=id=>{
     const u=users.find(x=>x.id===id);
@@ -3229,29 +3363,6 @@ function DetailPanel(){
     return t("expense.ivaNotTracked");
   })();
 
-  const actionLabel = (action) => ({
-    'created':              'Enviado',
-    'submitted':            'Enviado',
-    'auto_approved':        'Aprobado automáticamente',
-    'approved':             'Aprobado',
-    'rejected':             'Rechazado',
-    'resubmitted':          'Reenviado',
-    'edited':               'Editado',
-    'updated':              'Editado',
-    'attachment_removed':   'Adjunto eliminado',
-    'comment_added':        'Nota añadida',
-    'exported':             'Exportado',
-    'expense_created':      'Enviado',
-    'expense_auto_approved':'Aprobado automáticamente',
-    'expense_approved':     'Aprobado',
-    'expense_rejected':     'Rechazado',
-    'expense_comment_added':'Nota añadida',
-    'expense_recurring_spawned': 'Nueva ocurrencia generada',
-    'reapproval_required':  'Requiere nueva revisión',
-    'vote_changed':         'Voto actualizado',
-    'approver_removed_autoapprove': 'Aprobador eliminado (voto automático)',
-    'deleted':              'Eliminado',
-  })[action] || action;
   const startEdit=()=>{
     const defIva=e.ivaRate===null?"":(e.ivaRate!==undefined&&e.ivaRate!==null?String(e.ivaRate):ivaRateToFormString(readIvaDefault()));
     const fromRule=recurrenceRuleToCadenceForForm(e.recurrenceRule);
@@ -3540,28 +3651,44 @@ function DetailPanel(){
       <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${detailAccent}`}}>
         <label className="lbl" style={{marginBottom:6,color:detailAccent}}>{t("timeline.sectionTitle")}</label>
         <div>
-          {allEvents.map((ev,i)=>{
-            const action = ev.action;
-            return (
-              <div key={ev.id || `ev-${i}`} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
-                <div style={{
-                  width:8,height:8,borderRadius:"50%",flexShrink:0,marginTop:4,
-                  background: action==="approved"?"#166534":action==="rejected"?"#991B1B":"#9CAA9F"
-                }}/>
+          {timelineEvents.map((ev,i)=>{
+            const action=ev.action;
+            const label=TIMELINE_ACTION_LABEL[action]||action;
+            const tech=timelineTechnicalPayload(ev);
+            const techOpen=!!timelineTechOpen[ev.id];
+            const dotColor=action==="approved"||action==="auto_approved"?"#166534":action==="rejected"?"#991B1B":"#9CAA9F";
+            return(
+              <div key={ev.id||`ev-${i}`} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
+                <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,marginTop:4,background:dotColor}}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:600,color:G}}>
-                    {actionLabel(ev.action)}
-                    {ev.by && <span style={{fontWeight:400,color:"#6B7B72"}}> · {getU(ev.by).name}</span>}
+                    {label}
+                    {ev._collapseCount>1&&<span style={{fontWeight:500,fontSize:10,color:"#6B7B72",marginLeft:4}}>×{ev._collapseCount}</span>}
+                    {ev.by&&<span style={{fontWeight:400,color:"#6B7B72"}}> · {getU(ev.by).name}</span>}
                   </div>
-                  {ev.note && <div style={{fontSize:11,color:"#6B7B72",marginTop:2}}>{ev.note}</div>}
-                  {Array.isArray(ev.editChanges)&&ev.editChanges.length>0&&(
+                  {ev.note&&<div style={{fontSize:11,color:"#6B7B72",marginTop:2,whiteSpace:"pre-wrap"}}>{ev.note}</div>}
+                  {Array.isArray(ev.editSummaries)&&ev.editSummaries.length>0&&(
                     <div style={{fontSize:11,color:"#6B7B72",marginTop:4,lineHeight:1.45}}>
-                      {ev.editChanges.map((ch,i)=>(
-                        <div key={i}>{EDIT_FIELD_LABELS[ch.field]||ch.field}: {String(ch.from??"—")} → {String(ch.to??"—")}</div>
-                      ))}
+                      {ev.editSummaries.map((line,idx)=><div key={idx}>{line}</div>)}
                     </div>
                   )}
-                  <div style={{fontSize:10,color:"#C4B8C0",marginTop:1}}>{fmtDate(ev.at)}</div>
+                  {tech&&(
+                    <div style={{marginTop:4}}>
+                      <button type="button" className="btn-ghost" style={{fontSize:10,padding:0,color:"#6B7B72",fontWeight:500}}
+                        onClick={()=>setTimelineTechOpen(p=>({...p,[ev.id]:!techOpen}))}>
+                        {techOpen?"Ocultar detalles técnicos":"Ver detalles técnicos"}
+                      </button>
+                      {techOpen&&(
+                        <pre style={{fontSize:10,color:"#4B5E52",background:"#F5F0EA",borderRadius:6,padding:"8px 10px",marginTop:4,overflowX:"auto",whiteSpace:"pre-wrap",wordBreak:"break-word",fontFamily:"inherit",lineHeight:1.4,maxHeight:200}}>
+                          {JSON.stringify(tech,null,2)}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                  <div style={{fontSize:10,color:"#C4B8C0",marginTop:2}}>
+                    {formatTimelineTimestamp(ev.at)}
+                    {ev._collapseCount>1&&ev._collapsedAt&&<span style={{marginLeft:6}}>último: {formatTimelineTimestamp(ev._collapsedAt)}</span>}
+                  </div>
                 </div>
               </div>
             );
