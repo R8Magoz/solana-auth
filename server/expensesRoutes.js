@@ -1472,7 +1472,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     if (exp.status === 'rejected') {
       return res.json({ ok: true, expense: exp });
     }
-    if (exp.status !== 'submitted') {
+    if (exp.status !== 'submitted' && exp.status !== 'approved') {
       return res.status(400).json({ error: 'El gasto no está pendiente de aprobación.' });
     }
     const now = Date.now();
