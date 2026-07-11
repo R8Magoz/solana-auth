@@ -688,14 +688,14 @@ const insertExp = db.prepare(`
     approversJson, approvalVotesJson, paidByJson, splitMode,
     ivaRate, ivaAmount, commentsJson, ownerId,
     expenseType, vendor, dueDate, paymentStatus, paidAt, paidConfirmedBy, paymentTermDays, deferredPayment, recurring, recurrenceRule, originBillId,
-    cadenceKey, cadenceCustomMonths
+    cadenceKey, cadenceCustomMonths, clientRef
   ) VALUES (
     @id, @userId, @amount, @currency, @amountEUR, @description, @category, @date, @status,
     @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt, @departmentId,
     @approversJson, @approvalVotesJson, @paidByJson, @splitMode,
     @ivaRate, @ivaAmount, @commentsJson, @ownerId,
     @expenseType, @vendor, @dueDate, @paymentStatus, @paidAt, @paidConfirmedBy, @paymentTermDays, @deferredPayment, @recurring, @recurrenceRule, @originBillId,
-    @cadenceKey, @cadenceCustomMonths
+    @cadenceKey, @cadenceCustomMonths, @clientRef
   )
 `);
 
@@ -760,6 +760,22 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
   router.post('/', async (req, res) => {
     try {
+    const clientRefRaw = req.body && (req.body.clientRef ?? req.body.idempotencyKey);
+    const clientRef = typeof clientRefRaw === 'string' && clientRefRaw.trim()
+      ? clientRefRaw.trim().slice(0, 128)
+      : null;
+    if (clientRef) {
+      const existingByRef = db.prepare(`
+        SELECT id FROM expenses
+        WHERE userId = ? AND clientRef = ? AND status != 'deleted'
+        LIMIT 1
+      `).get(req.userId, clientRef);
+      if (existingByRef) {
+        const existing = getExpenseById(existingByRef.id);
+        return res.json({ ok: true, expense: existing });
+      }
+    }
+
     const ownerRaw = String(req.body.ownerId || req.body.owner || '').trim();
     let resolvedOwner = null;
 
@@ -944,6 +960,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       }
     }
 
+    try {
     insertExp.run({
       id,
       userId: req.userId,
@@ -985,7 +1002,22 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       originBillId: null,
       cadenceKey: String(req.body.cadenceKey || 'once').trim().slice(0, 32),
       cadenceCustomMonths: String(req.body.cadenceCustomMonths || '1').trim().slice(0, 8),
+      clientRef,
     });
+    } catch (insertErr) {
+      if (clientRef && insertErr && insertErr.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+        const raced = db.prepare(`
+          SELECT id FROM expenses
+          WHERE userId = ? AND clientRef = ? AND status != 'deleted'
+          LIMIT 1
+        `).get(req.userId, clientRef);
+        if (raced) {
+          const existing = getExpenseById(raced.id);
+          return res.json({ ok: true, expense: existing });
+        }
+      }
+      throw insertErr;
+    }
 
     const expense = getExpenseById(id);
     audit('expense_created', { userId: req.userId, targetId: id, amount, currency: cur, status: finalStatus });

@@ -154,6 +154,7 @@ addColumnIfMissing('expenses', 'recurrenceRule',  'TEXT');
 addColumnIfMissing('expenses', 'originBillId',    'TEXT');
 addColumnIfMissing('expenses', 'cadenceKey', 'TEXT DEFAULT \'once\'');
 addColumnIfMissing('expenses', 'cadenceCustomMonths', 'TEXT DEFAULT \'1\'');
+addColumnIfMissing('expenses', 'clientRef', 'TEXT');
 addColumnIfMissing('expenses', 'condicionesPago', 'TEXT');
 addColumnIfMissing('bills', 'departmentId', 'TEXT');
 addColumnIfMissing('bills', 'receiptPath', 'TEXT');
@@ -205,6 +206,9 @@ function createIndexesIfMissing() {
     CREATE INDEX IF NOT EXISTS idx_expenses_recurring ON expenses(recurring);
     CREATE INDEX IF NOT EXISTS idx_expenses_date_status ON expenses(date, status);
     CREATE INDEX IF NOT EXISTS idx_expenses_date_type ON expenses(date, expenseType);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_expenses_user_clientRef
+      ON expenses(userId, clientRef)
+      WHERE clientRef IS NOT NULL AND clientRef != '';
 
     CREATE INDEX IF NOT EXISTS idx_bills_userId ON bills(userId);
     CREATE INDEX IF NOT EXISTS idx_bills_status ON bills(status);

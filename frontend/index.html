@@ -8353,21 +8353,19 @@ function SolanaExpenses(){
               dueDate:computedDueIso||null,
             }:{expenseType:"expense"}),
             ...(recExtras.recurring?{recurring:1,recurrenceRule:recExtras.recurrenceRule}:{recurring:0}),
+            clientRef,
           };
-          const { response, responseBody, rawText } = await debugApiRequest("POST", "/expenses", body);
-          if (!response.ok) {
-            let serverMsg = "Error al crear gasto.";
-            try {
-              const ct = response.headers.get("content-type") || "";
-              if (ct.includes("application/json")) {
-                const j = responseBody || await response.clone().json();
-                if (j.error) serverMsg = j.error;
-              }
-            } catch(e) {}
-            setFormError(serverMsg);
-            return;
-          }
-          const d = responseBody;
+          const queueMeta={
+            clientRef,
+            ...(receipt?.b64?{
+              pendingReceipt:{
+                b64:receipt.b64,
+                mediaType:receiptUploadMediaType(receipt.b64,receipt.type),
+                type:receipt.type,
+              },
+            }:{}),
+          };
+          const d = await API.post("/expenses", body, queueMeta);
           const newExp = expenseFromApi(d.expense);
           saveExp(prev => [newExp, ...(Array.isArray(prev) ? prev.filter(x => x.id !== newExp.id) : [])]);
 
@@ -8401,10 +8399,6 @@ function SolanaExpenses(){
             if (full) applyExpensesApiPayload(full, { setUsers, setExpenses });
           }).catch(() => {});
 
-          console.log('[submitExp] opening detail:', {
-            id: finalExp.id,
-            receiptPath: finalExp.receiptPath,
-          });
           try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
           const submittedAmt = fmt(parseMoney(form.amount) || 0);
           const submittedDesc = String(form.description || "").trim().slice(0, 40);
