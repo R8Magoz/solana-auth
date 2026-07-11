@@ -40,6 +40,8 @@ import {
   readOfflineQueue,
   writeOfflineQueue,
   dispatchSolanaToast,
+  toastSaved,
+  toastSaveFailed,
   isNetworkError,
   shouldQueueWrite,
   makeOfflineQueuedError,
@@ -1339,7 +1341,8 @@ function ToastContainer(){
   const enqueue=useCallback((message,kind,durationMs)=>{
     clearTimers();
     const payload={id:"t_"+Date.now(),message,kind:kind||"info"};
-    const dismissMs=Number.isFinite(Number(durationMs))?Math.max(500,Number(durationMs)):4200;
+    const defaultMs={success:3500,error:7000,info:4000,sync:3500,offline:5000,conflict:7000};
+    const dismissMs=Number.isFinite(Number(durationMs))?Math.max(500,Number(durationMs)):(defaultMs[payload.kind]??4000);
     const cur=slotRef.current;
     if(cur.toast&&(cur.phase==="visible"||cur.phase==="enter"||cur.phase==="exit")){
       setSlot(s=>({...s,phase:"exit"}));
@@ -3444,11 +3447,11 @@ function DetailPanel(){
             onClearApiReceiptPreview={clearEditApiReceiptPreview}
           />
           <div style={{display:"flex",gap:6,marginTop:8}}>
-            <button className="btn-primary" style={{flex:1,fontSize:13,padding:"8px",background:editActionColor,opacity:(!editExpenseValid||editSplitBlocked)?0.5:1,cursor:(!editExpenseValid||editSplitBlocked)?"not-allowed":"pointer",transition:"color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease"}} onMouseEnter={e=>{if(!editExpenseValid||editSplitBlocked)return;e.currentTarget.style.background=editSubmitHoverBg;}} onMouseLeave={e=>{e.currentTarget.style.background=editActionColor;}} onClick={()=>{
-              if(editSplitBlocked)return;
+            <button className="btn-primary" style={{flex:1,fontSize:13,padding:"8px",background:editActionColor,opacity:(!editExpenseValid||editSplitBlocked||editSaving)?0.5:1,cursor:(!editExpenseValid||editSplitBlocked||editSaving)?"not-allowed":"pointer",transition:"color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease"}} onMouseEnter={e=>{if(!editExpenseValid||editSplitBlocked||editSaving)return;e.currentTarget.style.background=editSubmitHoverBg;}} onMouseLeave={e=>{e.currentTarget.style.background=editActionColor;}} onClick={()=>{
+              if(editSplitBlocked||editSaving)return;
               if(!editExpenseValid){setEditSubmitAttempt(true);return;}
               saveEdit();
-            }}>{t("action.saveChanges")||"Guardar"}</button>
+            }} disabled={editSaving}>{editSaving?"Guardando…":(t("action.saveChanges")||"Guardar")}</button>
             <button className="btn-secondary" style={{flex:1,fontSize:13,padding:"8px"}} onClick={cancelEdit}>{t("action.cancel")}</button>
           </div>
         </div>
@@ -5124,6 +5127,7 @@ function ServerSettingsView(){
       else if(e&&e.message==="ARR")m="Lista inválida.";
       else if(w==="json")m="JSON inválido.";
       setRowErr(er=>({...er,[key]:m}));
+      toastSaveFailed(m);
       setSaving(s=>({...s,[key]:false}));
       return;
     }
@@ -5134,7 +5138,7 @@ function ServerSettingsView(){
         body:JSON.stringify({value:payloadVal}),
       });
       const d=await r.json().catch(()=>({}));
-      if(!r.ok){setRowErr(er=>({...er,[key]:d.error||t("msg.genericShort")}));return;}
+      if(!r.ok){const errMsg=d.error||t("msg.genericShort");setRowErr(er=>({...er,[key]:errMsg}));toastSaveFailed(errMsg);return;}
       setRows(prev=>prev.map(x=>x.key===key?{...x,value:d.value!==undefined?d.value:payloadVal,updatedAt:Date.now(),updatedBy:x.updatedBy}:x));
       setDrafts(prev=>{
         const next={...prev};
@@ -5142,9 +5146,9 @@ function ServerSettingsView(){
         next[key]=draftFromSchemaRow(merged);
         return next;
       });
-      dispatchSolanaToast(t("settings.serverSaveOk"),"sync");
+      dispatchSolanaToast(t("settings.serverSaveOk"),"success");
       void fetchAndApplyServerSettings(AUTH_URL,authTok());
-    }catch(e){setRowErr(er=>({...er,[key]:e.message||t("msg.genericShort")}));}
+    }catch(e){const errMsg=e.message||t("msg.genericShort");setRowErr(er=>({...er,[key]:errMsg}));toastSaveFailed(errMsg);}
     setSaving(s=>({...s,[key]:false}));
   };
 
@@ -5329,12 +5333,12 @@ function PendingUsersPanel(){
 function IvaRatesEditorBlock({t,ivaRates,onSave}){
   const editable=ivaRates.filter(r=>r.value!=null&&r.value!=="none");
   const [rows,setRows]=useState(()=>editable.map(r=>({...r})));
-  const [saved,setSaved]=useState(false);
+  const [saving,setSaving]=useState(false);
   useEffect(()=>{const ed=ivaRates.filter(r=>r.value!=null&&r.value!=="none");setRows(ed.map(r=>({...r})));},[ivaRates]);
   const doSave=()=>{
-    onSave(normalizeIvaRatesPayload(rows));
-    setSaved(true);
-    setTimeout(()=>setSaved(false),2500);
+    if(saving)return;
+    setSaving(true);
+    void Promise.resolve(onSave(normalizeIvaRatesPayload(rows))).finally(()=>setSaving(false));
   };
   return(
     <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid #EDE8E0"}}>
@@ -5352,7 +5356,7 @@ function IvaRatesEditorBlock({t,ivaRates,onSave}){
           </div>
         ))}
       </div>
-      <button type="button" className="btn-primary" style={{marginTop:10,fontSize:12,padding:"6px 12px",background:saved?"#16A34A":G}} onClick={doSave}>{saved?"Guardado":t("settings.saveIvaTypes")}</button>
+      <button type="button" className="btn-primary" style={{marginTop:10,fontSize:12,padding:"6px 12px"}} disabled={saving} onClick={doSave}>{saving?"Guardando…":t("settings.saveIvaTypes")}</button>
     </div>
   );
 }
@@ -5445,18 +5449,19 @@ function DepartmentBudgetTrackerSection({t}){
   const saveBudget=async dept=>{
     if(!AUTH_URL||!isAdmin)return;
     const b=parseFloat(String(budDraft).replace(",","."))||0;
-    if(!Number.isFinite(b)){setErr(t("msg.genericShort"));return;}
+    if(!Number.isFinite(b)){const errMsg=t("msg.genericShort");setErr(errMsg);toastSaveFailed(errMsg);return;}
     try{API.ensureSessionToken();}catch(e){}
     const tok=API.token||sessionTok;
     if(!tok)return;
     try{
       const r=await fetch(AUTH_URL+"/departments/"+encodeURIComponent(dept.id),{method:"PUT",headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},body:JSON.stringify({budget:b})});
       const d=await r.json().catch(()=>({}));
-      if(!r.ok){setErr(d.error||t("msg.genericShort"));return;}
+      if(!r.ok){const errMsg=d.error||t("msg.genericShort");setErr(errMsg);toastSaveFailed(errMsg);return;}
       setBudEdit(null);
+      toastSaved(t("settings.deptBudget"));
       await refreshDepartments();
       void load();
-    }catch(e){setErr(e.message||t("msg.genericShort"));}
+    }catch(e){const errMsg=e.message||t("msg.genericShort");setErr(errMsg);toastSaveFailed(errMsg);}
   };
   if(active.length===0)return null;
   return(
@@ -5557,6 +5562,8 @@ function DepartmentsSettingsBlock({t}){
   const [err,setErr]=useState("");
   const [delId,setDelId]=useState(null);
   const [showArchived,setShowArchived]=useState(false);
+  const [addSaving,setAddSaving]=useState(false);
+  const [editSaving,setEditSaving]=useState(false);
   if(!isAdmin)return null;
   const sessionTok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})();
   const saveLocal=(next)=>{
@@ -5564,41 +5571,49 @@ function DepartmentsSettingsBlock({t}){
     void refreshDepartments();
   };
   const addDept=async()=>{
+    if(addSaving)return;
     setErr("");setMsg("");
     const n=name.trim();
     if(!n){setErr("Nombre requerido.");return;}
     const b=parseFloat(String(bud).replace(",","."))||0;
-    if(AUTH_URL){
-      if(!sessionTok){setErr(t("msg.sessionExpired"));return;}
-      try{
-        const r=await fetch(AUTH_URL+"/departments",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionTok},body:JSON.stringify({name:n,budget:b})});
-        const d=await r.json().catch(()=>({}));
-        if(!r.ok){setErr(d.error||t("msg.genericShort"));return;}
-        setName("");setBud("");setMsg(t("settings.deptSaved"));void refreshDepartments();
-      }catch(e){setErr(e.message||t("msg.genericShort"));}
-    }else{
-      const id="dept_"+Date.now();
-      saveLocal([...departments,{id,name:n,budget:b,archived:false,createdAt:Date.now()}]);
-      setName("");setBud("");setMsg(t("settings.deptSaved"));
-    }
+    setAddSaving(true);
+    try{
+      if(AUTH_URL){
+        if(!sessionTok){setErr(t("msg.sessionExpired"));toastSaveFailed(t("msg.sessionExpired"));return;}
+        try{
+          const r=await fetch(AUTH_URL+"/departments",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionTok},body:JSON.stringify({name:n,budget:b})});
+          const d=await r.json().catch(()=>({}));
+          if(!r.ok){const errMsg=d.error||t("msg.genericShort");setErr(errMsg);toastSaveFailed(errMsg);return;}
+          setName("");setBud("");setMsg(t("settings.deptSaved"));toastSaved("Departamento");void refreshDepartments();
+        }catch(e){const errMsg=e.message||t("msg.genericShort");setErr(errMsg);toastSaveFailed(errMsg);}
+      }else{
+        const id="dept_"+Date.now();
+        saveLocal([...departments,{id,name:n,budget:b,archived:false,createdAt:Date.now()}]);
+        setName("");setBud("");setMsg(t("settings.deptSaved"));toastSaved("Departamento");
+      }
+    }finally{setAddSaving(false);}
   };
   const saveEdit=async row=>{
+    if(editSaving)return;
     setErr("");setMsg("");
     const n=(ef.name||"").trim();
     if(!n){setErr("Nombre requerido.");return;}
     const b=parseFloat(String(ef.budget).replace(",","."))||0;
-    if(AUTH_URL){
-      if(!sessionTok){setErr(t("msg.sessionExpired"));return;}
-      try{
-        const r=await fetch(AUTH_URL+"/departments/"+encodeURIComponent(row.id),{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionTok},body:JSON.stringify({name:n,budget:b})});
-        const d=await r.json().catch(()=>({}));
-        if(!r.ok){setErr(d.error||t("msg.genericShort"));return;}
-        setEditId(null);setMsg(t("settings.deptSaved"));void refreshDepartments();
-      }catch(e){setErr(e.message||t("msg.genericShort"));}
-    }else{
-      saveLocal(departments.map(x=>x.id===row.id?{...x,name:n,budget:b}:x));
-      setEditId(null);setMsg(t("settings.deptSaved"));
-    }
+    setEditSaving(true);
+    try{
+      if(AUTH_URL){
+        if(!sessionTok){setErr(t("msg.sessionExpired"));toastSaveFailed(t("msg.sessionExpired"));return;}
+        try{
+          const r=await fetch(AUTH_URL+"/departments/"+encodeURIComponent(row.id),{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionTok},body:JSON.stringify({name:n,budget:b})});
+          const d=await r.json().catch(()=>({}));
+          if(!r.ok){const errMsg=d.error||t("msg.genericShort");setErr(errMsg);toastSaveFailed(errMsg);return;}
+          setEditId(null);setMsg(t("settings.deptSaved"));toastSaved("Departamento");void refreshDepartments();
+        }catch(e){const errMsg=e.message||t("msg.genericShort");setErr(errMsg);toastSaveFailed(errMsg);}
+      }else{
+        saveLocal(departments.map(x=>x.id===row.id?{...x,name:n,budget:b}:x));
+        setEditId(null);setMsg(t("settings.deptSaved"));toastSaved("Departamento");
+      }
+    }finally{setEditSaving(false);}
   };
   const doDelete=async row=>{
     setErr("");setMsg("");
@@ -5646,7 +5661,7 @@ function DepartmentsSettingsBlock({t}){
         <input className="inp" style={{fontSize:14,marginBottom:8}} value={name} onChange={e=>setName(e.target.value)}/>
         <label className="lbl">{t("settings.deptBudget")}</label>
         <input className="inp" style={{fontSize:14,marginBottom:8}} type="text" inputMode="decimal" value={bud} onChange={e=>setBud(e.target.value)}/>
-        <button type="button" className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} onClick={()=>void addDept()}>{t("action.add")}</button>
+        <button type="button" className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} disabled={addSaving} onClick={()=>void addDept()}>{addSaving?"Guardando…":t("action.add")}</button>
       </div>
       <div style={{fontSize:9,fontWeight:700,color:"#9CAA9F",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Departamentos activos</div>
       {active.map(d=>(
@@ -5658,7 +5673,7 @@ function DepartmentsSettingsBlock({t}){
               <label className="lbl">{t("settings.deptBudget")}</label>
               <input className="inp" style={{fontSize:14,marginBottom:8}} value={ef.budget} onChange={e=>setEf(p=>({...p,budget:e.target.value}))}/>
               <div style={{display:"flex",gap:6}}>
-                <button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>void saveEdit(d)}>{t("action.save")}</button>
+                <button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} disabled={editSaving} onClick={()=>void saveEdit(d)}>{editSaving?"Guardando…":t("action.save")}</button>
                 <button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setEditId(null)}>{t("action.cancel")}</button>
               </div>
             </div>
@@ -5759,6 +5774,8 @@ export function SettingsView(){
   const [resetBusy,setResetBusy]=useState(false);
   const [appSetMsg,setAppSetMsg]=useState("");
   const [appSetErr,setAppSetErr]=useState("");
+  const [appSaving,setAppSaving]=useState(null);
+  const [userEditSaving,setUserEditSaving]=useState(false);
   const [backups,setBackups]=useState([]);
   const [backupsLoading,setBackupsLoading]=useState(false);
   const [backupsError,setBackupsError]=useState("");
@@ -5816,6 +5833,7 @@ export function SettingsView(){
   };
   const saveAppIvaSettings=async(nextRates,nextDefault)=>{
     setAppSetErr("");setAppSetMsg("");
+    setAppSaving("iva");
     const normalized=normalizeIvaRatesPayload(nextRates);
     let defVal;
     if(nextDefault===null)defVal=null;
@@ -5823,36 +5841,43 @@ export function SettingsView(){
       const n=Number(nextDefault);
       defVal=normalized.some(r=>Number(r.value)===n)?n:Number(normalized[0]?.value||21);
     }
-    if(AUTH_URL){
-      const tok=appSettingsToken()||(API.token?String(API.token):"");
-      if(!tok){setAppSetErr(t("msg.sessionExpired"));return;}
-      try{
-        const r1=await fetch(AUTH_URL+"/settings/iva_rates",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:normalized})});
-        const d1=await r1.json().catch(()=>({}));
-        if(!r1.ok){setAppSetErr(d1.error||t("msg.genericShort"));return;}
-        const r2=await fetch(AUTH_URL+"/settings/iva_default",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:defVal})});
-        const d2=await r2.json().catch(()=>({}));
-        if(!r2.ok){setAppSetErr(d2.error||t("msg.genericShort"));return;}
-      }catch(e){setAppSetErr(t("signup.serverDown"));return;}
-    }
-    saveIvaRates(normalized);
-    try{localStorage.setItem(IVA_DEFAULT_KEY,JSON.stringify(defVal));}catch(e){}
-    setAppIvaDefaultDraft(defVal);
-    setAppSetMsg("Ajustes de IVA guardados.");
+    try{
+      if(AUTH_URL){
+        const tok=appSettingsToken()||(API.token?String(API.token):"");
+        if(!tok){setAppSetErr(t("msg.sessionExpired"));toastSaveFailed(t("msg.sessionExpired"));return;}
+        try{
+          const r1=await fetch(AUTH_URL+"/settings/iva_rates",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:normalized})});
+          const d1=await r1.json().catch(()=>({}));
+          if(!r1.ok){const errMsg=d1.error||t("msg.genericShort");setAppSetErr(errMsg);toastSaveFailed(errMsg);return;}
+          const r2=await fetch(AUTH_URL+"/settings/iva_default",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:defVal})});
+          const d2=await r2.json().catch(()=>({}));
+          if(!r2.ok){const errMsg=d2.error||t("msg.genericShort");setAppSetErr(errMsg);toastSaveFailed(errMsg);return;}
+        }catch(e){setAppSetErr(t("signup.serverDown"));toastSaveFailed(t("signup.serverDown"));return;}
+      }
+      saveIvaRates(normalized);
+      try{localStorage.setItem(IVA_DEFAULT_KEY,JSON.stringify(defVal));}catch(e){}
+      setAppIvaDefaultDraft(defVal);
+      setAppSetMsg("Ajustes de IVA guardados.");
+      toastSaved("Ajustes de IVA");
+    }finally{setAppSaving(null);}
   };
   const saveAppCategories=async()=>{
     setAppSetErr("");setAppSetMsg("");
-    if(AUTH_URL){
-      const tok=appSettingsToken()||(API.token?String(API.token):"");
-      if(!tok){setAppSetErr(t("msg.sessionExpired"));return;}
-      try{
-        const r=await fetch(AUTH_URL+"/settings/categories",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:appCatsDraft})});
-        const d=await r.json().catch(()=>({}));
-        if(!r.ok){setAppSetErr(d.error||t("msg.genericShort"));return;}
-      }catch(e){setAppSetErr(t("signup.serverDown"));return;}
-    }
-    saveCats(appCatsDraft);
-    setAppSetMsg("Categorías guardadas.");
+    setAppSaving("cats");
+    try{
+      if(AUTH_URL){
+        const tok=appSettingsToken()||(API.token?String(API.token):"");
+        if(!tok){setAppSetErr(t("msg.sessionExpired"));toastSaveFailed(t("msg.sessionExpired"));return;}
+        try{
+          const r=await fetch(AUTH_URL+"/settings/categories",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:appCatsDraft})});
+          const d=await r.json().catch(()=>({}));
+          if(!r.ok){const errMsg=d.error||t("msg.genericShort");setAppSetErr(errMsg);toastSaveFailed(errMsg);return;}
+        }catch(e){setAppSetErr(t("signup.serverDown"));toastSaveFailed(t("signup.serverDown"));return;}
+      }
+      saveCats(appCatsDraft);
+      setAppSetMsg("Categorías guardadas.");
+      toastSaved("Categorías");
+    }finally{setAppSaving(null);}
   };
   const updateCategory = (catId, changes) => {
     setAppCatsDraft(prev =>
@@ -5870,42 +5895,50 @@ export function SettingsView(){
   };
   const saveAppDeptApprovers = async () => {
     setAppSetErr(""); setAppSetMsg("");
-    if (AUTH_URL) {
-      const tok = appSettingsToken() || (API.token ? String(API.token) : "");
-      if (!tok) { setAppSetErr(t("msg.sessionExpired")); return; }
-      try {
-        const r = await fetch(AUTH_URL + "/settings/department_approvers", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok },
-          body: JSON.stringify({ value: appDeptApproversDraft }),
-        });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) { setAppSetErr(d.error || t("msg.genericShort")); return; }
-      } catch (e) { setAppSetErr(t("signup.serverDown")); return; }
-    }
-    saveDeptApprovers(appDeptApproversDraft);
-    setAppSetMsg("Aprobadores por departamento guardados.");
+    setAppSaving("approvers");
+    try {
+      if (AUTH_URL) {
+        const tok = appSettingsToken() || (API.token ? String(API.token) : "");
+        if (!tok) { setAppSetErr(t("msg.sessionExpired")); toastSaveFailed(t("msg.sessionExpired")); return; }
+        try {
+          const r = await fetch(AUTH_URL + "/settings/department_approvers", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok },
+            body: JSON.stringify({ value: appDeptApproversDraft }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) { const errMsg = d.error || t("msg.genericShort"); setAppSetErr(errMsg); toastSaveFailed(errMsg); return; }
+        } catch (e) { setAppSetErr(t("signup.serverDown")); toastSaveFailed(t("signup.serverDown")); return; }
+      }
+      saveDeptApprovers(appDeptApproversDraft);
+      setAppSetMsg("Aprobadores por departamento guardados.");
+      toastSaved("Aprobadores");
+    } finally { setAppSaving(null); }
   };
   const approverCandidates = users.filter(u =>
     u.accountStatus === 'active' && u.id !== 'system'
   );
   const saveAppCurrency=async()=>{
     setAppSetErr("");setAppSetMsg("");
+    setAppSaving("currency");
     const code=String(appCurrency||"EUR").toUpperCase().slice(0,3);
-    if(!code){setAppSetErr("Moneda no válida.");return;}
-    if(AUTH_URL){
-      const tok=appSettingsToken()||(API.token?String(API.token):"");
-      if(!tok){setAppSetErr(t("msg.sessionExpired"));return;}
-      try{
-        const r=await fetch(AUTH_URL+"/settings/currency",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:code})});
-        const d=await r.json().catch(()=>({}));
-        if(!r.ok){setAppSetErr(d.error||t("msg.genericShort"));return;}
-      }catch(e){setAppSetErr(t("signup.serverDown"));return;}
-    }
-    try{localStorage.setItem("sol-currency",JSON.stringify(code));}catch(e){}
-    setAppCurrency(code);
-    applyServerSettings({ currency: code });
-    setAppSetMsg("Moneda guardada.");
+    if(!code){setAppSetErr("Moneda no válida.");toastSaveFailed("Moneda no válida.");setAppSaving(null);return;}
+    try{
+      if(AUTH_URL){
+        const tok=appSettingsToken()||(API.token?String(API.token):"");
+        if(!tok){setAppSetErr(t("msg.sessionExpired"));toastSaveFailed(t("msg.sessionExpired"));return;}
+        try{
+          const r=await fetch(AUTH_URL+"/settings/currency",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:code})});
+          const d=await r.json().catch(()=>({}));
+          if(!r.ok){const errMsg=d.error||t("msg.genericShort");setAppSetErr(errMsg);toastSaveFailed(errMsg);return;}
+        }catch(e){setAppSetErr(t("signup.serverDown"));toastSaveFailed(t("signup.serverDown"));return;}
+      }
+      try{localStorage.setItem("sol-currency",JSON.stringify(code));}catch(e){}
+      setAppCurrency(code);
+      applyServerSettings({ currency: code });
+      setAppSetMsg("Moneda guardada.");
+      toastSaved("Moneda");
+    }finally{setAppSaving(null);}
   };
   const saveIvaDefault=v=>{
     const n=Number(v);
@@ -5950,25 +5983,26 @@ export function SettingsView(){
   const savePw=async()=>{
     setPwMsg("");setPwOk(false);
     const existing=passwords?.[user.id];
-    if(pwForm.nw.length<8){setPwMsg(t("msg.minPassword"));return;}
-    if(COMMON_PASSWORDS.has(pwForm.nw.toLowerCase())){setPwMsg(t("msg.pwCommon"));return;}
-    if(pwForm.nw!==pwForm.cn){setPwMsg(t("msg.passwordMismatch"));return;}
+    if(pwForm.nw.length<8){setPwMsg(t("msg.minPassword"));toastSaveFailed(t("msg.minPassword"));return;}
+    if(COMMON_PASSWORDS.has(pwForm.nw.toLowerCase())){setPwMsg(t("msg.pwCommon"));toastSaveFailed(t("msg.pwCommon"));return;}
+    if(pwForm.nw!==pwForm.cn){setPwMsg(t("msg.passwordMismatch"));toastSaveFailed(t("msg.passwordMismatch"));return;}
 
     if(AUTH_URL){
       setPwSaving(true);
       try{
         const token=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
-        if(!token){setPwMsg(t("msg.sessionExpired"));return;}
-        if(!String(pwForm.cur||"").trim()){setPwMsg(t("msg.currentPasswordRequired"));return;}
+        if(!token){setPwMsg(t("msg.sessionExpired"));toastSaveFailed(t("msg.sessionExpired"));return;}
+        if(!String(pwForm.cur||"").trim()){setPwMsg(t("msg.currentPasswordRequired"));toastSaveFailed(t("msg.currentPasswordRequired"));return;}
         const r=await fetch(AUTH_URL+"/auth/change-password",{
           method:"POST",
           headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
           body:JSON.stringify({userId:user.id,newPassword:pwForm.nw,currentPassword:pwForm.cur}),
         });
         const d=await r.json().catch(()=>({}));
-        if(!r.ok||!d.ok){setPwMsg(d.error||t("msg.genericShort"));return;}
+        if(!r.ok||!d.ok){const errMsg=d.error||t("msg.genericShort");setPwMsg(errMsg);toastSaveFailed(errMsg);return;}
       }catch{
         setPwMsg(t("signup.serverDown"));
+        toastSaveFailed(t("signup.serverDown"));
         return;
       }finally{
         setPwSaving(false);
@@ -5976,10 +6010,12 @@ export function SettingsView(){
     }else{
       if(existing&&pwForm.cur!==existing){
         setPwMsg(t("msg.passwordWrong"));
+        toastSaveFailed(t("msg.passwordWrong"));
         return;
       }
       if(existing&&pwForm.nw===existing){
         setPwMsg("La nueva contraseña no puede ser igual a la anterior.");
+        toastSaveFailed("La nueva contraseña no puede ser igual a la anterior.");
         return;
       }
     }
@@ -5987,6 +6023,7 @@ export function SettingsView(){
     savePasswords({...passwords,[user.id]:pwForm.nw});
     appLog("info","password_changed",{userId:user.id});
     setPwForm({cur:"",nw:"",cn:""});setPwMsg(t("msg.passwordChanged"));setPwOk(true);
+    dispatchSolanaToast(t("msg.passwordChanged"),"success");
   };
 
   return(
@@ -6211,7 +6248,10 @@ export function SettingsView(){
                     <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.role")}</label><select className="inp" style={{fontSize:14}} value={ef.role} onChange={e=>setEf(p=>({...p,role:e.target.value}))}><option value="user">{t("role.user")}</option><option value="admin">{t("role.admin")}</option></select></div>
                     <div style={{gridColumn:"1/-1"}}><label className="lbl">{t("label.email")}</label><input className="inp" style={{fontSize:14}} type="email" value={ef.email} onChange={e=>setEf(p=>({...p,email:e.target.value}))}/></div>
                   </div>
-                  <div style={{display:"flex",gap:7,marginTop:7}}><button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>void (async()=>{
+                  <div style={{display:"flex",gap:7,marginTop:7}}><button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} disabled={userEditSaving} onClick={()=>void (async()=>{
+                    if(userEditSaving)return;
+                    setUserEditSaving(true);
+                    try{
                     if(AUTH_URL){
                       const tok=(()=>{try{return sessionStorage.getItem("sol-session-token")||"";}catch(e){return "";}})()||(API.token?String(API.token):"");
                       if(!tok){dispatchSolanaToast(t("msg.sessionExpired"),"error");return;}
@@ -6225,12 +6265,15 @@ export function SettingsView(){
                         if(user.id===editId)setUser(merged);
                       }catch(e){dispatchSolanaToast(t("signup.serverDown"),"error");return;}
                       setEditId(null);
+                      toastSaved("Usuario");
                       return;
                     }
                     saveUsers(users.map(x=>x.id===editId?{...x,...ef}:x));
                     if(user.id===editId)setUser(normalizeItem({...user,...ef},"user"));
                     setEditId(null);
-                  })()}>{t("action.save")}</button><button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setEditId(null)}>{t("action.cancel")}</button></div>
+                    toastSaved("Usuario");
+                    }finally{setUserEditSaving(false);}
+                  })()}>{userEditSaving?"Guardando…":t("action.save")}</button><button type="button" className="btn-secondary" style={{flex:1,fontSize:11,padding:"5px 8px"}} onClick={()=>setEditId(null)}>{t("action.cancel")}</button></div>
                 </div>
               )}
             </div>
@@ -6298,7 +6341,7 @@ export function SettingsView(){
             </div>
           ))}
         </div>
-        <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px",marginBottom:12}} onClick={()=>void saveAppDeptApprovers()}>Guardar aprobadores</button>
+        <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px",marginBottom:12}} disabled={appSaving==="approvers"} onClick={()=>void saveAppDeptApprovers()}>{appSaving==="approvers"?"Guardando…":"Guardar aprobadores"}</button>
 
         <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"14px 0"}}/>
         <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Categorías</div>
@@ -6314,7 +6357,7 @@ export function SettingsView(){
         </div>
         <div style={{display:"flex",gap:7,marginBottom:12}}>
           <button type="button" className="btn-sm" style={{fontSize:10}} onClick={()=>setAppCatsDraft(prev=>[...prev,{id:"c_"+Date.now(),name:"Nueva categoría",archived:false}])}>Añadir categoría</button>
-          <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void saveAppCategories()}>Guardar categorías</button>
+          <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} disabled={appSaving==="cats"} onClick={()=>void saveAppCategories()}>{appSaving==="cats"?"Guardando…":"Guardar categorías"}</button>
         </div>
 
         <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"14px 0"}}/>
@@ -6322,7 +6365,7 @@ export function SettingsView(){
         <label className="lbl">Moneda base</label>
         <input className="inp" style={{maxWidth:120,fontSize:13,marginBottom:6,textTransform:"uppercase"}} maxLength={3} value={appCurrency} onChange={e=>setAppCurrency(String(e.target.value||"").toUpperCase().replace(/[^A-Z]/g,"").slice(0,3))}/>
         <div style={{fontSize:10,color:"#9CAA9F",marginBottom:8}}>Solo afecta a etiquetas visuales. Los importes ya registrados no se convierten.</div>
-        <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>void saveAppCurrency()}>Guardar moneda</button>
+        <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} disabled={appSaving==="currency"} onClick={()=>void saveAppCurrency()}>{appSaving==="currency"?"Guardando…":"Guardar moneda"}</button>
       </AccordionSection>
 
       {AUTH_URL&&<PendingUsersPanel/>}
