@@ -1453,7 +1453,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const result = persistApprovalFinalize(exp, fin, audit, req, actorId);
     if (result.error) return res.status(result.status).json({ error: result.error });
     const approveNote = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : undefined;
-    if (fin.status === 'approved' && exp.status !== 'approved') {
+    if (fin.status === 'approved' && (exp.status !== 'approved' || exp.approvedAt !== fin.approvedAt)) {
       audit('expense_approved', { userId: actorId, targetId: exp.id, note: approveNote });
     } else if (fin.status === 'rejected' && exp.status !== 'rejected') {
       audit('expense_rejected', { userId: actorId, targetId: exp.id, via: 'approval_vote' });
@@ -1575,6 +1575,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       targetId: exp.id,
       previousStatus,
     });
+    if (finalStatus === 'approved' && previousStatus !== 'approved') {
+      audit('expense_approved', { userId: actorId, targetId: exp.id, via: 'reconsider_finalize' });
+    }
     const updated = getExpenseById(exp.id);
     return res.json({ ok: true, expense: updated });
   });
