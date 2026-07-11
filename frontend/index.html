@@ -27,6 +27,9 @@
       --color-factura-tint: rgba(91, 33, 182, 0.10);
       --color-accent: #C4622D;
       --color-badge: #b85c1a;
+      --motion-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+      --motion-duration-micro: 150ms;
+      --motion-duration-standard: 200ms;
     }
     *{box-sizing:border-box;margin:0;padding:0;}
     body{background:#F5F0EA;font-family:'DM Sans',system-ui,sans-serif;}
@@ -38,7 +41,7 @@
     /* Auth button focus ring */
     .auth-btn:focus-visible{outline:2px solid var(--color-brand);outline-offset:2px;}
     /* Smooth transitions for auth elements */
-    .auth-inp{transition:border-color 0.15s,box-shadow 0.15s!important;}
+    .auth-inp{transition:border-color var(--motion-duration-micro),box-shadow var(--motion-duration-micro)!important;}
     @media(prefers-reduced-motion:reduce){
       .auth-inp,.auth-btn{transition:none!important;}
     }
@@ -58,15 +61,23 @@
       text-transform:uppercase;
       opacity:1;
     }
-    /* Motion system (Batch 10) */
+    /* Motion system — shared easing + duration scale */
+    @keyframes slideIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes expandDown{from{opacity:0;transform:scaleY(0)}to{opacity:1;transform:scaleY(1)}}
+    @keyframes spin{to{transform:rotate(360deg)}}
     @keyframes toastIn{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
-    @keyframes toastOut{from{opacity:1}to{opacity:0}}
-    @keyframes modalIn{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:scale(1)}}
-    @keyframes modalOut{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(0.96)}}
+    @keyframes toastOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-8px)}}
+    @keyframes modalIn{from{opacity:0;transform:scale(0.96) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
+    @keyframes modalOut{from{opacity:1;transform:scale(1) translateY(0)}to{opacity:0;transform:scale(0.96) translateY(4px)}}
     @keyframes modalOverlayIn{from{opacity:0}to{opacity:1}}
     @keyframes modalOverlayOut{from{opacity:1}to{opacity:0}}
     @keyframes budgetBarFill{from{transform:scaleX(0)}to{transform:scaleX(var(--budget-scale,1))}}
     @keyframes fieldShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+    .slide-in{animation:slideIn var(--motion-duration-standard) var(--motion-ease-standard) forwards}
+    .fade-in{animation:fadeIn var(--motion-duration-standard) var(--motion-ease-standard) forwards}
+    .panel-slide{animation:slideIn var(--motion-duration-standard) var(--motion-ease-standard) forwards}
+    .expand-down{animation:expandDown var(--motion-duration-standard) var(--motion-ease-standard) forwards;transform-origin:top center}
     .toast-slot{position:fixed;top:16px;right:16px;left:auto;transform:none;z-index:7600;max-width:min(92vw,380px);pointer-events:none}
     .toast{pointer-events:auto;padding:10px 14px;border-radius:11px;font-size:12px;font-weight:500;font-family:'DM Sans',system-ui,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,0.06);background:#fff;color:#1a1008;border:1px solid rgba(0,0,0,0.06)}
     .toast--success{background:#D1FAE5;color:#065F46;border:1px solid rgba(6,95,70,0.12)}
@@ -74,19 +85,21 @@
     .toast--conflict{background:#FEF3C7;color:#92400E}
     .toast--sync{background:#D1FAE5;color:#065F46;border:1px solid rgba(6,95,70,0.12)}
     .toast--offline{background:#E0F2FE;color:#1a1008;border:1px solid #7DD3FC}
-    .toast-slot--enter .toast{animation:toastIn 250ms ease-out forwards}
-    .toast-slot--exit .toast{animation:toastOut 200ms ease-in forwards}
+    .toast-slot--enter .toast{animation:toastIn var(--motion-duration-standard) var(--motion-ease-standard) forwards}
+    .toast-slot--exit .toast{animation:toastOut var(--motion-duration-standard) var(--motion-ease-standard) forwards}
     .modal-overlay{position:fixed;inset:0;z-index:7700;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;opacity:0}
-    .modal-overlay--open{animation:modalOverlayIn 200ms ease-out forwards}
-    .modal-overlay--closing{animation:modalOverlayOut 200ms ease-in forwards}
-    .modal-panel{width:min(92vw,420px);background:#fff;border-radius:12px;padding:16px 16px 14px;box-shadow:0 10px 30px rgba(0,0,0,0.25);opacity:0;transform:scale(0.96)}
-    .modal-overlay--open .modal-panel{animation:modalIn 200ms ease-out forwards}
-    .modal-overlay--closing .modal-panel{animation:modalOut 200ms ease-in forwards}
+    .modal-overlay--open{animation:modalOverlayIn var(--motion-duration-standard) var(--motion-ease-standard) forwards}
+    .modal-overlay--closing{animation:modalOverlayOut var(--motion-duration-standard) var(--motion-ease-standard) forwards}
+    .modal-panel{width:min(92vw,420px);background:#fff;border-radius:12px;padding:16px 16px 14px;box-shadow:0 10px 30px rgba(0,0,0,0.25);opacity:0;transform:scale(0.96) translateY(6px)}
+    .modal-overlay--open .modal-panel{animation:modalIn var(--motion-duration-standard) var(--motion-ease-standard) forwards}
+    .modal-overlay--closing .modal-panel{animation:modalOut var(--motion-duration-standard) var(--motion-ease-standard) forwards}
+    .overlay-loading{position:fixed;inset:0;z-index:8000;display:flex;align-items:center;justify-content:center;opacity:0}
+    .overlay-loading--open{animation:modalOverlayIn var(--motion-duration-standard) var(--motion-ease-standard) forwards}
     .budget-bar-track{height:8px;background:#EDE8E0;border-radius:4px;overflow:hidden;margin-bottom:6px}
-    .budget-bar-fill{height:100%;width:100%;border-radius:4px;transform-origin:left center;transform:scaleX(var(--budget-scale,0));transition:transform 0.4s ease-out}
-    .budget-bar-fill--load{animation:budgetBarFill 400ms ease-out forwards}
+    .budget-bar-fill{height:100%;width:100%;border-radius:4px;transform-origin:left center;transform:scaleX(var(--budget-scale,0));transition:transform 0.4s var(--motion-ease-standard)}
+    .budget-bar-fill--load{animation:budgetBarFill 400ms var(--motion-ease-standard) forwards}
     .kpi-progress-fill{height:100%;width:100%;border-radius:4px;transform-origin:left center;transform:scaleX(var(--budget-scale,0))}
-    .kpi-progress-fill--load{animation:budgetBarFill 400ms ease-out forwards}
+    .kpi-progress-fill--load{animation:budgetBarFill 400ms var(--motion-ease-standard) forwards}
     .inp--invalid{border-color:#DC2626!important;box-shadow:0 0 0 1px #DC2626}
     .inp--shake{animation:fieldShake 300ms ease}
     .status-approved{background:#D1FAE5;color:#065F46}
@@ -119,9 +132,10 @@
     .calendar-month-panel--dir-prev.calendar-month-panel--leave{transform:translateX(0);opacity:1}
     .calendar-month-panel--dir-prev.calendar-month-panel--leave.calendar-month-panel--active{transform:translateX(100%);opacity:0.6}
     @media(prefers-reduced-motion:reduce){
+      .slide-in,.fade-in,.panel-slide,.expand-down{animation:none;opacity:1;transform:none}
       .toast-slot--enter .toast,.toast-slot--exit .toast{animation:none;opacity:1;transform:none}
       .toast-slot--exit .toast{opacity:0;transition:opacity 40ms ease}
-      .modal-overlay--open,.modal-overlay--closing{animation:none;opacity:1;transition:opacity 40ms ease}
+      .modal-overlay--open,.modal-overlay--closing,.overlay-loading--open{animation:none;opacity:1;transition:opacity 40ms ease}
       .modal-overlay--closing{opacity:0}
       .modal-overlay--open .modal-panel,.modal-overlay--closing .modal-panel{animation:none;opacity:1;transform:none}
       .modal-overlay--closing .modal-panel{opacity:0;transition:opacity 40ms ease}
@@ -3226,7 +3240,7 @@ const AUTH={
   /* Status / error banners */
   errorBanner:{padding:"9px 12px",borderRadius:8,background:"#FEE2E2",
     border:"1px solid #FCA5A5",fontSize:12,color:"#991B1B",marginBottom:14,
-    lineHeight:1.5,animation:"fadeIn 0.2s ease"},
+    lineHeight:1.5,animation:"fadeIn 200ms cubic-bezier(0.22,1,0.36,1)"},
   infoBanner:{padding:"9px 12px",borderRadius:8,background:"#fdf0e6",
     border:"1px solid #f0c4a8",fontSize:12,color:"#8a3a00",
     marginBottom:14,lineHeight:1.5},
@@ -9029,10 +9043,10 @@ function SolanaExpenses(){
 
   /* ── EARLY RETURN — after all hooks, before derived values that need user ── */
   if(!user)return<div style={{position:"relative",minHeight:"100vh",background:G}}>
-    <div style={{opacity:appReady?1:0,transition:"opacity 400ms ease",transitionDelay:appReady?"600ms":"0ms"}}>
+    <div style={{opacity:appReady?1:0,transition:"opacity 400ms cubic-bezier(0.22,1,0.36,1)",transitionDelay:appReady?"600ms":"0ms"}}>
       <LoginScreen users={users} onLogin={u=>{appLog("info","auth:login",{userId:u.id,role:u.role});try{localStorage.setItem(LAST_ACTIVITY_KEY,String(Date.now()));}catch(e){}setIdleTrackingEnabled(true);setUser(u);}} passwords={passwords} sessionRestoreAttempted={sessionRestoreAttempted}/>
     </div>
-    <div style={{position:"fixed",inset:0,background:G,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms ease, opacity 400ms ease",transitionDelay:appReady?"600ms":"0ms"}}>
+    <div style={{position:"fixed",inset:0,background:G,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms cubic-bezier(0.22,1,0.36,1), opacity 400ms cubic-bezier(0.22,1,0.36,1)",transitionDelay:appReady?"600ms":"0ms"}}>
       <div style={{opacity:1}}><SolanaLogo theme="light" size="lg"/></div>
     </div>
   </div>;
@@ -9229,7 +9243,7 @@ function SolanaExpenses(){
           </div>
         )}
         {AUTH_URL&&ledgerLoading&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(245,240,234,0.88)",zIndex:8000,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:600,color:G}}>
+          <div className="overlay-loading overlay-loading--open" style={{background:"rgba(245,240,234,0.88)",fontSize:14,fontWeight:600,color:G}}>
             Cargando datos…
           </div>
         )}
@@ -9239,7 +9253,7 @@ function SolanaExpenses(){
           h2{font-family:'DM Sans',system-ui,sans-serif;font-size:16px;font-weight:600;}
           ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:rgba(204,78,0,0.2);border-radius:2px;}
           .card{background:#fff;border-radius:11px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,0.06);}
-          .inp{width:100%;background:#FAF7F8;border:1.5px solid #DDD6CC;border-radius:7px;padding:8px 11px;font-size:14px;color:#1a1008;font-family:inherit;transition:border-color 0.15s;outline:none;display:block;}
+          .inp{width:100%;background:#FAF7F8;border:1.5px solid #DDD6CC;border-radius:7px;padding:8px 11px;font-size:14px;color:#1a1008;font-family:inherit;transition:border-color var(--motion-duration-micro);outline:none;display:block;}
           .inp:focus{border-color:${G};}
           .expense-form-fields-wrap .inp:focus{border-color:var(--expense-action, ${G})!important;}
           .lbl{font-size:12px;font-weight:600;color:#6B7B72;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;display:block;}
@@ -9251,22 +9265,12 @@ function SolanaExpenses(){
           .btn-danger{background:transparent;color:#991B1B;border:1.5px solid #ECA3A3;padding:8px 18px;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
           .btn-danger:hover{background:#FEE2E2;}
           .row-hover:hover{background:rgba(204,78,0,0.04)!important;}
-          @keyframes spin{to{transform:rotate(360deg);}}
-          @keyframes slideIn{from{opacity:0;transform:translateX(16px);}to{opacity:1;transform:translateX(0);}}
-          @keyframes fadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
-          @keyframes expandDown{from{opacity:0;max-height:0;}to{opacity:1;max-height:600px;}}
-          .slide-in{animation:slideIn 0.18s ease;}
-          .fade-in{animation:fadeIn 0.15s ease;}
           /* Smooth transitions on interactive elements */
-          .card{transition:box-shadow 0.15s;}
+          .card{transition:box-shadow var(--motion-duration-micro);}
           .card:hover{box-shadow:0 3px 10px rgba(0,0,0,0.09);}
-          .row-hover{transition:background 0.1s;}
-          .btn-primary,.btn-secondary,.btn-danger,.btn-sm{transition:opacity 0.15s,transform 0.15s ease-out,background 0.15s;}
+          .row-hover{transition:background var(--motion-duration-micro);}
+          .btn-primary,.btn-secondary,.btn-danger,.btn-sm{transition:opacity var(--motion-duration-micro),transform var(--motion-duration-micro) var(--motion-ease-standard),background var(--motion-duration-micro);}
           .btn-primary:active,.btn-secondary:active,.btn-danger:active,.btn-sm:active{transform:scale(0.97);}
-          /* Right panel slide */
-          .panel-slide{animation:slideIn 0.2s cubic-bezier(0.22,1,0.36,1);}
-          /* Bill detail expand */
-          .expand-down{animation:expandDown 0.2s ease;}
           /* Respect reduced motion */
           @media(prefers-reduced-motion:reduce){
             *{animation-duration:0.01ms!important;transition-duration:0.01ms!important;}
@@ -9277,10 +9281,8 @@ function SolanaExpenses(){
 
         {/* Session expired overlay */}
         {sessionExpired&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(245,240,234,0.97)",zIndex:9999,
-            display:"flex",alignItems:"center",justifyContent:"center",
-            fontFamily:"'DM Sans',system-ui,sans-serif",backdropFilter:"blur(4px)"}}>
-            <div style={{background:"#fff",borderRadius:16,padding:"36px 32px",maxWidth:380,
+          <div className="modal-overlay modal-overlay--open" style={{zIndex:9999,background:"rgba(245,240,234,0.97)",fontFamily:"'DM Sans',system-ui,sans-serif",backdropFilter:"blur(4px)"}}>
+            <div className="modal-panel" style={{borderRadius:16,padding:"36px 32px",maxWidth:380,
               width:"90%",textAlign:"center",
               boxShadow:"0 4px 32px rgba(204,78,0,0.14),0 1px 4px rgba(0,0,0,0.06)",
               border:"1px solid #EDE8E0"}}>
