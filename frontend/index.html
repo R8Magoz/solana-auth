@@ -294,6 +294,7 @@ const TR = {
     "label.note": "Nota",
     "label.splitExpense": "Dividir gasto",
     "label.splitBadge": "Reparto",
+    "label.traceCode": "Código de trazabilidad",
     "label.divideTeam": "Dividir entre el equipo",
     "label.currentPassword": "Contraseña actual",
     "label.newPassword": "Nueva contraseña",
@@ -2133,7 +2134,8 @@ function expenseFromApi(row){
     approvedAt:row.approvedAt!=null?Number(row.approvedAt):null,
     rejectedBy:row.rejectedBy||null,
     rejectedAt:row.rejectedAt!=null?Number(row.rejectedAt):null,
-    itemCode:row.id,
+    itemCode:row.traceCode||row.id,
+    traceCode:row.traceCode||null,
     approvals,
     approvalRequired,
     auditTrail,
@@ -2461,6 +2463,32 @@ const mkCode=(type)=>{
   const rand=Math.random().toString(36).slice(2,6).toUpperCase();
   return`${type}-${date}-${rand}`;
 };
+/** UTC trace key — set once at creation; not updated if amount changes later. */
+const buildTraceCode=(createdAtMs,amountEur,expenseId)=>{
+  const ts=Number(createdAtMs);
+  const d=new Date(Number.isFinite(ts)?ts:Date.now());
+  const dateStr=d.toISOString().slice(0,10).replace(/-/g,"");
+  const timeStr=d.toISOString().slice(11,16).replace(":","");
+  const amt=Number(amountEur);
+  const amountStr=`${(Number.isFinite(amt)?amt:0).toFixed(2)}EUR`;
+  const base=`${dateStr}_${timeStr}_${amountStr}`;
+  const id=String(expenseId||"").trim();
+  if(!id)return base;
+  const suffix=id.replace(/^exp_/,"").slice(0,4).toLowerCase();
+  return suffix?`${base}_${suffix}`:base;
+};
+const displayTraceCode=(e)=>e?.traceCode||e?.itemCode||null;
+const SPLIT_PILL_STYLE={display:"inline-flex",alignItems:"center",gap:2,fontSize:10,fontWeight:700,color:"#4B5E52",background:"#EDE8E0",padding:"1px 5px",borderRadius:6,flexShrink:0,fontVariantNumeric:"tabular-nums"};
+const splitPill=(paidBy,t)=>{
+  const n=(paidBy||[]).length;
+  if(n<=1)return null;
+  return <span style={SPLIT_PILL_STYLE} aria-label={`${t("label.splitBadge")}: ${n}`}>{t("label.splitBadge")} · {n}</span>;
+};
+const deptLabel=(departmentId,departments,fallback="—")=>{
+  if(!departmentId)return fallback;
+  const d=(departments||[]).find(x=>x.id===departmentId);
+  return d&&d.name?d.name:fallback;
+};
 function migrateItemCodes(){
   try{
     const raw=localStorage.getItem("sol-exp");if(!raw)return;
@@ -2487,6 +2515,12 @@ function migrateDataModel(){
           if(!Array.isArray(x.comments)){x.comments=[];dirty=true;}
           if(!Array.isArray(x.seenBy)){x.seenBy=[];dirty=true;}
           if(x.departmentId===undefined||x.departmentId===""){x.departmentId="dept_estrategia";dirty=true;}
+          if(!x.traceCode&&x.id){
+            const amt=Number(x.amountEUR??x.amount)||0;
+            const ts=x.createdAt?new Date(x.createdAt).getTime():Date.now();
+            x.traceCode=buildTraceCode(ts,amt,x.id);
+            dirty=true;
+          }
           return x;
         });
         if(dirty)localStorage.setItem("sol-exp",JSON.stringify(out));
@@ -4794,8 +4828,8 @@ function DetailPanel(){
       >{t("status."+st).toUpperCase()}</div>
       <div style={{fontSize:15,fontWeight:700,marginBottom:2}}>{e.description}</div>
       <div style={{fontSize:24,fontWeight:800,color:G,fontVariantNumeric:"tabular-nums",marginBottom:11}}>{fmtExpenseAmt(e)}</div>
-      {e.itemCode&&(
-        <ItemCodeBadge code={e.itemCode} copyHoverAccent={detailAccent}/>
+      {displayTraceCode(e)&&(
+        <ItemCodeBadge code={displayTraceCode(e)} copyHoverAccent={detailAccent}/>
       )}
       {[{l:t("label.date"),v:fmtDate(e.date)},{l:t("label.category"),v:e.category},{l:t("label.department"),v:(e.departmentId&&(departments.find(d=>d.id===e.departmentId)||{}).name)||t("detail.noDepartment")},{l:"Titular",v:getU(e.ownerId||e.submittedBy).name},{l:"Enviado por",v:getU(e.submittedBy).name}].map(({l,v})=>(
         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #F5F0EA",fontSize:12}}><span style={{color:"#9CAA9F"}}>{l}</span><span style={{fontWeight:500}}>{v}</span></div>
@@ -4857,7 +4891,7 @@ function DetailPanel(){
           receiptType={e.receiptType}
           receiptPath={e.receiptPath}
           apiExpenseId={e._apiType==="expense"&&!e.receipt&&e.id?e.id:null}
-          itemCode={e.itemCode}
+          itemCode={displayTraceCode(e)}
           attachmentDescription={e.description}
           label={t("label.receipt")}
           t={t}
@@ -5145,14 +5179,14 @@ function DashboardView(){
           const pool=expenses.filter(e=>getItemStatus(e,cats,users)!=="deleted");
           const sorted=[...pool].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
           if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{t("empty.expenses")}</div>;
-          return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;const sub=(users.find(x=>x.id===(e.ownerId||e.submittedBy))||{name:UNKNOWN_USER_NAME}).name;return(
+          return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;return(
             <div key={e.id} className="row-hover" style={{display:"flex",alignItems:"flex-start",padding:"7px 3px",borderBottom:i<sorted.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}} onClick={()=>{resetForm();go("expenses");setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <div style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{short}</div>
-                  {(e.paidBy||[]).length>1&&<span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:10,fontWeight:700,color:"#4B5E52",background:"#EDE8E0",padding:"1px 5px",borderRadius:6,flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-hidden="true">{(e.paidBy||[]).length}</span>}
+                  {(e.paidBy||[]).length>1&&splitPill(e.paidBy,t)}
                 </div>
-                <div style={{fontSize:11,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.date)} · {t("filter.submitter")}: {sub} · {e.category}</div>
+                <div style={{fontSize:11,color:"#9CAA9F",marginTop:1}}>{fmtDate(e.date)} · {deptLabel(e.departmentId,departments)}</div>
               </div>
               <div style={{marginLeft:9,textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
                 <div style={{fontSize:12,fontWeight:700,color:G}}>{fmt(eurForExpense(e))}</div>
@@ -5532,13 +5566,12 @@ function ApprovalsView(){
   );
   const renderApprovalCard=(item)=>{
     const isInv=item.expenseType==="invoice";
-    const itemId=item.id;
     const rowApproverIds=effectiveExpenseApproverIds(item,cats,users);
-    const submitterName=(users.find(u=>u.id===item.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
     const ownerName=(users.find(u=>u.id===(item.ownerId||item.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
     const rowDate=isInv?(item.dueDate||item.date):item.date;
     const rowTitle=isInv?(String(item.vendor||item.proveedor||"").trim()||item.description):item.description;
     const st=getItemStatus(item,cats,users);
+    const deptName=deptLabel(item.departmentId,departments);
     const cardBg=
       st === 'approved' ? '#F0FDF4' :
       st === 'rejected' ? '#FFF1F2' :
@@ -5547,80 +5580,79 @@ function ApprovalsView(){
       ? '1.5px solid #f0c4a8'
       : '1px solid transparent';
     const canActOnRow=canActOnExpenseItem(item,user,cats,users);
+    const showVoteFooter=st==="pending"&&rowApproverIds.length>0;
     return(
-      <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
+      <div key={item.id} className="card row-hover" style={{marginBottom:6,padding:"8px 10px",background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
         resetForm();
         go("expenses");
         setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
       }}>
-        <div
-          style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7}}
-        >
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                  <span style={{fontWeight:700,fontSize:14}}>{rowTitle}</span>
-                  <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:10,
-                    background:isInv?"#EDE9FE":"#fde8d6",
-                    color:isInv?F:G}}>
-                    {isInv?"FACTURA":"GASTO"}
-                  </span>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:1}}>
-                  <span style={{color:"#6B7B72"}}>Titular: <strong>{ownerName}</strong></span>
-                </div>
-                <div style={{fontSize:11,color:"#9CAA9F",marginBottom:1}}>
-                  {isInv ? "Vence: " : ""}{fmtDate(rowDate)}
-                  {" · "}{item.category||"—"}
-                  {item.departmentId ? " · "+(departments.find(d=>d.id===item.departmentId)||{}).name : ""}
-                </div>
-                <div style={{fontSize:11,color:"#9CAA9F"}}>
-                  Enviado por: {submitterName}
-                </div>
-              </div>
-              <div style={{textAlign:"right",flexShrink:0}}>
-                <div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
-                <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center",justifyContent:"flex-end",flexWrap:"wrap"}}>
-                  <span
-                    className={statusToneClass(st)}
-                    style={{
-                      padding:"2px 8px",
-                      borderRadius:11,
-                      fontSize:10,
-                      fontWeight:700,
-                      ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
-                    }}
-                  >
-                    {t("status."+st)}
-                  </span>
-                  {canActOnRow&&(
-                    <button
-                      type="button"
-                      className="btn-sm"
-                      style={{fontSize:11}}
-                      onClick={e => {
-                        e.stopPropagation();
-                        resetForm();
-                        go("expenses");
-                        setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
-                      }}
-                    >
-                      {t("action.review")}
-                    </button>
-                  )}
-                </div>
-              </div>
+            <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+              <span style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{rowTitle}</span>
+              <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,flexShrink:0,
+                background:isInv?"#EDE9FE":"#fde8d6",
+                color:isInv?F:G}}>
+                {isInv?"FACTURA":"GASTO"}
+              </span>
+            </div>
+            <div style={{fontSize:10,color:"#6B7B72",marginTop:3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+              <span>{isInv?"Vence: ":""}{fmtDate(rowDate)} · {deptName} · {ownerName}</span>
+              {splitPill(item.paidBy,t)}
+            </div>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+            <div style={{fontSize:15,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
+            <div style={{display:"flex",gap:5,alignItems:"center",justifyContent:"flex-end",flexWrap:"wrap"}}>
+              <span
+                className={statusToneClass(st)}
+                style={{
+                  padding:"1px 6px",
+                  borderRadius:11,
+                  fontSize:9,
+                  fontWeight:700,
+                  ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
+                }}
+              >
+                {t("status."+st)}
+              </span>
+              {canActOnRow&&(
+                <button
+                  type="button"
+                  className="btn-sm"
+                  style={{fontSize:10,padding:"2px 8px"}}
+                  onClick={e => {
+                    e.stopPropagation();
+                    resetForm();
+                    go("expenses");
+                    setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
+                  }}
+                >
+                  {t("action.review")}
+                </button>
+              )}
             </div>
           </div>
         </div>
-        {(item.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={item} t={t} users={users} alwaysInline/></div>}
-        <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(item.approvals||{},aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
+        {showVoteFooter&&(
+          <div style={{display:"flex",gap:8,marginTop:5,flexWrap:"wrap",borderTop:"1px solid rgba(0,0,0,0.04)",paddingTop:4}}>
+            {rowApproverIds.map(aid=>{
+              const a=approvalVoteFor(item.approvals||{},aid,users);
+              return(
+                <span key={aid} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:9,color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>
+                  <span style={{width:4,height:4,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",display:"inline-block"}}/>
+                  {getU(aid).name}: {a?t("status."+a):t("status.pending")}
+                </span>
+              );
+            })}
+          </div>
+        )}
         {st === 'rejected' && item.rejectionNote && (
           <div style={{
-            marginTop: 8, padding: '8px 10px',
-            background: '#FEE2E2', borderRadius: 8,
-            fontSize: 11, color: '#991B1B'
+            marginTop: 6, padding: '6px 8px',
+            background: '#FEE2E2', borderRadius: 6,
+            fontSize: 10, color: '#991B1B'
           }}>
             <strong>Motivo del rechazo:</strong> {item.rejectionNote}
           </div>
@@ -5830,7 +5862,7 @@ function reportsApiDateRange(){
   };
 }
 function ReportsView(){
-  const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel,resetForm}=useApp();
+  const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel,resetForm,departments}=useApp();
   const [statusFilter, setStatusFilter] = useState("all");
   const [ivaFilter, setIvaFilter] = useState("with");
   const displayExpenses = (expenses || []).filter(e => {
@@ -6101,7 +6133,7 @@ function ReportsView(){
                                 {row.description||"Sin descripción"}
                               </div>
                               <div style={{fontSize:10,color:"#9CAA9F"}}>
-                                {fmtDate(row.date)} · {row.category}
+                                {fmtDate(row.date)} · {deptLabel(row.departmentId,departments)}
                               </div>
                             </div>
                             <div style={{textAlign:"right",flexShrink:0}}>
@@ -8684,6 +8716,8 @@ function SolanaExpenses(){
               ? autoApprove(user.id,approvalRequiredForSubmit,{},baseTrailOff)
               : {approvals:{},auditTrail:baseTrailOff};
             const allInit=approvalRequiredForSubmit.length>0&&approvalRequiredForSubmit.every(id=>optAppr[id]==="approved");
+            const nowTs=Date.now();
+            const traceCodeOpt=buildTraceCode(nowTs,amount,clientRef);
             const optimistic=normalizeItem({
               id:clientRef,
               _apiType:"expense",
@@ -8700,7 +8734,8 @@ function SolanaExpenses(){
               receipt:receipt?.b64||null,
               receiptType:receipt?.type||null,
               rejectionNote:null,
-              itemCode:mkCode("EXP"),
+              itemCode:traceCodeOpt,
+              traceCode:traceCodeOpt,
               approvals:optAppr,
               approvalRequired:approvalRequiredForSubmit,
               auditTrail:optTrail,
@@ -8750,7 +8785,10 @@ function SolanaExpenses(){
       const expReceiptTrail=receipt?[...expTrail,{action:"attachment_uploaded",by:user.id,at:new Date().toISOString(),meta:{type:receipt.type}}]:expTrail;
       const ivaRate=parseFormIvaRateString(form.ivaRate);
       const ivaAmount=calcIvaParts(amount,ivaRate).iva;
-      const exp={id:"e"+Date.now(),itemCode:mkCode("EXP"),amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId,
+      const localId="e"+Date.now();
+      const localNow=Date.now();
+      const traceCodeLocal=buildTraceCode(localNow,amount,localId);
+      const exp={id:localId,traceCode:traceCodeLocal,itemCode:traceCodeLocal,amount,description:form.description,category:form.category,date:form.date,submittedBy:user.id,ownerId,paidBy,...(splitModeOut?{splitMode:splitModeOut}:{}),approvals:expApprovals,receipt:receipt?.b64||null,receiptType:receipt?.type||null,notes:form.notes,auditTrail:expReceiptTrail,ivaRate,ivaAmount,comments:[],seenBy:[user.id],departmentId:form.departmentId,
         ...facturaExtras,
         ...invExtras,
         ...recExtras,
@@ -9234,7 +9272,7 @@ function SolanaExpenses(){
     const src=expSrc.toLowerCase().trim();
     if(src){
       const matchDesc=e.description.toLowerCase().includes(src);
-      const matchCode=(e.itemCode||"").toLowerCase().includes(src);
+      const matchCode=(e.traceCode||e.itemCode||"").toLowerCase().includes(src);
       const matchVendor=e.expenseType==="invoice"&&String(e.vendor||"").toLowerCase().includes(src);
       if(!matchDesc&&!matchCode&&!matchVendor)return false;
     }
