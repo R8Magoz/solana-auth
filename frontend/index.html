@@ -4924,8 +4924,9 @@ function DashboardView(){
   const mBillsTotal=expenses
     .filter(e=>e.expenseType==="invoice"&&getItemStatus(e,cats,users)==="approved"&&e.dueDate&&String(e.dueDate).slice(0,7)===ym)
     .reduce((s,e)=>s+eurForExpense(e),0);
-  const mTotalAll=expenses.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0)
-    .reduce((s,e)=>s+eurForExpense(e),0)+mBillsTotal;
+  const mExpensesTotal=expenses.filter(e=>e.expenseType!=="invoice"&&getItemStatus(e,cats,users)==="approved"&&e.date>=m0)
+    .reduce((s,e)=>s+eurForExpense(e),0);
+  const mTotalAll=mExpensesTotal+mBillsTotal;
   const pendAll=expenses.filter(e=>getItemStatus(e,cats,users)==="pending").length;
   const mine=expenses.filter(e=>(e.ownerId||e.submittedBy)===user.id);
   const mTotalMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0).reduce((s,e)=>s+eurForExpense(e),0);
