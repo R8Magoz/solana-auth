@@ -1113,6 +1113,51 @@ test.describe('A — Expense lifecycle', () => {
     await expect(panel.getByRole('button', { name: /Reconsiderar/i })).toBeVisible();
   });
 
+  test('A2e) Reconsider fires POST /reconsider on auto-approved own-expense', async ({ page }) => {
+    const autoApproved: ExpenseRow = {
+      id: 'exp_auto_appr_recon_net',
+      userId: 'admin-1',
+      date: '2026-04-01',
+      description: 'Auto approved reconsider net QA',
+      amount: 130,
+      amountEUR: 130,
+      currency: 'EUR',
+      category: 'Equipment',
+      status: 'approved',
+      expenseType: 'expense',
+      approversJson: JSON.stringify(['admin-1']),
+      approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+      ownerId: 'admin-1',
+      paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 130, pct: 100 }]),
+      splitMode: null,
+      notes: '',
+      receiptPath: null,
+      departmentId: 'dept_ops',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      paymentStatus: 'na',
+      deferredPayment: false,
+      paymentTermDays: 0,
+      auditTrailJson: JSON.stringify([]),
+      commentsJson: JSON.stringify([]),
+      rejectionNote: null,
+    };
+    const reconsiderPosts: string[] = [];
+    page.on('request', (req) => {
+      if (req.method() !== 'POST') return;
+      try {
+        const path = new URL(req.url()).pathname;
+        if (/^\/expenses\/[^/]+\/reconsider$/.test(path)) reconsiderPosts.push(req.url());
+      } catch (_) {}
+    });
+    await setupMockApi(page, { expenses: [autoApproved] });
+    await loginAs(page, 'admin@solana.test');
+    await openExpenseDetail(page, 'Auto approved reconsider net QA');
+    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    await panel.getByRole('button', { name: /Reconsiderar/i }).click();
+    await expect.poll(() => reconsiderPosts.length, { timeout: 5000 }).toBeGreaterThan(0);
+  });
+
   test('A2c) Reconsider sends approved expense back to pending review', async ({ page }) => {
     const approved: ExpenseRow = {
       id: 'exp_recon_appr_1',

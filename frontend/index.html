@@ -800,8 +800,8 @@ function shouldQueueWrite(method, path) {
   if (p.indexOf("/expenses") !== 0) return false;
   // Never queue receipt uploads — b64 payloads are too large for localStorage
   if (p.indexOf("/receipt") !== -1) return false;
-  // Never queue approve/reject/comment — these are small idempotent actions
-  if (/\/(approve|reject|comment)/.test(p)) return false;
+  // Never queue approve/reject/reconsider/comment — always attempt fetch when online
+  if (/\/(approve|reject|reconsider|comment)/.test(p)) return false;
   return true;
 }
 
@@ -840,7 +840,8 @@ function enqueueOfflineOp(method, path, body, meta) {
 
 const API = {
   get base() {
-    return AUTH_URL || "";
+    const runtime=(typeof window!=="undefined"&&window.__SOLANA_AUTH_URL__)||"";
+    return AUTH_URL||runtime||"";
   },
   token: null,
   _userId: null,
@@ -8067,7 +8068,7 @@ function SolanaExpenses(){
           if(row)setExpenses(prev=>prev.map(e=>e.id===row.id?row:e));
           return;
         }
-        if(op.method==="POST"&&(op.path.indexOf("/approve")>=0||op.path.indexOf("/reject")>=0)){
+        if(op.method==="POST"&&(op.path.indexOf("/approve")>=0||op.path.indexOf("/reject")>=0||op.path.indexOf("/reconsider")>=0)){
           const row=expenseFromApi(raw);
           if(row)setExpenses(prev=>prev.map(e=>e.id===row.id?row:e));
           return;
@@ -8997,8 +8998,35 @@ function SolanaExpenses(){
   const reconsiderExpense=async(itemId)=>{
     const item=expenses.find(x=>x.id===itemId);
     if(!item)return;
+    if(!availableApprovalActions(item,user,users,cats,{isAdmin}).reconsider){
+      dispatchSolanaToast(t("msg.genericShort"),"error");
+      return;
+    }
     appLog("info","expense_reconsider_requested",{itemId,itemCode:item?.itemCode,userId:user.id});
-    if(AUTH_URL){
+    const applyLocalReconsider=()=>{
+      const now=new Date().toISOString();
+      saveExp(prev=>prev.map(x=>{
+        if(x.id!==itemId)return x;
+        return{
+          ...x,
+          status:"submitted",
+          approvals:{},
+          auditTrail:[...(x.auditTrail||[]),{action:"reconsider_requested",by:user.id,at:now}],
+          rejectionNote:null,
+          approvedBy:null,
+          approvedAt:null,
+          rejectedBy:null,
+          rejectedAt:null,
+        };
+      }));
+      dispatchSolanaToast(t("expense.reconsiderDone"),"info");
+    };
+    const serverBacked=item._apiType==="expense";
+    if(serverBacked){
+      if(!API.base){
+        dispatchSolanaToast(t("signup.serverDown"),"error");
+        return;
+      }
       if(item._pendingSync){
         dispatchSolanaToast("Este ítem aún no está en el servidor; sincroniza antes de reconsiderar.","error");
         return;
@@ -9014,23 +9042,8 @@ function SolanaExpenses(){
           if(full)applyExpensesApiPayload(full,{setUsers,setExpenses});
           dispatchSolanaToast(t("expense.reconsiderDone"),"info");
         }catch(e){
-          if(isOfflineQueuedError(e)){
-            const approverIds=effectiveExpenseApproverIds(item,cats,users);
-            const baseTrail=[...(item.auditTrail||[]),{action:"reconsider_requested",by:user.id,at:new Date().toISOString()}];
-            const{approvals:newAppr,auditTrail:newTrail}=autoApprove(item.submittedBy||item.ownerId,approverIds,{},baseTrail);
-            const reqCanon=canonicalApproverIdList(approverIds,users);
-            const allInit=reqCanon.length>0&&reqCanon.every(id=>newAppr[id]==="approved");
-            saveExp(expenses.map(x=>{
-              if(x.id!==itemId)return x;
-              return{
-                ...x,
-                status:allInit?"approved":"submitted",
-                approvals:newAppr,
-                auditTrail:newTrail,
-                rejectionNote:null,
-              };
-            }));
-            dispatchSolanaToast(t("expense.reconsiderDone"),"info");
+          if(isOfflineQueuedError(e)||(typeof navigator!=="undefined"&&!navigator.onLine&&isNetworkError(e))){
+            applyLocalReconsider();
             return;
           }
           dispatchSolanaToast(e.message||t("msg.genericShort"),"error");
@@ -9042,22 +9055,7 @@ function SolanaExpenses(){
       })();
       return;
     }
-    const approverIds=effectiveExpenseApproverIds(item,cats,users);
-    const baseTrail=[...(item.auditTrail||[]),{action:"reconsider_requested",by:user.id,at:new Date().toISOString()}];
-    const{approvals:newAppr,auditTrail:newTrail}=autoApprove(item.submittedBy||item.ownerId,approverIds,{},baseTrail);
-    const reqCanon=canonicalApproverIdList(approverIds,users);
-    const allInit=reqCanon.length>0&&reqCanon.every(id=>newAppr[id]==="approved");
-    saveExp(expenses.map(e=>{
-      if(e.id!==itemId)return e;
-      return{
-        ...e,
-        status:allInit?"approved":"submitted",
-        approvals:newAppr,
-        auditTrail:newTrail,
-        rejectionNote:null,
-      };
-    }));
-    dispatchSolanaToast(t("expense.reconsiderDone"),"info");
+    applyLocalReconsider();
   };
 
   /* ── EARLY RETURN — after all hooks, before derived values that need user ── */
