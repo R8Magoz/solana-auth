@@ -6,7 +6,7 @@
 
 Solana is a Spanish-language expense & invoice tracker for small teams. See `README.md` for layout and stack.
 
-Three separate `package.json` directories require `npm install`: root (Playwright tests), `server/` (Express API), `client/` (Vite React SPA).
+Three separate `package.json` directories require `npm install`: root (Playwright tests) and `server/` (Express API).
 
 ### Starting the backend
 
@@ -23,19 +23,15 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 The server does **not** use `dotenv`; you must pass `--env-file=.env` (Node 20+) or export vars manually.
 
-### Starting the Vite dev client
+### Starting the frontend (local dev)
+
+`frontend/index.html` is the **sole source of truth** for the UI (single-file React, Babel in-browser). Cloudflare Pages publishes the `frontend/` folder directly — there is no Vite build step.
 
 ```bash
-cd client
-cp .env.example .env   # sets VITE_AUTH_URL=http://localhost:3001
-npm run dev             # port 5173, proxies /api to localhost:3001
+npx http-server ./frontend -p 4173 -c-1
 ```
 
-**Known issue:** The Vite client (`client/`) has a pre-existing runtime error ("Cannot access 'go' before initialization" in `AppBody.jsx`) that prevents the app from loading in the browser. The legacy frontend (`frontend/index.html`) works as a fallback.
-
-### Legacy frontend
-
-Serve `frontend/` with any static server (e.g. `npx http-server ./frontend -p 4173 -c-1`). By default it points at the production API (`https://solana-auth.onrender.com`). For local dev, set `window.__SOLANA_AUTH_URL__ = "http://localhost:3001"` in the browser console, or temporarily edit line 46 of `frontend/index.html`. Also update `CORS_ORIGIN` in `server/.env` to match the frontend's origin (e.g. `http://localhost:4173`).
+For local API dev, set `window.__SOLANA_AUTH_URL__ = "http://localhost:3001"` in the browser console, or edit `frontend/index.html`. Update `CORS_ORIGIN` in `server/.env` to match the frontend origin (e.g. `http://localhost:4173`).
 
 ### Seeding the database
 
@@ -61,16 +57,10 @@ Tests mock the API — no backend required. **Note:** There is a pre-existing sy
 
 No ESLint or linter is configured in this codebase.
 
-### Build
-
-```bash
-cd client && npm run build   # outputs to ../public/
-```
-
 ### Key gotchas
 
 - SQLite is embedded via `better-sqlite3` — no external database server needed.
 - External services (Resend email, Cloudinary, Anthropic AI) are all optional and degrade gracefully.
 - `ALLOW_SEED=true` enables seed/bootstrap endpoints — never set in production.
-- The Express server serves static files from `public/` (the Vite build output) in addition to the API routes.
+- The Express server may serve static files from `public/` if present; production UI is **`frontend/`** on Cloudflare Pages.
 - API routes are mounted without `/api` prefix: `/auth/*`, `/expenses/*`, `/departments/*`, `/admin/*`, `/reports/*`, `/ai/*`, `/settings/*`.
