@@ -22,6 +22,9 @@ const EXPORT_HEADERS = [
   'Pagado por',
   'Notas',
   'Aprobadores',
+  'Base imponible',
+  'Tipo IVA',
+  'Cuota IVA',
   'Total con IVA',
 ];
 
@@ -164,6 +167,21 @@ function fetchExportRows(req) {
   return null;
 }
 
+function ivaBreakdownForRow(row) {
+  const total = roundMoney(eurAmount(row));
+  const rate = row.ivaRate != null && row.ivaRate !== '' ? Number(row.ivaRate) : null;
+  const cuota =
+    row.ivaAmount != null && row.ivaAmount !== '' && Number.isFinite(Number(row.ivaAmount))
+      ? roundMoney(Number(row.ivaAmount))
+      : 0;
+  if (rate == null || !Number.isFinite(rate)) {
+    return { base: total, tipo: '', cuota: 0, total };
+  }
+  const base = roundMoney(total - cuota);
+  const tipo = rate === 0 ? '0%' : `${rate}%`;
+  return { base, tipo, cuota, total };
+}
+
 async function writeExpensesWorkbook(res, rows, userMap, filename) {
   const wb = new ExcelJS.Workbook();
   wb.creator = getCompanyName();
@@ -175,14 +193,23 @@ async function writeExpensesWorkbook(res, rows, userMap, filename) {
   headerRow.alignment = { vertical: 'middle' };
 
   const DATE_COL = 3;
-  const TOTAL_COL = 11;
+  const BASE_COL = 11;
+  const CUOTA_COL = 13;
+  const TOTAL_COL = 14;
+
+  let sumBase = 0;
+  let sumCuota = 0;
+  let sumTotal = 0;
 
   for (const e of rows) {
-    const total = roundMoney(eurAmount(e));
-    const tipo = e.expenseType === 'invoice' ? 'Factura' : 'Gasto';
+    const { base, tipo, cuota, total } = ivaBreakdownForRow(e);
+    sumBase += base;
+    sumCuota += cuota;
+    sumTotal += total;
+    const tipoLabel = e.expenseType === 'invoice' ? 'Factura' : 'Gasto';
     const row = ws.addRow([
-      e.itemCode || e.id,
-      tipo,
+      e.traceCode || e.itemCode || e.id,
+      tipoLabel,
       excelDateFromIso(e.date),
       e.description || '',
       e.category || '',
@@ -191,13 +218,41 @@ async function writeExpensesWorkbook(res, rows, userMap, filename) {
       formatPaidBy(e, userMap),
       e.notes || '',
       formatApprovers(e, userMap),
+      base,
+      tipo,
+      cuota,
       total,
     ]);
     const dateCell = row.getCell(DATE_COL);
     if (dateCell.value instanceof Date) {
       dateCell.numFmt = 'dd/mm/yyyy';
     }
+    row.getCell(BASE_COL).numFmt = '#,##0.00 "€"';
+    row.getCell(CUOTA_COL).numFmt = '#,##0.00 "€"';
     row.getCell(TOTAL_COL).numFmt = '#,##0.00 "€"';
+  }
+
+  if (rows.length > 0) {
+    const totalsRow = ws.addRow([
+      'TOTALES',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      roundMoney(sumBase),
+      '',
+      roundMoney(sumCuota),
+      roundMoney(sumTotal),
+    ]);
+    totalsRow.font = { bold: true };
+    totalsRow.getCell(BASE_COL).numFmt = '#,##0.00 "€"';
+    totalsRow.getCell(CUOTA_COL).numFmt = '#,##0.00 "€"';
+    totalsRow.getCell(TOTAL_COL).numFmt = '#,##0.00 "€"';
   }
 
   ws.columns.forEach((col, i) => {
