@@ -1444,14 +1444,13 @@ const mergeReconsideredExpenseClientRow=(base,actorUserId)=>{
   const now=new Date().toISOString();
   const trail=Array.isArray(base.auditTrail)?base.auditTrail:[];
   const hasRecon=trail.some(a=>a&&a.action==="reconsider_requested");
-  const serverApproved=base.status==="approved";
   return{
     ...base,
-    status:serverApproved?"approved":"submitted",
-    approvals:serverApproved?(base.approvals||{}):{},
+    status:"submitted",
+    approvals:{},
     rejectionNote:null,
-    approvedBy:serverApproved?base.approvedBy:null,
-    approvedAt:serverApproved?base.approvedAt:null,
+    approvedBy:null,
+    approvedAt:null,
     rejectedBy:null,
     rejectedAt:null,
     auditTrail:hasRecon?trail:[...trail,{action:"reconsider_requested",by:actorUserId,at:now}],
@@ -9419,7 +9418,7 @@ function SolanaExpenses(){
               {view==="settings" &&<SettingsView/>}
             </div>
             {rpOpen&&(
-              <div className="dt-only panel-slide" style={{width:350,borderLeft:"1px solid #E5DDD2",overflowY:"auto",padding:16,flexShrink:0,minHeight:0,background:"#fff"}}>
+              <div data-testid="detail-panel" className="dt-only panel-slide" style={{width:350,borderLeft:"1px solid #E5DDD2",overflowY:"auto",padding:16,flexShrink:0,minHeight:0,background:"#fff"}}>
                 {panel==="new"?<NewPanel/>:<DetailPanel/>}
               </div>
             )}

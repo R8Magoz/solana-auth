@@ -794,6 +794,22 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       return json(200, { ok: true, user: u ?? null });
     }
 
+    // GET /expenses/:id/audit
+    const expenseAuditMatch = path.match(/^\/expenses\/([^/]+)\/audit$/);
+    if (expenseAuditMatch && method === 'GET') {
+      if (!session) return json(401, { error: 'No autorizado.' });
+      const e = state.expenses.find((x) => x.id === expenseAuditMatch[1]);
+      if (!e) return json(404, { error: 'Gasto no encontrado.' });
+      return json(200, { entries: parseAudit(e) });
+    }
+
+    // GET /expenses/:id/receipt (no receipt in mock fixtures)
+    const expenseReceiptGetMatch = path.match(/^\/expenses\/([^/]+)\/receipt$/);
+    if (expenseReceiptGetMatch && method === 'GET') {
+      if (!session) return json(401, { error: 'No autorizado.' });
+      return json(404, { error: 'No encontrado.' });
+    }
+
     // Log any unhandled route so we can add it if needed
     console.warn(`[mock] unhandled: ${method} ${path}`);
     // (existing catch-all stays below)
@@ -845,6 +861,10 @@ async function clickSidebarGastos(page: Page) {
   await clickSidebarSection(page, 'Gastos');
 }
 
+function getDetailPanel(page: Page) {
+  return page.getByTestId('detail-panel');
+}
+
 async function openSettingsViaUserMenu(page: Page) {
   // Settings is reached via the username card at the bottom of the sidebar (desktop E2E viewport).
   const userCard = page.locator('.dt-only button').filter({ hasText: /Admin QA|User QA|Manager/i }).first();
@@ -868,7 +888,7 @@ async function openNewInvoicePanel(page: Page) {
     .filter({ hasText: /^(Nuevo gasto|Nueva factura|[+＋])/i })
     .first()
     .click();
-  const panel = page.locator('.panel-slide, [data-panel]').last();
+  const panel = getDetailPanel(page);
   const invoiceCheckbox = panel.locator('input[type="checkbox"]').filter({ hasText: /factura|invoice/i }).first();
   if ((await invoiceCheckbox.count()) === 0) {
     const labeled = panel.getByRole('checkbox', { name: /factura|invoice|proveedor/i });
@@ -883,14 +903,14 @@ async function openNewInvoicePanel(page: Page) {
 }
 
 async function clickPanelSubmit(page: Page) {
-  const panel = page.locator('.panel-slide, [data-panel]').last();
+  const panel = getDetailPanel(page);
   await panel.getByRole('button', { name: /Enviar gasto|Enviar factura/i }).first().click({ force: true });
 }
 
 async function createExpenseViaUi(page: Page, description: string, amount: string) {
   await clickSidebarGastos(page);
   await page.getByRole('button', { name: 'Nuevo gasto' }).click();
-  const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
+  const wrap = getDetailPanel(page).locator('.expense-form-fields-wrap');
   await wrap.getByPlaceholder('Concepto').fill(description);
   await wrap.getByPlaceholder('0.00').fill(amount);
 
@@ -905,7 +925,7 @@ async function createExpenseViaUi(page: Page, description: string, amount: strin
 
 async function createBillViaUi(page: Page, name: string, amount: string) {
   await openNewInvoicePanel(page);
-  const wrap = page.locator('.panel-slide .expense-form-fields-wrap').last();
+  const wrap = getDetailPanel(page).locator('.expense-form-fields-wrap');
   await wrap.locator('input[placeholder="Concepto"]').first().fill(name);
   await wrap.locator('label:has-text("Proveedor")').locator('..').locator('input.inp').first().fill(name);
   await wrap.getByPlaceholder('0.00').fill(amount);
@@ -921,13 +941,13 @@ async function createBillViaUi(page: Page, name: string, amount: string) {
 
 async function openExpenseDetail(page: Page, descriptionText: string) {
   await page.getByText(descriptionText).first().click();
-  await page.locator('.panel-slide, [data-panel], [role="dialog"]').last().waitFor({ state: 'visible' });
+  await getDetailPanel(page).waitFor({ state: 'visible' });
 }
 
 async function rejectExpenseViaUi(page: Page, note = 'No procede QA') {
   await clickSidebarSection(page, 'Aprobaciones');
   await page.getByRole('button', { name: 'Revisar' }).first().click();
-  const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+  const panel = getDetailPanel(page);
   await panel.getByRole('button', { name: /Rechazar/i }).first().click({ force: true });
   const noteField = panel.locator('textarea, input[type="text"]').last();
   if (await noteField.isVisible().catch(() => false)) {
@@ -1029,7 +1049,7 @@ test.describe('Critical business flows', () => {
     await expect(page.getByText('Server bill import').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Revisar' })).toHaveCount(0);
     await page.getByText('Server bill import').click();
-    const panel = page.locator('.panel-slide, [data-panel]').last();
+    const panel = getDetailPanel(page);
     await expect(panel.getByRole('button', { name: /Aprobar/i })).toHaveCount(0);
     await expect(panel.getByRole('button', { name: /Rechazar/i })).toHaveCount(0);
   });
@@ -1070,7 +1090,7 @@ test.describe('A — Expense lifecycle', () => {
     await createExpenseViaUi(page, 'Silla ergonómica QA', '480');
     await clickSidebarSection(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await panel.getByRole('button', { name: /Aprobar/i }).first().click({ force: true });
     await page.waitForTimeout(600);
     await clickSidebarGastos(page);
@@ -1110,7 +1130,7 @@ test.describe('A — Expense lifecycle', () => {
     await setupMockApi(page, { expenses: [autoApproved] });
     await loginAs(page, 'admin@solana.test');
     await openExpenseDetail(page, 'Auto approved QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toHaveCount(0);
     await expect(panel.getByRole('button', { name: /^Rechazar$/i })).toHaveCount(0);
     await expect(panel.getByRole('button', { name: /Reconsiderar/i })).toBeVisible();
@@ -1156,7 +1176,7 @@ test.describe('A — Expense lifecycle', () => {
     await setupMockApi(page, { expenses: [autoApproved] });
     await loginAs(page, 'admin@solana.test');
     await openExpenseDetail(page, 'Auto approved reconsider net QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await panel.getByRole('button', { name: /Reconsiderar/i }).click();
     await expect.poll(() => reconsiderPosts.length, { timeout: 5000 }).toBeGreaterThan(0);
   });
@@ -1193,7 +1213,7 @@ test.describe('A — Expense lifecycle', () => {
     await setupMockApi(page, { expenses: [autoApproved] });
     await loginAs(page, 'admin@solana.test');
     await openExpenseDetail(page, 'Auto approved reject after reconsider QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await panel.getByRole('button', { name: /Reconsiderar/i }).click();
     await expect(panel.getByRole('button', { name: /^Rechazar$/i })).toBeVisible({ timeout: 5000 });
     await panel.locator('textarea').fill('Motivo de rechazo QA suficientemente largo');
@@ -1236,7 +1256,7 @@ test.describe('A — Expense lifecycle', () => {
     await setupMockApi(page, { expenses: [autoApproved] });
     await loginAs(page, 'admin@solana.test');
     await openExpenseDetail(page, 'Reconsider then approve QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await panel.getByRole('button', { name: /Reconsiderar/i }).click();
     await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toBeVisible({ timeout: 5000 });
     await panel.getByRole('button', { name: /^Aprobar$/i }).click();
@@ -1277,7 +1297,7 @@ test.describe('A — Expense lifecycle', () => {
     await setupMockApi(page, { expenses: [approved] });
     await loginAs(page, 'admin@solana.test');
     await openExpenseDetail(page, 'Reconsider from approved QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await panel.getByRole('button', { name: /Reconsiderar/i }).click();
     await page.waitForTimeout(800);
     await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toBeVisible();
@@ -1317,7 +1337,7 @@ test.describe('A — Expense lifecycle', () => {
     await setupMockApi(page, { expenses: [rejected] });
     await loginAs(page, 'admin@solana.test');
     await openExpenseDetail(page, 'Reconsider from rejected QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await panel.getByRole('button', { name: /Reabrir/i }).click();
     await page.waitForTimeout(800);
     await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toBeVisible();
@@ -1373,7 +1393,7 @@ test.describe('A — Expense lifecycle', () => {
     await loginAs(page, 'user@solana.test');
     await clickSidebarGastos(page);
     await openExpenseDetail(page, 'Gasto para editar QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await panel.getByRole('button', { name: /Editar|Edit/i }).first().click({ force: true });
     await page.waitForTimeout(400);
     const descField = panel.locator('input[name*="desc"], input[placeholder*="escripci"], textarea').first();
@@ -1423,7 +1443,7 @@ test.describe('A — Expense lifecycle', () => {
     await loginAs(page, 'user@solana.test');
     await clickSidebarGastos(page);
     await openExpenseDetail(page, 'Gasto aprobado bloqueado QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     const editBtn = panel.getByRole('button', { name: /Editar|Edit/i });
     const count = await editBtn.count();
     if (count > 0) {
@@ -1444,7 +1464,7 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await page.waitForTimeout(1000);
     await expect(page.getByText('Factura contado QA').first()).toBeVisible({ timeout: 15000 });
     await openExpenseDetail(page, 'Factura contado QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await expect(panel.getByText(/Vencimiento/i).first()).toBeVisible();
     await expect(panel.getByText(/Estado de pago/i)).toHaveCount(0);
     await expect(panel.getByText(/Condiciones de pago/i)).toHaveCount(0);
@@ -1456,7 +1476,7 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await createBillViaUi(page, 'Factura NET-30 QA', '500');
     await clickSidebarSection(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await panel.getByRole('button', { name: /Aprobar/i }).first().click({ force: true });
     await page.waitForTimeout(600);
     await clickSidebarGastos(page);
@@ -1509,7 +1529,7 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await page.waitForTimeout(1000);
     await expect(page.getByText('Proveedor QA').first()).toBeVisible({ timeout: 15000 });
     await openExpenseDetail(page, 'Proveedor QA');
-    const detailPanel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const detailPanel = getDetailPanel(page);
     await expect(detailPanel.getByText(/Vencimiento/i).first()).toBeVisible();
     await expect(detailPanel.getByText(/01 may 2026/i).first()).toBeVisible();
     await expect(detailPanel.getByRole('button', { name: /Marcar como pagada|Marcar pagada|Mark paid/i })).toHaveCount(0);
@@ -1683,7 +1703,7 @@ test.describe('C — Permissions and profile', () => {
     await loginAs(page, 'user@solana.test');
     await clickSidebarGastos(page);
     await openExpenseDetail(page, 'Gasto sin botones QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await expect(panel.getByRole('button', { name: /Aprobar/i })).toHaveCount(0);
     await expect(panel.getByRole('button', { name: /Rechazar/i })).toHaveCount(0);
   });
@@ -1755,7 +1775,7 @@ test.describe('C — Permissions and profile', () => {
     await expect(page.getByText('Gasto para aprobar por user QA').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Revisar' }).first()).toBeVisible({ timeout: 15000 });
     await page.getByRole('button', { name: 'Revisar' }).first().click();
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     await expect(panel.getByRole('button', { name: /Aprobar/i }).first()).toBeVisible();
     await expect(panel.getByRole('button', { name: /Rechazar/i }).first()).toBeVisible();
   });
@@ -1794,7 +1814,7 @@ test.describe('E — Seguimiento (Audit trail)', () => {
     await createExpenseViaUi(page, 'Gasto seguimiento QA', '80');
     await clickSidebarGastos(page);
     await openExpenseDetail(page, 'Gasto seguimiento QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     const segTab = panel.getByRole('tab', { name: /Seguimiento|Historial|Activity/i });
     if (await segTab.isVisible().catch(() => false)) await segTab.click();
     await expect(panel.getByText(/Enviado|Submitted|Creado/i).first()).toBeVisible();
@@ -1806,12 +1826,12 @@ test.describe('E — Seguimiento (Audit trail)', () => {
     await createExpenseViaUi(page, 'Gasto aprobado trail QA', '90');
     await clickSidebarSection(page, 'Aprobaciones');
     await page.getByRole('button', { name: 'Revisar' }).first().click();
-    const approvePanel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const approvePanel = getDetailPanel(page);
     await approvePanel.getByRole('button', { name: /Aprobar/i }).first().click({ force: true });
     await page.waitForTimeout(600);
     await clickSidebarGastos(page);
     await openExpenseDetail(page, 'Gasto aprobado trail QA');
-    const detailPanel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const detailPanel = getDetailPanel(page);
     const segTab = detailPanel.getByRole('tab', { name: /Seguimiento|Historial|Activity/i });
     if (await segTab.isVisible().catch(() => false)) await segTab.click();
     await expect(detailPanel.getByText(/Aprobado|Approved/i).first()).toBeVisible();
@@ -1823,7 +1843,7 @@ test.describe('E — Seguimiento (Audit trail)', () => {
     await createExpenseViaUi(page, 'Gasto con nota QA', '60');
     await clickSidebarGastos(page);
     await openExpenseDetail(page, 'Gasto con nota QA');
-    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    const panel = getDetailPanel(page);
     const segTab = panel.getByRole('tab', { name: /Seguimiento|Historial|Activity/i });
     if (await segTab.isVisible().catch(() => false)) await segTab.click();
     await panel.getByRole('button', { name: /Añadir nota|Add note|Comentar/i }).first().click({ force: true });
