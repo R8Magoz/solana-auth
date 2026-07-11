@@ -2,6 +2,7 @@
 
 const express = require('express');
 const settingsCache = require('../lib/settingsCache');
+const { DEFAULT_CATEGORY_LIST_PIPE } = require('../lib/defaultCategories');
 
 /**
  * @param {object} deps
@@ -46,7 +47,7 @@ function createAiRouter(deps) {
     const block = isPdf
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } }
       : { type: 'image',    source: { type: 'base64', media_type: mime,               data: b64 } };
-    let categoryList = 'Equipment|Supplies|Marketing|Legal|Rent|Software|Food & Beverage|Travel|Otro';
+    let categoryList = DEFAULT_CATEGORY_LIST_PIPE;
     try {
       const cats = settingsCache.get('categories', null);
       if (Array.isArray(cats)) {
