@@ -1524,15 +1524,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       approverIds = getApproverIdsForDepartment(exp.departmentId);
     }
     approverIds = canonicalizeApproverIds(approverIds, userStore);
-    const { votes, allDone } = computeSubmittedVotes(exp.userId, approverIds);
-    let finalStatus = 'submitted';
-    let approvedByVal = null;
-    let approvedAtVal = null;
-    if (allDone) {
-      finalStatus = 'approved';
-      approvedByVal = exp.userId;
-      approvedAtVal = now;
-    }
+    // Reconsider reopens to submitted — sole-approver auto-approve (computeSubmittedVotes) applies only on new submit.
+    const finalStatus = 'submitted';
+    const votes = {};
     const updateInfo = db.prepare(`
       UPDATE expenses SET
         status = ?, approvalVotesJson = ?, approversJson = ?,
@@ -1544,8 +1538,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       finalStatus,
       JSON.stringify(votes),
       JSON.stringify(approverIds),
-      approvedByVal,
-      approvedAtVal,
+      null,
+      null,
       null,
       null,
       null,
@@ -1560,9 +1554,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       targetId: exp.id,
       previousStatus,
     });
-    if (finalStatus === 'approved' && previousStatus !== 'approved') {
-      audit('expense_approved', { userId: actorId, targetId: exp.id, via: 'reconsider_finalize' });
-    }
     const updated = getExpenseById(exp.id);
     return res.json({ ok: true, expense: updated });
   });
