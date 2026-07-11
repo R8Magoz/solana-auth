@@ -79,11 +79,15 @@ export const fmtDate = (d) => {
   }
 };
 
-// parseMoney: accepts "12,50" or "12.50" → 12.5 (shared utility used by all amount inputs)
+// parseMoney: "12,50" / "1.234,56" (ES) or "12.50" / "89.30" (dot decimal) → number
 export const parseMoney = (s) => {
   if (s === null || s === undefined || s === '') return 0;
-  const n = String(s).trim().replace(/\./g, '').replace(',', '.');
-  const v = parseFloat(n);
+  const raw = String(s).trim();
+  if (!raw) return 0;
+  const normalized = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.')
+    : raw;
+  const v = parseFloat(normalized);
   return isNaN(v) ? 0 : v;
 };
 
