@@ -210,6 +210,8 @@ const TR = {
     "msg.tempPwRequired": "Establece una contraseña temporal, mín. 8 caracteres.",
     "action.approve": "Aprobar",
     "action.reject": "Rechazar",
+    "action.reconsider": "Reconsiderar",
+    "action.reopen": "Reabrir",
     "action.save": "Guardar",
     "action.cancel": "Cancelar",
     "action.delete": "Eliminar",
@@ -574,6 +576,8 @@ const TR = {
     "expense.confirmEdit": "¿Guardar cambios en este gasto?",
     "expense.reapprovalWarning": "Este gasto estaba aprobado. Los cambios en campos clave resetearán la aprobación y requerirán revisión.",
     "expense.reapprovalDone": "Gasto vuelto a pendiente; se requiere reaprobación.",
+    "expense.reconsiderDone": "Gasto enviado de nuevo a revisión.",
+    "expense.approvedSummary": "Este gasto está aprobado.",
     "expense.noPermission": "Solo puedes editar tus propios gastos.",
     "expense.edited": "Editado",
     "expense.unsaved": "Tienes cambios sin guardar. ¿Descartarlos?",
@@ -1423,6 +1427,7 @@ const EDIT_FIELD_LABELS={
 const TIMELINE_ACTION_LABEL={
   created:"Enviado",submitted:"Enviado",auto_approved:"Aprobado automáticamente",approved:"Aprobado",
   rejected:"Rechazado",resubmitted:"Reenviado",edited:"Editado",updated:"Editado",
+  reconsider_requested:"Reconsiderado",
   attachment_removed:"Adjunto eliminado",attachment_uploaded:"Adjunto subido",
   comment_added:"Nota añadida",reapproval_required:"Requiere nueva revisión",
   deleted:"Eliminado",vote_changed:"Voto actualizado",
@@ -1433,6 +1438,7 @@ const TIMELINE_COLLAPSE_ACTIONS=new Set(["approved","auto_approved","rejected","
 const SERVER_AUDIT_EVENT_TO_ACTION={
   expense_submitted:"submitted",expense_created:"submitted",expense_approved:"approved",
   expense_rejected:"rejected",expense_deleted:"deleted",expense_reapproval_required:"reapproval_required",
+  expense_reconsider_requested:"reconsider_requested",
   expense_vote_changed:"vote_changed",expense_approver_removed_autoapprove:"approver_removed_autoapprove",
   expense_edited:"edited",expense_updated:"updated",expense_receipt_uploaded:"attachment_uploaded",
   expense_comment_added:"comment_added",
@@ -1649,15 +1655,55 @@ const effectiveExpenseApproverIds=(exp,cats,users)=>{
     .filter(u => u.role === 'admin')
     .map(u => u.id);
 };
-const canUserReviewExpense=(item,{user,cats,users})=>{
-  if(!item||!user?.id)return false;
-  const approverIds=effectiveExpenseApproverIds(item,cats,users);
-  if(!approverIds.includes(user.id))return false;
-  if(item._apiType==="expense"){
-    return item.status==="submitted"||item.status==="approved"||item.status==="rejected";
+const canUserReviewExpense=(item,{user,cats,users,isAdmin})=>{
+  const acts=availableApprovalActions(item,user,users,cats,{isAdmin});
+  return acts.approve||acts.reject||acts.reconsider;
+};
+/** Authoritative status for actionability (API raw status; local uses getItemStatus). */
+const expenseAuthoritativeStatus=(item,cats,users)=>{
+  if(item&&item._apiType==="expense"&&item.status){
+    const s=String(item.status);
+    if(s==="deleted")return"deleted";
+    if(s==="rejected")return"rejected";
+    if(s==="approved")return"approved";
+    if(s==="submitted"||s==="draft")return"pending";
   }
-  const st=getItemStatus(item,cats,users);
-  return st==="pending"||st==="approved"||st==="rejected";
+  return getItemStatus(item,cats,users);
+};
+/** Actions the current user may take that the backend (or local rules) will accept. */
+const availableApprovalActions=(e,user,users,cats,{isAdmin:isAdminOpt}={})=>{
+  const actions={approve:false,reject:false,reconsider:false};
+  if(!e||!user?.id)return actions;
+  if(e._pendingSync)return actions;
+  const isAdmin=isAdminOpt!=null?!!isAdminOpt:user.role==="admin";
+  const approverIds=effectiveExpenseApproverIds(e,cats,users);
+  const isApprover=approverIds.includes(user.id);
+  if(AUTH_URL&&e._apiType==="expense"){
+    const rawStatus=String(e.status||"");
+    if(rawStatus==="deleted")return actions;
+    if(rawStatus==="submitted"){
+      if(isApprover){
+        const myVote=approvalVoteFor(e.approvals||{},user.id,users);
+        if(myVote!=="approved")actions.approve=true;
+        actions.reject=true;
+      }
+      return actions;
+    }
+    if((rawStatus==="approved"||rawStatus==="rejected")&&(isApprover||isAdmin)){
+      actions.reconsider=true;
+    }
+    return actions;
+  }
+  const st=getItemStatus(e,cats,users);
+  if(st==="deleted")return actions;
+  if(st==="pending"&&isApprover){
+    const myVote=approvalVoteFor(e.approvals||{},user.id,users);
+    if(myVote!=="approved")actions.approve=true;
+    actions.reject=true;
+  }else if((st==="approved"||st==="rejected")&&(isApprover||isAdmin)){
+    actions.reconsider=true;
+  }
+  return actions;
 };
 const getItemStatus=(item,cats,users)=>{
   if (item && item._apiType === 'expense' && item.status) {
@@ -4282,7 +4328,7 @@ function NewPanel(){
 
 /* ── DETAIL PANEL ──────────────────────────────────────────────────────────── */
 function DetailPanel(){
-  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,ivaRates,departments,defaultDeptId,resetForm,
+  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,reconsiderExpense,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,ivaRates,departments,defaultDeptId,resetForm,
         fileRef,startCam,receiptAltHandlerRef}=useApp();
   const [editMode,setEditMode]=useState(false);
   const [ef,setEf]=useState({});        // edit form fields
@@ -4372,6 +4418,8 @@ function DetailPanel(){
   };
   const approverIds=effectiveExpenseApproverIds(e,cats,users);
   const st=getItemStatus(e,cats,users);
+  const approvalActs=availableApprovalActions(e,user,users,cats,{isAdmin});
+  const showApprovalUi=!editSaving&&(approvalActs.approve||approvalActs.reject||approvalActs.reconsider);
   const detailAccent = e && e.expenseType === 'invoice' ? F : G;
   const detailSublistStatusTone = (s) =>
     ST[s] || (s === 'deleted' ? { bg: '#F3F4F6', color: '#6B7280' } : ST.pending);
@@ -4639,14 +4687,33 @@ function DetailPanel(){
           </div>
         );})}
       </div>
-      {canUserReviewExpense(e,{user,cats,users})&&!editSaving&&(
+      {showApprovalUi&&(
         <div style={{marginTop:9,borderTop:`1px solid ${detailAccent}`,paddingTop:9}}>
-          <label className="lbl" style={{marginBottom:3,color:detailAccent}}>{t("label.decision")}</label>
-          <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
-          <div style={{display:"flex",gap:6}}>
-            <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:detailAccent}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button>
-            <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,background:"transparent",color:"#DC2626",border:"2px solid #DC2626",fontWeight:700}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
-          </div>
+          {(approvalActs.approve||approvalActs.reject)&&(
+            <>
+              <label className="lbl" style={{marginBottom:3,color:detailAccent}}>{t("label.decision")}</label>
+              <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
+              <div style={{display:"flex",gap:6}}>
+                {approvalActs.approve&&(
+                  <button className="btn-primary" style={{flex:1,padding:"7px",fontSize:13,background:detailAccent}} onClick={()=>approve(e.id,"approved")}>{t("action.approve")}</button>
+                )}
+                {approvalActs.reject&&(
+                  <button className="btn-danger" title={e.approvedBy === 'auto' ? 'Revocar aprobación automática' : 'Rechazar'} style={{flex:1,padding:"7px",fontSize:13,background:"transparent",color:"#DC2626",border:"2px solid #DC2626",fontWeight:700}} onClick={()=>approve(e.id,"rejected")}>{t("action.reject")}</button>
+                )}
+              </div>
+            </>
+          )}
+          {approvalActs.reconsider&&!approvalActs.approve&&!approvalActs.reject&&(
+            <div>
+              {st==="approved"&&(
+                <div style={{fontSize:11,color:"#166534",marginBottom:8,fontWeight:600}}>{t("expense.approvedSummary")}</div>
+              )}
+              <button type="button" className="btn-secondary" style={{width:"100%",padding:"8px",fontSize:13,fontWeight:600}}
+                onClick={()=>reconsiderExpense(e.id)}>
+                {st==="rejected"?t("action.reopen"):t("action.reconsider")}
+              </button>
+            </div>
+          )}
         </div>
       )}
       {e._apiType==="expense"&&e.status==="rejected"&&e.rejectionNote&&(
@@ -5378,7 +5445,7 @@ function ApprovalsView(){
           const cardBorder = priorityForItem(item) === 0
             ? '1.5px solid #f0c4a8'
             : '1px solid transparent';
-          const canActOnRow=canUserReviewExpense(item,{user,cats,users});
+          const canActOnRow=canUserReviewExpense(item,{user,cats,users,isAdmin});
           return(
             <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
               resetForm();
@@ -8843,6 +8910,10 @@ function SolanaExpenses(){
             return;
           }
           dispatchSolanaToast(e.message||"Error al procesar.","error");
+          try{
+            const full=await API.get("/expenses");
+            if(full)applyExpensesApiPayload(full,{setUsers,setExpenses});
+          }catch(refreshErr){}
           return;
         }
         setANote(p=>({...p,[itemId]:""}));
@@ -8851,6 +8922,53 @@ function SolanaExpenses(){
     }
     saveExp(expenses.map(e=>e.id!==itemId?e:{...e,approvals:{...e.approvals,[user.id]:action},auditTrail:[...e.auditTrail,{action,by:user.id,at:new Date().toISOString(),note}],seenBy:seenByAfterActor(user.id)}));
     setANote(p=>({...p,[itemId]:""}));
+  };
+
+  const reconsiderExpense=async(itemId)=>{
+    const item=expenses.find(x=>x.id===itemId);
+    if(!item)return;
+    appLog("info","expense_reconsider_requested",{itemId,itemCode:item?.itemCode,userId:user.id});
+    if(AUTH_URL){
+      if(item._pendingSync){
+        dispatchSolanaToast("Este ítem aún no está en el servidor; sincroniza antes de reconsiderar.","error");
+        return;
+      }
+      void (async()=>{
+        try{
+          const d=await API.post("/expenses/"+encodeURIComponent(itemId)+"/reconsider",{});
+          if(d?.expense){
+            const row=expenseFromApi(d.expense);
+            if(row)saveExp(prev=>prev.map(e=>e.id===row.id?row:e));
+          }
+          const full=await API.get("/expenses");
+          if(full)applyExpensesApiPayload(full,{setUsers,setExpenses});
+          dispatchSolanaToast(t("expense.reconsiderDone"),"info");
+        }catch(e){
+          dispatchSolanaToast(e.message||t("msg.genericShort"),"error");
+          try{
+            const full=await API.get("/expenses");
+            if(full)applyExpensesApiPayload(full,{setUsers,setExpenses});
+          }catch(refreshErr){}
+        }
+      })();
+      return;
+    }
+    const approverIds=effectiveExpenseApproverIds(item,cats,users);
+    const baseTrail=[...(item.auditTrail||[]),{action:"reconsider_requested",by:user.id,at:new Date().toISOString()}];
+    const{approvals:newAppr,auditTrail:newTrail}=autoApprove(item.submittedBy||item.ownerId,approverIds,{},baseTrail);
+    const reqCanon=canonicalApproverIdList(approverIds,users);
+    const allInit=reqCanon.length>0&&reqCanon.every(id=>newAppr[id]==="approved");
+    saveExp(expenses.map(e=>{
+      if(e.id!==itemId)return e;
+      return{
+        ...e,
+        status:allInit?"approved":"submitted",
+        approvals:newAppr,
+        auditTrail:newTrail,
+        rejectionNote:null,
+      };
+    }));
+    dispatchSolanaToast(t("expense.reconsiderDone"),"info");
   };
 
   /* ── EARLY RETURN — after all hooks, before derived values that need user ── */
@@ -9016,7 +9134,7 @@ function SolanaExpenses(){
     receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,submitting,
     handleReceiptFile,calcEqual,fileRef,startCam,capturePhoto,stopCam,receiptAltHandlerRef,
     submitExp,resetForm,
-    aNote,setANote,approve,
+    aNote,setANote,approve,reconsiderExpense,
     myPending,byStatus,filtered,
     totApproved,totFixed,perPerson,
     expFlt,setExpFlt,expSrc,setExpSrc,activeFilterCount,

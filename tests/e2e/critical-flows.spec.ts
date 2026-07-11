@@ -563,7 +563,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       return json(200, { ok: true, expense: row });
     }
 
-    const expenseIdMatch = path.match(/^\/expenses\/([^/]+)\/(receipt|approve|reject|comments|comment)$/);
+    const expenseIdMatch = path.match(/^\/expenses\/([^/]+)\/(receipt|approve|reject|reconsider|comments|comment)$/);
     const expensePutMatch = path.match(/^\/expenses\/([^/]+)$/);
 
     if (expenseIdMatch && method === 'POST') {
@@ -582,6 +582,13 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       if (sub === 'approve') {
         if (!canSessionActOnApproval(e, session)) {
           return json(403, { error: 'No eres aprobador designado para este gasto.' });
+        }
+        if (e.status === 'approved') {
+          e.updatedAt = Date.now();
+          return json(200, { ok: true, expense: e });
+        }
+        if (e.status !== 'submitted') {
+          return json(400, { error: 'El gasto no está pendiente de aprobación.' });
         }
         const votes = parseVotes(e);
         const oldVote = votes[session.userId] || null;
@@ -613,6 +620,13 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         if (!canSessionActOnApproval(e, session)) {
           return json(403, { error: 'No eres aprobador designado para este gasto.' });
         }
+        if (e.status === 'rejected') {
+          e.updatedAt = Date.now();
+          return json(200, { ok: true, expense: e });
+        }
+        if (e.status !== 'submitted') {
+          return json(400, { error: 'El gasto no está pendiente de aprobación.' });
+        }
         const body = safeJson(req.postData());
         const note = String(body.note || body.rejectionNote || '');
         const votes = parseVotes(e);
@@ -632,6 +646,30 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         } else if (e.status === 'approved') {
           pushAudit(e, { action: 'approved', by: session.userId });
         }
+        e.updatedAt = Date.now();
+        (e as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = parseAudit(e);
+        return json(200, { ok: true, expense: e });
+      }
+      if (sub === 'reconsider') {
+        const canReconsider = session.role === 'admin' || canSessionActOnApproval(e, session);
+        if (!canReconsider) {
+          return json(403, { error: 'No autorizado.' });
+        }
+        if (e.status !== 'approved' && e.status !== 'rejected') {
+          return json(400, { error: 'Gasto no válido.' });
+        }
+        const previousStatus = e.status;
+        const approverIds = parseApprovers(e);
+        const votes: Record<string, string> = {};
+        if (approverIds.includes(e.userId)) {
+          votes[e.userId] = 'approved';
+        }
+        finalizeFromApprovalVotes(e, approverIds, votes, session.userId, null);
+        pushAudit(e, {
+          action: 'expense_reconsider_requested',
+          by: session.userId,
+          meta: { previousStatus },
+        });
         e.updatedAt = Date.now();
         (e as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = parseAudit(e);
         return json(200, { ok: true, expense: e });
@@ -1035,6 +1073,123 @@ test.describe('A — Expense lifecycle', () => {
     await clickSidebarGastos(page);
     const row = page.locator('[class*="row"], [class*="card"], li').filter({ hasText: 'Silla ergonómica QA' }).first();
     await expect(row.getByText(/Aprobado|approved/i).first()).toBeVisible();
+  });
+
+  test('A2b) Auto-approved expense shows Reconsiderar, not dead Approve/Reject', async ({ page }) => {
+    const autoApproved: ExpenseRow = {
+      id: 'exp_auto_appr_1',
+      userId: 'admin-1',
+      date: '2026-04-01',
+      description: 'Auto approved QA',
+      amount: 120,
+      amountEUR: 120,
+      currency: 'EUR',
+      category: 'Equipment',
+      status: 'approved',
+      expenseType: 'expense',
+      approversJson: JSON.stringify(['admin-1']),
+      approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+      ownerId: 'admin-1',
+      paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 120, pct: 100 }]),
+      splitMode: null,
+      notes: '',
+      receiptPath: null,
+      departmentId: 'dept_ops',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      paymentStatus: 'na',
+      deferredPayment: false,
+      paymentTermDays: 0,
+      auditTrailJson: JSON.stringify([]),
+      commentsJson: JSON.stringify([]),
+      rejectionNote: null,
+    };
+    await setupMockApi(page, { expenses: [autoApproved] });
+    await loginAs(page, 'admin@solana.test');
+    await openExpenseDetail(page, 'Auto approved QA');
+    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: /^Rechazar$/i })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: /Reconsiderar/i })).toBeVisible();
+  });
+
+  test('A2c) Reconsider sends approved expense back to pending review', async ({ page }) => {
+    const approved: ExpenseRow = {
+      id: 'exp_recon_appr_1',
+      userId: 'user-1',
+      date: '2026-04-02',
+      description: 'Reconsider from approved QA',
+      amount: 200,
+      amountEUR: 200,
+      currency: 'EUR',
+      category: 'Software',
+      status: 'approved',
+      expenseType: 'expense',
+      approversJson: JSON.stringify(['admin-1']),
+      approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+      ownerId: 'user-1',
+      paidByJson: JSON.stringify([{ userId: 'user-1', amount: 200, pct: 100 }]),
+      splitMode: null,
+      notes: '',
+      receiptPath: null,
+      departmentId: 'dept_ops',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      paymentStatus: 'na',
+      deferredPayment: false,
+      paymentTermDays: 0,
+      auditTrailJson: JSON.stringify([]),
+      commentsJson: JSON.stringify([]),
+      rejectionNote: null,
+    };
+    await setupMockApi(page, { expenses: [approved] });
+    await loginAs(page, 'admin@solana.test');
+    await openExpenseDetail(page, 'Reconsider from approved QA');
+    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    await panel.getByRole('button', { name: /Reconsiderar/i }).click();
+    await page.waitForTimeout(800);
+    await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toBeVisible();
+    await expect(panel.getByRole('button', { name: /^Rechazar$/i })).toBeVisible();
+    await expect(panel.getByText(/Pendiente|Enviado|pending/i).first()).toBeVisible();
+  });
+
+  test('A2d) Reconsider sends rejected expense back to pending review', async ({ page }) => {
+    const rejected: ExpenseRow = {
+      id: 'exp_recon_rej_1',
+      userId: 'user-1',
+      date: '2026-04-03',
+      description: 'Reconsider from rejected QA',
+      amount: 150,
+      amountEUR: 150,
+      currency: 'EUR',
+      category: 'Marketing',
+      status: 'rejected',
+      expenseType: 'expense',
+      approversJson: JSON.stringify(['admin-1']),
+      approvalVotesJson: JSON.stringify({ 'admin-1': 'rejected' }),
+      ownerId: 'user-1',
+      paidByJson: JSON.stringify([{ userId: 'user-1', amount: 150, pct: 100 }]),
+      splitMode: null,
+      notes: '',
+      receiptPath: null,
+      departmentId: 'dept_ops',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      paymentStatus: 'na',
+      deferredPayment: false,
+      paymentTermDays: 0,
+      auditTrailJson: JSON.stringify([]),
+      commentsJson: JSON.stringify([]),
+      rejectionNote: 'No procede QA reconsider',
+    };
+    await setupMockApi(page, { expenses: [rejected] });
+    await loginAs(page, 'admin@solana.test');
+    await openExpenseDetail(page, 'Reconsider from rejected QA');
+    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    await panel.getByRole('button', { name: /Reabrir/i }).click();
+    await page.waitForTimeout(800);
+    await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toBeVisible();
+    await expect(panel.getByRole('button', { name: /^Rechazar$/i })).toBeVisible();
   });
 
   test('A3) Admin rejects with note — status turns Rechazado', async ({ page }) => {
