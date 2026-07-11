@@ -1438,6 +1438,24 @@ const applyExpensesApiPayload=(de,{setUsers,setExpenses})=>{
     setExpenses(mapExpensesFromApi(de.expenses));
   }
 };
+/** After successful POST /reconsider — panel must show pending review (submitted, votes cleared). */
+const mergeReconsideredExpenseClientRow=(base,actorUserId)=>{
+  if(!base)return null;
+  const now=new Date().toISOString();
+  const trail=Array.isArray(base.auditTrail)?base.auditTrail:[];
+  const hasRecon=trail.some(a=>a&&a.action==="reconsider_requested");
+  return{
+    ...base,
+    status:"submitted",
+    approvals:{},
+    rejectionNote:null,
+    approvedBy:null,
+    approvedAt:null,
+    rejectedBy:null,
+    rejectedAt:null,
+    auditTrail:hasRecon?trail:[...trail,{action:"reconsider_requested",by:actorUserId,at:now}],
+  };
+};
 const EDIT_FIELD_LABELS={
   amount:"Importe",description:"Descripción",category:"Categoría",date:"Fecha",
   notes:"Notas",departmentId:"Departamento",ivaRate:"IVA",ivaAmount:"Importe IVA",
@@ -9004,20 +9022,9 @@ function SolanaExpenses(){
     }
     appLog("info","expense_reconsider_requested",{itemId,itemCode:item?.itemCode,userId:user.id});
     const applyLocalReconsider=()=>{
-      const now=new Date().toISOString();
       saveExp(prev=>prev.map(x=>{
         if(x.id!==itemId)return x;
-        return{
-          ...x,
-          status:"submitted",
-          approvals:{},
-          auditTrail:[...(x.auditTrail||[]),{action:"reconsider_requested",by:user.id,at:now}],
-          rejectionNote:null,
-          approvedBy:null,
-          approvedAt:null,
-          rejectedBy:null,
-          rejectedAt:null,
-        };
+        return mergeReconsideredExpenseClientRow(x,user.id);
       }));
       dispatchSolanaToast(t("expense.reconsiderDone"),"info");
     };
@@ -9034,12 +9041,16 @@ function SolanaExpenses(){
       void (async()=>{
         try{
           const d=await API.post("/expenses/"+encodeURIComponent(itemId)+"/reconsider",{});
-          if(d?.expense){
-            const row=expenseFromApi(d.expense);
-            if(row)saveExp(prev=>prev.map(e=>e.id===row.id?row:e));
-          }
           const full=await API.get("/expenses");
+          if(full&&d?.expense&&Array.isArray(full.expenses)){
+            full.expenses=full.expenses.map(ex=>ex.id===d.expense.id?d.expense:ex);
+          }
           if(full)applyExpensesApiPayload(full,{setUsers,setExpenses});
+          saveExp(prev=>prev.map(x=>{
+            if(x.id!==itemId)return x;
+            const fromApi=d?.expense?expenseFromApi(d.expense):null;
+            return mergeReconsideredExpenseClientRow(fromApi?{...fromApi}:{...x},user.id);
+          }));
           dispatchSolanaToast(t("expense.reconsiderDone"),"info");
         }catch(e){
           if(isOfflineQueuedError(e)||(typeof navigator!=="undefined"&&!navigator.onLine&&isNetworkError(e))){
