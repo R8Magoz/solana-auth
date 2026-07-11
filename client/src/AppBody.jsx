@@ -8313,7 +8313,7 @@ export default function App(){
               {view==="settings" &&<ErrorBoundary><SettingsView/></ErrorBoundary>}
             </div>
             {rpOpen&&(
-              <div className="dt-only panel-slide" style={{width:350,borderLeft:"1px solid #E5DDD2",overflowY:"auto",padding:16,flexShrink:0,minHeight:0,background:"#fff"}}>
+              <div data-testid="detail-panel" className="dt-only panel-slide" style={{width:350,borderLeft:"1px solid #E5DDD2",overflowY:"auto",padding:16,flexShrink:0,minHeight:0,background:"#fff"}}>
                 {panel==="new"?<NewPanel/>:<DetailPanel/>}
               </div>
             )}
