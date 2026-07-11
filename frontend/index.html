@@ -755,6 +755,22 @@ function isNetworkError(e) {
   return false;
 }
 
+function isPermanentOfflineSyncError(err) {
+  const st = err && err.status;
+  return st === 400 || st === 403 || st === 404 || st === 422;
+}
+
+function shouldPauseOfflineSync(err) {
+  if (!err) return true;
+  if (isPermanentOfflineSyncError(err)) return false;
+  if (err.status === 409) return true;
+  if (isNetworkError(err)) return true;
+  if (String(err.message || "").indexOf("Sesión expirada") >= 0) return true;
+  const st = err.status;
+  if (typeof st === "number" && st >= 500) return true;
+  return true;
+}
+
 function shouldQueueWrite(method, path) {
   const m = String(method || "").toUpperCase();
   if (m !== "POST" && m !== "PUT" && m !== "DELETE") return false;
@@ -855,7 +871,7 @@ const API = {
       dispatchSolanaToast("Conflicto al sincronizar, revisa los datos", "conflict");
       throw Object.assign(new Error(data.error || "Conflicto"), { status: 409 });
     }
-    if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+    if (!res.ok) throw Object.assign(new Error(data.error || "HTTP " + res.status), { status: res.status });
     return data;
   },
 
@@ -955,10 +971,13 @@ const API = {
         try {
           data = await this.requestNoQueue(op.method, op.path, op.body);
         } catch (err) {
-          if (err && err.status === 409) break;
-          if (isNetworkError(err)) break;
-          if (String(err.message || "").indexOf("Sesión expirada") >= 0) break;
-          break;
+          if (shouldPauseOfflineSync(err)) break;
+          writeOfflineQueue(q.slice(1));
+          dispatchSolanaToast(
+            err.message || "No se pudo sincronizar un cambio guardado localmente.",
+            "error"
+          );
+          continue;
         }
 
         if (op.method === "POST" && op.path === "/expenses" && op.meta && op.meta.pendingReceipt && data.expense && data.expense.id) {
@@ -968,9 +987,13 @@ const API = {
               mediaType: op.meta.pendingReceipt.mediaType || op.meta.pendingReceipt.type || "image/jpeg",
             });
           } catch (recErr) {
-            if (isNetworkError(recErr)) break;
-            if (recErr && recErr.status === 409) break;
-            break;
+            if (shouldPauseOfflineSync(recErr)) break;
+            writeOfflineQueue(q.slice(1));
+            dispatchSolanaToast(
+              recErr.message || "No se pudo sincronizar un cambio guardado localmente.",
+              "error"
+            );
+            continue;
           }
         }
 

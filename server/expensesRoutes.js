@@ -778,7 +778,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     // Final fallback: use the submitting user
     if (!resolvedOwner) {
       resolvedOwner = userStore.findUserById(req.userId);
-      console.warn('[ownerId] could not resolve "' + ownerRaw + '", falling back to submitter:', req.userId);
     }
 
     if (!resolvedOwner) {
@@ -935,7 +934,6 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       if (value) {
         const exists = db.prepare('SELECT id FROM users WHERE id = ?').get(value);
         if (!exists) {
-          console.error(`[POST /expenses] FK fail: ${field}=${value} not in users table`);
           if (field === 'ownerId') {
             // fallback: use submitter
             ownerId = req.userId;
@@ -1520,14 +1518,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       return res.json({ ok: true, receiptPath });
     } catch (e) {
       const code = e.statusCode || 500;
-      console.error('[receipt] upload error:', {
-        message: e.message,
-        stack: e.stack,
-        statusCode: e.statusCode,
-        b64Length: typeof b64 === 'string' ? b64.length : 'not a string',
-        mediaType,
-        expenseId: req.params.id,
-      });
+      console.error('[receipt] upload error:', e.message || e);
       if (code >= 400 && code < 500) {
         return res.status(code).json({ error: e.message || 'Solicitud inválida.' });
       }
