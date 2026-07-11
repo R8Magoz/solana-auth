@@ -9014,6 +9014,25 @@ function SolanaExpenses(){
           if(full)applyExpensesApiPayload(full,{setUsers,setExpenses});
           dispatchSolanaToast(t("expense.reconsiderDone"),"info");
         }catch(e){
+          if(isOfflineQueuedError(e)){
+            const approverIds=effectiveExpenseApproverIds(item,cats,users);
+            const baseTrail=[...(item.auditTrail||[]),{action:"reconsider_requested",by:user.id,at:new Date().toISOString()}];
+            const{approvals:newAppr,auditTrail:newTrail}=autoApprove(item.submittedBy||item.ownerId,approverIds,{},baseTrail);
+            const reqCanon=canonicalApproverIdList(approverIds,users);
+            const allInit=reqCanon.length>0&&reqCanon.every(id=>newAppr[id]==="approved");
+            saveExp(expenses.map(x=>{
+              if(x.id!==itemId)return x;
+              return{
+                ...x,
+                status:allInit?"approved":"submitted",
+                approvals:newAppr,
+                auditTrail:newTrail,
+                rejectionNote:null,
+              };
+            }));
+            dispatchSolanaToast(t("expense.reconsiderDone"),"info");
+            return;
+          }
           dispatchSolanaToast(e.message||t("msg.genericShort"),"error");
           try{
             const full=await API.get("/expenses");
