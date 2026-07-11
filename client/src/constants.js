@@ -31,15 +31,15 @@ export const DEF_USERS = [
   { id: 'u_demo4', name: 'Team Member 2', title: 'Equipo', email: 'team2@example.com', phone: '', role: 'user', color: '#6B7280' },
 ];
 export const DEF_CATS=[
-  {id:"c1",name:"Equipment",       archived:false,approverIds:[]},
-  {id:"c2",name:"Supplies",        archived:false,approverIds:[]},
-  {id:"c3",name:"Marketing",       archived:false,approverIds:[]},
-  {id:"c4",name:"Legal",           archived:false,approverIds:[]},
-  {id:"c5",name:"Rent",            archived:false,approverIds:[]},
-  {id:"c6",name:"Software",        archived:false,approverIds:[]},
-  {id:"c7",name:"Food & Beverage", archived:false,approverIds:[]},
-  {id:"c8",name:"Travel",          archived:false,approverIds:[]},
-  {id:"c9",name:"Otro",           archived:false,approverIds:[]},
+  {id:"c1",name:"Equipamiento",  archived:false,approverIds:[]},
+  {id:"c2",name:"Suministros",   archived:false,approverIds:[]},
+  {id:"c3",name:"Marketing",     archived:false,approverIds:[]},
+  {id:"c4",name:"Legal",         archived:false,approverIds:[]},
+  {id:"c5",name:"Alquiler",      archived:false,approverIds:[]},
+  {id:"c6",name:"Software",      archived:false,approverIds:[]},
+  {id:"c7",name:"Comida y bebida",archived:false,approverIds:[]},
+  {id:"c8",name:"Viajes",        archived:false,approverIds:[]},
+  {id:"c9",name:"Otro",          archived:false,approverIds:[]},
 ];
 
 /* ── VERSION & SCHEMA ──────────────────────────────────────────────────────── */

@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { insertUsersFromJsonRows } = require('./userStore');
+const { DEFAULT_CATEGORY_EN_TO_ES } = require('./lib/defaultCategories');
 
 /**
  * One-time migration: flat users.json → SQLite when the users table is empty.
@@ -118,6 +119,59 @@ function runDepartmentApproversMigration({ audit }) {
 }
 
 /**
+ * Idempotent: rename default English category names to Spanish in app_settings and expenses.
+ * Only exact known English default names are remapped; custom categories are untouched.
+ */
+function runCategorySpanishMigration({ audit }) {
+  const db = require('./db');
+  const settingsCache = require('./lib/settingsCache');
+  const now = Date.now();
+  let expensesUpdated = 0;
+  let categoriesRenamed = 0;
+
+  const updateExpense = db.prepare('UPDATE expenses SET category = ? WHERE category = ?');
+  for (const [en, es] of Object.entries(DEFAULT_CATEGORY_EN_TO_ES)) {
+    if (en === es) continue;
+    expensesUpdated += updateExpense.run(es, en).changes;
+  }
+
+  const catRow = db.prepare("SELECT value FROM app_settings WHERE key = 'categories'").get();
+  if (catRow && catRow.value) {
+    try {
+      const cats = JSON.parse(catRow.value);
+      if (Array.isArray(cats)) {
+        let changed = false;
+        const next = cats.map((c) => {
+          if (!c || typeof c !== 'object') return c;
+          const es = DEFAULT_CATEGORY_EN_TO_ES[c.name];
+          if (es && es !== c.name) {
+            changed = true;
+            categoriesRenamed += 1;
+            return { ...c, name: es };
+          }
+          return c;
+        });
+        if (changed) {
+          db.prepare(
+            "UPDATE app_settings SET value = ?, updatedAt = ? WHERE key = 'categories'",
+          ).run(JSON.stringify(next), now);
+          settingsCache.invalidate('categories');
+        }
+      }
+    } catch (e) {
+      console.warn('[MIGRATE] category Spanish rename failed:', e.message);
+    }
+  }
+
+  if (expensesUpdated > 0 || categoriesRenamed > 0) {
+    audit('category_spanish_migration', { expensesUpdated, categoriesRenamed });
+    console.log(
+      `[MIGRATE] Category Spanish: ${categoriesRenamed} setting(s), ${expensesUpdated} expense(s)`,
+    );
+  }
+}
+
+/**
  * One-time: copy bills → expenses as expenseType=invoice (idempotent via originBillId).
  * Does not DELETE or UPDATE the bills table.
  * Run: node migrate.js bills
@@ -207,6 +261,7 @@ module.exports = {
   runUsersJsonMigration,
   runRoleConsolidationMigration,
   runDepartmentApproversMigration,
+  runCategorySpanishMigration,
   migrateBillsToExpenses,
 };
 

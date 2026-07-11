@@ -1,5 +1,7 @@
 'use strict';
 
+const { DEFAULT_CATEGORIES } = require('../lib/defaultCategories');
+
 /**
  * Seeds default app_settings rows when the table is empty.
  * @param {import('better-sqlite3').Database} db
@@ -16,17 +18,7 @@ function seedAppSettings(db) {
 
   insert.run(
     'categories',
-    JSON.stringify([
-      { id: 'c1', name: 'Equipment', archived: false },
-      { id: 'c2', name: 'Supplies', archived: false },
-      { id: 'c3', name: 'Marketing', archived: false },
-      { id: 'c4', name: 'Legal', archived: false },
-      { id: 'c5', name: 'Rent', archived: false },
-      { id: 'c6', name: 'Software', archived: false },
-      { id: 'c7', name: 'Food & Beverage', archived: false },
-      { id: 'c8', name: 'Travel', archived: false },
-      { id: 'c9', name: 'Otro', archived: false },
-    ]),
+    JSON.stringify(DEFAULT_CATEGORIES),
     'Expense categories available for selection',
     'system',
     now,
