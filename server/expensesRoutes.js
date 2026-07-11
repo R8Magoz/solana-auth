@@ -1389,6 +1389,12 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
+    if (exp.status === 'approved') {
+      return res.json({ ok: true, expense: exp });
+    }
+    if (exp.status !== 'submitted') {
+      return res.status(400).json({ error: 'El gasto no está pendiente de aprobación.' });
+    }
     const now = Date.now();
     const actorId = req.userId || null;
     const approversCanon = parseJsonArray(exp.approversJson).length > 0
@@ -1417,9 +1423,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const result = persistApprovalFinalize(exp, fin, audit, req, actorId);
     if (result.error) return res.status(result.status).json({ error: result.error });
     const approveNote = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : undefined;
-    if (fin.status === 'approved') {
+    if (fin.status === 'approved' && exp.status !== 'approved') {
       audit('expense_approved', { userId: actorId, targetId: exp.id, note: approveNote });
-    } else if (fin.status === 'rejected') {
+    } else if (fin.status === 'rejected' && exp.status !== 'rejected') {
       audit('expense_rejected', { userId: actorId, targetId: exp.id, via: 'approval_vote' });
     }
     return res.json({
@@ -1433,6 +1439,12 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
     if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
+    if (exp.status === 'rejected') {
+      return res.json({ ok: true, expense: exp });
+    }
+    if (exp.status !== 'submitted') {
+      return res.status(400).json({ error: 'El gasto no está pendiente de aprobación.' });
+    }
     const now = Date.now();
     const actorId = req.userId || null;
     const note = req.body?.note != null ? String(req.body.note).trim().slice(0, 2000) : null;
@@ -1464,9 +1476,9 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const fin = finalizeFromApprovalVotes(exp, approversCanon, votes, actorId, now, note);
     const result = persistApprovalFinalize(exp, fin, audit, req, actorId);
     if (result.error) return res.status(result.status).json({ error: result.error });
-    if (fin.status === 'rejected') {
+    if (fin.status === 'rejected' && exp.status !== 'rejected') {
       audit('expense_rejected', { userId: actorId, targetId: exp.id, note });
-    } else if (fin.status === 'approved') {
+    } else if (fin.status === 'approved' && exp.status !== 'approved') {
       audit('expense_approved', { userId: actorId, targetId: exp.id });
     }
     return res.json({
