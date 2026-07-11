@@ -4342,7 +4342,134 @@ export function ApprovalsView(){
   const hasPendingMine=kindFiltered.some(pendingMineFilter);
   const effectiveAssigneeFilter=assigneeFilter||(hasPendingMine?"mine":"all");
   const assigneeFiltered=effectiveAssigneeFilter==="mine"?kindFiltered.filter(pendingMineFilter):kindFiltered;
-  const activeRows=sortByPriority(assigneeFiltered);
+  const isDesignatedOnAny=kindFiltered.some(item=>effectiveExpenseApproverIds(item,cats,users).includes(user.id));
+  const showActionSections=isApprover||isDesignatedOnAny;
+  const sectionForItem=(item)=>{
+    if(!showActionSections)return"C";
+    const st=getItemStatus(item,cats,users);
+    const ids=effectiveExpenseApproverIds(item,cats,users);
+    const myVote=approvalVoteFor(item.approvals||{},user.id,users);
+    if(ids.includes(user.id)&&st==="pending"&&myVote!=="approved"&&myVote!=="rejected")return"A";
+    if(ids.includes(user.id)&&st==="pending"&&myVote==="approved")return"B";
+    return"C";
+  };
+  const sectionA=sortByPriority(assigneeFiltered.filter(item=>sectionForItem(item)==="A"));
+  const sectionB=sortByPriority(assigneeFiltered.filter(item=>sectionForItem(item)==="B"));
+  const sectionC=sortByPriority(assigneeFiltered.filter(item=>sectionForItem(item)==="C"));
+  const renderSectionDivider=(label,color)=>(
+    <div style={{marginTop:24,marginBottom:12,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{position:"absolute",left:0,right:0,top:"50%",height:1,background:"#DDD6CC"}} aria-hidden="true"/>
+      <span style={{position:"relative",background:"#F5F0EA",padding:"0 10px",fontFamily:"'Playfair Display',serif",fontSize:13,letterSpacing:"0.08em",textTransform:"uppercase",color,fontWeight:600}}>{label}</span>
+    </div>
+  );
+  const renderApprovalCard=(item)=>{
+    const isInv=item.expenseType==="invoice";
+    const itemId=item.id;
+    const rowApproverIds=effectiveExpenseApproverIds(item,cats,users);
+    const submitterName=(users.find(u=>u.id===item.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
+    const ownerName=(users.find(u=>u.id===(item.ownerId||item.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
+    const titularNames=(item.paidBy||[]).length>1
+      ? (item.paidBy||[]).map(p=>{
+          const nm=(users.find(u=>u.id===p.userId)||{name:p.userId}).name;
+          return `${nm} (${fmt(Number(p.amount)||0)})`;
+        }).join(" · ")
+      : ownerName;
+    const rowDate=isInv?(item.dueDate||item.date):item.date;
+    const rowTitle=isInv?(String(item.vendor||item.proveedor||"").trim()||item.description):item.description;
+    const st=getItemStatus(item,cats,users);
+    const cardBg =
+      st === 'approved' ? '#F0FDF4' :
+      st === 'rejected' ? '#FFF1F2' :
+      '#FFFBEB';
+    const cardBorder = priorityForItem(item) === 0
+      ? '1.5px solid #f0c4a8'
+      : '1px solid transparent';
+    const canActOnRow=canUserReviewExpense(item,{user,cats,users});
+    return(
+      <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
+        resetForm();
+        go("expenses");
+        setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
+      }}>
+        <div
+          style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7}}
+        >
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+                  <span style={{fontWeight:600,fontSize:16,color:"#4B5E52"}}>{rowTitle}</span>
+                  {isInv&&(
+                    <span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,background:FACTURA,color:"#fff",display:"inline-block"}}>FACTURA</span>
+                  )}
+                </div>
+                <div style={{fontSize:13,fontWeight:700,color:"#4B5E52",marginTop:2}}>Titular: {titularNames}</div>
+                {isInv?(
+                  <div style={{fontSize:12,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                    <span>{fmtExpenseAmt(item)}{item.dueDate?` · Vence: ${fmtDate(item.dueDate)}`:""} · {item.category} · Enviado por: {submitterName}</span>
+                  </div>
+                ):(
+                  <div style={{fontSize:12,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                    <span>{item.category} · {fmtDate(rowDate)} · Enviado por: {submitterName}</span>
+                    <span style={{
+                      fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,
+                      textTransform:"uppercase",letterSpacing:"0.05em",
+                      background:G,
+                      color:"#fff",
+                      display:"inline-block"
+                    }}>GASTO</span>
+                  </div>
+                )}
+              </div>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                <div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
+                <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center",justifyContent:"flex-end",flexWrap:"wrap"}}>
+                  <span
+                    className={statusToneClass(st)}
+                    style={{
+                      padding:"2px 8px",
+                      borderRadius:11,
+                      fontSize:10,
+                      fontWeight:700,
+                      ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
+                    }}
+                  >
+                    {t("status."+st)}
+                  </span>
+                  {canActOnRow&&(
+                    <button
+                      type="button"
+                      className="btn-sm"
+                      style={{fontSize:11}}
+                      onClick={e => {
+                        e.stopPropagation();
+                        resetForm();
+                        go("expenses");
+                        setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
+                      }}
+                    >
+                      {t("action.review")}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        {(item.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={item} t={t} users={users} alwaysInline/></div>}
+        <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(item.approvals||{},aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
+        {st === 'rejected' && item.rejectionNote && (
+          <div style={{
+            marginTop: 8, padding: '8px 10px',
+            background: '#FEE2E2', borderRadius: 8,
+            fontSize: 11, color: '#991B1B'
+          }}>
+            <strong>Motivo del rechazo:</strong> {item.rejectionNote}
+          </div>
+        )}
+      </div>
+    );
+  };
   const cAll=baseList.length;
   const cExp=baseList.filter(e=>e.expenseType!=="invoice").length;
   const cInv=baseList.filter(e=>e.expenseType==="invoice").length;
@@ -4379,115 +4506,31 @@ export function ApprovalsView(){
           })}
         </div>
       </div>
-      {activeRows.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{baseList.length===0?t("empty.approvals"):t("empty.approvalsFilter")}</div>:
-        activeRows.map(item=>{
-          const isInv=item.expenseType==="invoice";
-          const itemId=item.id;
-          const rowApproverIds=effectiveExpenseApproverIds(item,cats,users);
-          const submitterName=(users.find(u=>u.id===item.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
-          const ownerName=(users.find(u=>u.id===(item.ownerId||item.submittedBy))||{name:UNKNOWN_USER_NAME}).name;
-          const titularNames=(item.paidBy||[]).length>1
-            ? (item.paidBy||[]).map(p=>{
-                const nm=(users.find(u=>u.id===p.userId)||{name:p.userId}).name;
-                return `${nm} (${fmt(Number(p.amount)||0)})`;
-              }).join(" · ")
-            : ownerName;
-          const rowDate=isInv?(item.dueDate||item.date):item.date;
-          const rowTitle=isInv?(String(item.vendor||item.proveedor||"").trim()||item.description):item.description;
-          const st=getItemStatus(item,cats,users);
-          const cardBg =
-            st === 'approved' ? '#F0FDF4' :
-            st === 'rejected' ? '#FFF1F2' :
-            '#FFFBEB';
-          const cardBorder = priorityForItem(item) === 0
-            ? '1.5px solid #f0c4a8'
-            : '1px solid transparent';
-          const canActOnRow=canUserReviewExpense(item,{user,cats,users});
-          return(
-            <div key={item.id} className="card row-hover" style={{marginBottom:9,background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
-              resetForm();
-              go("expenses");
-              setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
-            }}>
-              <div
-                style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7}}
-              >
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-                        <span style={{fontWeight:600,fontSize:16,color:"#4B5E52"}}>{rowTitle}</span>
-                        {isInv&&(
-                          <span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,background:FACTURA,color:"#fff",display:"inline-block"}}>FACTURA</span>
-                        )}
-                      </div>
-                      <div style={{fontSize:13,fontWeight:700,color:"#4B5E52",marginTop:2}}>Titular: {titularNames}</div>
-                      {isInv?(
-                        <div style={{fontSize:12,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <span>{fmtExpenseAmt(item)}{item.dueDate?` · Vence: ${fmtDate(item.dueDate)}`:""} · {item.category} · Enviado por: {submitterName}</span>
-                        </div>
-                      ):(
-                        <div style={{fontSize:12,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <span>{item.category} · {fmtDate(rowDate)} · Enviado por: {submitterName}</span>
-                          <span style={{
-                            fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,
-                            textTransform:"uppercase",letterSpacing:"0.05em",
-                            background:G,
-                            color:"#fff",
-                            display:"inline-block"
-                          }}>GASTO</span>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{textAlign:"right",flexShrink:0}}>
-                      <div style={{fontSize:18,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
-                      <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center",justifyContent:"flex-end",flexWrap:"wrap"}}>
-                        <span
-                          className={statusToneClass(st)}
-                          style={{
-                            padding:"2px 8px",
-                            borderRadius:11,
-                            fontSize:10,
-                            fontWeight:700,
-                            ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
-                          }}
-                        >
-                          {t("status."+st)}
-                        </span>
-                        {canActOnRow&&(
-                          <button
-                            type="button"
-                            className="btn-sm"
-                            style={{fontSize:11}}
-                            onClick={e => {
-                              e.stopPropagation();
-                              resetForm();
-                              go("expenses");
-                              setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
-                            }}
-                          >
-                            {t("action.review")}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              {(item.paidBy||[]).length>1&&<div style={{marginBottom:7}}><ExpenseSplitBreakdown e={item} t={t} users={users} alwaysInline/></div>}
-              <div style={{marginBottom:7}}>{rowApproverIds.map(aid=>{const a=approvalVoteFor(item.approvals||{},aid,users);return<div key={aid} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,marginBottom:2}}><div style={{width:5,height:5,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706"}}/><span style={{fontWeight:500}}>{getU(aid).name}:</span><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{a?t("status."+a):t("status.pending")}</span></div>})}</div>
-              {st === 'rejected' && item.rejectionNote && (
-                <div style={{
-                  marginTop: 8, padding: '8px 10px',
-                  background: '#FEE2E2', borderRadius: 8,
-                  fontSize: 11, color: '#991B1B'
-                }}>
-                  <strong>Motivo del rechazo:</strong> {item.rejectionNote}
-                </div>
+      {assigneeFiltered.length===0?<div className="card" style={{textAlign:"center",padding:36,color:"#9CAA9F",fontSize:13}}>{baseList.length===0?t("empty.approvals"):t("empty.approvalsFilter")}</div>:
+        <>
+          {showActionSections&&(
+            <>
+              {renderSectionDivider(`${t("approvals.sectionMine")} · ${sectionA.length}`,"#3C0A37")}
+              {sectionA.length===0?(
+                <p style={{fontSize:13,color:"#6B7B72",marginBottom:12}}>{t("approvals.noneForYou")}</p>
+              ):(
+                sectionA.map(renderApprovalCard)
               )}
-            </div>
-          );
-        })
+            </>
+          )}
+          {showActionSections&&sectionB.length>0&&(
+            <>
+              {renderSectionDivider(t("approvals.sectionWaiting"),"#6B7B72")}
+              {sectionB.map(renderApprovalCard)}
+            </>
+          )}
+          {(!showActionSections||sectionC.length>0)&&(
+            <>
+              {renderSectionDivider(t("approvals.sectionAll"),"#6B7B72")}
+              {sectionC.map(renderApprovalCard)}
+            </>
+          )}
+        </>
       }
     </div>
   );
