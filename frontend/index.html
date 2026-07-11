@@ -1456,6 +1456,25 @@ const mergeReconsideredExpenseClientRow=(base,actorUserId)=>{
     auditTrail:hasRecon?trail:[...trail,{action:"reconsider_requested",by:actorUserId,at:now}],
   };
 };
+/** After successful POST /reject — panel must show rejected (never re-auto-approve). */
+const mergeRejectedExpenseClientRow=(base,actorUserId,rejectionNote)=>{
+  if(!base)return null;
+  const now=new Date().toISOString();
+  const note=rejectionNote!=null?String(rejectionNote).trim():"";
+  const trail=Array.isArray(base.auditTrail)?base.auditTrail:[];
+  const hasReject=trail.some(a=>a&&a.action==="rejected");
+  return{
+    ...base,
+    status:"rejected",
+    approvals:{[actorUserId]:"rejected"},
+    rejectionNote:note||base.rejectionNote||null,
+    approvedBy:null,
+    approvedAt:null,
+    rejectedBy:actorUserId,
+    rejectedAt:now,
+    auditTrail:hasReject?trail:[...trail,{action:"rejected",by:actorUserId,at:now,...(note?{note}:{})}],
+  };
+};
 const EDIT_FIELD_LABELS={
   amount:"Importe",description:"Descripción",category:"Categoría",date:"Fecha",
   notes:"Notas",departmentId:"Departamento",ivaRate:"IVA",ivaAmount:"Importe IVA",
@@ -8968,32 +8987,45 @@ function SolanaExpenses(){
       }
       void (async()=>{
         try{
-          let approveResult;
-          if(action==="approved")approveResult=await API.post("/expenses/"+encodeURIComponent(itemId)+"/approve",{note:note||undefined});
-          else await API.post("/expenses/"+encodeURIComponent(itemId)+"/reject",{note:note||undefined});
-          if(action==="approved"&&approveResult?.budgetExceeded?.exceeded){
-            const be=approveResult.budgetExceeded;
-            dispatchSolanaToast(
-              `Presupuesto excedido: ${be.departmentName||"Departamento"} · ${fmt(Number(be.spent)||0)} de ${fmt(Number(be.budget)||0)}`,
-              "warning"
-            );
+          let postResult;
+          if(action==="approved"){
+            postResult=await API.post("/expenses/"+encodeURIComponent(itemId)+"/approve",{note:note||undefined});
+            if(postResult?.budgetExceeded?.exceeded){
+              const be=postResult.budgetExceeded;
+              dispatchSolanaToast(
+                `Presupuesto excedido: ${be.departmentName||"Departamento"} · ${fmt(Number(be.spent)||0)} de ${fmt(Number(be.budget)||0)}`,
+                "warning"
+              );
+            }
+          }else{
+            postResult=await API.post("/expenses/"+encodeURIComponent(itemId)+"/reject",{note:note||undefined});
           }
           const full=await API.get("/expenses");
-          applyExpensesApiPayload(full,{setUsers,setExpenses});
+          if(full&&postResult?.expense&&Array.isArray(full.expenses)){
+            full.expenses=full.expenses.map(ex=>ex.id===postResult.expense.id?postResult.expense:ex);
+          }
+          if(full)applyExpensesApiPayload(full,{setUsers,setExpenses});
+          if(action==="rejected"){
+            saveExp(prev=>prev.map(x=>{
+              if(x.id!==itemId)return x;
+              const fromApi=postResult?.expense?expenseFromApi(postResult.expense):null;
+              return mergeRejectedExpenseClientRow(fromApi?{...fromApi}:{...x},user.id,note);
+            }));
+          }
         }catch(e){
           if(isOfflineQueuedError(e)){
-            saveExp(expenses.map(x=>{
+            saveExp(prev=>prev.map(x=>{
               if(x.id!==itemId)return x;
+              if(action==="rejected"){
+                return mergeRejectedExpenseClientRow(x,user.id,note);
+              }
               if(x._apiType==="expense"&&Array.isArray(x.approvalRequired)&&x.approvalRequired.length>0){
-                if(action==="rejected"){
-                  return{...x,status:"rejected",rejectionNote:note||x.rejectionNote,approvals:{}};
-                }
                 const newApprovals={...(x.approvals||{}),[user.id]:"approved"};
                 const reqCanon=canonicalApproverIdList(x.approvalRequired,users);
                 const all=reqCanon.length>0&&reqCanon.every(id=>newApprovals[id]==="approved");
                 return{...x,approvals:newApprovals,...(all?{status:"approved"}:{})};
               }
-              return{...x,status:action==="approved"?"approved":"rejected",rejectionNote:action==="rejected"?(note||x.rejectionNote):x.rejectionNote};
+              return{...x,status:"approved"};
             }));
             setANote(p=>({...p,[itemId]:""}));
             return;
@@ -9009,7 +9041,13 @@ function SolanaExpenses(){
       })();
       return;
     }
-    saveExp(expenses.map(e=>e.id!==itemId?e:{...e,approvals:{...e.approvals,[user.id]:action},auditTrail:[...e.auditTrail,{action,by:user.id,at:new Date().toISOString(),note}],seenBy:seenByAfterActor(user.id)}));
+    saveExp(prev=>prev.map(e=>{
+      if(e.id!==itemId)return e;
+      if(action==="rejected"){
+        return mergeRejectedExpenseClientRow(e,user.id,note);
+      }
+      return{...e,approvals:{...e.approvals,[user.id]:action},auditTrail:[...e.auditTrail,{action,by:user.id,at:new Date().toISOString(),note}],seenBy:seenByAfterActor(user.id)};
+    }));
     setANote(p=>({...p,[itemId]:""}));
   };
 

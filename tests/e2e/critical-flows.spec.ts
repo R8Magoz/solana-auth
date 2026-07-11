@@ -624,7 +624,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
           e.updatedAt = Date.now();
           return json(200, { ok: true, expense: e });
         }
-        if (e.status !== 'submitted') {
+        if (e.status !== 'submitted' && e.status !== 'approved') {
           return json(400, { error: 'El gasto no está pendiente de aprobación.' });
         }
         const body = safeJson(req.postData());
@@ -1156,6 +1156,90 @@ test.describe('A — Expense lifecycle', () => {
     const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
     await panel.getByRole('button', { name: /Reconsiderar/i }).click();
     await expect.poll(() => reconsiderPosts.length, { timeout: 5000 }).toBeGreaterThan(0);
+  });
+
+  test('A2f) Reconsider then reject on auto-approved own-expense stays rejected', async ({ page }) => {
+    const autoApproved: ExpenseRow = {
+      id: 'exp_auto_appr_rej_ui',
+      userId: 'admin-1',
+      date: '2026-04-01',
+      description: 'Auto approved reject after reconsider QA',
+      amount: 155,
+      amountEUR: 155,
+      currency: 'EUR',
+      category: 'Equipment',
+      status: 'approved',
+      expenseType: 'expense',
+      approversJson: JSON.stringify(['admin-1']),
+      approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+      ownerId: 'admin-1',
+      paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 155, pct: 100 }]),
+      splitMode: null,
+      notes: '',
+      receiptPath: null,
+      departmentId: 'dept_ops',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      paymentStatus: 'na',
+      deferredPayment: false,
+      paymentTermDays: 0,
+      auditTrailJson: JSON.stringify([]),
+      commentsJson: JSON.stringify([]),
+      rejectionNote: null,
+    };
+    await setupMockApi(page, { expenses: [autoApproved] });
+    await loginAs(page, 'admin@solana.test');
+    await openExpenseDetail(page, 'Auto approved reject after reconsider QA');
+    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    await panel.getByRole('button', { name: /Reconsiderar/i }).click();
+    await expect(panel.getByRole('button', { name: /^Rechazar$/i })).toBeVisible({ timeout: 5000 });
+    await panel.locator('textarea').fill('Motivo de rechazo QA suficientemente largo');
+    await panel.getByRole('button', { name: /^Rechazar$/i }).click();
+    await page.waitForTimeout(800);
+    await expect(panel.getByRole('button', { name: /Reconsiderar/i })).toHaveCount(0);
+    await expect(panel.getByText(/Rechazado|rejected/i).first()).toBeVisible();
+    await expect(panel.getByText(/Motivo de rechazo QA suficientemente largo/i)).toBeVisible();
+  });
+
+  test('A2g) Reconsider then approve on auto-approved own-expense stays approved', async ({ page }) => {
+    const autoApproved: ExpenseRow = {
+      id: 'exp_auto_appr_appr_ui',
+      userId: 'admin-1',
+      date: '2026-04-01',
+      description: 'Reconsider then approve QA',
+      amount: 165,
+      amountEUR: 165,
+      currency: 'EUR',
+      category: 'Equipment',
+      status: 'approved',
+      expenseType: 'expense',
+      approversJson: JSON.stringify(['admin-1']),
+      approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+      ownerId: 'admin-1',
+      paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 165, pct: 100 }]),
+      splitMode: null,
+      notes: '',
+      receiptPath: null,
+      departmentId: 'dept_ops',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      paymentStatus: 'na',
+      deferredPayment: false,
+      paymentTermDays: 0,
+      auditTrailJson: JSON.stringify([]),
+      commentsJson: JSON.stringify([]),
+      rejectionNote: null,
+    };
+    await setupMockApi(page, { expenses: [autoApproved] });
+    await loginAs(page, 'admin@solana.test');
+    await openExpenseDetail(page, 'Reconsider then approve QA');
+    const panel = page.locator('.panel-slide, [data-panel], [role="dialog"]').last();
+    await panel.getByRole('button', { name: /Reconsiderar/i }).click();
+    await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toBeVisible({ timeout: 5000 });
+    await panel.getByRole('button', { name: /^Aprobar$/i }).click();
+    await page.waitForTimeout(800);
+    await expect(panel.getByRole('button', { name: /Reconsiderar/i })).toBeVisible({ timeout: 5000 });
+    await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toHaveCount(0);
   });
 
   test('A2c) Reconsider sends approved expense back to pending review', async ({ page }) => {
