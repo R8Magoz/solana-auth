@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expectRequestFired, type RecordedRequest } from './helpers/mockApi';
 
 type Session = { userId: string; role: 'user' | 'admin' };
 type Expense = {
@@ -30,8 +31,10 @@ async function attachMockApi(page: Page, state: {
   tokens: Map<string, Session>;
   expenses: Expense[];
   expenseMutation?: Promise<void>;
+  requests: RecordedRequest[];
 }) {
   if (!state.expenseMutation) state.expenseMutation = Promise.resolve();
+  if (!state.requests) state.requests = [];
 
   const runExpenseMutation = <T,>(fn: () => T | Promise<T>): Promise<T> => {
     const next = state.expenseMutation!.then(fn);
@@ -44,6 +47,12 @@ async function attachMockApi(page: Page, state: {
     const url = new URL(req.url());
     const path = url.pathname;
     const method = req.method();
+    state.requests.push({
+      method: method.toUpperCase(),
+      path,
+      body: safeJson(req.postData()),
+      timestamp: Date.now(),
+    });
     const auth = (await req.headerValue('authorization')) ?? '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     const session = token ? state.tokens.get(token) : null;
@@ -100,7 +109,7 @@ async function attachMockApi(page: Page, state: {
     if (/^\/expenses\/[^/]+\/approve$/.test(path) && method === 'POST') {
       if (!session) return json(401, { error: 'No autorizado.' });
       const id = path.split('/')[2];
-      return runExpenseMutation(() => {
+      await runExpenseMutation(() => {
         const exp = state.expenses.find((e) => e.id === id);
         if (!exp) return json(404, { error: 'Gasto no encontrado.' });
         const votes = safeJson(exp.approvalVotesJson || '{}');
@@ -110,12 +119,13 @@ async function attachMockApi(page: Page, state: {
         exp.updatedAt = Date.now();
         return json(200, { ok: true, expense: exp });
       });
+      return;
     }
 
     if (/^\/expenses\/[^/]+$/.test(path) && method === 'PUT') {
       if (!session) return json(401, { error: 'No autorizado.' });
       const id = path.split('/')[2];
-      return runExpenseMutation(() => {
+      await runExpenseMutation(() => {
         const exp = state.expenses.find((e) => e.id === id);
         if (!exp) return json(404, { error: 'Gasto no encontrado.' });
 
@@ -130,6 +140,7 @@ async function attachMockApi(page: Page, state: {
         exp.updatedAt = Date.now();
         return json(200, { ok: true, expense: exp });
       });
+      return;
     }
 
     return json(200, { ok: true });
@@ -153,6 +164,7 @@ test('concurrent submit/approve/edit keeps consistent final state', async ({ bro
     ]),
     expenses: [] as Expense[],
     expenseMutation: Promise.resolve() as Promise<void>,
+    requests: [] as RecordedRequest[],
   };
 
   const submitterCtx = await browser.newContext();
@@ -217,6 +229,7 @@ test('concurrent submit/approve/edit keeps consistent final state', async ({ bro
       });
     }, expenseId),
   ]);
+  await state.expenseMutation;
 
   // Final-state consistency assertions from shared state:
   const final = state.expenses.find((e) => e.id === expenseId);
@@ -227,6 +240,8 @@ test('concurrent submit/approve/edit keeps consistent final state', async ({ bro
   // If edited after approval, approval votes should be reset and status pending (re-approval required).
   expect(final?.status).toBe('pending');
   expect(final?.approvalVotesJson).toBe('{}');
+  expectRequestFired(state, 'POST', /\/expenses\/[^/]+\/approve$/);
+  expectRequestFired(state, 'PUT', /\/expenses\/[^/]+$/);
 
   await Promise.all([submitterCtx.close(), approverCtx.close(), editorCtx.close()]);
 });

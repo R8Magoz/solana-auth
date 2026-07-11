@@ -4766,6 +4766,8 @@ function DetailPanel(){
       {/* READ MODE */}
       {!editMode&&<div style={{minWidth:0,overflow:"visible",minHeight:"auto"}}>
       <div
+        data-testid="detail-status-badge"
+        data-status={st}
         className={st!=="approved"?statusToneClass(st):""}
         style={{
           display:"inline-block",
