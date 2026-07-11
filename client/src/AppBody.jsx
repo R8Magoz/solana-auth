@@ -531,6 +531,12 @@ const buildPaidByFromSplitState=(splits,totalAmt,spMode)=>{
   }
   return rows;
 };
+/** True if user submitted, owns, or participates in a split on this expense. */
+const expenseInvolvesUser=(e,userId)=>{
+  if(!e||!userId)return false;
+  if(e.submittedBy===userId||e.ownerId===userId||e.userId===userId)return true;
+  return Array.isArray(e.paidBy)&&e.paidBy.some(p=>p&&p.userId===userId);
+};
 /** EUR attributed to one participant from paidBy (same weighting as reports / dashboard per-person). */
 const shareEurInExpense=(e,userId)=>{
   const rows=e.paidBy||[];
@@ -736,6 +742,8 @@ function expenseFromApi(row){
     deferredPayment: row.deferredPayment === true || row.deferredPayment === 1,
     recurring:Number(row.recurring)===1?1:0,
     recurrenceRule:row.recurrenceRule||null,
+    createdAt:row.createdAt!=null?new Date(Number(row.createdAt)).toISOString():undefined,
+    updatedAt:row.updatedAt!=null?new Date(Number(row.updatedAt)).toISOString():undefined,
   },"expense");
 }
 /** Map GET /expenses rows to unified client models (gastos + facturas). */
@@ -3054,6 +3062,7 @@ function DetailPanel(){
   const [efSpMode,setEfSpMode]=useState("amount");
   const [editSubmitAttempt,setEditSubmitAttempt]=useState(false);
   const [commentText,setCommentText]=useState("");
+  const [serverAudit,setServerAudit]=useState([]);
   const [editSaving,setEditSaving]=useState(false);
   const e=expenses.find(x=>x.id===detailId);
   useEffect(()=>{
@@ -3106,7 +3115,6 @@ function DetailPanel(){
       if(objUrl)try{URL.revokeObjectURL(objUrl);}catch(e2){}
     };
   },[editMode,detailId,expenses]);
-  const [serverAudit,setServerAudit]=useState([]);
   useEffect(()=>{
     if(!AUTH_URL||!detailId){setServerAudit([]);return;}
     let dead=false;
@@ -3331,7 +3339,7 @@ function DetailPanel(){
     const recEdit=cadenceToRecurringPayload(ef);
     setEditSaving(true);
     try{
-      await Promise.resolve(editExp(e.id,{
+      await editExp(e.id,{
         description:ef.description,
         amount:amt,
         category:ef.category,date:ef.date,
@@ -3349,7 +3357,7 @@ function DetailPanel(){
         invoiceDueDateDirect: ef.invoiceDueDateDirect || "",
         dueDate: computeInvoiceDueISO(ef) || null,
         proveedor:String(ef.proveedor||"").trim(),
-      },e));
+      },e);
       receiptAltHandlerRef.current=null;
       setEditMode(false);setEfDirty(false);
     }finally{
@@ -3376,7 +3384,7 @@ function DetailPanel(){
   const isEditInv=editMode&&ef.expenseType==="invoice";
   const editOwnerId=(ef.ownerId&&String(ef.ownerId).trim())?String(ef.ownerId):user.id;
   const editOwnerUser=users.find(u=>u.id===editOwnerId)||user;
-  const editExpAmt=parseFloat(ef.amount)||0;
+  const editExpAmt=parseMoney(ef.amount)||0;
   const editAmountNum=parseMoney(ef.amount);
   const editAmountOk=editAmountNum>0;
   const editIsInv=ef.expenseType==="invoice";
@@ -3494,7 +3502,7 @@ function DetailPanel(){
           </div>
         );})}
       </div>
-      {canUserReviewExpense(e,{user,cats,users})&&(
+      {canUserReviewExpense(e,{user,cats,users})&&!editSaving&&(
         <div style={{marginTop:9,borderTop:`1px solid ${detailAccent}`,paddingTop:9}}>
           <label className="lbl" style={{marginBottom:3,color:detailAccent}}>{t("label.decision")}</label>
           <textarea className="inp" rows={2} placeholder={t("label.note")} value={aNote[e.id]||""} onChange={ev=>setANote(p=>({...p,[e.id]:ev.target.value}))} style={{marginBottom:6,resize:"vertical",fontSize:13}}/>
@@ -3597,16 +3605,17 @@ export function DashboardView(){
   const mTotal=mTotalAll;
   const pend=isAdmin?pendAll:pendMine;
   const dashTotApproved=totApproved;
-  const myActivityGastosMonth=expenses.filter(e=>e.submittedBy===user.id&&e.expenseType!=="invoice"&&e.date?.slice(0,7)===ym);
-  const myActivityFacturasMonth=expenses.filter(e=>e.submittedBy===user.id&&e.expenseType==="invoice"&&(e.dueDate||e.date||"").slice(0,7)===ym);
+  const myActivityGastosMonth=expenses.filter(e=>expenseInvolvesUser(e,user.id)&&e.expenseType!=="invoice"&&e.date?.slice(0,7)===ym);
+  const myActivityFacturasMonth=expenses.filter(e=>expenseInvolvesUser(e,user.id)&&e.expenseType==="invoice"&&(e.dueDate||e.date||"").slice(0,7)===ym);
+  const myActivityShare=(e)=>shareEurInExpense(e,user.id);
   const apprMine=[...myActivityGastosMonth.filter(e=>getItemStatus(e,cats,users)==="approved"),...myActivityFacturasMonth.filter(b=>getItemStatus(b,cats,users)==="approved")];
-  const apprSum=apprMine.reduce((s,e)=>s+eurForExpense(e),0);
+  const apprSum=apprMine.reduce((s,e)=>s+myActivityShare(e),0);
   const apprCnt=apprMine.length;
   const pendList=[...myActivityGastosMonth.filter(e=>getItemStatus(e,cats,users)==="pending"),...myActivityFacturasMonth.filter(b=>getItemStatus(b,cats,users)==="pending")];
-  const pendSum=pendList.reduce((s,e)=>s+eurForExpense(e),0);
+  const pendSum=pendList.reduce((s,e)=>s+myActivityShare(e),0);
   const pendCnt=pendList.length;
   const rejList=[...myActivityGastosMonth.filter(e=>getItemStatus(e,cats,users)==="rejected"),...myActivityFacturasMonth.filter(b=>getItemStatus(b,cats,users)==="rejected")];
-  const rejSum=rejList.reduce((s,e)=>s+eurForExpense(e),0);
+  const rejSum=rejList.reduce((s,e)=>s+myActivityShare(e),0);
   const rejCnt=rejList.length;
   const deptBudgetActive=(departmentsWithStats||[]).filter(d=>!d.archived&&Number(d.budget)>0);
   const budgetTotalActive=deptBudgetActive.reduce((s,d)=>s+Number(d.budget||0),0);
@@ -7497,9 +7506,23 @@ export default function App(){
 
   /* editExp — saves edited expense, triggers re-approval if relevant fields changed */
   const editExp=(expId, updates, oldExp)=>{
+    const relevantChanged=REAPPROVAL_FIELDS.some(k=>{
+      if(k==="paidBy") return JSON.stringify(updates.paidBy)!==JSON.stringify(oldExp.paidBy);
+      if(k==="splitMode") return String(updates.splitMode??"")!==String(oldExp.splitMode??"");
+      if(k==="receipt") return (updates.receipt||null)!==(oldExp.receipt||null);
+      if(k==="ivaRate") return!expenseIvaRatesEqual(updates.ivaRate,oldExp.ivaRate);
+      if(k==="ivaAmount") return Number(updates.ivaAmount??NaN)!==Number(oldExp.ivaAmount??NaN);
+      if(k==="departmentId") return String(updates.departmentId||"")!==String(oldExp.departmentId||"");
+      return String(updates[k]||"")!==String(oldExp[k]||"");
+    });
+    const needsReapprovalReset=relevantChanged&&['submitted','approved','rejected'].includes(String(oldExp.status||''));
+
     if(AUTH_URL&&oldExp._apiType==="expense"){
-      if(oldExp._pendingSync){dispatchSolanaToast("Espera a sincronizar este gasto antes de editarlo.","error");return;}
-      void (async()=>{
+      if(oldExp._pendingSync){
+        dispatchSolanaToast("Espera a sincronizar este gasto antes de editarlo.","error");
+        return Promise.reject(new Error("pending sync"));
+      }
+      return (async()=>{
         try{
           const body = {
             amount: updates.amount,
@@ -7524,6 +7547,8 @@ export default function App(){
 
           if (oldExp.status === 'rejected') {
             body.status = 'submitted';
+          }
+          if (needsReapprovalReset || oldExp.status === 'rejected') {
             body.approvalRequired = effectiveExpenseApproverIds(
               { departmentId: updates.departmentId || oldExp.departmentId }, cats, users
             );
@@ -7544,23 +7569,18 @@ export default function App(){
           }
         }catch(e){
           if(isOfflineQueuedError(e)){
-            saveExp(expenses.map(e=>e.id!==expId?e:{...e,...updates}));
+            saveExp(expenses.map(ex=>{
+              if(ex.id!==expId)return ex;
+              const merged={...ex,...updates};
+              return needsReapprovalReset?{...merged,status:'submitted',approvals:{}}:merged;
+            }));
             return;
           }
           dispatchSolanaToast(e.message||"No se pudo guardar.","error");
+          throw e;
         }
       })();
-      return;
     }
-    const relevantChanged=REAPPROVAL_FIELDS.some(k=>{
-      if(k==="paidBy") return JSON.stringify(updates.paidBy)!==JSON.stringify(oldExp.paidBy);
-      if(k==="splitMode") return String(updates.splitMode??"")!==String(oldExp.splitMode??"");
-      if(k==="receipt") return (updates.receipt||null)!==(oldExp.receipt||null);
-      if(k==="ivaRate") return!expenseIvaRatesEqual(updates.ivaRate,oldExp.ivaRate);
-      if(k==="ivaAmount") return Number(updates.ivaAmount??NaN)!==Number(oldExp.ivaAmount??NaN);
-      if(k==="departmentId") return String(updates.departmentId||"")!==String(oldExp.departmentId||"");
-      return String(updates[k]||"")!==String(oldExp[k]||"");
-    });
     const wasApproved=getItemStatus(oldExp,cats,users)==="approved";
     const wasRejected=getItemStatus(oldExp,cats,users)==="rejected";
     const wasSubmitted=oldExp.status==="submitted"||(oldExp._apiType==="expense"&&oldExp.status==="submitted");
@@ -7589,10 +7609,18 @@ export default function App(){
       nextSeen=seenByAfterActor(user.id);
       appLog("info","expense_reapproval",{itemCode:oldExp.itemCode,userId:user.id});
     }
-    const updated={...oldExp,...updates,approvals:newApprovals,auditTrail:newTrail,seenBy:nextSeen};
+    const updated={
+      ...oldExp,
+      ...updates,
+      ...((wasApproved||wasRejected||wasSubmitted)&&relevantChanged?{status:'submitted'}:{}),
+      approvals:newApprovals,
+      auditTrail:newTrail,
+      seenBy:nextSeen,
+    };
     saveExp(expenses.map(e=>e.id===expId?updated:e));
     appLog("info","expense_edited",{itemCode:oldExp.itemCode,userId:user.id,relevantChanged,wasApproved});
     if(wasApproved&&relevantChanged)dispatchSolanaToast(t("expense.reapprovalDone"),"info");
+    return Promise.resolve();
   };
 
   const fixResubmitExpense=(expId)=>{

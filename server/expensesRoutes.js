@@ -1072,6 +1072,20 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       if (dept.error) return res.status(400).json({ error: dept.error });
       nextDeptId = dept.id;
     }
+    let nextOwnerId = exp.ownerId ?? exp.userId;
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'ownerId')) {
+      const ownerRaw = String(req.body.ownerId || '').trim();
+      if (ownerRaw) {
+        const allUsers = db.prepare("SELECT * FROM users WHERE id != 'system'").all();
+        const resolvedOwner =
+          allUsers.find(u => u.id === ownerRaw) ||
+          allUsers.find(u => u.id === resolveApproverTokenToUserId(ownerRaw, userStore)) ||
+          allUsers.find(u => u.name && u.name.toLowerCase() === ownerRaw.toLowerCase()) ||
+          allUsers.find(u => u.username && u.username.toLowerCase() === ownerRaw.toLowerCase()) ||
+          allUsers.find(u => u.email && u.email.toLowerCase() === ownerRaw.toLowerCase());
+        if (resolvedOwner) nextOwnerId = resolvedOwner.id;
+      }
+    }
     if (amount != null && (typeof amount !== 'number' || !Number.isFinite(amount))) {
       return res.status(400).json({ error: 'amount inválido.' });
     }
@@ -1228,12 +1242,16 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
 
     const becomingSubmitted = finalStatus === 'submitted'
-      && (exp.status === 'rejected' || exp.status === 'draft');
+      && (exp.status === 'rejected' || exp.status === 'draft' || materialEdit);
 
     if (becomingSubmitted) {
       const bodyList = normalizeApprovalRequiredFromBody(req.body);
       let approverIds = bodyList.length > 0 ? bodyList : parseJsonArray(exp.approversJson);
-      if (approverIds.length === 0) approverIds = getApproverIdsForDepartment(exp.departmentId);
+      if (materialEdit && String(nextDeptId || '') !== String(exp.departmentId || '')) {
+        approverIds = getApproverIdsForDepartment(nextDeptId);
+      } else if (approverIds.length === 0) {
+        approverIds = getApproverIdsForDepartment(nextDeptId);
+      }
       approverIds = canonicalizeApproverIds(approverIds, userStore);
       const { votes, allDone } = computeSubmittedVotes(exp.userId, approverIds);
       nextApproversJson = JSON.stringify(approverIds);
@@ -1262,6 +1280,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         expenseType = ?, vendor = ?, dueDate = ?,
         recurring = ?, recurrenceRule = ?,
         cadenceKey = ?, cadenceCustomMonths = ?,
+        ownerId = ?,
         updatedAt = ?
       WHERE id = ?
     `).run(
@@ -1275,6 +1294,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       nextRec ? 1 : 0, nextRule,
       String(req.body.cadenceKey || 'once').trim().slice(0, 32),
       String(req.body.cadenceCustomMonths || '1').trim().slice(0, 8),
+      nextOwnerId,
       now, exp.id,
     );
     if (warnIfNoChanges(updateInfo, 'expense_update', { expenseId: exp.id, userId: req.userId })) {
