@@ -172,6 +172,39 @@ function runDepartmentApproverIdsColumnMigration({ audit }) {
 }
 
 /**
+ * Idempotent: backfill expenses.traceCode from createdAt + amountEUR + id suffix.
+ * Does not rename existing Cloudinary assets — stored code only for app/Excel lookup.
+ */
+function runTraceCodeMigration({ audit }) {
+  const db = require('./db');
+  const { buildTraceCode } = require('./lib/traceCode');
+  const rows = db
+    .prepare(
+      "SELECT id, createdAt, amountEUR, amount, currency, traceCode FROM expenses WHERE traceCode IS NULL OR TRIM(traceCode) = ''",
+    )
+    .all();
+  if (!rows.length) return;
+
+  const update = db.prepare('UPDATE expenses SET traceCode = ? WHERE id = ?');
+  let updated = 0;
+  for (const row of rows) {
+    let eur = row.amountEUR != null ? Number(row.amountEUR) : null;
+    if (eur == null || !Number.isFinite(eur)) {
+      const cur = String(row.currency || 'EUR').toUpperCase();
+      eur = cur === 'EUR' ? Number(row.amount) || 0 : Number(row.amount) || 0;
+    }
+    const code = buildTraceCode(row.createdAt, eur, row.id);
+    update.run(code, row.id);
+    updated += 1;
+  }
+
+  if (updated > 0) {
+    audit('trace_code_backfill', { count: updated });
+    console.log(`[MIGRATE] Backfilled traceCode on ${updated} expense(s)`);
+  }
+}
+
+/**
  * One-time: rename default English category names to Spanish in app_settings and expenses.
  * Only exact known English default names are remapped; custom categories are untouched.
  */
@@ -315,6 +348,7 @@ module.exports = {
   runRoleConsolidationMigration,
   runDepartmentApproversMigration,
   runDepartmentApproverIdsColumnMigration,
+  runTraceCodeMigration,
   runCategorySpanishMigration,
   migrateBillsToExpenses,
 };

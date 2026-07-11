@@ -18,6 +18,7 @@ export type DeptRow = {
   budget: number;
   archived: boolean;
   createdAt: number;
+  approverIds?: string[];
 };
 
 export type RecordedRequest = {
@@ -45,6 +46,20 @@ export const PASSWORDS: Record<string, string> = {
 export const MOCK_AUTH_BASE = 'https://solana-auth.onrender.com';
 
 const _attached = new WeakMap<Page, boolean>();
+
+function buildTraceCode(createdAtMs: number, amountEur: number, expenseId: string): string {
+  const ts = Number(createdAtMs);
+  const d = new Date(Number.isFinite(ts) ? ts : Date.now());
+  const dateStr = d.toISOString().slice(0, 10).replace(/-/g, '');
+  const timeStr = d.toISOString().slice(11, 16).replace(':', '');
+  const amt = Number(amountEur);
+  const amountStr = `${(Number.isFinite(amt) ? amt : 0).toFixed(2)}EUR`;
+  const base = `${dateStr}_${timeStr}_${amountStr}`;
+  const id = String(expenseId || '').trim();
+  if (!id) return base;
+  const suffix = id.replace(/^exp_/, '').slice(0, 4).toLowerCase();
+  return suffix ? `${base}_${suffix}` : base;
+}
 
 export function makeUsers(): User[] {
   return [
@@ -319,27 +334,39 @@ export async function assertPostRefetchStatus(
   await expect(panel.getByText(statusPattern).first()).toBeVisible();
 }
 
+export function defaultMockDepartments(): DeptRow[] {
+  return [
+    { id: 'dept_ops', name: 'Operaciones', budget: 3000, archived: false, createdAt: Date.now(), approverIds: ['admin-1'] },
+    { id: 'dept_fin', name: 'Finanzas', budget: 5000, archived: false, createdAt: Date.now(), approverIds: ['admin-1'] },
+    { id: 'dept_estrategia', name: 'Estrategia', budget: 4000, archived: false, createdAt: Date.now(), approverIds: ['admin-1'] },
+  ];
+}
+
 export function createMockApiState(
   seed?: {
     expenses?: ExpenseRow[];
     users?: User[];
     settingsCategories?: unknown[];
     departmentApprovers?: Record<string, string[]>;
+    departments?: DeptRow[];
   },
 ): MockApiState {
+  const departments = seed?.departments ?? defaultMockDepartments();
+  const departmentApprovers = { ...(seed?.departmentApprovers ?? {}) };
+  for (const d of departments) {
+    if (Array.isArray(d.approverIds) && d.approverIds.length > 0) {
+      departmentApprovers[d.id] = d.approverIds;
+    }
+  }
   return {
     users: seed?.users ?? makeUsers(),
     expenses: seed?.expenses ?? [],
-    departments: [
-      { id: 'dept_ops', name: 'Operaciones', budget: 3000, archived: false, createdAt: Date.now() },
-      { id: 'dept_fin', name: 'Finanzas', budget: 5000, archived: false, createdAt: Date.now() },
-      { id: 'dept_estrategia', name: 'Estrategia', budget: 4000, archived: false, createdAt: Date.now() },
-    ],
+    departments,
     tokens: new Map<string, { userId: string; role: string }>(),
     passwords: new Map<string, string>(Object.entries(PASSWORDS)),
     settings: {
       categories: seed?.settingsCategories ?? null,
-      department_approvers: seed?.departmentApprovers ?? {},
+      department_approvers: departmentApprovers,
     },
     requests: [],
   };
@@ -557,6 +584,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         .toString()
         .slice(0, 10);
       const now = Date.now();
+      const traceCode = buildTraceCode(now, Number(body.amount || 0), id);
       const submitAudit = {
         action: 'submitted',
         by: session.userId,
@@ -597,6 +625,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
             rejectionNote: null,
             auditTrailJson: JSON.stringify([submitAudit]),
             commentsJson: '[]',
+            traceCode,
           }
         : {
             id,
@@ -627,6 +656,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
             paymentTermDays: 0,
             auditTrailJson: JSON.stringify([submitAudit]),
             commentsJson: '[]',
+            traceCode,
           };
       (row as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = [submitAudit];
       state.expenses.unshift(row);
@@ -892,6 +922,7 @@ export async function setupMockApi(
     users?: User[];
     settingsCategories?: unknown[];
     departmentApprovers?: Record<string, string[]>;
+    departments?: DeptRow[];
   },
 ): Promise<MockApiState> {
   const state = createMockApiState(seed);

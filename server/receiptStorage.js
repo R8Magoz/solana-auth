@@ -153,7 +153,7 @@ async function removeReceiptAsset(receiptPath, DATA_DIR) {
  * @param {{ b64: string, mediaType?: string, entityId: string, DATA_DIR: string, date?: string, amount?: number }} opts
  * @returns {Promise<{ receiptPath: string }>}
  */
-async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR, date, amount }) {
+async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR, traceCode }) {
   if (!b64 || typeof b64 !== 'string') {
     const err = new Error('Falta b64.');
     err.statusCode = 400;
@@ -182,13 +182,9 @@ async function saveReceiptB64ToStorage({ b64, mediaType, entityId, DATA_DIR, dat
     throw err;
   }
 
-  const now = new Date();
-  const dateStr = date
-    ? String(date).replace(/-/g, '').slice(0, 8)
-    : now.toISOString().slice(0, 10).replace(/-/g, '');
-  const timeStr = now.toISOString().slice(11, 16).replace(':', '');
-  const amountStr = amount != null ? Number(amount).toFixed(2) + 'EUR' : null;
-  const humanId = amountStr ? `${dateStr}_${timeStr}_${amountStr}` : entityId;
+  const humanId = traceCode
+    ? String(traceCode).trim()
+    : entityId;
   const publicIdWithExt = `${humanId}.${ext}`;
 
   if (ensureCloudinary()) {

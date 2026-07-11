@@ -14,6 +14,7 @@ const {
   parseApproverIdsJson,
   syncDepartmentApproversSettings,
 } = require('./lib/departmentApprovers');
+const { buildTraceCode } = require('./lib/traceCode');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
@@ -669,14 +670,14 @@ const insertExp = db.prepare(`
     approversJson, approvalVotesJson, paidByJson, splitMode,
     ivaRate, ivaAmount, commentsJson, ownerId,
     expenseType, vendor, dueDate, paymentStatus, paidAt, paidConfirmedBy, paymentTermDays, deferredPayment, recurring, recurrenceRule, originBillId,
-    cadenceKey, cadenceCustomMonths, clientRef
+    cadenceKey, cadenceCustomMonths, clientRef, traceCode
   ) VALUES (
     @id, @userId, @amount, @currency, @amountEUR, @description, @category, @date, @status,
     @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt, @departmentId,
     @approversJson, @approvalVotesJson, @paidByJson, @splitMode,
     @ivaRate, @ivaAmount, @commentsJson, @ownerId,
     @expenseType, @vendor, @dueDate, @paymentStatus, @paidAt, @paidConfirmedBy, @paymentTermDays, @deferredPayment, @recurring, @recurrenceRule, @originBillId,
-    @cadenceKey, @cadenceCustomMonths, @clientRef
+    @cadenceKey, @cadenceCustomMonths, @clientRef, @traceCode
   )
 `);
 
@@ -869,6 +870,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     const now = Date.now();
     const id = 'exp_' + crypto.randomBytes(8).toString('hex');
+    const amountForTrace = eur != null && Number.isFinite(Number(eur)) ? Number(eur) : amount;
+    const traceCodeVal = buildTraceCode(now, amountForTrace, id);
 
     let receiptPathVal = null;
     if (b64Inline) {
@@ -881,10 +884,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
           mediaType,
           entityId: id,
           DATA_DIR,
-          date: dateStr,
-          amount: amountEUR != null && Number.isFinite(Number(amountEUR))
-            ? Number(amountEUR)
-            : amount,
+          traceCode: traceCodeVal,
         });
         receiptPathVal = saved.receiptPath;
       } catch (e) {
@@ -989,6 +989,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       cadenceKey: String(req.body.cadenceKey || 'once').trim().slice(0, 32),
       cadenceCustomMonths: String(req.body.cadenceCustomMonths || '1').trim().slice(0, 8),
       clientRef,
+      traceCode: traceCodeVal,
     });
     } catch (insertErr) {
       if (clientRef && insertErr && insertErr.code === 'SQLITE_CONSTRAINT_UNIQUE') {
@@ -1573,13 +1574,13 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const { b64, mediaType } = req.body || {};
     try {
       await receiptStorage.removeReceiptAsset(exp.receiptPath, DATA_DIR);
+      const traceForReceipt = exp.traceCode || buildTraceCode(exp.createdAt, exp.amountEUR ?? exp.amount, exp.id);
       const { receiptPath } = await receiptStorage.saveReceiptB64ToStorage({
         b64,
         mediaType,
         entityId: exp.id,
         DATA_DIR,
-        date: exp.date,
-        amount: exp.amountEUR,
+        traceCode: traceForReceipt,
       });
       const now = Date.now();
       const receiptInfo = db.prepare(`UPDATE expenses SET receiptPath = ?, updatedAt = ? WHERE id = ?`).run(receiptPath, now, exp.id);
@@ -1638,7 +1639,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     };
     const type = MIME_MAP[ext] || 'application/octet-stream';
     res.setHeader('Content-Type', type);
-    const expCode = exp.itemCode || exp.id;
+    const expCode = exp.traceCode || exp.itemCode || exp.id;
     const dateStr = new Date().toISOString().slice(0, 10);
     const fname = path.basename(abs);
     const safeFilename = `${expCode}_${dateStr}_${fname}`;
