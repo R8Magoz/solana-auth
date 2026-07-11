@@ -115,6 +115,7 @@ const db = require('./db');
 const { seedDefaults } = require('./seeds/defaults');
 seedDefaults(db);
 const { runBackup, listBackups, resolveSafeBackupPath, replaceLiveDatabase } = require('./backup');
+const { runOffDiskBackup } = require('./offDiskBackup');
 const auditLog = require('./auditLog');
 auditLog.migrateLegacyFile(AUDIT_LEGACY);
 
@@ -567,6 +568,31 @@ function scheduleBackups() {
   setInterval(doBackup, 6 * 60 * 60 * 1000); // then every 6 hours
 }
 scheduleBackups();
+
+// ── OFF-DISK BACKUPS (Cloudinary) ────────────────────────────────────────────
+// Daily: better-sqlite3 .backup() → Cloudinary raw upload; skips if unconfigured.
+function scheduleOffDiskBackups() {
+  async function doOffDiskBackup() {
+    try {
+      const result = await runOffDiskBackup({ db });
+      if (result.skipped) return;
+      audit('db_backup_succeeded', {
+        filename: result.filename,
+        sizeBytes: result.sizeBytes,
+        url: result.url,
+        pruned: result.pruned,
+        timestamp: result.timestamp,
+      });
+      console.log('[off-disk-backup] OK', result.filename, result.sizeBytes, 'bytes');
+    } catch (e) {
+      audit('db_backup_failed', { error: e.message });
+      console.error('[off-disk-backup] FAILED:', e.message);
+    }
+  }
+  doOffDiskBackup();
+  setInterval(doOffDiskBackup, 24 * 60 * 60 * 1000).unref();
+}
+scheduleOffDiskBackups();
 
 httpServer = app.listen(PORT, () => {
   console.log(`[SOLANA-AUTH] Server running on port ${PORT}`);
