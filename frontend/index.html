@@ -1444,13 +1444,14 @@ const mergeReconsideredExpenseClientRow=(base,actorUserId)=>{
   const now=new Date().toISOString();
   const trail=Array.isArray(base.auditTrail)?base.auditTrail:[];
   const hasRecon=trail.some(a=>a&&a.action==="reconsider_requested");
+  const serverApproved=base.status==="approved";
   return{
     ...base,
-    status:"submitted",
-    approvals:{},
+    status:serverApproved?"approved":"submitted",
+    approvals:serverApproved?(base.approvals||{}):{},
     rejectionNote:null,
-    approvedBy:null,
-    approvedAt:null,
+    approvedBy:serverApproved?base.approvedBy:null,
+    approvedAt:serverApproved?base.approvedAt:null,
     rejectedBy:null,
     rejectedAt:null,
     auditTrail:hasRecon?trail:[...trail,{action:"reconsider_requested",by:actorUserId,at:now}],
@@ -1490,7 +1491,6 @@ const TIMELINE_ACTION_LABEL={
   approver_removed_autoapprove:"Aprobador eliminado (voto automático)",
 };
 const TIMELINE_HIDDEN_ACTIONS=new Set(["vote_changed","updated","exported","paid","mark_paid"]);
-const TIMELINE_COLLAPSE_ACTIONS=new Set(["approved","auto_approved","rejected","submitted","created"]);
 const TIMELINE_REVIEWER_EDIT_FIELDS=new Set(["amount","description","category","date","departmentId","paidBy","splitMode","receipt","receiptType","notes"]);
 const TIMELINE_SKIP_EDIT_FIELDS=new Set(["ivaRate","ivaAmount","vendor","dueDate","expenseType"]);
 function timelineFieldValueEmpty(val){
@@ -1717,24 +1717,22 @@ function buildExpenseDetailTimelineEvents(e,serverAudit,useServerAudit,departmen
       by:e.submittedBy||e.userId,
     });
   }
-  if(!useServerAudit){
-    if(e.approvedAt&&!events.some(ev=>ev.action==="approved")){
-      events.push({
-        id:"syn-approved",
-        at:new Date(e.approvedAt).toISOString(),
-        action:"approved",
-        by:e.approvedBy,
-      });
-    }
-    if(e.rejectedAt&&!events.some(ev=>ev.action==="rejected")){
-      events.push({
-        id:"syn-rejected",
-        at:new Date(e.rejectedAt).toISOString(),
-        action:"rejected",
-        by:e.rejectedBy,
-        note:e.rejectionNote||null,
-      });
-    }
+  if(e.approvedAt&&!events.some(ev=>ev.action==="approved"||ev.action==="auto_approved")){
+    events.push({
+      id:"syn-approved",
+      at:new Date(e.approvedAt).toISOString(),
+      action:"approved",
+      by:e.approvedBy,
+    });
+  }
+  if(!useServerAudit&&e.rejectedAt&&!events.some(ev=>ev.action==="rejected")){
+    events.push({
+      id:"syn-rejected",
+      at:new Date(e.rejectedAt).toISOString(),
+      action:"rejected",
+      by:e.rejectedBy,
+      note:e.rejectionNote||null,
+    });
   }
   return foldReapprovalIntoEdits(events)
     .filter(ev=>!TIMELINE_HIDDEN_ACTIONS.has(ev.action)&&ev.action!=="reapproval_required")
@@ -1744,7 +1742,7 @@ function collapseTimelineEvents(events){
   const out=[];
   for(const ev of events){
     const last=out[out.length-1];
-    if(last&&TIMELINE_COLLAPSE_ACTIONS.has(ev.action)&&last.action===ev.action&&String(last.by||"")===String(ev.by||"")){
+    if(last&&last.action===ev.action&&String(last.by||"")===String(ev.by||"")){
       last._collapseCount=(last._collapseCount||1)+1;
       last._collapsedRaw=[...(last._collapsedRaw||[{id:last.id,at:last.at,by:last.by,note:last.note,meta:last.meta}]),{id:ev.id,at:ev.at,by:ev.by,note:ev.note,meta:ev.meta}];
       last._collapsedAt=ev.at;

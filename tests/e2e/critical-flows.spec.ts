@@ -670,6 +670,9 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
           by: session.userId,
           meta: { previousStatus },
         });
+        if (e.status === 'approved' && previousStatus !== 'approved') {
+          pushAudit(e, { action: 'approved', by: session.userId, via: 'reconsider_finalize' });
+        }
         e.updatedAt = Date.now();
         (e as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = parseAudit(e);
         return json(200, { ok: true, expense: e });

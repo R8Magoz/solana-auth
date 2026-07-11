@@ -416,7 +416,6 @@ const TIMELINE_ACTION_LABEL={
   approver_removed_autoapprove:"Aprobador eliminado (voto automático)",
 };
 const TIMELINE_HIDDEN_ACTIONS=new Set(["vote_changed","updated","exported","paid","mark_paid"]);
-const TIMELINE_COLLAPSE_ACTIONS=new Set(["approved","auto_approved","rejected","submitted","created"]);
 const SERVER_AUDIT_EVENT_TO_ACTION={
   expense_submitted:"submitted",expense_created:"submitted",expense_approved:"approved",
   expense_rejected:"rejected",expense_deleted:"deleted",expense_reapproval_required:"reapproval_required",
@@ -566,24 +565,22 @@ function buildExpenseDetailTimelineEvents(e,serverAudit,useServerAudit,departmen
       by:e.submittedBy||e.userId,
     });
   }
-  if(!useServerAudit){
-    if(e.approvedAt&&!events.some(ev=>ev.action==="approved")){
-      events.push({
-        id:"syn-approved",
-        at:new Date(e.approvedAt).toISOString(),
-        action:"approved",
-        by:e.approvedBy,
-      });
-    }
-    if(e.rejectedAt&&!events.some(ev=>ev.action==="rejected")){
-      events.push({
-        id:"syn-rejected",
-        at:new Date(e.rejectedAt).toISOString(),
-        action:"rejected",
-        by:e.rejectedBy,
-        note:e.rejectionNote||null,
-      });
-    }
+  if(e.approvedAt&&!events.some(ev=>ev.action==="approved"||ev.action==="auto_approved")){
+    events.push({
+      id:"syn-approved",
+      at:new Date(e.approvedAt).toISOString(),
+      action:"approved",
+      by:e.approvedBy,
+    });
+  }
+  if(!useServerAudit&&e.rejectedAt&&!events.some(ev=>ev.action==="rejected")){
+    events.push({
+      id:"syn-rejected",
+      at:new Date(e.rejectedAt).toISOString(),
+      action:"rejected",
+      by:e.rejectedBy,
+      note:e.rejectionNote||null,
+    });
   }
   return events
     .filter(ev=>!TIMELINE_HIDDEN_ACTIONS.has(ev.action))
@@ -593,7 +590,7 @@ function collapseTimelineEvents(events){
   const out=[];
   for(const ev of events){
     const last=out[out.length-1];
-    if(last&&TIMELINE_COLLAPSE_ACTIONS.has(ev.action)&&last.action===ev.action&&String(last.by||"")===String(ev.by||"")){
+    if(last&&last.action===ev.action&&String(last.by||"")===String(ev.by||"")){
       last._collapseCount=(last._collapseCount||1)+1;
       last._collapsedRaw=[...(last._collapsedRaw||[{id:last.id,at:last.at,by:last.by,note:last.note,meta:last.meta}]),{id:ev.id,at:ev.at,by:ev.by,note:ev.note,meta:ev.meta}];
       last._collapsedAt=ev.at;
