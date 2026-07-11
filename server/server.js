@@ -37,7 +37,7 @@ const path       = require('path');
 const { spawn }  = require('child_process');
 const { Resend } = require('resend');
 const userStore = require('./userStore');
-const { runUsersJsonMigration, runRoleConsolidationMigration, runDepartmentApproversMigration, runCategorySpanishMigration } = require('./migrate');
+const { runUsersJsonMigration, runRoleConsolidationMigration, runDepartmentApproversMigration, runDepartmentApproverIdsColumnMigration, runCategorySpanishMigration } = require('./migrate');
 const { createExpensesRouter } = require('./expensesRoutes');
 const { sanitizeRequestBody } = require('./middleware/sanitize');
 
@@ -549,6 +549,7 @@ app.get('*', (req, res, next) => {
 runUsersJsonMigration({ dataDir: DATA_DIR, audit });
 runRoleConsolidationMigration({ audit });
 runDepartmentApproversMigration({ audit });
+runDepartmentApproverIdsColumnMigration({ audit });
 runCategorySpanishMigration({ audit });
 
 // ── SCHEDULED BACKUPS ────────────────────────────────────────────────────────

@@ -8,6 +8,12 @@ const db = require('./db');
 const { warnIfNoChanges } = require('./userStore');
 const receiptStorage = require('./receiptStorage');
 const settingsCache = require('./lib/settingsCache');
+const {
+  getApproverIdsForDepartmentId,
+  resolvePrimaryAdminUserId,
+  parseApproverIdsJson,
+  syncDepartmentApproversSettings,
+} = require('./lib/departmentApprovers');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
@@ -145,33 +151,8 @@ function normalizeApprovalRequiredFromBody(body) {
   return out;
 }
 
-function fallbackApprovers() {
-  // Only used when department has no designated approvers assigned
-  return db.prepare(
-    "SELECT id FROM users WHERE role = 'admin'"
-  ).all().map(r => r.id);
-}
-
-function getDepartmentApproversMap() {
-  try {
-    const row = db.prepare(
-      "SELECT value FROM app_settings WHERE key = 'department_approvers'"
-    ).get();
-    if (!row || !row.value) return {};
-    const parsed = JSON.parse(row.value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (e) {
-    return {};
-  }
-}
-
 function getApproverIdsForDepartment(departmentId) {
-  const id = String(departmentId || '').trim();
-  if (!id) return fallbackApprovers();
-  const map = getDepartmentApproversMap();
-  const ids = map[id];
-  if (Array.isArray(ids) && ids.length > 0) return ids;
-  return fallbackApprovers();
+  return getApproverIdsForDepartmentId(departmentId, db);
 }
 
 function resolveApproverIdsForCreate(body) {
@@ -924,6 +905,11 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
     approverIds = resolveApproverIdsForCreate(req.body);
     approverIds = canonicalizeApproverIds(approverIds, userStore);
+    if (st === 'submitted' && approverIds.length === 0) {
+      return res.status(400).json({
+        error: 'El departamento seleccionado no tiene aprobadores asignados.',
+      });
+    }
     if (st === 'submitted') {
       const { votes, allDone } = computeSubmittedVotes(req.userId, approverIds);
       votesObj = votes;
@@ -1528,8 +1514,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     const actorId = req.userId || null;
     const approversCanon = resolveExpenseApproverIdsForAuth(exp, userStore);
     const isApprover = approversCanon.includes(String(actorId || ''));
-    const admin = isAdminRole(req.userRole);
-    if (!isApprover && !admin) {
+    if (!isApprover) {
       return res.status(403).json({ error: 'No autorizado.' });
     }
     const previousStatus = exp.status;
@@ -1676,6 +1661,23 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 function pruneDepartmentApproversForUser(userId) {
   const uid = String(userId || '').trim();
   if (!uid) return;
+  const primary = resolvePrimaryAdminUserId(db);
+  let changed = false;
+  const rows = db.prepare('SELECT id, approverIdsJson FROM departments').all();
+  for (const row of rows) {
+    let ids = parseApproverIdsJson(row.approverIdsJson);
+    if (!ids.includes(uid)) continue;
+    const filtered = ids.filter((id) => id !== uid);
+    if (filtered.length === 0) {
+      if (primary && primary !== uid) ids = [primary];
+      else ids = [uid];
+    } else {
+      ids = filtered;
+    }
+    db.prepare('UPDATE departments SET approverIdsJson = ? WHERE id = ?').run(JSON.stringify(ids), row.id);
+    changed = true;
+  }
+  if (changed) syncDepartmentApproversSettings(db);
   try {
     const row = db.prepare(
       "SELECT value FROM app_settings WHERE key = 'department_approvers'"
@@ -1683,7 +1685,7 @@ function pruneDepartmentApproversForUser(userId) {
     if (!row || !row.value) return;
     const map = JSON.parse(row.value);
     if (!map || typeof map !== 'object' || Array.isArray(map)) return;
-    let changed = false;
+    let legacyChanged = false;
     const next = {};
     for (const [deptId, ids] of Object.entries(map)) {
       if (!Array.isArray(ids)) {
@@ -1691,11 +1693,10 @@ function pruneDepartmentApproversForUser(userId) {
         continue;
       }
       const filtered = ids.filter((id) => String(id) !== uid);
-      if (filtered.length !== ids.length) changed = true;
-      next[deptId] = filtered;
+      if (filtered.length !== ids.length) legacyChanged = true;
+      next[deptId] = filtered.length > 0 ? filtered : (primary ? [primary] : filtered);
     }
-    if (!changed) return;
-    const settingsCache = require('./lib/settingsCache');
+    if (!legacyChanged) return;
     db.prepare(
       "UPDATE app_settings SET value = ?, updatedAt = ? WHERE key = 'department_approvers'"
     ).run(JSON.stringify(next), Date.now());

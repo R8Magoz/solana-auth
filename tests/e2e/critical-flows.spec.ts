@@ -247,7 +247,17 @@ export type DeptRow = {
   budget: number;
   archived: boolean;
   createdAt: number;
+  approverIds?: string[];
 };
+
+function defaultMockDepartments(): DeptRow[] {
+  const approvers = ['admin-1'];
+  return [
+    { id: 'dept_ops', name: 'Operaciones', budget: 3000, archived: false, createdAt: Date.now(), approverIds: approvers },
+    { id: 'dept_fin', name: 'Finanzas', budget: 5000, archived: false, createdAt: Date.now(), approverIds: approvers },
+    { id: 'dept_estrategia', name: 'Estrategia', budget: 4000, archived: false, createdAt: Date.now(), approverIds: approvers },
+  ];
+}
 
 export type MockApiState = {
   users: User[];
@@ -261,21 +271,21 @@ export type MockApiState = {
 const _attached = new WeakMap<Page, boolean>();
 
 export function createMockApiState(
-  seed?: { expenses?: ExpenseRow[]; users?: User[]; settingsCategories?: any[]; departmentApprovers?: Record<string, string[]> },
+  seed?: { expenses?: ExpenseRow[]; users?: User[]; settingsCategories?: any[]; departmentApprovers?: Record<string, string[]>; departments?: DeptRow[] },
 ): MockApiState {
+  const departments = seed?.departments ?? defaultMockDepartments();
+  const departmentApprovers = seed?.departmentApprovers ?? Object.fromEntries(
+    departments.map((d) => [d.id, d.approverIds?.length ? d.approverIds : ['admin-1']]),
+  );
   return {
     users: seed?.users ?? makeUsers(),
     expenses: seed?.expenses ?? [],
-    departments: [
-      { id: 'dept_ops', name: 'Operaciones', budget: 3000, archived: false, createdAt: Date.now() },
-      { id: 'dept_fin', name: 'Finanzas', budget: 5000, archived: false, createdAt: Date.now() },
-      { id: 'dept_estrategia', name: 'Estrategia', budget: 4000, archived: false, createdAt: Date.now() },
-    ],
+    departments,
     tokens: new Map<string, { userId: string; role: string }>(),
     passwords: new Map<string, string>(Object.entries(PASSWORDS)),
     settings: {
       categories: seed?.settingsCategories ?? (null as any[] | null),
-      department_approvers: seed?.departmentApprovers ?? {},
+      department_approvers: departmentApprovers,
     },
   };
 }
@@ -304,17 +314,21 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         body: JSON.stringify(data),
       });
 
-    const adminIds = () => state.users.filter((u) => u.role === 'admin').map((u) => u.id);
+    const primaryAdminIds = () => {
+      const admin = state.users.find((u) => u.role === 'admin');
+      return admin ? [admin.id] : [state.users[0]?.id].filter(Boolean) as string[];
+    };
 
     const defaultApproversFromBody = (body: any): string[] => {
       const req = Array.isArray(body.approvalRequired) ? body.approvalRequired.filter(Boolean).map(String) : [];
       if (req.length) return req;
       const deptId = String(body.departmentId || '').trim();
+      const deptRow = state.departments.find((d) => d.id === deptId);
+      if (deptRow?.approverIds?.length) return deptRow.approverIds.map(String);
       const map = state.settings.department_approvers || {};
       const fromDept = deptId && Array.isArray(map[deptId]) ? map[deptId].filter(Boolean).map(String) : [];
       if (fromDept.length) return fromDept;
-      const s = adminIds();
-      return s.length ? s : [state.users[0]?.id].filter(Boolean) as string[];
+      return primaryAdminIds();
     };
 
     if (method === 'OPTIONS') return json(204, {});
@@ -396,7 +410,29 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
     }
 
     if (path === '/departments' && method === 'GET') {
+      if (!session) return json(401, { error: 'No autorizado.' });
       return json(200, { ok: true, departments: state.departments });
+    }
+
+    const deptPutMatch = path.match(/^\/departments\/([^/]+)$/);
+    if (deptPutMatch && method === 'PUT') {
+      if (!session) return json(401, { error: 'No autorizado.' });
+      const id = deptPutMatch[1];
+      const dept = state.departments.find((d) => d.id === id);
+      if (!dept) return json(404, { error: 'Departamento no encontrado.' });
+      const body = safeJson(req.postData());
+      if (Array.isArray(body.approverIds)) {
+        const ids = body.approverIds.filter(Boolean).map(String);
+        if (ids.length === 0) {
+          return json(400, { error: 'Debe haber al menos un aprobador por departamento.' });
+        }
+        dept.approverIds = ids;
+        state.settings.department_approvers[id] = ids;
+      }
+      if (typeof body.name === 'string') dept.name = body.name;
+      if (typeof body.budget === 'number') dept.budget = body.budget;
+      if (body.archived !== undefined) dept.archived = !!body.archived;
+      return json(200, { ok: true, department: dept });
     }
 
     if (path === '/reports/summary' && method === 'GET') {
@@ -1708,6 +1744,56 @@ test.describe('C — Permissions and profile', () => {
     await expect(panel.getByRole('button', { name: /Rechazar/i })).toHaveCount(0);
   });
 
+  test('C6) Admin who is not a department approver cannot act on that expense', async ({ page }) => {
+    await setupMockApi(page, {
+      departmentApprovers: { dept_branding: ['user-1'] },
+      departments: [
+        { id: 'dept_branding', name: 'Branding', budget: 10000, archived: false, createdAt: Date.now(), approverIds: ['user-1'] },
+        ...defaultMockDepartments(),
+      ],
+      expenses: [
+        {
+          id: 'exp_branding_gate',
+          userId: 'user-1',
+          ownerId: 'user-1',
+          submittedBy: 'user-1',
+          date: '2026-04-16',
+          description: 'Gasto Branding solo Anna QA',
+          amount: 90,
+          amountEUR: 90,
+          currency: 'EUR',
+          category: 'Marketing',
+          status: 'submitted',
+          approversJson: JSON.stringify(['user-1']),
+          approvalVotesJson: '{}',
+          paidByJson: JSON.stringify([{ userId: 'user-1', amount: 90, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_branding',
+          expenseType: 'expense',
+          auditTrailJson: JSON.stringify([]),
+          commentsJson: JSON.stringify([]),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          paymentStatus: 'na',
+          deferredPayment: false,
+          paymentTermDays: 0,
+          rejectionNote: null,
+        },
+      ],
+    });
+    await loginAs(page, 'admin@solana.test');
+    await clickSidebarSection(page, 'Aprobaciones');
+    await expect(page.getByText('Gasto Branding solo Anna QA').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Revisar' })).toHaveCount(0);
+    await openExpenseDetail(page, 'Gasto Branding solo Anna QA');
+    const panel = getDetailPanel(page);
+    await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: /^Rechazar$/i })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: /Reconsiderar/i })).toHaveCount(0);
+  });
+
   test('C4) Admin can assign approvers to departments in Settings', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
@@ -1715,8 +1801,9 @@ test.describe('C — Permissions and profile', () => {
     await page.getByText('Ajustes de aplicación').first().click();
     await page.waitForTimeout(500);
     await expect(page.getByText('Departamentos').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Asigna quién puede aprobar gastos de cada departamento/i).first()).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Estrategia').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/de este departamento/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'Guardar aprobadores' })).toBeVisible({ timeout: 10000 });
   });
 
   test('C3) Regular user can access settings and change password', async ({ page }) => {

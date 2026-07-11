@@ -170,6 +170,7 @@ addColumnIfMissing('bills', 'rejectedAt', 'INTEGER');
 addColumnIfMissing('bills', 'rejectionNote', 'TEXT');
 addColumnIfMissing('users', 'avatar', 'TEXT');
 addColumnIfMissing('departments', 'archived', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('departments', 'approverIdsJson', "TEXT NOT NULL DEFAULT '[]'");
 addColumnIfMissing('app_settings', 'description', 'TEXT');
 
 addColumnIfMissing('bills', 'migratedAt', 'INTEGER');
