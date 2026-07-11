@@ -974,6 +974,53 @@ const COMMON_PASSWORDS  = new Set([
   "baseball","superman","michael","password1","12345678","111111","1234567",
 ]);
 
+const AUTH_ENTER_MS=400;
+const AUTH_ENTER_TRANSITION=`opacity ${AUTH_ENTER_MS}ms ease`;
+const AUTH_SPLASH_EXIT_TRANSITION=`transform ${AUTH_ENTER_MS}ms ease, opacity ${AUTH_ENTER_MS}ms ease`;
+
+function usePrefersReducedMotion(){
+  const [prefersReducedMotion,setPrefersReducedMotion]=useState(()=>{
+    if(typeof window==="undefined"||!window.matchMedia)return false;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  });
+  useEffect(()=>{
+    if(typeof window==="undefined"||!window.matchMedia)return;
+    const mq=window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange=()=>setPrefersReducedMotion(mq.matches);
+    mq.addEventListener("change",onChange);
+    return()=>mq.removeEventListener("change",onChange);
+  },[]);
+  return prefersReducedMotion;
+}
+
+function AuthenticatedEnterShell({authEnter,prefersReducedMotion,children}){
+  return(
+    <div style={{
+      position:"relative",
+      width:"100%",
+      height:"100%",
+      minHeight:"100vh",
+      ...(prefersReducedMotion?{}:{opacity:authEnter.visible?1:0,transition:AUTH_ENTER_TRANSITION}),
+    }}>
+      {authEnter.showSplash&&(
+        <div style={{
+          position:"fixed",inset:0,background:G,zIndex:10000,
+          display:"flex",alignItems:"center",justifyContent:"center",
+          pointerEvents:"none",
+          ...(prefersReducedMotion?{display:"none"}:{
+            opacity:authEnter.splashExit?0:1,
+            transform:authEnter.splashExit?"translateY(-40%)":"translateY(0)",
+            transition:AUTH_SPLASH_EXIT_TRANSITION,
+          }),
+        }}>
+          <SolanaLogo theme="light" size="lg"/>
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
 /** Browser `accept` + extension fallback for HEIC etc. when `file.type` is empty */
 const RECEIPT_FILE_ACCEPT="*/*";
 
@@ -6413,12 +6460,42 @@ export default function App(){
   },[]);
   const [passwords,setPasswords]=useState(()=>ls("sol-pwd",{}));
   const sessionRestoreAttempted = useRef(false);
+  const authEntryPathRef = useRef(null);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [authEnter,setAuthEnter]=useState({visible:false,showSplash:false,splashExit:false});
   // appReady: small deliberate delay so the root div never flashes empty
   const [appReady,setAppReady]=useState(false);
   useEffect(()=>{
     appLog("info","auth:boot",{ts:new Date().toISOString()});
     setAppReady(true);
   },[]);
+  useEffect(()=>{
+    if(!user?.id){
+      setAuthEnter({visible:false,showSplash:false,splashExit:false});
+      return;
+    }
+    if(prefersReducedMotion){
+      setAuthEnter({visible:true,showSplash:false,splashExit:false});
+      return;
+    }
+    const fromRestore=authEntryPathRef.current==="restore";
+    setAuthEnter({visible:false,showSplash:fromRestore,splashExit:false});
+    let raf2;
+    const raf1=requestAnimationFrame(()=>{
+      raf2=requestAnimationFrame(()=>{
+        setAuthEnter({visible:true,showSplash:fromRestore,splashExit:fromRestore});
+      });
+    });
+    return()=>{
+      cancelAnimationFrame(raf1);
+      if(raf2)cancelAnimationFrame(raf2);
+    };
+  },[user?.id,prefersReducedMotion]);
+  useEffect(()=>{
+    if(!authEnter.splashExit||!authEnter.showSplash)return;
+    const t=setTimeout(()=>setAuthEnter(s=>({...s,showSplash:false})),AUTH_ENTER_MS);
+    return()=>clearTimeout(t);
+  },[authEnter.splashExit,authEnter.showSplash]);
   // currency is hardcoded EUR
   useEffect(()=>{
     if(!AUTH_URL)return;
@@ -6463,6 +6540,7 @@ export default function App(){
         setUsers(teamData.users.map(u=>normalizeItem(u,"user")));
         try{localStorage.setItem(LAST_ACTIVITY_KEY,String(Date.now()));}catch(e){}
         setIdleTrackingEnabled(true);
+        authEntryPathRef.current="restore";
         setUser(me);
         appLog("info","auth:session_restored",{userId:me.id});
 
@@ -7740,7 +7818,7 @@ export default function App(){
   /* ── EARLY RETURN — after all hooks, before derived values that need user ── */
   if(!user)return<div style={{position:"relative",minHeight:"100vh",background:G}}>
     <div style={{opacity:appReady?1:0,transition:"opacity 400ms ease",transitionDelay:appReady?"600ms":"0ms"}}>
-      <LoginScreen users={users} onLogin={u=>{appLog("info","auth:login",{userId:u.id,role:u.role});try{localStorage.setItem(LAST_ACTIVITY_KEY,String(Date.now()));}catch(e){}setIdleTrackingEnabled(true);setUser(u);}} passwords={passwords} sessionRestoreAttempted={sessionRestoreAttempted}/>
+      <LoginScreen users={users} onLogin={u=>{authEntryPathRef.current="login";appLog("info","auth:login",{userId:u.id,role:u.role});try{localStorage.setItem(LAST_ACTIVITY_KEY,String(Date.now()));}catch(e){}setIdleTrackingEnabled(true);setUser(u);}} passwords={passwords} sessionRestoreAttempted={sessionRestoreAttempted}/>
     </div>
     <div style={{position:"fixed",inset:0,background:G,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms ease, opacity 400ms ease",transitionDelay:appReady?"600ms":"0ms"}}>
       <div style={{opacity:1}}><SolanaLogo theme="light" size="lg"/></div>
@@ -7748,12 +7826,16 @@ export default function App(){
   </div>;
   // F3: Force password change for users created with a temporary password
   console.log("[AUTH] mustChangePassword:", user?.mustChangePassword, user?.id);
-  if(user.mustChangePassword)return<ForcePasswordChange
-    user={user} passwords={passwords} savePasswords={savePasswords}
-    saveUsers={saveUsers} users={users}
-    onSignOut={onSignOut}
-    onDone={updated=>{setUser(updated);appLog("info","auth:forced_pw_done",{userId:updated.id});}}
-  />;
+  if(user.mustChangePassword)return(
+    <AuthenticatedEnterShell authEnter={authEnter} prefersReducedMotion={prefersReducedMotion}>
+      <ForcePasswordChange
+        user={user} passwords={passwords} savePasswords={savePasswords}
+        saveUsers={saveUsers} users={users}
+        onSignOut={onSignOut}
+        onDone={updated=>{setUser(updated);appLog("info","auth:forced_pw_done",{userId:updated.id});}}
+      />
+    </AuthenticatedEnterShell>
+  );
   // auth:session logged only at login transition — not on every render
 
   /* ── DERIVED (user is guaranteed set below this line) ────────────────────── */
@@ -7918,6 +8000,7 @@ export default function App(){
 
   /* ── RENDER ─────────────────────────────────────────────────────────────── */
   return(
+    <AuthenticatedEnterShell authEnter={authEnter} prefersReducedMotion={prefersReducedMotion}>
     <Ctx.Provider value={ctxVal}>
       <div style={{display:"flex",height:"100vh",width:"100vw",fontFamily:"'DM Sans',system-ui,sans-serif",background:"#F5F0EA",color:"#1a1008",overflow:"hidden",WebkitOverflowScrolling:"touch"}}>
         {AUTH_URL&&!online&&(
@@ -8136,5 +8219,6 @@ export default function App(){
         )}
       </div>
     </Ctx.Provider>
+    </AuthenticatedEnterShell>
   );
 }
