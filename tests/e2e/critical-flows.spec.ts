@@ -375,10 +375,18 @@ test.describe('A — Expense lifecycle', () => {
     await panel.getByRole('button', { name: /Reconsiderar/i }).click();
     await waitForRequest(state, 'POST', /\/expenses\/exp_auto_appr_recon_net\/reconsider$/);
     expectRequestFired(state, 'POST', /\/expenses\/[^/]+\/reconsider$/);
-    await waitForExpensesRefetch(state, { after: tsBefore });
-    // Sole-approver reconsider auto-approves on server; UI must match post-refetch.
-    expect(getExpenseFromState(state, 'exp_auto_appr_recon_net')?.status).toBe('approved');
-    await expect(panel.getByText(/Aprobado|approved/i).first()).toBeVisible();
+    await assertPostRefetchStatus(
+      state,
+      'exp_auto_appr_recon_net',
+      'submitted',
+      panel,
+      /Pendiente|Enviado|pending/i,
+      { after: tsBefore },
+    );
+    await expect(panel.getByTestId('detail-status-badge')).toHaveAttribute('data-status', 'pending');
+    await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toBeVisible();
+    await expect(panel.getByRole('button', { name: /^Rechazar$/i })).toBeVisible();
+    await expect(panel.getByRole('button', { name: /Reconsiderar/i })).toHaveCount(0);
   });
 
   test('A2f) Reconsider then reject on auto-approved own-expense stays rejected', async ({ page }) => {

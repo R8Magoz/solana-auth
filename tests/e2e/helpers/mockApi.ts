@@ -135,17 +135,6 @@ function parseComments(row: ExpenseRow): Record<string, unknown>[] {
   }
 }
 
-/** Mirrors server computeSubmittedVotes — submitter auto-votes approve when listed as approver. */
-function computeSubmittedVotes(
-  submitterId: string,
-  approverIds: string[],
-): { votes: Record<string, string>; allDone: boolean } {
-  const votes: Record<string, string> = {};
-  if (approverIds.includes(submitterId)) votes[submitterId] = 'approved';
-  const hasReject = Object.values(votes).some((v) => v === 'rejected');
-  const allDone = !hasReject && approverIds.length > 0 && approverIds.every((id) => votes[id] === 'approved');
-  return { votes, allDone };
-}
 
 function finalizeFromApprovalVotes(
   e: ExpenseRow,
@@ -747,20 +736,11 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         }
         const previousStatus = e.status;
         const now = Date.now();
-        const approverIds = parseApprovers(e);
-        const { votes, allDone } = computeSubmittedVotes(String(e.userId), approverIds);
-        let finalStatus = 'submitted';
-        let approvedByVal: string | null = null;
-        let approvedAtVal: number | null = null;
-        if (allDone) {
-          finalStatus = 'approved';
-          approvedByVal = String(e.userId);
-          approvedAtVal = now;
-        }
-        e.status = finalStatus;
-        e.approvalVotesJson = JSON.stringify(votes);
-        e.approvedBy = approvedByVal;
-        e.approvedAt = approvedAtVal;
+        // Reconsider reopens to submitted — no sole-approver auto-approve (that applies only on new submit).
+        e.status = 'submitted';
+        e.approvalVotesJson = '{}';
+        e.approvedBy = null;
+        e.approvedAt = null;
         e.rejectedBy = null;
         e.rejectedAt = null;
         e.rejectionNote = null;
@@ -769,9 +749,6 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
           by: session.userId,
           meta: { previousStatus },
         });
-        if (finalStatus === 'approved' && previousStatus !== 'approved') {
-          pushAudit(e, { action: 'approved', by: session.userId, via: 'reconsider_finalize' });
-        }
         e.updatedAt = now;
         (e as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = parseAudit(e);
         return json(200, { ok: true, expense: e });
