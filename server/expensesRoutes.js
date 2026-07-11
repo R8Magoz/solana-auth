@@ -1518,6 +1518,67 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     });
   });
 
+  router.post('/:id/reconsider', requireAuth, (req, res) => {
+    const exp = getExpenseById(req.params.id);
+    if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
+    if (exp.status === 'deleted') return res.status(400).json({ error: 'Gasto no válido.' });
+    if (exp.status !== 'approved' && exp.status !== 'rejected') {
+      return res.status(400).json({ error: 'Gasto no válido.' });
+    }
+    const actorId = req.userId || null;
+    const approversCanon = resolveExpenseApproverIdsForAuth(exp, userStore);
+    const isApprover = approversCanon.includes(String(actorId || ''));
+    const admin = isAdminRole(req.userRole);
+    if (!isApprover && !admin) {
+      return res.status(403).json({ error: 'No autorizado.' });
+    }
+    const previousStatus = exp.status;
+    const now = Date.now();
+    let approverIds = parseJsonArray(exp.approversJson);
+    if (approverIds.length === 0) {
+      approverIds = getApproverIdsForDepartment(exp.departmentId);
+    }
+    approverIds = canonicalizeApproverIds(approverIds, userStore);
+    const { votes, allDone } = computeSubmittedVotes(exp.userId, approverIds);
+    let finalStatus = 'submitted';
+    let approvedByVal = null;
+    let approvedAtVal = null;
+    if (allDone) {
+      finalStatus = 'approved';
+      approvedByVal = exp.userId;
+      approvedAtVal = now;
+    }
+    const updateInfo = db.prepare(`
+      UPDATE expenses SET
+        status = ?, approvalVotesJson = ?, approversJson = ?,
+        approvedBy = ?, approvedAt = ?,
+        rejectedBy = ?, rejectedAt = ?, rejectionNote = ?,
+        updatedAt = ?
+      WHERE id = ?
+    `).run(
+      finalStatus,
+      JSON.stringify(votes),
+      JSON.stringify(approverIds),
+      approvedByVal,
+      approvedAtVal,
+      null,
+      null,
+      null,
+      now,
+      exp.id,
+    );
+    if (warnIfNoChanges(updateInfo, 'expense_reconsider', { expenseId: exp.id, userId: actorId })) {
+      return res.status(404).json({ error: 'Gasto no encontrado.' });
+    }
+    audit('expense_reconsider_requested', {
+      userId: actorId,
+      targetId: exp.id,
+      previousStatus,
+    });
+    const updated = getExpenseById(exp.id);
+    return res.json({ ok: true, expense: updated });
+  });
+
   const receiptJson = express.json({ limit: '100mb' });
 
   router.post('/:id/receipt', receiptLimit, receiptJson, async (req, res) => {
