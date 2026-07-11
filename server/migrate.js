@@ -4,6 +4,13 @@ const fs = require('fs');
 const path = require('path');
 const { insertUsersFromJsonRows } = require('./userStore');
 const { DEFAULT_CATEGORY_EN_TO_ES } = require('./lib/defaultCategories');
+const {
+  parseApproverIdsJson,
+  resolvePrimaryAdminUserId,
+  normalizeApproverIdsInput,
+  getDepartmentApproversMapFromSettings,
+  syncDepartmentApproversSettings,
+} = require('./lib/departmentApprovers');
 
 /**
  * One-time migration: flat users.json → SQLite when the users table is empty.
@@ -119,7 +126,53 @@ function runDepartmentApproversMigration({ audit }) {
 }
 
 /**
- * Idempotent: rename default English category names to Spanish in app_settings and expenses.
+ * Idempotent: populate departments.approverIdsJson from app_settings map or primary admin.
+ */
+function runDepartmentApproverIdsColumnMigration({ audit }) {
+  const db = require('./db');
+  const primaryAdminId = resolvePrimaryAdminUserId(db);
+  if (!primaryAdminId) {
+    console.warn('[MIGRATE] department approverIds: no active admin user — skipping defaults');
+  }
+
+  const legacyMap = getDepartmentApproversMapFromSettings(db);
+  const depts = db.prepare('SELECT id, approverIdsJson FROM departments').all();
+  let updated = 0;
+
+  for (const dept of depts) {
+    let ids = parseApproverIdsJson(dept.approverIdsJson);
+    if (ids.length > 0) continue;
+
+    const fromMap = legacyMap[dept.id];
+    if (Array.isArray(fromMap) && fromMap.length > 0) {
+      ids = normalizeApproverIdsInput(fromMap);
+    } else if (primaryAdminId) {
+      ids = [primaryAdminId];
+    }
+
+    if (ids.length === 0) continue;
+
+    db.prepare('UPDATE departments SET approverIdsJson = ? WHERE id = ?').run(JSON.stringify(ids), dept.id);
+    updated += 1;
+  }
+
+  if (updated > 0) {
+    syncDepartmentApproversSettings(db);
+    audit('department_approver_ids_column_migration', { departmentsUpdated: updated });
+    console.log(`[MIGRATE] Set approverIdsJson on ${updated} department(s)`);
+  }
+
+  const orphan = db
+    .prepare("SELECT COUNT(*) AS c FROM expenses WHERE departmentId IS NULL OR TRIM(departmentId) = ''")
+    .get();
+  if (orphan && orphan.c > 0) {
+    audit('expenses_missing_department', { count: orphan.c });
+    console.warn(`[MIGRATE] ${orphan.c} expense(s) without departmentId (approver fallback: primary admin only)`);
+  }
+}
+
+/**
+ * One-time: rename default English category names to Spanish in app_settings and expenses.
  * Only exact known English default names are remapped; custom categories are untouched.
  */
 function runCategorySpanishMigration({ audit }) {
@@ -261,6 +314,7 @@ module.exports = {
   runUsersJsonMigration,
   runRoleConsolidationMigration,
   runDepartmentApproversMigration,
+  runDepartmentApproverIdsColumnMigration,
   runCategorySpanishMigration,
   migrateBillsToExpenses,
 };

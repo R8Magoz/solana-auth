@@ -937,6 +937,56 @@ test.describe('C — Permissions and profile', () => {
     await expect(panel.getByRole('button', { name: /Rechazar/i })).toHaveCount(0);
   });
 
+  test('C6) Admin who is not a department approver cannot act on that expense', async ({ page }) => {
+    await setupMockApi(page, {
+      departmentApprovers: { dept_branding: ['user-1'] },
+      departments: [
+        { id: 'dept_branding', name: 'Branding', budget: 10000, archived: false, createdAt: Date.now(), approverIds: ['user-1'] },
+        ...defaultMockDepartments(),
+      ],
+      expenses: [
+        {
+          id: 'exp_branding_gate',
+          userId: 'user-1',
+          ownerId: 'user-1',
+          submittedBy: 'user-1',
+          date: '2026-04-16',
+          description: 'Gasto Branding solo Anna QA',
+          amount: 90,
+          amountEUR: 90,
+          currency: 'EUR',
+          category: 'Marketing',
+          status: 'submitted',
+          approversJson: JSON.stringify(['user-1']),
+          approvalVotesJson: '{}',
+          paidByJson: JSON.stringify([{ userId: 'user-1', amount: 90, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_branding',
+          expenseType: 'expense',
+          auditTrailJson: JSON.stringify([]),
+          commentsJson: JSON.stringify([]),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          paymentStatus: 'na',
+          deferredPayment: false,
+          paymentTermDays: 0,
+          rejectionNote: null,
+        },
+      ],
+    });
+    await loginAs(page, 'admin@solana.test');
+    await clickSidebarSection(page, 'Aprobaciones');
+    await expect(page.getByText('Gasto Branding solo Anna QA').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Revisar' })).toHaveCount(0);
+    await openExpenseDetail(page, 'Gasto Branding solo Anna QA');
+    const panel = getDetailPanel(page);
+    await expect(panel.getByRole('button', { name: /^Aprobar$/i })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: /^Rechazar$/i })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: /Reconsiderar/i })).toHaveCount(0);
+  });
+
   test('C4) Admin can assign approvers to departments in Settings', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
@@ -944,8 +994,9 @@ test.describe('C — Permissions and profile', () => {
     await page.getByText('Ajustes de aplicación').first().click();
     await page.waitForTimeout(500);
     await expect(page.getByText('Departamentos').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Asigna quién puede aprobar gastos de cada departamento/i).first()).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Estrategia').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/de este departamento/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'Guardar aprobadores' })).toBeVisible({ timeout: 10000 });
   });
 
   test('C3) Regular user can access settings and change password', async ({ page }) => {
