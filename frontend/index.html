@@ -689,6 +689,9 @@ const TR = {
     "settings.ivaNameField": "Nombre",
     "settings.saveIvaTypes": "Guardar tipos",
     "settings.sectionCategories": "Categorías",
+    "settings.categoryReorder": "Reordenar categoría",
+    "action.moveCategoryUp": "Mover arriba",
+    "action.moveCategoryDown": "Mover abajo",
     "audit.resubmitted": "Reenviado para aprobación",
     "audit.comment_added": "Comentario añadido",
     "audit.pending_reset": "Vuelto a pendiente tras edición",
@@ -5872,7 +5875,7 @@ function ReportsView(){
   const catTotals=cats.filter(c=>!c.archived).map(c=>({
     cat:c.name,
     total:displayExpenses.filter(e=>e.category===c.name&&expenseCountsTowardDeptSpend(e,cats,users)).reduce((s,e)=>s+eurForExpense(e),0),
-  })).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+  })).filter(x=>x.total>0);
   const maxC=catTotals[0]?.total||1;
   const fullMonthlyData = React.useMemo(()=>{
     const months = [];
@@ -7215,6 +7218,30 @@ function SettingsView(){
       prev.map(c => (c.id === catId ? { ...c, ...changes } : c))
     );
   };
+  const [catDragId,setCatDragId]=useState(null);
+  const [catDropIdx,setCatDropIdx]=useState(null);
+  const catMotionOk=typeof window!=="undefined"&&!window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reorderCatsDraft=(fromIdx,toIdx)=>{
+    if(fromIdx===toIdx||fromIdx<0||toIdx<0)return;
+    setAppCatsDraft(prev=>{
+      const next=[...prev];
+      const [item]=next.splice(fromIdx,1);
+      next.splice(toIdx,0,item);
+      return next;
+    });
+  };
+  const moveCategoryById=(catId,delta)=>{
+    setAppCatsDraft(prev=>{
+      const idx=prev.findIndex(c=>c.id===catId);
+      if(idx<0)return prev;
+      const to=idx+delta;
+      if(to<0||to>=prev.length)return prev;
+      const next=[...prev];
+      const [item]=next.splice(idx,1);
+      next.splice(to,0,item);
+      return next;
+    });
+  };
   const toggleDeptApprover = (deptId, userId) => {
     setAppDeptApproversDraft(prev => {
       const current = Array.isArray(prev[deptId]) ? prev[deptId] : [];
@@ -7696,14 +7723,73 @@ function SettingsView(){
 
         <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"14px 0"}}/>
         <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Categorías</div>
-        <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:8}}>
+        <div style={{fontSize:10,color:"#9CAA9F",marginBottom:6}}>Arrastra el asa ⠿ para reordenar. Usa ↑↓ en móvil.</div>
+        <div
+          style={{display:"flex",flexDirection:"column",gap:4,marginBottom:8}}
+          onDragOver={e=>{if(!catDragId)return;e.preventDefault();}}
+          onDrop={e=>{
+            e.preventDefault();
+            if(!catDragId)return;
+            const fromIdx=appCatsDraft.findIndex(x=>x.id===catDragId);
+            if(fromIdx>=0&&fromIdx!==appCatsDraft.length-1)reorderCatsDraft(fromIdx,appCatsDraft.length-1);
+            setCatDragId(null);
+            setCatDropIdx(null);
+          }}
+        >
           {appCatsDraft.map((c,idx)=>(
-            <div key={c.id||("tmp-"+idx)} style={{display:"flex",gap:7,alignItems:"center"}}>
-              <input className="inp" style={{flex:1,fontSize:13,opacity:c.archived?0.65:1}} value={c.name||""} onChange={e=>updateCategory(c.id,{name:e.target.value})}/>
-              <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>updateCategory(c.id,{archived:!c.archived})}>
-                {c.archived?"Restaurar":"Archivar"}
-              </button>
-            </div>
+            <React.Fragment key={c.id||("tmp-"+idx)}>
+              {catDropIdx===idx&&catDragId&&catDragId!==c.id&&(
+                <div style={{height:2,background:G,borderRadius:1,margin:"0 2px",opacity:0.9}} aria-hidden="true"/>
+              )}
+              <div
+                onDragOver={e=>{
+                  if(!catDragId||catDragId===c.id)return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect="move";
+                  setCatDropIdx(idx);
+                }}
+                onDrop={e=>{
+                  e.preventDefault();
+                  if(!catDragId)return;
+                  const fromIdx=appCatsDraft.findIndex(x=>x.id===catDragId);
+                  if(fromIdx>=0&&fromIdx!==idx)reorderCatsDraft(fromIdx,idx);
+                  setCatDragId(null);
+                  setCatDropIdx(null);
+                }}
+                style={{
+                  display:"flex",
+                  gap:6,
+                  alignItems:"center",
+                  padding:"4px 6px",
+                  borderRadius:7,
+                  border:catDragId===c.id?"1px dashed #DDD6CC":"1px solid transparent",
+                  background:catDragId===c.id?"#FAF7F2":"transparent",
+                  opacity:catDragId===c.id&&catMotionOk?0.65:1,
+                  transition:catMotionOk?"opacity var(--motion-duration-micro)":"none",
+                }}
+              >
+                <span
+                  draggable
+                  aria-label={t("settings.categoryReorder")}
+                  title={t("settings.categoryReorder")}
+                  onDragStart={e=>{
+                    setCatDragId(c.id);
+                    e.dataTransfer.effectAllowed="move";
+                    try{e.dataTransfer.setData("text/plain",String(c.id));}catch(err){}
+                  }}
+                  onDragEnd={()=>{setCatDragId(null);setCatDropIdx(null);}}
+                  style={{cursor:"grab",color:"#9CAA9F",fontSize:15,lineHeight:1,padding:"2px 4px",userSelect:"none",flexShrink:0,touchAction:"none"}}
+                >⠿</span>
+                <input className="inp" style={{flex:1,fontSize:13,opacity:c.archived?0.65:1,minWidth:0}} value={c.name||""} onChange={e=>updateCategory(c.id,{name:e.target.value})}/>
+                <div style={{display:"flex",flexDirection:"column",gap:2,flexShrink:0}}>
+                  <button type="button" className="btn-secondary" style={{fontSize:9,padding:"1px 5px",lineHeight:1.2,minWidth:24}} disabled={idx===0} aria-label={t("action.moveCategoryUp")} onClick={()=>moveCategoryById(c.id,-1)}>↑</button>
+                  <button type="button" className="btn-secondary" style={{fontSize:9,padding:"1px 5px",lineHeight:1.2,minWidth:24}} disabled={idx===appCatsDraft.length-1} aria-label={t("action.moveCategoryDown")} onClick={()=>moveCategoryById(c.id,1)}>↓</button>
+                </div>
+                <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 8px",flexShrink:0}} onClick={()=>updateCategory(c.id,{archived:!c.archived})}>
+                  {c.archived?"Restaurar":"Archivar"}
+                </button>
+              </div>
+            </React.Fragment>
           ))}
         </div>
         <div style={{display:"flex",gap:7,marginBottom:12}}>

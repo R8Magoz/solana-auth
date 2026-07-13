@@ -13,6 +13,7 @@ const DEFAULT_CATEGORY_EN_TO_ES = {
   Otro: 'Otro',
 };
 
+/** Default category roster. Array order is the canonical display order (persisted in app_settings.categories). */
 const DEFAULT_CATEGORIES = [
   { id: 'c1', name: 'Equipamiento', archived: false },
   { id: 'c2', name: 'Suministros', archived: false },
