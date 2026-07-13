@@ -713,6 +713,89 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     await expect(panel.getByText(/Condiciones de pago/i)).toHaveCount(0);
   });
 
+  test('B3b) Effective date filter uses dueDate for invoices', async ({ page }) => {
+    const state = createMockApiState({
+      expenses: [
+        {
+          id: 'exp_inv_sep',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          submittedBy: 'admin-1',
+          date: '2026-07-10',
+          description: 'Factura septiembre QA',
+          vendor: 'Proveedor Sept QA',
+          amount: 220,
+          amountEUR: 220,
+          currency: 'EUR',
+          category: 'Software',
+          status: 'approved',
+          expenseType: 'invoice',
+          dueDate: '2026-09-05',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 220, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_ops',
+          recurring: 0,
+          recurrenceRule: null,
+          auditTrail: [],
+          auditTrailJson: JSON.stringify([]),
+          commentsJson: '[]',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          rejectionNote: null,
+        },
+        {
+          id: 'exp_july_base',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          submittedBy: 'admin-1',
+          date: '2026-07-12',
+          description: 'Gasto julio QA',
+          amount: 80,
+          amountEUR: 80,
+          currency: 'EUR',
+          category: 'Software',
+          status: 'approved',
+          expenseType: 'expense',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 80, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_ops',
+          recurring: 0,
+          recurrenceRule: null,
+          auditTrail: [],
+          auditTrailJson: JSON.stringify([]),
+          commentsJson: '[]',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          rejectionNote: null,
+        },
+      ],
+    });
+    await attachMockApiRoutes(page, state);
+    await loginAs(page, 'admin@solana.test');
+    await clickSidebarGastos(page);
+
+    const dateInputs = page.locator('input[type="date"]');
+    await dateInputs.nth(0).fill('2026-09-01');
+    await dateInputs.nth(1).fill('2026-09-30');
+    await page.getByRole('button', { name: /Aplicar/i }).click();
+    await expect(page.getByText('Proveedor Sept QA').first()).toBeVisible();
+    await expect(page.getByText('Gasto julio QA')).toHaveCount(0);
+
+    await dateInputs.nth(0).fill('2026-07-01');
+    await dateInputs.nth(1).fill('2026-07-31');
+    await page.getByRole('button', { name: /Aplicar/i }).click();
+    await expect(page.getByText('Gasto julio QA').first()).toBeVisible();
+    await expect(page.getByText('Proveedor Sept QA')).toHaveCount(0);
+  });
+
   test('B2) Submit factura — approve — shows as approved invoice', async ({ page }) => {
     await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
