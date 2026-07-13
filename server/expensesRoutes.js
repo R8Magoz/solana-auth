@@ -268,7 +268,6 @@ function collectReferencedUserIds(expenseRows) {
     if (e.ownerId) ids.add(e.ownerId);
     if (e.approvedBy) ids.add(e.approvedBy);
     if (e.rejectedBy) ids.add(e.rejectedBy);
-    if (e.paidConfirmedBy) ids.add(e.paidConfirmedBy);
     for (const id of parseJsonArray(e.approversJson)) ids.add(id);
     try {
       const paidBy = JSON.parse(e.paidByJson || '[]');
@@ -669,14 +668,14 @@ const insertExp = db.prepare(`
     approvedBy, approvedAt, rejectedBy, rejectedAt, rejectionNote, receiptPath, notes, createdAt, updatedAt, departmentId,
     approversJson, approvalVotesJson, paidByJson, splitMode,
     ivaRate, ivaAmount, commentsJson, ownerId,
-    expenseType, vendor, dueDate, paymentStatus, paidAt, paidConfirmedBy, paymentTermDays, deferredPayment, recurring, recurrenceRule, originBillId,
+    expenseType, vendor, dueDate, deferredPayment, recurring, recurrenceRule, originBillId,
     cadenceKey, cadenceCustomMonths, clientRef, traceCode
   ) VALUES (
     @id, @userId, @amount, @currency, @amountEUR, @description, @category, @date, @status,
     @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt, @departmentId,
     @approversJson, @approvalVotesJson, @paidByJson, @splitMode,
     @ivaRate, @ivaAmount, @commentsJson, @ownerId,
-    @expenseType, @vendor, @dueDate, @paymentStatus, @paidAt, @paidConfirmedBy, @paymentTermDays, @deferredPayment, @recurring, @recurrenceRule, @originBillId,
+    @expenseType, @vendor, @dueDate, @deferredPayment, @recurring, @recurrenceRule, @originBillId,
     @cadenceKey, @cadenceCustomMonths, @clientRef, @traceCode
   )
 `);
@@ -978,10 +977,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       expenseType,
       vendor: expenseType === 'invoice' ? vendorStr : null,
       dueDate: expenseType === 'invoice' ? resolvedDueDate : null,
-      paymentStatus: 'na',
-      paidAt: null,
-      paidConfirmedBy: null,
-      paymentTermDays: 0,
+      // Legacy payment columns remain in SQLite for compatibility but are intentionally unused.
       deferredPayment: 0,
       recurring: rec ? 1 : 0,
       recurrenceRule: rule,

@@ -68,8 +68,7 @@ Use **Bearer** of a normal user unless noted.
 - [ ] **GET** `/expenses` → includes invoice rows; non-admin sees own (+ approver rules as implemented).
 - [ ] **PUT** `/expenses/:id` → invoice fields updated (authorized).
 - [ ] **DELETE** `/expenses/:id` → deleted.
-- [ ] **POST** `/expenses/:id/mark-paid` → `paymentStatus = paid`, `paidAt` / `paidConfirmedBy` set; recurring spawns next invoice when applicable.
-- [ ] **Recurring invoice paid → next occurrence** — `runExpenseMaintenance` runs on **server start** and on a **24-hour** interval. After marking a recurring invoice paid, confirm a **new** unpaid invoice row with the next `dueDate` per `expenseJobs.js`.
+- [ ] **Recurring invoice due date passed → next occurrence** — maintenance runs on **server start** and on a **24-hour** interval. After a recurring invoice passes its `dueDate`, confirm a **new** pending invoice row with the next `dueDate`.
 
 ---
 
