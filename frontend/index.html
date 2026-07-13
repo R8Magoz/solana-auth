@@ -7178,13 +7178,6 @@ function SettingsView(){
   const [backupsMsg,setBackupsMsg]=useState("");
   const [appIvaDefaultDraft,setAppIvaDefaultDraft]=useState(()=>readIvaDefault());
   const [appCatsDraft,setAppCatsDraft]=useState(()=>cats.map(c=>({...c})));
-  const [appCurrency,setAppCurrency]=useState(()=>{
-    try{
-      const raw=localStorage.getItem("sol-currency");
-      const code=raw?JSON.parse(raw):"EUR";
-      return String(code||"EUR").toUpperCase().slice(0,3);
-    }catch(e){return"EUR";}
-  });
   const [ivaDefault,setIvaDefault]=useState(()=>readIvaDefault());
   useEffect(()=>{setIvaDefault(readIvaDefault());},[ivaRates]);
   useEffect(()=>{setAppIvaDefaultDraft(readIvaDefault());},[ivaRates]);
@@ -7364,28 +7357,6 @@ function SettingsView(){
   const approverCandidates = users.filter(u =>
     u.accountStatus === 'active' && u.id !== 'system'
   );
-  const saveAppCurrency=async()=>{
-    setAppSetErr("");setAppSetMsg("");
-    setAppSaving("currency");
-    const code=String(appCurrency||"EUR").toUpperCase().slice(0,3);
-    if(!code){setAppSetErr("Moneda no válida.");toastSaveFailed("Moneda no válida.");setAppSaving(null);return;}
-    try{
-      if(AUTH_URL){
-        const tok=appSettingsToken()||(API.token?String(API.token):"");
-        if(!tok){setAppSetErr(t("msg.sessionExpired"));toastSaveFailed(t("msg.sessionExpired"));return;}
-        try{
-          const r=await fetch(AUTH_URL+"/settings/currency",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:code})});
-          const d=await r.json().catch(()=>({}));
-          if(!r.ok){const errMsg=d.error||t("msg.genericShort");setAppSetErr(errMsg);toastSaveFailed(errMsg);return;}
-        }catch(e){setAppSetErr(t("signup.serverDown"));toastSaveFailed(t("signup.serverDown"));return;}
-      }
-      try{localStorage.setItem("sol-currency",JSON.stringify(code));}catch(e){}
-      setAppCurrency(code);
-      applyServerSettings({currency:code});
-      setAppSetMsg("Moneda guardada.");
-      toastSaved("Moneda");
-    }finally{setAppSaving(null);}
-  };
   const saveIvaDefault=v=>{
     const n=Number(v);
     if(Number.isNaN(n))return;
@@ -7864,13 +7835,6 @@ function SettingsView(){
           <button type="button" className="btn-sm" style={{fontSize:10}} onClick={()=>setAppCatsDraft(prev=>[...prev,{id:"c_"+Date.now(),name:"Nueva categoría",archived:false}])}>Añadir categoría</button>
           <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} disabled={appSaving==="cats"} onClick={()=>void saveAppCategories()}>{appSaving==="cats"?"Guardando…":"Guardar categorías"}</button>
         </div>
-
-        <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"14px 0"}}/>
-        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Currency</div>
-        <label className="lbl">Moneda base</label>
-        <input className="inp" style={{maxWidth:120,fontSize:13,marginBottom:6,textTransform:"uppercase"}} maxLength={3} value={appCurrency} onChange={e=>setAppCurrency(String(e.target.value||"").toUpperCase().replace(/[^A-Z]/g,"").slice(0,3))}/>
-        <div style={{fontSize:10,color:"#9CAA9F",marginBottom:8}}>Solo afecta a etiquetas visuales. Los importes ya registrados no se convierten.</div>
-        <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} disabled={appSaving==="currency"} onClick={()=>void saveAppCurrency()}>{appSaving==="currency"?"Guardando…":"Guardar moneda"}</button>
       </AccordionSection>
 
       {AUTH_URL&&<PendingUsersPanel/>}
