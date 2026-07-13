@@ -99,6 +99,7 @@
     .budget-bar-fill{height:100%;width:100%;border-radius:4px;transform-origin:left center;transform:scaleX(var(--budget-scale,0));transition:transform 0.4s var(--motion-ease-standard)}
     .budget-bar-fill--load{animation:budgetBarFill 400ms var(--motion-ease-standard) forwards}
     .kpi-progress-fill{height:100%;width:100%;border-radius:4px;transform-origin:left center;transform:scaleX(var(--budget-scale,0))}
+    .kpi-progress-fill--from-right{transform-origin:right center}
     .kpi-progress-fill--load{animation:budgetBarFill 400ms var(--motion-ease-standard) forwards}
     .inp--invalid{border-color:#DC2626!important;box-shadow:0 0 0 1px #DC2626}
     .inp--shake{animation:fieldShake 300ms ease}
@@ -140,6 +141,7 @@
       .modal-overlay--open .modal-panel,.modal-overlay--closing .modal-panel{animation:none;opacity:1;transform:none}
       .modal-overlay--closing .modal-panel{opacity:0;transition:opacity 40ms ease}
       .budget-bar-fill--load,.kpi-progress-fill--load{animation:none;transform:scaleX(var(--budget-scale,1));transition:opacity 40ms ease}
+      .kpi-progress-fill--from-right.kpi-progress-fill--load,.kpi-progress-fill--from-right:not(.kpi-progress-fill--load){transform-origin:right center}
       .inp--shake{animation:none}
       .btn-primary:active,.btn-secondary:active,.btn-danger:active,.btn-sm:active{transform:none}
       .status-approved,.status-pending,.status-rejected,.badge.status-approved,.badge.status-pending,.badge.status-rejected{transition:opacity 40ms ease}
@@ -5129,9 +5131,10 @@ function DashboardView(){
           const fixedKpiBg="#F5F0EA";
           const fixedKpiText="#6B7B72";
 
-          const renderKpiCard=(key,label,val,bg,text,progressFill,showProgress=false,valueFontSize=22,labelColor="#9CAA9F",progressTrack="#EDE8E0",progressLabel="",progressLabelColor="#6B7B72",progressPct=null)=> {
+          const renderKpiCard=(key,label,val,bg,text,progressFill,showProgress=false,valueFontSize=22,labelColor="#9CAA9F",progressTrack="#EDE8E0",progressLabel="",progressLabelColor="#6B7B72",progressPct=null,progressFromRight=false)=> {
             const kpi=fmtKpi(val);
             const barPct=progressPct!=null?progressPct:budgetProgressPct;
+            const scale=Math.max(0,Math.min(100,barPct))/100;
             return(
               <div key={key} className="card" style={{background:bg,border:"1px solid rgba(0,0,0,0.02)"}}>
                 <div style={{fontSize:10,color:labelColor,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{label}</div>
@@ -5140,13 +5143,13 @@ function DashboardView(){
                 </div>
                 {showProgress&&(
                   <>
-                  <div style={{height:8,background:progressTrack,borderRadius:4,marginTop:10,overflow:"hidden"}}>
+                  <div style={{height:8,background:progressTrack,borderRadius:4,marginTop:10,overflow:"hidden",display:progressFromRight?"flex":"block",justifyContent:progressFromRight?"flex-end":"stretch"}}>
                     <div
-                      className={`kpi-progress-fill${dashBudgetAnim?" kpi-progress-fill--load":""}`}
+                      className={`kpi-progress-fill${progressFromRight?" kpi-progress-fill--from-right":""}${dashBudgetAnim?" kpi-progress-fill--load":""}`}
                       style={{
                         background:progressFill,
-                        "--budget-scale":Math.max(0,Math.min(100,barPct))/100,
-                        ...(dashBudgetAnim?{}:{transform:`scaleX(${Math.max(0,Math.min(100,barPct))/100})`}),
+                        "--budget-scale":scale,
+                        ...(dashBudgetAnim?{}:{transform:`scaleX(${scale})`,transformOrigin:progressFromRight?"right center":"left center"}),
                       }}
                     />
                   </div>
@@ -5160,7 +5163,7 @@ function DashboardView(){
           return(
             <>
               {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetProgressPct.toFixed(1)}% usado`,budgetHealth.kpiLabelColor)}
-              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetAvailablePct.toFixed(1)}% disponible`,budgetHealth.kpiLabelColor,budgetAvailablePct)}
+              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetAvailablePct.toFixed(1)}% disponible`,budgetHealth.kpiLabelColor,budgetAvailablePct,true)}
               {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,null,false,22,"#9CAA9F")}
               <div style={{cursor:"pointer"}} onClick={() => { go("expenses"); setRecurringFlt(["recurring"]); }}>
                 {renderKpiCard("k-fixed",fixedKpiLabel,totFixed,fixedKpiBg,fixedKpiText,null,false)}
@@ -5567,7 +5570,12 @@ function ReceiptThumb({expenseId}){
 
 /* ── APPROVALS ─────────────────────────────────────────────────────────────── */
 function ApprovalsView(){
-  const{t,expenses,cats,users,departments,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel,resetForm}=useApp();
+  const{t,expenses,cats,users,departments,isAdmin,isApprover,user,aNote,setANote,approve,setDetailId,setPanel,resetForm}=useApp();
+  const openApprovalDetail=(id)=>{
+    resetForm();
+    setDetailId(id);
+    setPanel("detail");
+  };
   const [typeFilter,setTypeFilter]=useState("all");
   const [assigneeFilter,setAssigneeFilter]=useState("");
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
@@ -5646,11 +5654,7 @@ function ApprovalsView(){
     const canActOnRow=canActOnExpenseItem(item,user,cats,users);
     const showVoteFooter=st==="pending"&&rowApproverIds.length>0;
     return(
-      <div key={item.id} className="card row-hover" style={{marginBottom:6,padding:"11px 14px",background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
-        resetForm();
-        go("expenses");
-        setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
-      }}>
+      <div key={item.id} className="card row-hover" style={{marginBottom:6,padding:"11px 14px",background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={()=>openApprovalDetail(item.id)}>
         <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
@@ -5678,9 +5682,7 @@ function ApprovalsView(){
                     style={{fontSize:10,padding:"2px 8px"}}
                     onClick={e => {
                       e.stopPropagation();
-                      resetForm();
-                      go("expenses");
-                      setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
+                      openApprovalDetail(item.id);
                     }}
                   >
                     {t("action.review")}
@@ -9503,8 +9505,16 @@ function SolanaExpenses(){
     return s+invoiceForecastMonthlyEUR(e);
   },0);
 
-  const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
-  const rpOpen=view==="expenses"&&(panel==="new"||(panel==="detail"&&detailId));
+  const go=v=>{
+    setView(v);
+    if(v!=="expenses"&&v!=="approvals"){
+      setDetailId(null);
+      setPanel(null);
+    }else if(panel==="new"&&v!=="expenses"){
+      setPanel(null);
+    }
+  };
+  const rpOpen=(panel==="detail"&&detailId)||(panel==="new"&&view==="expenses");
   const totalBadge=myPending.length;
   const expenseNavBadge=expenses.filter(e=>expenseHasUnreadComments(e,user.id)).length;
   const goToMyRejected=()=>{
