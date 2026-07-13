@@ -343,6 +343,40 @@ function migrateBillsToExpenses() {
   return count;
 }
 
+/**
+ * Backfill recurrence series fields on active recurring rows (idempotent).
+ */
+function runRecurrenceSeriesMigration({ audit }) {
+  const db = require('./db');
+  const rows = db.prepare(`
+    SELECT id, date, dueDate, expenseType, recurring, recurrenceSeriesId, recurrenceAnchorDate
+    FROM expenses
+    WHERE recurring = 1 AND status != 'deleted'
+  `).all();
+  if (!rows.length) return 0;
+  const upd = db.prepare(`
+    UPDATE expenses
+    SET recurrenceSeriesId = ?, recurrenceAnchorDate = ?, updatedAt = ?
+    WHERE id = ?
+  `);
+  const now = Date.now();
+  let n = 0;
+  for (const r of rows) {
+    const sid = r.recurrenceSeriesId || r.id;
+    const anchor = r.recurrenceAnchorDate
+      || (String(r.expenseType || 'expense') === 'invoice' ? (r.dueDate || r.date) : r.date);
+    if (!anchor) continue;
+    const anchorStr = String(anchor).slice(0, 10);
+    if (r.recurrenceSeriesId === sid && r.recurrenceAnchorDate === anchorStr) continue;
+    upd.run(sid, anchorStr, now, r.id);
+    n += 1;
+  }
+  if (n > 0 && audit) {
+    audit('recurrence_series_backfill', { count: n });
+  }
+  return n;
+}
+
 module.exports = {
   runUsersJsonMigration,
   runRoleConsolidationMigration,
@@ -351,6 +385,7 @@ module.exports = {
   runTraceCodeMigration,
   runCategorySpanishMigration,
   migrateBillsToExpenses,
+  runRecurrenceSeriesMigration,
 };
 
 if (require.main === module) {
