@@ -662,6 +662,7 @@ const TR = {
     "expenses.filterAll": "Todos",
     "expenses.filterExpenses": "Gastos",
     "expenses.filterInvoices": "Facturas",
+    "expenses.filteredTotal": "Total: {{amount}}",
     "expenses.vence": "Vence el:",
     "expenses.cadenceOnce": "Una vez",
     "expenses.cadenceMonthly": "Mensual",
@@ -5456,23 +5457,9 @@ function MultiFilterMenu({prefix,options,selected,onChange,allLabel,minWidth}){
 
 /* ── EXPENSES VIEW ─────────────────────────────────────────────────────────── */
 function ExpensesView(){
-  const{t,expenses,cats,users,byStatus,filtered,expFlt,setExpFlt,expSrc,setExpSrc,
+  const{t,expenses,cats,users,filtered,expFlt,setExpFlt,expSrc,setExpSrc,
         catFlt,setCatFlt,submFlt,setSubmFlt,dateFrom,setDateFrom,dateTo,setDateTo,activeFilterCount,
-        detailId,setDetailId,panel,setPanel,openNew,resetForm,isAdmin,user,aNote,setANote,approve,clearMyExpenseFilter,totApproved,
-        expKindFlt,setExpKindFlt,recurringFlt,setRecurringFlt,saveExp}=useApp();
-  const [filtersOpen,setFiltersOpen]=useState(true);
-  const pendingTotal=expenses.filter(e=>getItemStatus(e,cats)==="pending").reduce((s,e)=>s+eurForExpense(e),0);
-  const naturalFrom = expenses.length
-    ? expenses.reduce((min, e) => effectiveDate(e) < min ? effectiveDate(e) : min, effectiveDate(expenses[0]))
-    : "";
-  const naturalTo = expenses.length
-    ? expenses.reduce((max, e) => effectiveDate(e) > max ? effectiveDate(e) : max, effectiveDate(expenses[0]))
-    : "";
-
-  const [pendingFrom, setPendingFrom] = React.useState(naturalFrom);
-  const [pendingTo,   setPendingTo]   = React.useState(naturalTo);
-
-  const isDefaultRange = pendingFrom === naturalFrom && pendingTo === naturalTo;
+        detailId,setDetailId,panel,setPanel,openNew,resetForm,expKindFlt,setExpKindFlt,saveExp,user}=useApp();
   const statusFilterOpts=useMemo(()=>[
     {value:"pending",label:t("status.pending")},
     {value:"approved",label:t("status.approved")},
@@ -5484,120 +5471,77 @@ function ExpensesView(){
   ],[t]);
   const catFilterOpts=useMemo(()=>cats.filter(c=>!c.archived).map(c=>({value:c.name,label:tCat(c.name,t)})),[cats,t]);
   const submFilterOpts=useMemo(()=>(users||[]).filter(u=>u.accountStatus==="active"&&u.id!=="system").map(u=>({value:u.id,label:u.name})),[users]);
-  const recurringFilterOpts=useMemo(()=>[{value:"recurring",label:"Costes fijos"}],[]);
   const kindSel=asMultiFilter(expKindFlt);
   const monthGroups=React.useMemo(()=>groupExpensesByMonth(filtered),[filtered]);
+  const filteredTotal=React.useMemo(()=>filtered.reduce((s,e)=>s+(Number(e?.amount)||0),0),[filtered]);
+  const dateRangeActive=!!(dateFrom||dateTo);
   const exportFilteredXlsx=()=>{
     void downloadExpensesXlsx(filtered,{tag:"gastos-filtrados",t,user,saveExp,expenses});
     dispatchSolanaToast(t("action.exportXLSX"),"success",3000);
   };
+  const clearAllFilters=()=>{
+    try{
+      ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
+    }catch(e){}
+    setExpFlt([]);
+    setCatFlt([]);
+    setSubmFlt([]);
+    setDateFrom("");
+    setDateTo("");
+    setExpSrc("");
+    setExpKindFlt([]);
+  };
   return(
     <div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
-        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G}}>{t("nav.expenses")}</h1>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:8}}>
+        <div style={{minWidth:0}}>
+          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.expenses")}</h1>
+          <p style={{fontSize:13,color:"#6B7B72",margin:0}}>{t("page.expensesDefBody")}</p>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
+          <button type="button" className="btn-primary" style={{fontSize:11,padding:"4px 12px",background:T}} onClick={openNew}>{t("action.newExpense")}</button>
+          <button type="button" className="btn-secondary" style={{fontSize:11,padding:"4px 12px",borderColor:T,color:T}} disabled={filtered.length===0} onClick={exportFilteredXlsx}>{t("action.exportXLSX")}</button>
+        </div>
       </div>
-      <div style={{fontSize:12,color:"#6B7B72",marginBottom:11,background:"#F5F0EA",borderRadius:7,padding:"7px 11px"}}>
-        {t("page.expensesDefBody")}
-      </div>
-      {(() => {
-        const cPending=byStatus.pending?.length||0;
-        const cApproved=byStatus.approved?.length||0;
-        const cRejected=byStatus.rejected?.length||0;
-        return (
-          <>
-      <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
-        <input className="inp" style={{flex:1,minWidth:200,padding:"5px 9px",fontSize:12}}
-          placeholder={t("filter.codeSearch")} value={expSrc}
-          onChange={e=>setExpSrc(e.target.value)}/>
+      <input className="inp" style={{width:"100%",padding:"7px 11px",fontSize:12,marginBottom:10,boxSizing:"border-box"}}
+        placeholder={t("filter.codeSearch")} value={expSrc}
+        onChange={e=>setExpSrc(e.target.value)}/>
+      <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
         <MultiFilterMenu prefix="Estado" options={statusFilterOpts} selected={expFlt} onChange={setExpFlt} allLabel={t("filter.all")} minWidth={140}/>
         <MultiFilterMenu prefix="Tipo" options={kindFilterOpts} selected={expKindFlt} onChange={setExpKindFlt} allLabel={t("filter.all")} minWidth={130}/>
-        <button className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} onClick={openNew}>{t("action.newExpense")}</button>
-        <button type="button" className="btn-secondary" style={{fontSize:12,padding:"6px 12px"}} disabled={filtered.length===0} onClick={exportFilteredXlsx}>{t("action.exportXLSX")}</button>
-      </div>
-      <div style={{fontSize:11,color:"#9CAA9F",marginBottom:6}}>
-        {cPending} pendiente{cPending!==1?"s":""} · {cApproved} aprobado{cApproved!==1?"s":""}
-        {cRejected>0 ? ` · ${cRejected} rechazado${cRejected!==1?"s":""}` : ""}
-      </div>
-      <div style={{marginBottom:7}}>
-        <button
-          style={{fontSize:11,color:"#6B7B72",background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit"}}
-          onClick={()=>setFiltersOpen(p=>!p)}
-        >
-          {filtersOpen ? "Menos filtros" : "Más filtros"}
-          {activeFilterCount > 0 && ` (${activeFilterCount})`}
-        </button>
-      </div>
-      {filtersOpen&&(
-      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:9}}>
         <MultiFilterMenu prefix={t("filter.category")} options={catFilterOpts} selected={catFlt} onChange={setCatFlt} allLabel={t("filter.all")} minWidth={110}/>
         <MultiFilterMenu prefix="Enviado por" options={submFilterOpts} selected={submFlt} onChange={setSubmFlt} allLabel={t("filter.all")} minWidth={120}/>
-        <MultiFilterMenu prefix="Costes fijos" options={recurringFilterOpts} selected={recurringFlt} onChange={setRecurringFlt} allLabel={t("filter.all")} minWidth={140}/>
         <div style={{display:"flex",alignItems:"center",border:"1.5px solid",
-          borderColor:isDefaultRange?"#DDD6CC":G,borderRadius:7,
+          borderColor:dateRangeActive?T:"#DDD6CC",borderRadius:7,
           overflow:"hidden",background:"#FAFAF9",height:32,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px",
             borderRight:"1px solid #EDE8E0"}}>
             <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
-              textTransform:"uppercase",letterSpacing:"0.05em"}}>Desde</span>
+              textTransform:"uppercase",letterSpacing:"0.05em"}}>{t("filter.dateFrom")}</span>
             <input type="date" style={{border:"none",background:"transparent",
               fontSize:12,color:G,outline:"none",cursor:"pointer",
               fontFamily:"inherit",width:110}}
-              value={pendingFrom}
-              onChange={e => setPendingFrom(e.target.value)}/>
+              value={dateFrom}
+              onChange={e=>setDateFrom(e.target.value)}/>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px"}}>
             <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
-              textTransform:"uppercase",letterSpacing:"0.05em"}}>Hasta</span>
+              textTransform:"uppercase",letterSpacing:"0.05em"}}>{t("filter.dateTo")}</span>
             <input type="date" style={{border:"none",background:"transparent",
               fontSize:12,color:G,outline:"none",cursor:"pointer",
               fontFamily:"inherit",width:110}}
-              value={pendingTo}
-              onChange={e => setPendingTo(e.target.value)}/>
+              value={dateTo}
+              onChange={e=>setDateTo(e.target.value)}/>
           </div>
         </div>
-        <button
-          disabled={isDefaultRange && !isMultiFilterActive(catFlt,catFilterOpts.length) && !isMultiFilterActive(submFlt,submFilterOpts.length) && !expSrc}
-          style={{padding:"5px 14px",borderRadius:7,fontSize:12,fontWeight:600,
-            border:"none",cursor:isDefaultRange?"default":"pointer",
-            background:isDefaultRange?"#EDE8E0":G,
-            color:isDefaultRange?"#9CAA9F":"#fff",
-            fontFamily:"inherit",height:32,display:"flex",alignItems:"center",gap:6}}
-          onClick={()=>{
-            setDateFrom(isDefaultRange ? "" : pendingFrom);
-            setDateTo(isDefaultRange ? "" : pendingTo);
-          }}>
-          Aplicar
-          {!isDefaultRange && (
-            <span style={{background:"rgba(255,255,255,0.25)",borderRadius:8,
-              fontSize:10,padding:"1px 5px",fontWeight:700}}>
-              {[isMultiFilterActive(catFlt,catFilterOpts.length)?"cat":"",isMultiFilterActive(submFlt,submFilterOpts.length)?"subm":"",!isDefaultRange?"range":"",expSrc].filter(Boolean).length}
-            </span>
-          )}
-        </button>
-        <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
-          onClick={()=>{
-            try{
-              ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
-            }catch(e){}
-            setExpFlt([]);
-            setCatFlt([]);
-            setSubmFlt([]);
-            setDateFrom("");
-            setDateTo("");
-            setExpSrc("");
-            setExpKindFlt([]);
-            setRecurringFlt([]);
-            setPendingFrom(naturalFrom);
-            setPendingTo(naturalTo);
-          }}>
-          {t("filter.clearFilters")} ({activeFilterCount + (expSrc?1:0)})
-        </button>
+        {(activeFilterCount>0||!!expSrc)&&(
+          <button type="button" style={{fontSize:11,color:T,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontWeight:600,textDecoration:"underline",textUnderlineOffset:2}}
+            onClick={clearAllFilters}>
+            {t("filter.clearFilters")}
+          </button>
+        )}
       </div>
-      )}
-          </>
-        );
-      })()}
-      <div className="card" style={{padding:0,overflow:"hidden"}}>
+      <div className="card" style={{padding:0,overflow:"visible"}}>
         {filtered.length===0&&<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{t("empty.expenses")}</div>}
         {monthGroups.map(group=>(
           <div key={group.ym}>
@@ -5664,6 +5608,11 @@ function ExpensesView(){
         })}
           </div>
         ))}
+        {filtered.length>0&&(
+          <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",padding:"12px 13px",borderTop:"1px solid #EDE8E0",background:"#FAFAF8"}}>
+            <span style={{fontSize:12,fontWeight:700,color:"#1A2B1E",fontVariantNumeric:"tabular-nums"}}>{t("expenses.filteredTotal",{amount:fmt(filteredTotal)})}</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5710,7 +5659,6 @@ function ApprovalsView(){
     setPanel("detail");
   };
   const [typeFilter,setTypeFilter]=useState("all");
-  const [assigneeFilter,setAssigneeFilter]=useState("");
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const priorityForItem=(item)=>{
     const ids=effectiveExpenseApproverIds(item,cats,users);
@@ -5740,15 +5688,7 @@ function ApprovalsView(){
     if(typeFilter==="expense")return e.expenseType!=="invoice";
     return e.expenseType==="invoice";
   });
-  const pendingMineFilter=(item)=>{
-    const ids=effectiveExpenseApproverIds(item,cats,users);
-    if(!ids.includes(user.id))return false;
-    const vote=approvalVoteFor(item.approvals||{},user.id,users);
-    return vote!=="approved"&&vote!=="rejected";
-  };
-  const hasPendingMine=kindFiltered.some(pendingMineFilter);
-  const effectiveAssigneeFilter=assigneeFilter||(hasPendingMine?"mine":"all");
-  const assigneeFiltered=effectiveAssigneeFilter==="mine"?kindFiltered.filter(pendingMineFilter):kindFiltered;
+  const assigneeFiltered=kindFiltered;
   const isDesignatedOnAny=kindFiltered.some(item=>effectiveExpenseApproverIds(item,cats,users).includes(user.id));
   const showActionSections=isApprover||isDesignatedOnAny;
   const sectionForItem=(item)=>{
@@ -5880,10 +5820,6 @@ function ApprovalsView(){
         </p>
       )}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
-        <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 10px"}} value={effectiveAssigneeFilter} onChange={e=>setAssigneeFilter(e.target.value)}>
-          <option value="mine">Pendientes de mí</option>
-          <option value="all">Todas</option>
-        </select>
         <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
           {[
             ["all",t("expenses.filterAll"),cAll],
