@@ -11,7 +11,7 @@ const insertSpawn = db.prepare(`
     createdAt, updatedAt, departmentId,
     approversJson, approvalVotesJson, paidByJson, splitMode,
     ivaRate, ivaAmount, commentsJson, ownerId,
-    expenseType, vendor, dueDate, paymentStatus, paidAt, paidConfirmedBy, paymentTermDays,
+    expenseType, vendor, dueDate,
     recurring, recurrenceRule, originBillId
   ) VALUES (
     @id, @userId, @amount, @currency, @amountEUR, @description, @category, @date, @status,
@@ -19,37 +19,24 @@ const insertSpawn = db.prepare(`
     @createdAt, @updatedAt, @departmentId,
     @approversJson, @approvalVotesJson, @paidByJson, @splitMode,
     @ivaRate, @ivaAmount, @commentsJson, @ownerId,
-    @expenseType, @vendor, @dueDate, @paymentStatus, @paidAt, @paidConfirmedBy, @paymentTermDays,
+    @expenseType, @vendor, @dueDate,
     @recurring, @recurrenceRule, @originBillId
   )
 `);
 
 /**
- * Mark overdue invoices; spawn recurring expense rows (expenseType=expense, approved).
+ * Spawn recurring expense rows (expenseType=expense, approved) by date only.
+ * Legacy payment columns still exist in SQLite but are intentionally unused.
  */
 function runExpenseMaintenance(audit) {
   const today = todayISO();
   const now = Date.now();
-
-  const od = db.prepare(`
-    UPDATE expenses SET paymentStatus = 'overdue', updatedAt = ?
-    WHERE expenseType = 'invoice'
-      AND paymentStatus IN ('unpaid', 'overdue')
-      AND paymentStatus != 'pending_approval'
-      AND dueDate IS NOT NULL
-      AND dueDate < ?
-      AND status != 'deleted'
-  `).run(now, today);
-  if (od.changes > 0) {
-    audit('expenses_invoices_marked_overdue', { count: od.changes, asOf: today });
-  }
 
   const recurringApproved = db.prepare(`
     SELECT * FROM expenses
     WHERE recurring = 1
       AND expenseType = 'expense'
       AND status = 'approved'
-      AND paymentStatus != 'paid'
   `).all();
 
   const clearRecurring = db.prepare(`UPDATE expenses SET recurring = 0, updatedAt = ? WHERE id = ?`);
@@ -93,10 +80,6 @@ function runExpenseMaintenance(audit) {
       expenseType: 'expense',
       vendor: null,
       dueDate: null,
-      paymentStatus: 'na',
-      paidAt: null,
-      paidConfirmedBy: null,
-      paymentTermDays: 0,
       recurring: 1,
       recurrenceRule: exp.recurrenceRule,
       originBillId: null,

@@ -419,7 +419,7 @@ const TR = {
     "settings.deptTrackerUsed": "Usado del presupuesto",
     "settings.deptTrackerRemaining": "Restante",
     "settings.overBudgetBadge": "Por encima del presupuesto",
-    "settings.deptIntro": "Define presupuestos anuales por departamento. El gasto contabilizado son gastos aprobados y facturas marcadas como pagadas.",
+    "settings.deptIntro": "Define presupuestos anuales por departamento. El gasto contabilizado son gastos aprobados y facturas según su vencimiento.",
     "settings.deptName": "Nombre del departamento",
     "settings.deptBudget": "Presupuesto",
     "settings.deptAdd": "Añadir departamento",
@@ -627,7 +627,7 @@ const TR = {
     "expenses.cadenceEveryXMonths": "Cada X meses",
     "expenses.noAttachment": "Sin adjunto",
     "page.expensesDefTitle": "Gastos puntuales",
-    "page.expensesDefBody": "Pagos únicos, compras y desembolsos del equipo.",
+    "page.expensesDefBody": "Compras, facturas y desembolsos del equipo.",
     "form.ivaRate": "Tipo de IVA",
     "form.ivaBase": "Base imponible",
     "form.ivaAmountLabel": "Cuota IVA",
@@ -1951,11 +1951,12 @@ const shareEurInExpense=(e,userId)=>{
 };
 const fmtExpenseAmt=e=>fmt(Number(e?.amount)||0);
 
-function expenseSortDate(e){
-  const raw=e.expenseType==="invoice"?(e.dueDate||e.date):e.date;
+function effectiveDate(e){
+  const raw=e&&e.expenseType==="invoice"?(e.dueDate||e.date):e?.date;
   return String(raw||"").slice(0,10);
 }
-function expenseMonthKey(e){return expenseSortDate(e).slice(0,7);}
+function expenseSortDate(e){return effectiveDate(e);}
+function expenseMonthKey(e){return effectiveDate(e).slice(0,7);}
 function formatMonthGroupLabel(ym){
   if(!ym||ym.length<7)return ym||"";
   const parts=ym.split("-");
@@ -2148,10 +2149,6 @@ function expenseFromApi(row){
     proveedor:row.proveedor!=null&&row.proveedor!==""?String(row.proveedor):null,
     vendor:row.vendor!=null&&row.vendor!==""?String(row.vendor):null,
     dueDate:row.dueDate||null,
-    paymentStatus:row.paymentStatus||"na",
-    paidAt:row.paidAt!=null?row.paidAt:null,
-    paidConfirmedBy:row.paidConfirmedBy||null,
-    paymentTermDays:row.paymentTermDays!=null?Number(row.paymentTermDays):0,
     deferredPayment: row.deferredPayment === true || row.deferredPayment === 1,
     recurring:Number(row.recurring)===1?1:0,
     recurrenceRule:row.recurrenceRule||null,
@@ -2337,9 +2334,6 @@ const ST = {
   rejected: { bg: '#FEE2E2', color: '#991B1B' },
   pending:  { bg: '#FEF3C7', color: '#78350F' },
   submitted:{ bg: '#FEF3C7', color: '#78350F' },
-  paid:     { bg: '#D1FAE5', color: '#065F46' },
-  overdue:  { bg: '#FEE2E2', color: '#991B1B' },
-  cancelled:{ bg: '#FEE2E2', color: '#991B1B' },
 };
 /** Dashboard activity + recent list — semantic greens/amber/red per spec */
 const ACTIVITY_COLORS={
@@ -4966,15 +4960,12 @@ function DashboardView(){
   const today=new Date();
   const m0=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
   const ym=today.toISOString().slice(0,7);
-  const mBillsTotal=expenses
-    .filter(e=>e.expenseType==="invoice"&&getItemStatus(e,cats,users)==="approved"&&e.dueDate&&String(e.dueDate).slice(0,7)===ym)
+  const mTotalAll=expenses
+    .filter(e=>getItemStatus(e,cats,users)==="approved"&&effectiveDate(e).slice(0,7)===ym)
     .reduce((s,e)=>s+eurForExpense(e),0);
-  const mExpensesTotal=expenses.filter(e=>e.expenseType!=="invoice"&&getItemStatus(e,cats,users)==="approved"&&e.date>=m0)
-    .reduce((s,e)=>s+eurForExpense(e),0);
-  const mTotalAll=mExpensesTotal+mBillsTotal;
   const pendAll=expenses.filter(e=>getItemStatus(e,cats,users)==="pending").length;
   const mine=expenses.filter(e=>(e.ownerId||e.submittedBy)===user.id);
-  const mTotalMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved"&&e.date>=m0).reduce((s,e)=>s+eurForExpense(e),0);
+  const mTotalMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved"&&effectiveDate(e).slice(0,7)===ym).reduce((s,e)=>s+eurForExpense(e),0);
   const pendMine=mine.filter(e=>getItemStatus(e,cats,users)==="pending").length;
   const totApprovedMine=mine.filter(e=>getItemStatus(e,cats,users)==="approved").reduce((s,e)=>s+eurForExpense(e),0);
   const mTotal=mTotalAll;
@@ -5177,7 +5168,7 @@ function DashboardView(){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}><div style={{fontWeight:600,fontSize:13}}>{t("dash.recentAll")}</div><button style={{background:"none",border:"none",color:T,fontSize:11,fontWeight:500,cursor:"pointer"}} onClick={()=>go("expenses")}>{t("action.viewAll")}</button></div>
         {(()=>{
           const pool=expenses.filter(e=>getItemStatus(e,cats,users)!=="deleted");
-          const sorted=[...pool].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
+          const sorted=[...pool].sort((a,b)=>effectiveDate(b).localeCompare(effectiveDate(a))).slice(0,5);
           if(sorted.length===0)return<div style={{fontSize:12,color:"#9CAA9F"}}>{t("empty.expenses")}</div>;
           return sorted.map((e,i)=>{const st=getItemStatus(e,cats,users);const desc=e.description||"";const short=desc.length>40?desc.slice(0,40)+"…":desc;return(
             <div key={e.id} className="row-hover" style={{display:"flex",alignItems:"flex-start",padding:"7px 3px",borderBottom:i<sorted.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}} onClick={()=>{resetForm();go("expenses");setTimeout(()=>{setDetailId(e.id);setPanel("detail");},50);}}>
@@ -5219,10 +5210,10 @@ function ExpensesView(){
   const [filtersOpen,setFiltersOpen]=useState(true);
   const pendingTotal=expenses.filter(e=>getItemStatus(e,cats)==="pending").reduce((s,e)=>s+eurForExpense(e),0);
   const naturalFrom = expenses.length
-    ? expenses.reduce((min, e) => e.date < min ? e.date : min, expenses[0].date)
+    ? expenses.reduce((min, e) => effectiveDate(e) < min ? effectiveDate(e) : min, effectiveDate(expenses[0]))
     : "";
   const naturalTo = expenses.length
-    ? expenses.reduce((max, e) => e.date > max ? e.date : max, expenses[0].date)
+    ? expenses.reduce((max, e) => effectiveDate(e) > max ? effectiveDate(e) : max, effectiveDate(expenses[0]))
     : "";
 
   const [pendingFrom, setPendingFrom] = React.useState(naturalFrom);
@@ -5302,7 +5293,7 @@ function ExpensesView(){
           <option value="all">Costes fijos: Todos</option>
           <option value="recurring">Costes fijos</option>
           <option value="recurring_pending">Costes fijos · pendientes</option>
-          <option value="recurring_paid">Costes fijos · pagados</option>
+          <option value="recurring_paid">Costes fijos · aprobados</option>
         </select>
         <div style={{display:"flex",alignItems:"center",border:"1.5px solid",
           borderColor:isDefaultRange?"#DDD6CC":G,borderRadius:7,
@@ -5382,21 +5373,12 @@ function ExpensesView(){
           const approverIds=effectiveExpenseApproverIds(e,cats,users);
           const submitterName=(users.find(u=>u.id===e.submittedBy)||{name:UNKNOWN_USER_NAME}).name;
           const isInvRow=e.expenseType==="invoice";
-          const today = new Date().toISOString().slice(0, 10);
-          const due = e.dueDate ? String(e.dueDate).slice(0, 10) : null;
-          const isOverdue = due && due < today &&
-            e.expenseType === "invoice" &&
-            e.status === "approved";
-          const isDueToday = due && due === today &&
-            e.expenseType === "invoice" &&
-            e.status === "approved";
           const rowTitle=isInvRow?(e.vendor||e.description):e.description;
-          const metaDate=isInvRow&&e.dueDate?`${t("expenses.vence")} ${fmtDate(e.dueDate)} · `:fmtDate(e.date)+" · ";
           const isLastInGroup=idx===group.items.length-1;
           const isLastGroup=group.ym===monthGroups[monthGroups.length-1]?.ym;
           return(
             <div key={e.id}>
-              <div className="row-hover" style={{padding:"9px 13px",borderBottom:(!isLastInGroup||!isLastGroup)?"1px solid #F5F0EA":"none",cursor:"pointer",background: isOverdue ? "#FFF1F2" : isDueToday ? "#FFFBEB" : undefined,borderLeft: isOverdue ? "3px solid #DC2626" : undefined,display:"flex",alignItems:"flex-start",gap:8}}
+              <div className="row-hover" style={{padding:"9px 13px",borderBottom:(!isLastInGroup||!isLastGroup)?"1px solid #F5F0EA":"none",cursor:"pointer",display:"flex",alignItems:"flex-start",gap:8}}
                 onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
@@ -5421,24 +5403,7 @@ function ExpensesView(){
                     {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span>{(e.paidBy||[]).length}</span></span>}
                   </div>
                   <div style={{fontSize:10,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                    {isOverdue && (
-                      <span style={{color:"#DC2626",fontWeight:600,fontSize:11}}>
-                        Vencida · {fmtDate(due)}
-                      </span>
-                    )}
-                    {isDueToday && (
-                      <span style={{color:"#D97706",fontWeight:600,fontSize:11}}>
-                        Vence hoy · {fmtDate(due)}
-                      </span>
-                    )}
-                    {!isOverdue && !isDueToday && due && e.expenseType === "invoice" && (
-                      <span style={{color:"#6B7B72",fontSize:11}}>
-                        Vence · {fmtDate(due)}
-                      </span>
-                    )}
-                    {(!due || e.expenseType !== "invoice" || e.status !== "approved") && (
-                      <span>{metaDate.slice(0,-3)}</span>
-                    )}
+                    <span>{isInvRow&&e.dueDate?`${t("expenses.vence")} ${fmtDate(e.dueDate)}`:fmtDate(e.date)}</span>
                     <span>{t("filter.submitter")}: {submitterName} · {e.category}</span>
                   </div>
                   {st==="pending"&&<div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>{approverIds.map(aid=>{const a=approvalVoteFor(e.approvals,aid,users);return<span key={aid} style={{fontSize:9,display:"flex",alignItems:"center",gap:2}}><span style={{width:4,height:4,borderRadius:"50%",background:a==="approved"?"#16A34A":a==="rejected"?"#DC2626":"#D97706",display:"inline-block"}}/><span style={{color:a==="approved"?"#166534":a==="rejected"?"#991B1B":"#92400E"}}>{(users.find(u=>u.id===aid)||{name:UNKNOWN_USER_NAME}).name}</span></span>})}</div>}
@@ -5602,9 +5567,9 @@ function ApprovalsView(){
               {splitPill(item.paidBy,t)}
             </div>
           </div>
-          <div style={{textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+          <div style={{width:118,textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
             <div style={{fontSize:15,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
-            <div style={{display:"flex",gap:5,alignItems:"center",justifyContent:"flex-end",flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:5,alignItems:"center",justifyContent:"flex-end",flexWrap:"wrap",minHeight:22}}>
               <span
                 className={statusToneClass(st)}
                 style={{
@@ -5617,6 +5582,8 @@ function ApprovalsView(){
               >
                 {t("status."+st)}
               </span>
+            </div>
+            <div style={{minHeight:24,display:"flex",justifyContent:"flex-end",alignItems:"flex-start",width:"100%"}}>
               {canActOnRow&&(
                 <button
                   type="button"
@@ -5862,7 +5829,7 @@ function reportsApiDateRange(){
   };
 }
 function ReportsView(){
-  const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDetailId,setPanel,resetForm,departments}=useApp();
+  const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDateFrom,setDateTo,setDetailId,setPanel,resetForm,departments}=useApp();
   const [statusFilter, setStatusFilter] = useState("all");
   const [ivaFilter, setIvaFilter] = useState("with");
   const displayExpenses = (expenses || []).filter(e => {
@@ -5895,7 +5862,7 @@ function ReportsView(){
         if(st==="deleted"||st==="rejected")return false;
         if(st!=="approved"&&st!=="pending")return false;
         return true;
-      }).map(e=>({...e,__kind:e.expenseType==="invoice"?"invoice":"expense",__sortDate:(e.expenseType==="invoice"?(e.dueDate||e.date):e.date)||""}))
+      }).map(e=>({...e,__kind:e.expenseType==="invoice"?"invoice":"expense",__sortDate:effectiveDate(e)||""}))
         .sort((a,b)=>String(b.__sortDate||"").localeCompare(String(a.__sortDate||"")));
       return{...u,filteredTotal,submittedCount,logItems};
     })
@@ -5913,9 +5880,7 @@ function ReportsView(){
       const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
       const ym = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
       const label = d.toLocaleDateString("es-ES",{month:"short",year:"2-digit"});
-      const rows = (displayExpenses||[]).filter(e=>
-        e.date && e.date.startsWith(ym)
-      );
+      const rows = (displayExpenses||[]).filter(e=>effectiveDate(e).startsWith(ym));
       const gastos = rows.filter(e=>e.expenseType!=="invoice").reduce((s,e)=>s+eurForExpense(e),0);
       const facturas = rows.filter(e=>e.expenseType==="invoice").reduce((s,e)=>s+eurForExpense(e),0);
       months.push({ym, label, gastos, facturas, total:gastos+facturas});
@@ -6029,8 +5994,20 @@ function ReportsView(){
               const fY = gY - fH;
               const stackTop = fY;
               const tooltipBreakdown = `Gastos: ${fmt(m.gastos)}\nFacturas: ${fmt(m.facturas)}`;
+              const monthFrom=`${m.ym}-01`;
+              const lastDay=new Date(Number(m.ym.slice(0,4)),Number(m.ym.slice(5,7)),0).getDate();
+              const monthTo=`${m.ym}-${String(lastDay).padStart(2,"0")}`;
+              const openMonth=()=>{
+                setExpFlt("all");
+                setDateFrom(monthFrom);
+                setDateTo(monthTo);
+                setView("expenses");
+                setDetailId(null);
+                setPanel(null);
+                resetForm();
+              };
               return (
-                <g key={m.ym}>
+                <g key={m.ym} onClick={openMonth} style={{cursor:"pointer"}}>
                   {m.total===0&&(
                     <text
                       x={SIDE_PAD + i * GROUP_W + GROUP_W / 2}
@@ -9282,8 +9259,9 @@ function SolanaExpenses(){
       const matchesOwner=e.ownerId===submFlt;
       if(!matchesSubm&&!matchesOwner)return false;
     }
-    if(dateFrom&&e.date<dateFrom)return false;
-    if(dateTo&&e.date>dateTo)return false;
+    const refDate=effectiveDate(e);
+    if(dateFrom&&refDate<dateFrom)return false;
+    if(dateTo&&refDate>dateTo)return false;
     if(expKindFlt==="invoice"&&e.expenseType!=="invoice")return false;
     if(expKindFlt==="expense"&&e.expenseType==="invoice")return false;
     return true;
