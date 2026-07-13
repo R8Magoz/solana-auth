@@ -5547,63 +5547,66 @@ function ApprovalsView(){
     const canActOnRow=canActOnExpenseItem(item,user,cats,users);
     const showVoteFooter=st==="pending"&&rowApproverIds.length>0;
     return(
-      <div key={item.id} className="card row-hover" style={{marginBottom:6,padding:"8px 10px",background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
+      <div key={item.id} className="card row-hover" style={{marginBottom:6,padding:"11px 14px",background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
         resetForm();
         go("expenses");
         setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
       }}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
-              <span style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{rowTitle}</span>
+              <span style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{rowTitle}</span>
               <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,flexShrink:0,
                 background:isInv?"#EDE9FE":"#fde8d6",
                 color:isInv?F:G}}>
                 {isInv?"FACTURA":"GASTO"}
               </span>
-            </div>
-            <div style={{fontSize:10,color:"#6B7B72",marginTop:3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-              <span>{isInv?"Vence: ":""}{fmtDate(rowDate)} · {deptName} · {ownerName}</span>
               {splitPill(item.paidBy,t)}
             </div>
-          </div>
-          <div style={{width:118,textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-            <div style={{fontSize:15,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
-            <div style={{display:"flex",gap:5,alignItems:"center",justifyContent:"flex-end",flexWrap:"wrap",minHeight:22}}>
-              <span
-                className={statusToneClass(st)}
-                style={{
-                  padding:"1px 6px",
-                  borderRadius:11,
-                  fontSize:9,
-                  fontWeight:700,
-                  ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
-                }}
-              >
-                {t("status."+st)}
-              </span>
+            <div style={{fontSize:10,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              <span style={{color:"#9CAA9F"}}>{isInv?"Vence: ":""}{fmtDate(rowDate)} · {deptName} · </span>
+              <span style={{color:"#4B5E52",fontWeight:600}}>{ownerName}</span>
             </div>
-            <div style={{minHeight:24,display:"flex",justifyContent:"flex-end",alignItems:"flex-start",width:"100%"}}>
-              {canActOnRow&&(
-                <button
-                  type="button"
-                  className="btn-sm"
-                  style={{fontSize:10,padding:"2px 8px"}}
-                  onClick={e => {
-                    e.stopPropagation();
-                    resetForm();
-                    go("expenses");
-                    setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
+          </div>
+          <div style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2,minWidth:128}}>
+            <div style={{fontSize:14,fontWeight:700,color:T,fontVariantNumeric:"tabular-nums",lineHeight:1.2}}>{fmtExpenseAmt(item)}</div>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"flex-end",gap:4}}>
+              <div style={{minWidth:62,display:"flex",justifyContent:"flex-end",alignItems:"flex-start"}}>
+                {canActOnRow?(
+                  <button
+                    type="button"
+                    className="btn-sm"
+                    style={{fontSize:10,padding:"2px 8px"}}
+                    onClick={e => {
+                      e.stopPropagation();
+                      resetForm();
+                      go("expenses");
+                      setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
+                    }}
+                  >
+                    {t("action.review")}
+                  </button>
+                ):null}
+              </div>
+              <div style={{minWidth:62,display:"flex",justifyContent:"flex-end",alignItems:"flex-start"}}>
+                <span
+                  className={statusToneClass(st)}
+                  style={{
+                    padding:"1px 6px",
+                    borderRadius:11,
+                    fontSize:9,
+                    fontWeight:700,
+                    ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
                   }}
                 >
-                  {t("action.review")}
-                </button>
-              )}
+                  {t("status."+st)}
+                </span>
+              </div>
             </div>
           </div>
         </div>
         {showVoteFooter&&(
-          <div style={{display:"flex",gap:8,marginTop:5,flexWrap:"wrap",borderTop:"1px solid rgba(0,0,0,0.04)",paddingTop:4}}>
+          <div style={{display:"flex",gap:8,marginTop:4,flexWrap:"wrap",borderTop:"1px solid rgba(0,0,0,0.04)",paddingTop:3}}>
             {rowApproverIds.map(aid=>{
               const a=approvalVoteFor(item.approvals||{},aid,users);
               return(
