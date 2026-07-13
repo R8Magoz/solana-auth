@@ -156,7 +156,7 @@
 <body>
 <div id="root"></div>
   <script>
-  window.__SOLANA_AUTH_URL__ = "https://solana-auth.onrender.com";
+  window.__SOLANA_AUTH_URL__ = "http://localhost:3001";
 </script>
 <script type="text/babel">
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -2182,6 +2182,7 @@ function expenseFromApi(row){
     ivaRate,
     ivaAmount,
     comments,
+    commentsSeenAt:row.commentsSeenAt!=null?Number(row.commentsSeenAt):undefined,
     seenBy:[],
     departmentId:row.departmentId||null,
     expenseType:row.expenseType||"expense",
@@ -2515,7 +2516,41 @@ const SPLIT_PILL_STYLE={display:"inline-flex",alignItems:"center",gap:2,fontSize
 const splitPill=(paidBy,t)=>{
   const n=(paidBy||[]).length;
   if(n<=1)return null;
-  return <span style={SPLIT_PILL_STYLE} aria-label={`${t("label.splitBadge")}: ${n}`}>{t("label.splitBadge")} · {n}</span>;
+  return <span style={SPLIT_PILL_STYLE} aria-label={`${t("label.splitBadge")}: ${n}`}><SplitDivergeIcon size={10} color="#4B5E52"/><span aria-hidden="true">{n}</span></span>;
+};
+const commentTsMs=(c)=>{
+  if(!c)return 0;
+  if(c.at)return new Date(c.at).getTime()||0;
+  if(c.createdAt!=null)return Number(c.createdAt)||0;
+  return 0;
+};
+const commentsSeenTsMs=(e,userId)=>{
+  if(e&&e.commentsSeenAt!=null){
+    const v=e.commentsSeenAt;
+    if(typeof v==="number")return v;
+    const t=new Date(v).getTime();
+    return isNaN(t)?0:t;
+  }
+  if(!userId)return 0;
+  try{
+    const map=JSON.parse(localStorage.getItem("sol-comments-seen-"+userId)||"{}");
+    if(map&&map[e.id]!=null)return Number(map[e.id])||0;
+  }catch(err){}
+  return 0;
+};
+const expenseIsOwnerOrSubmitter=(e,userId)=>{
+  if(!e||!userId)return false;
+  return e.submittedBy===userId||e.ownerId===userId||e.userId===userId;
+};
+const expenseHasUnreadComments=(e,userId)=>{
+  if(!expenseIsOwnerOrSubmitter(e,userId))return false;
+  const seenAt=commentsSeenTsMs(e,userId);
+  return (e.comments||[]).some(c=>{
+    const by=c&&(c.by||c.userId);
+    if(!by||by===userId)return false;
+    if(!String(c.text||"").trim())return false;
+    return commentTsMs(c)>seenAt;
+  });
 };
 const deptLabel=(departmentId,departments,fallback="—")=>{
   if(!departmentId)return fallback;
@@ -4527,7 +4562,7 @@ function NewPanel(){
 
 /* ── DETAIL PANEL ──────────────────────────────────────────────────────────── */
 function DetailPanel(){
-  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,reconsiderExpense,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,ivaRates,departments,defaultDeptId,resetForm,
+  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,reconsiderExpense,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markCommentsSeen,ivaRates,departments,defaultDeptId,resetForm,
         fileRef,startCam,receiptAltHandlerRef}=useApp();
   const [editMode,setEditMode]=useState(false);
   const [ef,setEf]=useState({});        // edit form fields
@@ -4543,7 +4578,7 @@ function DetailPanel(){
   const [editSaving,setEditSaving]=useState(false);
   const e=expenses.find(x=>x.id===detailId);
   useEffect(()=>{
-    if(detailId)markExpenseRead(detailId);
+    if(detailId)markCommentsSeen(detailId);
   },[detailId]);
   useEffect(()=>{
     if(!editMode){receiptAltHandlerRef.current=null;return;}
@@ -5462,7 +5497,7 @@ function ExpensesView(){
                         ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
                       }}
                     >{t("status."+st)}</span>
-                    {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span>{(e.paidBy||[]).length}</span></span>}
+                    {splitPill(e.paidBy,t)}
                   </div>
                   <div style={{fontSize:10,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                     <span>{isInvRow&&e.dueDate?`${t("expenses.vence")} ${fmtDate(e.dueDate)}`:fmtDate(e.date)}</span>
@@ -5472,7 +5507,6 @@ function ExpensesView(){
                 </div>
                 <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5,flexShrink:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    {(e.comments||[]).length>0&&<span style={{minWidth:15,minHeight:15,borderRadius:"50%",background:BL,color:"#fff",fontSize:8,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"0 4px"}} aria-hidden="true">{(e.comments||[]).length}</span>}
                     {(e.receiptPath||(e.receipt&&!e._apiType))&&(
                       <span style={{
                         fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,
@@ -9204,19 +9238,29 @@ function SolanaExpenses(){
       auditTrail:[...(e.auditTrail||[]),{action:"comment_added",by:user.id,at:at,note:tx}],
     }));
   };
-  const markExpenseRead=(expId)=>{
+  const markCommentsSeen=(expId)=>{
     const exp=expenses.find(e=>e.id===expId);
-    if(!exp||(exp.seenBy||[]).includes(user.id))return;
-    // Persist to localStorage keyed by user
-    try{
-      const key="sol-seen-"+user.id;
-      const seen=JSON.parse(localStorage.getItem(key)||"[]");
-      if(!seen.includes(expId)){
-        seen.push(expId);
-        localStorage.setItem(key,JSON.stringify(seen));
-      }
-    }catch(e){}
-    saveExp(expenses.map(e=>e.id!==expId?e:{...e,seenBy:[...new Set([...(e.seenBy||[]),user.id])]}));
+    if(!exp)return;
+    const now=Date.now();
+    const applyLocal=()=>{
+      try{
+        const key="sol-comments-seen-"+user.id;
+        const map=JSON.parse(localStorage.getItem(key)||"{}");
+        map[expId]=now;
+        localStorage.setItem(key,JSON.stringify(map));
+      }catch(e){}
+      saveExp(prev=>prev.map(e=>e.id!==expId?e:{...e,commentsSeenAt:now}));
+    };
+    if(AUTH_URL){
+      void (async()=>{
+        try{
+          await API.post("/expenses/"+encodeURIComponent(expId)+"/mark-comments-seen",{});
+          saveExp(prev=>prev.map(e=>e.id!==expId?e:{...e,commentsSeenAt:now}));
+        }catch(e){applyLocal();}
+      })();
+      return;
+    }
+    applyLocal();
   };
 
   /* ── APPROVE ────────────────────────────────────────────────────────────── */
@@ -9495,17 +9539,7 @@ function SolanaExpenses(){
   const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
   const rpOpen=view==="expenses"&&(panel==="new"||(panel==="detail"&&detailId));
   const totalBadge=myPending.length;
-  const expenseNavBadge=expenses.filter(e=>{
-    if((e.seenBy||[]).includes(user.id))return false;
-    const seenKey="sol-seen-"+user.id;
-    const localSeen=(()=>{try{return JSON.parse(localStorage.getItem(seenKey)||"[]");}catch(e){return[];}})();
-    if(localSeen.includes(e.id))return false;
-    const isSubmitter=e.submittedBy===user.id;
-    const isCommenter=(e.comments||[]).some(c=>c.by===user.id);
-    const isPaidBy=(e.paidBy||[]).some(p=>p.userId===user.id);
-    if(!isSubmitter&&!isCommenter&&!isPaidBy)return false;
-    return(e.comments||[]).length>0;
-  }).length;
+  const expenseNavBadge=expenses.filter(e=>expenseHasUnreadComments(e,user.id)).length;
   const goToMyRejected=()=>{
     myExpFilterClearedRef.current=true;
     setExpFlt(["rejected"]);
@@ -9553,7 +9587,7 @@ function SolanaExpenses(){
     clearMyExpenseFilter,
     importRef,
     removeAttachment,editExp,deleteExp,adminIds,
-    fixResubmitExpense,addExpenseComment,markExpenseRead,
+    fixResubmitExpense,addExpenseComment,markCommentsSeen,
     goToMyRejected,
     onSignOut,
     setUser,
