@@ -37,7 +37,7 @@ const path       = require('path');
 const { spawn }  = require('child_process');
 const { Resend } = require('resend');
 const userStore = require('./userStore');
-const { runUsersJsonMigration, runRoleConsolidationMigration, runDepartmentApproversMigration, runDepartmentApproverIdsColumnMigration, runTraceCodeMigration, runCategorySpanishMigration } = require('./migrate');
+const { runUsersJsonMigration, runRoleConsolidationMigration, runDepartmentApproversMigration, runDepartmentApproverIdsColumnMigration, runTraceCodeMigration, runCategorySpanishMigration, runRecurrenceSeriesMigration } = require('./migrate');
 const { createExpensesRouter } = require('./expensesRoutes');
 const { sanitizeRequestBody } = require('./middleware/sanitize');
 
@@ -552,6 +552,7 @@ runDepartmentApproversMigration({ audit });
 runDepartmentApproverIdsColumnMigration({ audit });
 runTraceCodeMigration({ audit });
 runCategorySpanishMigration({ audit });
+runRecurrenceSeriesMigration({ audit });
 
 // ── SCHEDULED BACKUPS ────────────────────────────────────────────────────────
 // Run once on startup, then every 6 hours.

@@ -18,7 +18,7 @@ const { buildTraceCode } = require('./lib/traceCode');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
-const { nextDueDate, RECURRENCE_RULES, isValidRecurrenceRule } = require('./recurrence');
+const { nextDueDate, RECURRENCE_RULES, isValidRecurrenceRule, todayISO } = require('./recurrence');
 
 const RECURRENCE_RULES_ACCEPTED = [...RECURRENCE_RULES, 'daily'];
 
@@ -703,14 +703,16 @@ const insertExp = db.prepare(`
     approversJson, approvalVotesJson, paidByJson, splitMode,
     ivaRate, ivaAmount, commentsJson, ownerId,
     expenseType, vendor, dueDate, deferredPayment, recurring, recurrenceRule, originBillId,
-    cadenceKey, cadenceCustomMonths, clientRef, traceCode
+    cadenceKey, cadenceCustomMonths, clientRef, traceCode,
+    recurrenceSeriesId, recurrenceAnchorDate, recurrenceEndDate, originRecurrenceId
   ) VALUES (
     @id, @userId, @amount, @currency, @amountEUR, @description, @category, @date, @status,
     @approvedBy, @approvedAt, @rejectedBy, @rejectedAt, @rejectionNote, @receiptPath, @notes, @createdAt, @updatedAt, @departmentId,
     @approversJson, @approvalVotesJson, @paidByJson, @splitMode,
     @ivaRate, @ivaAmount, @commentsJson, @ownerId,
     @expenseType, @vendor, @dueDate, @deferredPayment, @recurring, @recurrenceRule, @originBillId,
-    @cadenceKey, @cadenceCustomMonths, @clientRef, @traceCode
+    @cadenceKey, @cadenceCustomMonths, @clientRef, @traceCode,
+    @recurrenceSeriesId, @recurrenceAnchorDate, @recurrenceEndDate, @originRecurrenceId
   )
 `);
 
@@ -1020,6 +1022,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       cadenceCustomMonths: String(req.body.cadenceCustomMonths || '1').trim().slice(0, 8),
       clientRef,
       traceCode: traceCodeVal,
+      recurrenceSeriesId: rec ? id : null,
+      recurrenceAnchorDate: rec ? (expenseType === 'invoice' ? resolvedDueDate : dateStr) : null,
+      recurrenceEndDate: null,
+      originRecurrenceId: null,
     });
     } catch (insertErr) {
       if (clientRef && insertErr && insertErr.code === 'SQLITE_CONSTRAINT_UNIQUE') {
@@ -1058,6 +1064,45 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       console.error('[POST /expenses] UNHANDLED ERROR:', e && (e.stack || e.message || e));
       console.error('[expenses/create]', e);
       if (!res.headersSent) res.status(500).json({ error: 'Error al crear gasto: ' + (e && e.message ? e.message : String(e)) });
+    }
+  });
+
+  router.post('/:id/stop-recurrence', (req, res) => {
+    try {
+      const exp = getExpenseById(req.params.id);
+      if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
+      if (exp.status === 'deleted') {
+        return res.status(400).json({ error: 'Gasto eliminado.' });
+      }
+      const isOwner = exp.ownerId === req.userId || exp.userId === req.userId;
+      if (!isOwner && !isAdminRole(req.userRole)) {
+        return res.status(403).json({ error: 'No autorizado.' });
+      }
+      const seriesId = exp.recurrenceSeriesId || exp.id;
+      let anchor = getExpenseById(seriesId);
+      if (!anchor) anchor = exp;
+      if (Number(anchor.recurring) !== 1) {
+        return res.status(400).json({ error: 'La recurrencia ya está detenida.' });
+      }
+      const today = todayISO();
+      const now = Date.now();
+      const info = db.prepare(`
+        UPDATE expenses SET recurring = 0, recurrenceEndDate = ?, updatedAt = ?
+        WHERE id = ?
+      `).run(today, now, anchor.id);
+      if (!info.changes) {
+        return res.status(404).json({ error: 'Gasto no encontrado.' });
+      }
+      audit('expense_recurrence_stopped', {
+        userId: req.userId,
+        targetId: anchor.id,
+        seriesId,
+        recurrenceEndDate: today,
+      });
+      res.json({ ok: true, expense: getExpenseById(anchor.id) });
+    } catch (e) {
+      console.error('[POST /expenses/:id/stop-recurrence]', e);
+      res.status(500).json({ error: 'No se pudo detener la recurrencia.' });
     }
   });
 

@@ -160,6 +160,10 @@ db.prepare(`
 addColumnIfMissing('expenses', 'recurring',       'INTEGER DEFAULT 0');
 addColumnIfMissing('expenses', 'recurrenceRule',  'TEXT');
 addColumnIfMissing('expenses', 'originBillId',    'TEXT');
+addColumnIfMissing('expenses', 'recurrenceSeriesId', 'TEXT');
+addColumnIfMissing('expenses', 'recurrenceAnchorDate', 'TEXT');
+addColumnIfMissing('expenses', 'recurrenceEndDate', 'TEXT');
+addColumnIfMissing('expenses', 'originRecurrenceId', 'TEXT');
 addColumnIfMissing('expenses', 'cadenceKey', 'TEXT DEFAULT \'once\'');
 addColumnIfMissing('expenses', 'cadenceCustomMonths', 'TEXT DEFAULT \'1\'');
 addColumnIfMissing('expenses', 'clientRef', 'TEXT');
@@ -213,6 +217,7 @@ function createIndexesIfMissing() {
     CREATE INDEX IF NOT EXISTS idx_expenses_dueDate ON expenses(dueDate);
     CREATE INDEX IF NOT EXISTS idx_expenses_ownerId ON expenses(ownerId);
     CREATE INDEX IF NOT EXISTS idx_expenses_recurring ON expenses(recurring);
+    CREATE INDEX IF NOT EXISTS idx_expenses_recurrenceSeriesId ON expenses(recurrenceSeriesId);
     CREATE INDEX IF NOT EXISTS idx_expenses_date_status ON expenses(date, status);
     CREATE INDEX IF NOT EXISTS idx_expenses_date_type ON expenses(date, expenseType);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_expenses_user_clientRef

@@ -623,6 +623,10 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
             deferredPayment: false,
             recurring: body.recurring ? 1 : 0,
             recurrenceRule: body.recurrenceRule || null,
+            recurrenceSeriesId: body.recurring ? id : null,
+            recurrenceAnchorDate: body.recurring ? due : null,
+            recurrenceEndDate: null,
+            originRecurrenceId: null,
             status: 'submitted',
             approversJson: JSON.stringify(approvers),
             approvalVotesJson: '{}',
@@ -667,6 +671,12 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
             paymentStatus: 'na',
             deferredPayment: false,
             paymentTermDays: 0,
+            recurring: body.recurring ? 1 : 0,
+            recurrenceRule: body.recurrenceRule || null,
+            recurrenceSeriesId: body.recurring ? id : null,
+            recurrenceAnchorDate: body.recurring ? (body.date || new Date().toISOString().slice(0, 10)) : null,
+            recurrenceEndDate: null,
+            originRecurrenceId: null,
             auditTrailJson: JSON.stringify([submitAudit]),
             commentsJson: '[]',
             traceCode,
@@ -676,7 +686,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       return json(200, { ok: true, expense: row });
     }
 
-    const expenseIdMatch = path.match(/^\/expenses\/([^/]+)\/(receipt|approve|reject|reconsider|comments|comment|mark-comments-seen)$/);
+    const expenseIdMatch = path.match(/^\/expenses\/([^/]+)\/(receipt|approve|reject|reconsider|comments|comment|mark-comments-seen|stop-recurrence)$/);
     const expensePutMatch = path.match(/^\/expenses\/([^/]+)$/);
 
     if (expenseIdMatch && method === 'POST') {
@@ -827,6 +837,20 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         const at = Date.now();
         state.commentsSeen.set(commentsSeenKey(session.userId, id), at);
         return json(200, { ok: true, commentsSeenAt: at });
+      }
+      if (sub === 'stop-recurrence') {
+        if (Number(e.recurring) !== 1) {
+          return json(400, { error: 'La recurrencia ya está detenida.' });
+        }
+        const isOwner = e.ownerId === session.userId || e.userId === session.userId;
+        if (!isOwner && session.role !== 'admin') {
+          return json(403, { error: 'No autorizado.' });
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        e.recurring = 0;
+        e.recurrenceEndDate = today;
+        e.updatedAt = Date.now();
+        return json(200, { ok: true, expense: e });
       }
     }
 

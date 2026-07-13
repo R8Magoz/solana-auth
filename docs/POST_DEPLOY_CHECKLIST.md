@@ -68,7 +68,7 @@ Use **Bearer** of a normal user unless noted.
 - [ ] **GET** `/expenses` → includes invoice rows; non-admin sees own (+ approver rules as implemented).
 - [ ] **PUT** `/expenses/:id` → invoice fields updated (authorized).
 - [ ] **DELETE** `/expenses/:id` → deleted.
-- [ ] **Recurring invoice due date passed → next occurrence** — maintenance runs on **server start** and on a **24-hour** interval. After a recurring invoice passes its `dueDate`, confirm a **new** pending invoice row with the next `dueDate`.
+- [ ] **Recurring series (projection-only)** — recurring gastos and facturas show **projected** occurrences (hollow dots) on the Informes payment calendar for future months. No auto-spawn: maintenance does **not** create next rows. Use **Detener recurrencia** on the anchor detail to stop future projection (`POST /expenses/:id/stop-recurrence`). Projected amounts appear as “previsto” and do **not** count toward budget/spend KPIs.
 
 ---
 
