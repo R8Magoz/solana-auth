@@ -6169,17 +6169,19 @@ function ReportsView(){
                         return(
                           <div
                             key={row.id}
-                            style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:i<userRows.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}}
+                            style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0",borderBottom:i<userRows.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}}
                             onClick={()=>{resetForm();setView("expenses");setDetailId(row.id);setPanel("detail");}}
                           >
-                            <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#EDE9FE":"#fde8d6",color:kind==="invoice"?F:G}}>
-                              {kind==="invoice"?"FACTURA":"GASTO"}
-                            </span>
                             <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                {row.description||"Sin descripción"}
+                              <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+                                <span style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>
+                                  {row.description||"Sin descripción"}
+                                </span>
+                                <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#EDE9FE":"#fde8d6",color:kind==="invoice"?F:G}}>
+                                  {kind==="invoice"?"FACTURA":"GASTO"}
+                                </span>
                               </div>
-                              <div style={{fontSize:10,color:"#9CAA9F"}}>
+                              <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>
                                 {fmtDate(row.date)} · {deptLabel(row.departmentId,departments)}
                               </div>
                             </div>
