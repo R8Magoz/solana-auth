@@ -71,12 +71,18 @@ async function openSettingsViaUserMenu(page: Page) {
   await expect(page.getByRole('heading', { name: /Ajustes/i }).first()).toBeVisible({ timeout: 10_000 });
 }
 
+async function toggleGastosMultiFilter(page: Page, prefix: string, optionLabel: string) {
+  const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await page.getByRole('button', { name: new RegExp(`^${esc}:`) }).first().click();
+  await page.locator('label').filter({ hasText: optionLabel }).first().locator('input[type="checkbox"]').check();
+  await page.getByRole('heading', { name: 'Gastos' }).click();
+  await page.waitForTimeout(300);
+}
+
 async function filterExpenseListToInvoices(page: Page) {
   await page.getByText('Gastos', { exact: true }).first().click();
   await page.waitForTimeout(500);
-  // Tipo filter is a native <select>; options are not interactably "visible" — use selectOption
-  await page.getByRole('combobox').nth(1).selectOption('invoice');
-  await page.waitForTimeout(500);
+  await toggleGastosMultiFilter(page, 'Tipo', 'Facturas');
 }
 
 async function openNewInvoicePanel(page: Page) {
