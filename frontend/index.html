@@ -5060,6 +5060,9 @@ function DashboardView(){
   const spentActive=deptBudgetActive.reduce((s,d)=>s+Number(d.spent||0),0);
   const budgetRemainingTotal=budgetTotalActive-spentActive;
   const budgetProgressPct=budgetTotalActive>0 ? (spentActive/budgetTotalActive)*100 : 0;
+  const budgetAvailablePct=budgetTotalActive>0
+    ? Math.max(0,Math.min(100,Math.round((budgetRemainingTotal/budgetTotalActive)*1000)/10))
+    : 0;
   const [billsWindow,setBillsWindow]=useState("15d");
   const [dashBudgetAnim,setDashBudgetAnim]=useState(true);
   useEffect(()=>{
@@ -5126,8 +5129,9 @@ function DashboardView(){
           const fixedKpiBg="#F5F0EA";
           const fixedKpiText="#6B7B72";
 
-          const renderKpiCard=(key,label,val,bg,text,progressFill,showProgress=false,valueFontSize=22,labelColor="#9CAA9F",progressTrack="#EDE8E0",progressLabel="",progressLabelColor="#6B7B72")=> {
+          const renderKpiCard=(key,label,val,bg,text,progressFill,showProgress=false,valueFontSize=22,labelColor="#9CAA9F",progressTrack="#EDE8E0",progressLabel="",progressLabelColor="#6B7B72",progressPct=null)=> {
             const kpi=fmtKpi(val);
+            const barPct=progressPct!=null?progressPct:budgetProgressPct;
             return(
               <div key={key} className="card" style={{background:bg,border:"1px solid rgba(0,0,0,0.02)"}}>
                 <div style={{fontSize:10,color:labelColor,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{label}</div>
@@ -5141,8 +5145,8 @@ function DashboardView(){
                       className={`kpi-progress-fill${dashBudgetAnim?" kpi-progress-fill--load":""}`}
                       style={{
                         background:progressFill,
-                        "--budget-scale":Math.max(0,Math.min(100,budgetProgressPct))/100,
-                        ...(dashBudgetAnim?{}:{transform:`scaleX(${Math.max(0,Math.min(100,budgetProgressPct))/100})`}),
+                        "--budget-scale":Math.max(0,Math.min(100,barPct))/100,
+                        ...(dashBudgetAnim?{}:{transform:`scaleX(${Math.max(0,Math.min(100,barPct))/100})`}),
                       }}
                     />
                   </div>
@@ -5156,7 +5160,7 @@ function DashboardView(){
           return(
             <>
               {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetProgressPct.toFixed(1)}% usado`,budgetHealth.kpiLabelColor)}
-              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetProgressPct.toFixed(1)}% disponible`,budgetHealth.kpiLabelColor)}
+              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetAvailablePct.toFixed(1)}% disponible`,budgetHealth.kpiLabelColor,budgetAvailablePct)}
               {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,null,false,22,"#9CAA9F")}
               <div style={{cursor:"pointer"}} onClick={() => { go("expenses"); setRecurringFlt(["recurring"]); }}>
                 {renderKpiCard("k-fixed",fixedKpiLabel,totFixed,fixedKpiBg,fixedKpiText,null,false)}
@@ -5525,7 +5529,6 @@ function ExpensesView(){
           </div>
         ))}
       </div>
-      {panel==="detail"&&detailId&&<div className="mob-only" style={{marginTop:11,background:"#fff",borderRadius:11,padding:14}}><DetailPanel/></div>}
     </div>
   );
 }
@@ -9527,6 +9530,12 @@ function SolanaExpenses(){
     {id:"reports",label:t("nav.reports"),badge:0},
   ];
   const sessionUser=resolveSessionUser(user,users);
+  const mobDetailExp=detailId?expenses.find(e=>e.id===detailId):null;
+  const mobDetailTitle=(()=>{
+    const desc=String(mobDetailExp?.description||mobDetailExp?.vendor||"").trim();
+    if(!desc)return "Detalle de gasto";
+    return desc.length>40?desc.slice(0,40)+"…":desc;
+  })();
 
   /* ── CONTEXT VALUE ──────────────────────────────────────────────────────── */
   const ctxVal={
@@ -9719,6 +9728,17 @@ function SolanaExpenses(){
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#FAF7F2"}}>{form.expenseType==="invoice"?t("dash.newInvoice"):t("form.newExpense")}</div>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:18}}><NewPanel/></div>
+          </div>
+        )}
+
+        {/* Mobile expense detail overlay */}
+        {panel==="detail"&&detailId&&(
+          <div className="mob-only panel-slide" style={{position:"fixed",inset:0,background:"#F5F0EA",zIndex:100,display:"flex",flexDirection:"column"}}>
+            <div style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
+              <button type="button" aria-label="Volver" style={{border:"none",background:"none",color:"#FAF7F2",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>{setDetailId(null);setPanel(null);}}>&#8592;</button>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,flex:1}}>{mobDetailTitle}</div>
+            </div>
+            <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:12,paddingBottom:72}}><DetailPanel/></div>
           </div>
         )}
 
