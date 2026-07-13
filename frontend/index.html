@@ -5604,9 +5604,9 @@ function ApprovalsView(){
                     ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
                   }}
                 >
-                  {t("action.review")}
-                </button>
-              )}
+                  {t("status."+st)}
+                </span>
+              </div>
             </div>
           </div>
         </div>
