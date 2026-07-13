@@ -11,10 +11,19 @@ const db = require('./db');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// Month attribution uses an item's "effective date":
+// - invoice -> dueDate (fallback to date)
+// - expense -> date
+//
+// IMPORTANT: selection (SQL range filters) and binning must use the same effective date
+// to avoid dropping invoices at month boundaries or binning items outside the requested range.
+const EFFECTIVE_DATE_SQL = "CASE WHEN expenseType = 'invoice' THEN COALESCE(dueDate, date) ELSE date END";
+
 const EXPORT_HEADERS = [
   'Código',
   'Tipo',
-  'Fecha',
+  'Fecha efectiva',
+  'Fecha de registro',
   'Concepto',
   'Categoría',
   'Estado',
@@ -115,6 +124,14 @@ function excelDateFromIso(dateStr) {
   return new Date(y, m - 1, d, 12, 0, 0);
 }
 
+function effectiveDateForRow(row) {
+  if (!row) return null;
+  const type = String(row.expenseType || '').toLowerCase();
+  const raw = type === 'invoice' ? (row.dueDate || row.date) : row.date;
+  const s = String(raw || '').slice(0, 10);
+  return DATE_RE.test(s) ? s : null;
+}
+
 function formatPaidBy(row, userMap) {
   const paidBy = parsePaidByJson(row.paidByJson);
   if (paidBy.length === 0) {
@@ -160,7 +177,10 @@ function fetchExportRows(req) {
   if (from && to && DATE_RE.test(from) && DATE_RE.test(to) && from <= to) {
     return db
       .prepare(
-        `SELECT * FROM expenses WHERE date >= ? AND date <= ? AND status != 'deleted' ORDER BY date ASC, id ASC`,
+        `SELECT * FROM expenses
+         WHERE ${EFFECTIVE_DATE_SQL} >= ? AND ${EFFECTIVE_DATE_SQL} <= ?
+           AND status != 'deleted'
+         ORDER BY ${EFFECTIVE_DATE_SQL} ASC, id ASC`,
       )
       .all(from, to);
   }
@@ -192,10 +212,11 @@ async function writeExpensesWorkbook(res, rows, userMap, filename) {
   headerRow.font = { bold: true };
   headerRow.alignment = { vertical: 'middle' };
 
-  const DATE_COL = 3;
-  const BASE_COL = 11;
-  const CUOTA_COL = 13;
-  const TOTAL_COL = 14;
+  const EFF_DATE_COL = 3;
+  const REG_DATE_COL = 4;
+  const BASE_COL = 12;
+  const CUOTA_COL = 14;
+  const TOTAL_COL = 15;
 
   let sumBase = 0;
   let sumCuota = 0;
@@ -207,9 +228,11 @@ async function writeExpensesWorkbook(res, rows, userMap, filename) {
     sumCuota += cuota;
     sumTotal += total;
     const tipoLabel = e.expenseType === 'invoice' ? 'Factura' : 'Gasto';
+    const effDate = effectiveDateForRow(e);
     const row = ws.addRow([
       e.traceCode || e.itemCode || e.id,
       tipoLabel,
+      excelDateFromIso(effDate),
       excelDateFromIso(e.date),
       e.description || '',
       e.category || '',
@@ -223,9 +246,9 @@ async function writeExpensesWorkbook(res, rows, userMap, filename) {
       cuota,
       total,
     ]);
-    const dateCell = row.getCell(DATE_COL);
-    if (dateCell.value instanceof Date) {
-      dateCell.numFmt = 'dd/mm/yyyy';
+    for (const idx of [EFF_DATE_COL, REG_DATE_COL]) {
+      const dateCell = row.getCell(idx);
+      if (dateCell.value instanceof Date) dateCell.numFmt = 'dd/mm/yyyy';
     }
     row.getCell(BASE_COL).numFmt = '#,##0.00 "€"';
     row.getCell(CUOTA_COL).numFmt = '#,##0.00 "€"';
@@ -235,6 +258,7 @@ async function writeExpensesWorkbook(res, rows, userMap, filename) {
   if (rows.length > 0) {
     const totalsRow = ws.addRow([
       'TOTALES',
+      '',
       '',
       '',
       '',
@@ -303,9 +327,10 @@ function createReportsRouter({ requireAdminSession, requireAuth, userStore }) {
 
       const rows = db
         .prepare(
-          `SELECT expenseType, amount, currency, amountEUR, status
+          `SELECT expenseType, amount, currency, amountEUR, status, date, dueDate
            FROM expenses
-           WHERE date >= ? AND date <= ? AND status != 'deleted'`,
+           WHERE ${EFFECTIVE_DATE_SQL} >= ? AND ${EFFECTIVE_DATE_SQL} <= ?
+             AND status != 'deleted'`,
         )
         .all(from, to);
 
@@ -339,8 +364,9 @@ function createReportsRouter({ requireAdminSession, requireAuth, userStore }) {
     const expenses = db
       .prepare(
         `SELECT * FROM expenses
-         WHERE date >= ? AND date <= ? AND status != 'deleted'
-         ORDER BY date ASC`,
+         WHERE ${EFFECTIVE_DATE_SQL} >= ? AND ${EFFECTIVE_DATE_SQL} <= ?
+           AND status != 'deleted'
+         ORDER BY ${EFFECTIVE_DATE_SQL} ASC, id ASC`,
       )
       .all(from, to);
 
@@ -367,7 +393,8 @@ function createReportsRouter({ requireAdminSession, requireAuth, userStore }) {
         const uname = userMap[e.userId] || e.userId || '—';
         byUser[uname] = (byUser[uname] || 0) + amt;
 
-        const monthKey = e.date && e.date.length >= 7 ? e.date.slice(0, 7) : '—';
+        const eff = effectiveDateForRow(e);
+        const monthKey = eff && eff.length >= 7 ? eff.slice(0, 7) : '—';
         byMonth[monthKey] = (byMonth[monthKey] || 0) + amt;
       }
 
