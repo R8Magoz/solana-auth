@@ -187,6 +187,42 @@ function useSessionState(key,defaultVal){
   },[key,defaultVal]);
   return[val,setter];
 }
+/** Multi-select filter helpers ([] = all). Migrates legacy "all" or single string from session. */
+function asMultiFilter(val){
+  if(val==null||val==="all")return[];
+  if(Array.isArray(val))return val.filter(v=>v!=null&&v!=="");
+  if(typeof val==="string"&&val)return[val];
+  return[];
+}
+function isMultiFilterAll(selected,optionCount){
+  const s=asMultiFilter(selected);
+  if(s.length===0)return true;
+  if(optionCount<=1)return false;
+  return s.length>=optionCount;
+}
+function toggleMultiFilterValue(selected,value,optionValues){
+  const all=optionValues.length;
+  const cur=asMultiFilter(selected);
+  const wasAll=cur.length===0||(all>1&&cur.length>=all);
+  if(wasAll)return[value];
+  const set=new Set(cur);
+  if(set.has(value))set.delete(value);
+  else set.add(value);
+  if(set.size===0||(all>1&&set.size>=all))return[];
+  return[...set];
+}
+function multiFilterSummary(prefix,selected,options,allLabel){
+  const s=asMultiFilter(selected);
+  if(s.length===0||(options.length>1&&s.length>=options.length))return`${prefix}: ${allLabel}`;
+  if(s.length===1){
+    const opt=options.find(o=>o.value===s[0]);
+    return`${prefix}: ${opt?opt.label:s[0]}`;
+  }
+  return`${prefix}: ${s.length}`;
+}
+function isMultiFilterActive(selected,optionCount){
+  return!isMultiFilterAll(selected,optionCount);
+}
 /* ── BRAND PALETTE ─────────────────────────────────────────────────────────
    Primary  G  Brand orange — primary (gasto)
    Factura  #5B21B6  Deep violet — factura actions/badges
@@ -5087,7 +5123,7 @@ function DashboardView(){
               {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetProgressPct.toFixed(1)}% usado`,budgetHealth.kpiLabelColor)}
               {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetProgressPct.toFixed(1)}% disponible`,budgetHealth.kpiLabelColor)}
               {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,null,false,22,"#9CAA9F")}
-              <div style={{cursor:"pointer"}} onClick={() => { go("expenses"); setRecurringFlt("recurring"); }}>
+              <div style={{cursor:"pointer"}} onClick={() => { go("expenses"); setRecurringFlt(["recurring"]); }}>
                 {renderKpiCard("k-fixed",fixedKpiLabel,totFixed,fixedKpiBg,fixedKpiText,null,false)}
               </div>
             </>
@@ -5204,6 +5240,45 @@ function DashboardView(){
   );
 }
 
+/* ── MULTI-SELECT FILTER MENU ─────────────────────────────────────────────── */
+function MultiFilterMenu({prefix,options,selected,onChange,allLabel,minWidth}){
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(!open)return;
+    const onDoc=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
+    document.addEventListener("mousedown",onDoc);
+    return()=>document.removeEventListener("mousedown",onDoc);
+  },[open]);
+  const optionValues=options.map(o=>o.value);
+  const sel=asMultiFilter(selected);
+  const allActive=isMultiFilterAll(selected,options.length);
+  const summary=multiFilterSummary(prefix,selected,options,allLabel);
+  return(
+    <div ref={ref} style={{position:"relative",flexShrink:0}}>
+      <button type="button" className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:minWidth||120,cursor:"pointer",textAlign:"left",background:allActive?"#FAFAF9":"#FFF8F3",borderColor:allActive?"#DDD6CC":G,fontFamily:"inherit"}}
+        onClick={()=>setOpen(o=>!o)} aria-expanded={open}>
+        {summary}
+        <span style={{float:"right",color:"#9CAA9F",marginLeft:6,fontSize:9}}>{open?"▲":"▼"}</span>
+      </button>
+      {open&&(
+        <div style={{position:"absolute",top:"100%",left:0,marginTop:4,zIndex:30,background:"#fff",border:"1.5px solid #DDD6CC",borderRadius:7,boxShadow:"0 4px 14px rgba(0,0,0,0.08)",minWidth:Math.max(minWidth||140,160),padding:"4px 0"}}>
+          <label style={{display:"flex",alignItems:"center",gap:7,padding:"5px 10px",fontSize:11,cursor:"pointer",color:"#4B5E52"}}>
+            <input type="checkbox" checked={allActive} onChange={()=>onChange([])}/>
+            <span>{allLabel}</span>
+          </label>
+          {options.map(opt=>(
+            <label key={opt.value} style={{display:"flex",alignItems:"center",gap:7,padding:"5px 10px",fontSize:11,cursor:"pointer",color:"#4B5E52"}}>
+              <input type="checkbox" checked={!allActive&&sel.includes(opt.value)} onChange={()=>onChange(toggleMultiFilterValue(selected,opt.value,optionValues))}/>
+              <span>{opt.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── EXPENSES VIEW ─────────────────────────────────────────────────────────── */
 function ExpensesView(){
   const{t,expenses,cats,users,byStatus,filtered,expFlt,setExpFlt,expSrc,setExpSrc,
@@ -5223,6 +5298,19 @@ function ExpensesView(){
   const [pendingTo,   setPendingTo]   = React.useState(naturalTo);
 
   const isDefaultRange = pendingFrom === naturalFrom && pendingTo === naturalTo;
+  const statusFilterOpts=useMemo(()=>[
+    {value:"pending",label:t("status.pending")},
+    {value:"approved",label:t("status.approved")},
+    {value:"rejected",label:t("status.rejected")},
+  ],[t]);
+  const kindFilterOpts=useMemo(()=>[
+    {value:"expense",label:t("expenses.filterExpenses")},
+    {value:"invoice",label:t("expenses.filterInvoices")},
+  ],[t]);
+  const catFilterOpts=useMemo(()=>cats.filter(c=>!c.archived).map(c=>({value:c.name,label:tCat(c.name,t)})),[cats,t]);
+  const submFilterOpts=useMemo(()=>(users||[]).filter(u=>u.accountStatus==="active"&&u.id!=="system").map(u=>({value:u.id,label:u.name})),[users]);
+  const recurringFilterOpts=useMemo(()=>[{value:"recurring",label:"Costes fijos"}],[]);
+  const kindSel=asMultiFilter(expKindFlt);
   const monthGroups=React.useMemo(()=>groupExpensesByMonth(filtered),[filtered]);
   const exportFilteredXlsx=()=>{
     void downloadExpensesXlsx(filtered,{tag:"gastos-filtrados",t,user,saveExp,expenses});
@@ -5246,19 +5334,8 @@ function ExpensesView(){
         <input className="inp" style={{flex:1,minWidth:200,padding:"5px 9px",fontSize:12}}
           placeholder={t("filter.codeSearch")} value={expSrc}
           onChange={e=>setExpSrc(e.target.value)}/>
-        <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:140,cursor:"pointer"}}
-          value={expFlt} onChange={e=>setExpFlt(e.target.value)}>
-          <option value="all">Estado: Todos</option>
-          <option value="pending">Pendiente</option>
-          <option value="approved">Aprobado</option>
-          <option value="rejected">Rechazado</option>
-        </select>
-        <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:130,cursor:"pointer"}}
-          value={expKindFlt} onChange={e=>setExpKindFlt(e.target.value)}>
-          <option value="all">Tipo: Todos</option>
-          <option value="expense">Gastos</option>
-          <option value="invoice">Facturas</option>
-        </select>
+        <MultiFilterMenu prefix="Estado" options={statusFilterOpts} selected={expFlt} onChange={setExpFlt} allLabel={t("filter.all")} minWidth={140}/>
+        <MultiFilterMenu prefix="Tipo" options={kindFilterOpts} selected={expKindFlt} onChange={setExpKindFlt} allLabel={t("filter.all")} minWidth={130}/>
         <button className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} onClick={openNew}>{t("action.newExpense")}</button>
         <button type="button" className="btn-secondary" style={{fontSize:12,padding:"6px 12px"}} disabled={filtered.length===0} onClick={exportFilteredXlsx}>{t("action.exportXLSX")}</button>
       </div>
@@ -5277,27 +5354,9 @@ function ExpensesView(){
       </div>
       {filtersOpen&&(
       <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:9}}>
-        <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
-          value={catFlt} onChange={e=>setCatFlt(e.target.value)}>
-          <option value="all" disabled={catFlt==="all"} hidden={catFlt==="all"}>{t("filter.category")}: {t("filter.all")}</option>
-          {cats.filter(c=>!c.archived).map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
-        </select>
-        <select className="inp"
-          style={{width:"auto",fontSize:11,padding:"4px 8px",minWidth:120,cursor:"pointer"}}
-          value={submFlt}
-          onChange={e=>setSubmFlt(e.target.value)}>
-          <option value="all" disabled={submFlt==="all"} hidden={submFlt==="all"}>Enviado por: Todos</option>
-          {(users||[])
-            .filter(u=>u.accountStatus==="active"&&u.id!=="system")
-            .map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-        </select>
-        <select className="inp" style={{width:"auto",fontSize:11,padding:"5px 8px",minWidth:140}}
-          value={recurringFlt} onChange={e => setRecurringFlt(e.target.value)}>
-          <option value="all">Costes fijos: Todos</option>
-          <option value="recurring">Costes fijos</option>
-          <option value="recurring_pending">Costes fijos · pendientes</option>
-          <option value="recurring_paid">Costes fijos · aprobados</option>
-        </select>
+        <MultiFilterMenu prefix={t("filter.category")} options={catFilterOpts} selected={catFlt} onChange={setCatFlt} allLabel={t("filter.all")} minWidth={110}/>
+        <MultiFilterMenu prefix="Enviado por" options={submFilterOpts} selected={submFlt} onChange={setSubmFlt} allLabel={t("filter.all")} minWidth={120}/>
+        <MultiFilterMenu prefix="Costes fijos" options={recurringFilterOpts} selected={recurringFlt} onChange={setRecurringFlt} allLabel={t("filter.all")} minWidth={140}/>
         <div style={{display:"flex",alignItems:"center",border:"1.5px solid",
           borderColor:isDefaultRange?"#DDD6CC":G,borderRadius:7,
           overflow:"hidden",background:"#FAFAF9",height:32,flexShrink:0}}>
@@ -5322,7 +5381,7 @@ function ExpensesView(){
           </div>
         </div>
         <button
-          disabled={isDefaultRange && (!catFlt||catFlt==="all") && (!submFlt||submFlt==="all") && !expSrc}
+          disabled={isDefaultRange && !isMultiFilterActive(catFlt,catFilterOpts.length) && !isMultiFilterActive(submFlt,submFilterOpts.length) && !expSrc}
           style={{padding:"5px 14px",borderRadius:7,fontSize:12,fontWeight:600,
             border:"none",cursor:isDefaultRange?"default":"pointer",
             background:isDefaultRange?"#EDE8E0":G,
@@ -5336,7 +5395,7 @@ function ExpensesView(){
           {!isDefaultRange && (
             <span style={{background:"rgba(255,255,255,0.25)",borderRadius:8,
               fontSize:10,padding:"1px 5px",fontWeight:700}}>
-              {[catFlt&&catFlt!=="all"?catFlt:"",submFlt&&submFlt!=="all"?submFlt:"",!isDefaultRange?"range":"",expSrc].filter(Boolean).length}
+              {[isMultiFilterActive(catFlt,catFilterOpts.length)?"cat":"",isMultiFilterActive(submFlt,submFilterOpts.length)?"subm":"",!isDefaultRange?"range":"",expSrc].filter(Boolean).length}
             </span>
           )}
         </button>
@@ -5345,14 +5404,14 @@ function ExpensesView(){
             try{
               ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
             }catch(e){}
-            setExpFlt("all");
-            setCatFlt("all");
-            setSubmFlt("all");
+            setExpFlt([]);
+            setCatFlt([]);
+            setSubmFlt([]);
             setDateFrom("");
             setDateTo("");
             setExpSrc("");
-            setExpKindFlt("all");
-            setRecurringFlt("all");
+            setExpKindFlt([]);
+            setRecurringFlt([]);
             setPendingFrom(naturalFrom);
             setPendingTo(naturalTo);
           }}>
@@ -5389,7 +5448,7 @@ function ExpensesView(){
                     {isInvRow&&(
                       <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:F,color:"#fff",flexShrink:0,display:"inline-block"}}>FACTURA</span>
                     )}
-                    {!isInvRow&&expKindFlt!=="invoice"&&(
+                    {!isInvRow&&(kindSel.length===0||kindSel.includes("expense"))&&(
                       <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:G,color:"#fff",flexShrink:0,display:"inline-block"}}>GASTO</span>
                     )}
                     <span
@@ -5880,7 +5939,7 @@ function ReportsView(){
     cat:c.name,
     total:displayExpenses.filter(e=>e.category===c.name&&expenseCountsTowardDeptSpend(e,cats,users)).reduce((s,e)=>s+eurForExpense(e),0),
   })).filter(x=>x.total>0);
-  const maxC=catTotals[0]?.total||1;
+  const maxC=catTotals.length?Math.max(...catTotals.map(c=>c.total),0):0;
   const fullMonthlyData = React.useMemo(()=>{
     const months = [];
     const now = new Date();
@@ -6006,7 +6065,7 @@ function ReportsView(){
               const lastDay=new Date(Number(m.ym.slice(0,4)),Number(m.ym.slice(5,7)),0).getDate();
               const monthTo=`${m.ym}-${String(lastDay).padStart(2,"0")}`;
               const openMonth=()=>{
-                setExpFlt("all");
+                setExpFlt([]);
                 setDateFrom(monthFrom);
                 setDateTo(monthTo);
                 setView("expenses");
@@ -6064,7 +6123,10 @@ function ReportsView(){
       <div className="card" style={{marginBottom:11}}>
         <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:12}}>{t("reports.byCategory")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
         {catTotals.length===0&&<div style={{color:"#9CAA9F",fontSize:12}}>Sin datos para el filtro seleccionado</div>}
-        {catTotals.map(({cat,total})=>(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt(cat);setExpFlt("all");go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{tCat(cat,t)}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:G,width:`${total/maxC*100}%`,transition:"width 0.4s"}}/></div></div>))}
+        {catTotals.map(({cat,total})=>{
+          const barPct=maxC>0?Math.min(100,Math.max(0,(total/maxC)*100)):0;
+          return(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt([cat]);setExpFlt([]);go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{tCat(cat,t)}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:G,width:`${barPct}%`,transition:"width 0.4s"}}/></div></div>);
+        })}
       </div>
       <div style={{borderTop:"1px solid #F0EBE3",margin:"2px 0 12px"}}/>
       {/* Per person — approved share + submitted count + expandable log */}
@@ -7994,27 +8056,27 @@ function SolanaExpenses(){
   },[user]);
   const [detailId,setDetailId]=useState(null);
   const [panel,   setPanel]   =useState(null);
-  const [expFlt,  setExpFlt]  =useSessionState("sol-flt-status","all");
+  const [expFlt,  setExpFlt]  =useSessionState("sol-flt-status",[]);
   const [expSrc,  setExpSrc]  =useState("");
-  const [catFlt,  setCatFlt]  =useSessionState("sol-flt-cat","all");   // category name or "all"
-  const [submFlt, setSubmFlt] =useSessionState("sol-flt-subm","all");   // userId or "all"
+  const [catFlt,  setCatFlt]  =useSessionState("sol-flt-cat",[]);
+  const [submFlt, setSubmFlt] =useSessionState("sol-flt-subm",[]);
   const [dateFrom,setDateFrom]=useSessionState("sol-flt-from","");   // YYYY-MM-DD or ""
   const [dateTo,  setDateTo]  =useSessionState("sol-flt-to","");   // YYYY-MM-DD or ""
-  const [expKindFlt,setExpKindFlt]=useSessionState("sol-flt-kind","all");
-  const [recurringFlt,setRecurringFlt]=useSessionState("sol-flt-recurring","all");
+  const [expKindFlt,setExpKindFlt]=useSessionState("sol-flt-kind",[]);
+  const [recurringFlt,setRecurringFlt]=useSessionState("sol-flt-recurring",[]);
   const myExpFilterClearedRef=useRef(false);
   const resetExpenseFiltersToDefault=useCallback(()=>{
     try{
       ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
     }catch(e){}
-    setExpFlt("all");
-    setCatFlt("all");
-    setSubmFlt("all");
+    setExpFlt([]);
+    setCatFlt([]);
+    setSubmFlt([]);
     setDateFrom("");
     setDateTo("");
     setExpSrc("");
-    setExpKindFlt("all");
-    setRecurringFlt("all");
+    setExpKindFlt([]);
+    setRecurringFlt([]);
   },[setExpFlt,setCatFlt,setSubmFlt,setDateFrom,setDateTo,setExpSrc,setExpKindFlt,setRecurringFlt]);
 
   const [form,    setForm]    =useState(()=>{
@@ -8128,7 +8190,7 @@ function SolanaExpenses(){
 
   const clearMyExpenseFilter=useCallback(()=>{
     myExpFilterClearedRef.current=true;
-    setSubmFlt("all");
+    setSubmFlt([]);
   },[setSubmFlt]);
   const onSignOut=useCallback(()=>{
     myExpFilterClearedRef.current=false;
@@ -9336,7 +9398,16 @@ function SolanaExpenses(){
     approved:expVisible.filter(e=>getItemStatus(e,cats,users)==="approved"),
     rejected:expVisible.filter(e=>getItemStatus(e,cats,users)==="rejected"),
   };
-  const filteredBase=(byStatus[expFlt]||expVisible).filter(e=>{
+  const filteredBase=(()=>{
+    const statusSel=asMultiFilter(expFlt);
+  const catSel=asMultiFilter(catFlt);
+  const submSel=asMultiFilter(submFlt);
+  const kindSel=asMultiFilter(expKindFlt);
+    let base=expVisible;
+    if(statusSel.length>0){
+      base=expVisible.filter(e=>statusSel.includes(getItemStatus(e,cats,users)));
+    }
+    return base.filter(e=>{
     const src=expSrc.toLowerCase().trim();
     if(src){
       const matchDesc=e.description.toLowerCase().includes(src);
@@ -9344,39 +9415,38 @@ function SolanaExpenses(){
       const matchVendor=e.expenseType==="invoice"&&String(e.vendor||"").toLowerCase().includes(src);
       if(!matchDesc&&!matchCode&&!matchVendor)return false;
     }
-    if(catFlt&&catFlt!=="all"&&e.category!==catFlt)return false;
-    if(submFlt&&submFlt!=="all"){
-      const matchesSubm=e.submittedBy===submFlt;
-      const matchesOwner=e.ownerId===submFlt;
+    if(catSel.length>0&&!catSel.includes(e.category))return false;
+    if(submSel.length>0){
+      const matchesSubm=submSel.some(id=>e.submittedBy===id);
+      const matchesOwner=submSel.some(id=>e.ownerId===id);
       if(!matchesSubm&&!matchesOwner)return false;
     }
     const refDate=effectiveDate(e);
     if(dateFrom&&refDate<dateFrom)return false;
     if(dateTo&&refDate>dateTo)return false;
-    if(expKindFlt==="invoice"&&e.expenseType!=="invoice")return false;
-    if(expKindFlt==="expense"&&e.expenseType==="invoice")return false;
+    if(kindSel.length>0){
+      const kind=e.expenseType==="invoice"?"invoice":"expense";
+      if(!kindSel.includes(kind))return false;
+    }
     return true;
   });
+  })();
+  const recurringSel=asMultiFilter(recurringFlt);
   let recurringFiltered = filteredBase;
-  if (recurringFlt === "recurring") {
+  if (recurringSel.includes("recurring")) {
     recurringFiltered = filteredBase.filter(e => expenseIsRecurringNonOnce(e));
-  } else if (recurringFlt === "recurring_pending") {
-    recurringFiltered = filteredBase.filter(e =>
-      expenseIsRecurringNonOnce(e) && e.status !== "approved"
-    );
-  } else if (recurringFlt === "recurring_paid") {
-    recurringFiltered = filteredBase.filter(e =>
-      expenseIsRecurringNonOnce(e) && e.status === "approved"
-    );
   }
   const filtered=recurringFiltered;
   const dateFilterActive = dateFrom !== "" || dateTo !== "";
+  const catOptionCount=cats.filter(c=>!c.archived).length;
+  const submOptionCount=(users||[]).filter(u=>u.accountStatus==="active"&&u.id!=="system").length;
   const activeFilterCount = [
-    catFlt && catFlt !== "all" ? catFlt : "",
-    submFlt && submFlt !== "all" ? submFlt : "",
+    isMultiFilterActive(expFlt,3) ? "status" : "",
+    isMultiFilterActive(catFlt,catOptionCount) ? "cat" : "",
+    isMultiFilterActive(submFlt,submOptionCount) ? "subm" : "",
     dateFilterActive ? "range" : "",
-    expKindFlt !== "all" ? "kind" : "",
-    recurringFlt !== "all" ? "recurring" : "",
+    isMultiFilterActive(expKindFlt,2) ? "kind" : "",
+    isMultiFilterActive(recurringFlt,1) ? "recurring" : "",
   ].filter(Boolean).length;
   const isApprover = Object.values(deptApprovers || {}).some(
     ids => Array.isArray(ids) && ids.includes(user?.id)
@@ -9436,8 +9506,8 @@ function SolanaExpenses(){
   }).length;
   const goToMyRejected=()=>{
     myExpFilterClearedRef.current=true;
-    setExpFlt("rejected");
-    setSubmFlt(user.id);
+    setExpFlt(["rejected"]);
+    setSubmFlt([user.id]);
     setView("expenses");
     setDetailId(null);
     setPanel(null);
