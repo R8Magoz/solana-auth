@@ -107,6 +107,13 @@ db.exec(`
     updatedBy TEXT,
     updatedAt INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS expense_comment_seen (
+    expenseId       TEXT NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
+    userId          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    commentsSeenAt  INTEGER NOT NULL,
+    PRIMARY KEY (expenseId, userId)
+  );
 `);
 
 function addColumnIfMissing(table, column, colDef) {

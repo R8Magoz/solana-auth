@@ -36,6 +36,7 @@ export type MockApiState = {
   passwords: Map<string, string>;
   settings: { categories: unknown[] | null; department_approvers: Record<string, string[]> };
   requests: RecordedRequest[];
+  commentsSeen: Map<string, number>;
 };
 
 export const PASSWORDS: Record<string, string> = {
@@ -148,6 +149,17 @@ function parseComments(row: ExpenseRow): Record<string, unknown>[] {
   } catch {
     return [];
   }
+}
+
+function commentsSeenKey(userId: string, expenseId: string) {
+  return `${userId}:${expenseId}`;
+}
+
+function attachCommentsSeenToExpenses(expenses: ExpenseRow[], userId: string, state: MockApiState) {
+  return expenses.map((e) => ({
+    ...e,
+    commentsSeenAt: state.commentsSeen.get(commentsSeenKey(userId, String(e.id))) ?? null,
+  }));
 }
 
 
@@ -369,6 +381,7 @@ export function createMockApiState(
       department_approvers: departmentApprovers,
     },
     requests: [],
+    commentsSeen: new Map<string, number>(),
   };
 }
 
@@ -571,7 +584,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
 
     if ((path === '/expenses' || path === '/expenses/') && method === 'GET') {
       if (!session) return json(401, { error: 'No autorizado.' });
-      return json(200, { expenses: state.expenses });
+      return json(200, { expenses: attachCommentsSeenToExpenses(state.expenses, session.userId, state) });
     }
 
     if (path === '/expenses' && method === 'POST') {
@@ -663,7 +676,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       return json(200, { ok: true, expense: row });
     }
 
-    const expenseIdMatch = path.match(/^\/expenses\/([^/]+)\/(receipt|approve|reject|reconsider|comments|comment)$/);
+    const expenseIdMatch = path.match(/^\/expenses\/([^/]+)\/(receipt|approve|reject|reconsider|comments|comment|mark-comments-seen)$/);
     const expensePutMatch = path.match(/^\/expenses\/([^/]+)$/);
 
     if (expenseIdMatch && method === 'POST') {
@@ -810,6 +823,11 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         }
         return json(200, { ok: true, expense: e });
       }
+      if (sub === 'mark-comments-seen') {
+        const at = Date.now();
+        state.commentsSeen.set(commentsSeenKey(session.userId, id), at);
+        return json(200, { ok: true, commentsSeenAt: at });
+      }
     }
 
     if (expensePutMatch && method === 'PUT') {
@@ -879,7 +897,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
 
     if (path === '/expenses' && method === 'GET') {
       if (!session) return json(401, { error: 'No autorizado.' });
-      return json(200, { ok: true, expenses: state.expenses });
+      return json(200, { ok: true, expenses: attachCommentsSeenToExpenses(state.expenses, session.userId, state) });
     }
 
     if (path === '/departments' && method === 'GET') {

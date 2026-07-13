@@ -601,6 +601,40 @@ function rowToExpense(r) {
   };
 }
 
+function getCommentsSeenAt(userId, expenseId) {
+  const row = db.prepare(
+    'SELECT commentsSeenAt FROM expense_comment_seen WHERE userId = ? AND expenseId = ?',
+  ).get(userId, expenseId);
+  return row ? Number(row.commentsSeenAt) : null;
+}
+
+function getCommentsSeenMap(userId, expenseIds) {
+  if (!expenseIds.length) return new Map();
+  const placeholders = expenseIds.map(() => '?').join(',');
+  const rows = db.prepare(
+    `SELECT expenseId, commentsSeenAt FROM expense_comment_seen WHERE userId = ? AND expenseId IN (${placeholders})`,
+  ).all(userId, ...expenseIds);
+  return new Map(rows.map((r) => [r.expenseId, Number(r.commentsSeenAt)]));
+}
+
+function markCommentsSeen(userId, expenseId, at = Date.now()) {
+  db.prepare(`
+    INSERT INTO expense_comment_seen (expenseId, userId, commentsSeenAt)
+    VALUES (?, ?, ?)
+    ON CONFLICT(expenseId, userId) DO UPDATE SET commentsSeenAt = excluded.commentsSeenAt
+  `).run(expenseId, userId, at);
+  return at;
+}
+
+function attachCommentsSeenToExpenses(expenses, userId) {
+  const ids = expenses.map((e) => e.id).filter(Boolean);
+  const seenMap = getCommentsSeenMap(userId, ids);
+  return expenses.map((exp) => ({
+    ...exp,
+    commentsSeenAt: seenMap.has(exp.id) ? seenMap.get(exp.id) : null,
+  }));
+}
+
 function getExpenseById(id) {
   return rowToExpense(db.prepare('SELECT * FROM expenses WHERE id = ?').get(id));
 }
@@ -694,7 +728,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
   router.get('/', (req, res) => {
     try {
-      const expenses = listExpenses(req);
+      const expenses = attachCommentsSeenToExpenses(listExpenses(req), req.userId);
       const refIds = collectReferencedUserIds(expenses);
       const users = userStore.getPublicUsersByIds
         ? userStore.getPublicUsersByIds(refIds)
@@ -1057,7 +1091,18 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
     const updated = getExpenseById(exp.id);
     audit('expense_comment_added', { userId: req.userId, targetId: exp.id });
-    res.json({ ok: true, expense: updated });
+    res.json({ ok: true, expense: { ...updated, commentsSeenAt: getCommentsSeenAt(req.userId, exp.id) } });
+  });
+
+  router.post('/:id/mark-comments-seen', (req, res) => {
+    const exp = getExpenseById(req.params.id);
+    if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
+    if (exp.status === 'deleted') {
+      return res.status(400).json({ error: 'Gasto eliminado.' });
+    }
+    const at = markCommentsSeen(req.userId, exp.id);
+    audit('expense_comments_seen', { userId: req.userId, targetId: exp.id });
+    res.json({ ok: true, commentsSeenAt: at });
   });
 
   function putOrPatchExpense(req, res) {
