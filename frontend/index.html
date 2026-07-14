@@ -4886,7 +4886,7 @@ function NewPanel(){
   const{t,user,cats,form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
         receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,handleReceiptFile,fileRef,
         startCam,submitting,
-        submitExp,resetForm,setPanel,users,calcEqual,ivaRates,departments}=useApp();
+        submitExp,resetForm,setPanel,dismissOverlay,users,calcEqual,ivaRates,departments}=useApp();
   const activeCats=cats.filter(c=>!c.archived);
   const ownerRaw=(form.ownerId&&String(form.ownerId).trim())?String(form.ownerId).trim():"";
   const ownerById=ownerRaw?users.find(u=>String(u.id)===ownerRaw):null;
@@ -4960,7 +4960,7 @@ function NewPanel(){
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
         <div style={{fontWeight:700,fontSize:15,color:actionColor,transition:"color 0.2s ease"}}>{isInv ? "Nueva factura" : "Nuevo gasto"}</div>
-        <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:21,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{resetForm();setPanel(null);}}>×</button>
+        <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:21,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>dismissOverlay()} aria-label="Cerrar">×</button>
       </div>
       <ExpenseFormFields
         t={t}
@@ -5016,7 +5016,7 @@ function NewPanel(){
 
 /* ── DETAIL PANEL ──────────────────────────────────────────────────────────── */
 function DetailPanel(){
-  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,reconsiderExpense,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markCommentsSeen,stopRecurrence,ivaRates,departments,defaultDeptId,resetForm,
+  const{t,expenses,cats,users,detailId,setDetailId,setPanel,dismissOverlay,isAdmin,user,aNote,setANote,approve,reconsiderExpense,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markCommentsSeen,stopRecurrence,ivaRates,departments,defaultDeptId,resetForm,
         fileRef,startCam,receiptAltHandlerRef}=useApp();
   const [editMode,setEditMode]=useState(false);
   const [ef,setEf]=useState({});        // edit form fields
@@ -5277,7 +5277,7 @@ function DetailPanel(){
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {!editMode&&canEdit&&(isAdmin||st!=="approved")&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:`1px solid ${detailAccent}`,background:"transparent",color:detailAccent,cursor:"pointer",fontFamily:"inherit"}} onClick={startEdit}>{t("action.editItem")}</button>}
           {!editMode&&(user.id===e.submittedBy||isAdmin)&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>deleteExp(e.id)}>{t("action.deleteItem")}</button>}
-          <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:19,cursor:"pointer",lineHeight:1,padding:"0 4px"}} onClick={()=>{void (async()=>{if(editMode&&efDirty&&!(await confirmUI(t("expense.unsaved"))))return;receiptAltHandlerRef.current=null;setEditApiReceipt(prev=>{if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}return null;});setEditMode(false);resetForm();setDetailId(null);setPanel(null);})();}}>×</button>
+          <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:19,cursor:"pointer",lineHeight:1,padding:"0 4px"}} aria-label="Cerrar" onClick={()=>{void (async()=>{if(editMode&&efDirty&&!(await confirmUI(t("expense.unsaved"))))return;receiptAltHandlerRef.current=null;setEditApiReceipt(prev=>{if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}return null;});setEditMode(false);resetForm();dismissOverlay();})();}}>×</button>
         </div>
       </div>
 
@@ -8577,10 +8577,17 @@ function SolanaExpenses(){
     const safeView=VALID_VIEWS.has(mapped)?mapped:"dashboard";
     setViewState(safeView);
     if(typeof window==="undefined"||!user)return;
-    window.history.pushState({view:safeView},"","/"+safeView);
+    window.history.pushState({view:safeView,overlay:null,detailId:null},"","/"+safeView);
   },[user]);
   const [detailId,setDetailId]=useState(null);
   const [panel,   setPanel]   =useState(null);
+  /** Last overlay entry we pushed into history — keeps UI ↔ history.back() in sync. */
+  const overlayHistRef=useRef(null);
+  /** Skip one overlay→history sync (after popstate or intentional replace). */
+  const histQuietRef=useRef(false);
+  const resetFormRef=useRef(()=>{});
+  const panelRef=useRef(panel);
+  panelRef.current=panel;
   const [expFlt,  setExpFlt]  =useSessionState("sol-flt-status",[]);
   const [expSrc,  setExpSrc]  =useState("");
   const [catFlt,  setCatFlt]  =useSessionState("sol-flt-cat",[]);
@@ -8743,10 +8750,30 @@ function SolanaExpenses(){
     if(!user)return;
     const initialView=parseViewFromPath(window.location.pathname);
     setViewState(initialView);
-    window.history.replaceState({view:initialView},"","/"+initialView);
+    window.history.replaceState({view:initialView,overlay:null,detailId:null},"","/"+initialView);
+    overlayHistRef.current=null;
     const onPopState=(event)=>{
-      const stateView=event&&event.state&&event.state.view;
-      const nextView=VALID_VIEWS.has(stateView)?stateView:parseViewFromPath(window.location.pathname);
+      const state=(event&&event.state)||{};
+      histQuietRef.current=true;
+      const ov=state.overlay||null;
+      const did=state.detailId!=null?String(state.detailId):null;
+      if(ov==="detail"&&did){
+        setDetailId(did);
+        setPanel("detail");
+        overlayHistRef.current={overlay:"detail",detailId:did};
+      }else if(ov==="new"){
+        setDetailId(null);
+        setPanel("new");
+        overlayHistRef.current={overlay:"new",detailId:null};
+      }else{
+        if(overlayHistRef.current&&overlayHistRef.current.overlay==="new"){
+          try{resetFormRef.current();}catch(e){}
+        }
+        setDetailId(null);
+        setPanel(null);
+        overlayHistRef.current=null;
+      }
+      const nextView=VALID_VIEWS.has(state.view)?state.view:parseViewFromPath(window.location.pathname);
       setViewState(nextView);
     };
     window.addEventListener("popstate",onPopState);
@@ -9482,6 +9509,54 @@ function SolanaExpenses(){
     try{sessionStorage.removeItem("sol-exp-draft");}catch(e){}
     try{sessionStorage.removeItem(DRAFT_KEY);}catch(e){}
   },[user?.id]);
+  resetFormRef.current=resetForm;
+
+  /** Close detail/form via history when we pushed an overlay entry (keeps on-screen ← and hardware Back in sync). */
+  const dismissOverlay=useCallback(()=>{
+    if(typeof window!=="undefined"&&window.history.state&&window.history.state.overlay){
+      if(window.history.state.overlay==="new")resetForm();
+      window.history.back();
+      return;
+    }
+    if(panelRef.current==="new")resetForm();
+    setDetailId(null);
+    setPanel(null);
+  },[resetForm]);
+
+  /** Keep browser history aligned with open overlays (push on enter, replace on swap, back on UI close). */
+  useEffect(()=>{
+    if(!user||typeof window==="undefined")return;
+    if(histQuietRef.current){
+      histQuietRef.current=false;
+      return;
+    }
+    const active=
+      panel==="detail"&&detailId?{overlay:"detail",detailId:String(detailId)}:
+      panel==="new"&&view==="expenses"?{overlay:"new",detailId:null}:
+      null;
+    const prev=overlayHistRef.current;
+    const same=(!active&&!prev)||(!!active&&!!prev&&active.overlay===prev.overlay&&active.detailId===prev.detailId);
+    if(same)return;
+    const baseView=VALID_VIEWS.has(view)?view:"dashboard";
+    if(active&&!prev){
+      window.history.pushState({view:baseView,overlay:active.overlay,detailId:active.detailId},"","/"+baseView);
+      overlayHistRef.current=active;
+      return;
+    }
+    if(active&&prev){
+      window.history.replaceState({view:baseView,overlay:active.overlay,detailId:active.detailId},"","/"+baseView);
+      overlayHistRef.current=active;
+      return;
+    }
+    // UI closed overlay while the current history entry is still that overlay → consume it.
+    overlayHistRef.current=null;
+    const st=window.history.state;
+    if(st&&st.overlay&&prev&&st.overlay===prev.overlay&&String(st.detailId||"")===String(prev.detailId||"")){
+      histQuietRef.current=true;
+      window.history.back();
+    }
+  },[panel,detailId,view,user]);
+
   const openNew  =()=>{
     receiptAltHandlerRef.current=null;
     let nextForm=makeBlankForm("expense",{user});
@@ -10070,7 +10145,17 @@ function SolanaExpenses(){
   },0);
 
   const go=v=>{
-    setView(v);
+    const mapped=v==="serverSettings"?"settings":v;
+    const safeView=VALID_VIEWS.has(mapped)?mapped:"dashboard";
+    // Leaving an overlay via tab change: replace the overlay history entry so Back won't reopen it.
+    if((panel==="detail"||panel==="new")&&typeof window!=="undefined"&&window.history.state&&window.history.state.overlay){
+      histQuietRef.current=true;
+      overlayHistRef.current=null;
+      window.history.replaceState({view:safeView,overlay:null,detailId:null},"","/"+safeView);
+      setViewState(safeView);
+    }else{
+      setView(v);
+    }
     if(v!=="expenses"&&v!=="approvals"){
       setDetailId(null);
       setPanel(null);
@@ -10085,7 +10170,14 @@ function SolanaExpenses(){
     myExpFilterClearedRef.current=true;
     setExpFlt(["rejected"]);
     setSubmFlt([user.id]);
-    setView("expenses");
+    if(typeof window!=="undefined"&&window.history.state&&window.history.state.overlay){
+      histQuietRef.current=true;
+      overlayHistRef.current=null;
+      window.history.replaceState({view:"expenses",overlay:null,detailId:null},"","/expenses");
+      setViewState("expenses");
+    }else{
+      setView("expenses");
+    }
     setDetailId(null);
     setPanel(null);
   };
@@ -10119,7 +10211,7 @@ function SolanaExpenses(){
     deptApprovers,saveDeptApprovers,
     isAdmin,isApprover,getUser,ledgerLoading,
     view,setView,go,panel,setPanel,openNew,openNewInvoice,
-    detailId,setDetailId,
+    detailId,setDetailId,dismissOverlay,
     form,setForm,splitOn,setSplitOn,splits,setSplits,spMode,setSpMode,
     receipt,setReceipt,recPrev,setRecPrev,formError,setFormError,submitting,
     handleReceiptFile,calcEqual,fileRef,startCam,capturePhoto,stopCam,receiptAltHandlerRef,
@@ -10298,7 +10390,7 @@ function SolanaExpenses(){
         {panel==="new"&&view==="expenses"&&(
           <div className="mob-only" style={{position:"fixed",inset:0,background:"#F5F0EA",zIndex:100,display:"flex",flexDirection:"column"}}>
             <div className="mob-overlay-header" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
-              <button type="button" className="touch-icon-btn" aria-label="Volver" style={{border:"none",background:"none",color:"#FAF7F2",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>{resetForm();setPanel(null);}}>&#8592;</button>
+              <button type="button" className="touch-icon-btn" aria-label="Volver" style={{border:"none",background:"none",color:"#FAF7F2",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>dismissOverlay()}>&#8592;</button>
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#FAF7F2"}}>{form.expenseType==="invoice"?t("dash.newInvoice"):t("form.newExpense")}</div>
             </div>
             <div className="mob-overlay-body" style={{flex:1,overflowY:"auto",padding:12,paddingBottom:18}}><NewPanel/></div>
@@ -10309,7 +10401,7 @@ function SolanaExpenses(){
         {panel==="detail"&&detailId&&(
           <div className="mob-only panel-slide" style={{position:"fixed",inset:0,background:"#F5F0EA",zIndex:100,display:"flex",flexDirection:"column"}}>
             <div className="mob-overlay-header" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
-              <button type="button" className="touch-icon-btn" aria-label="Volver" style={{border:"none",background:"none",color:"#FAF7F2",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>{setDetailId(null);setPanel(null);}}>&#8592;</button>
+              <button type="button" className="touch-icon-btn" aria-label="Volver" style={{border:"none",background:"none",color:"#FAF7F2",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>dismissOverlay()}>&#8592;</button>
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,flex:1}}>{mobDetailTitle}</div>
             </div>
             <div className="mob-overlay-body" style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:12,paddingBottom:72}}><DetailPanel/></div>
