@@ -1235,8 +1235,92 @@ test.describe('D — Informes (Reports)', () => {
     await expect(page.getByTestId('chart-empty-disclaimer')).toHaveCount(0);
     await expect(page.getByTestId('chart-year-select')).toHaveCount(0);
     await expect(page.getByTestId('chart-year-label')).toHaveText('2026');
-    await expect(page.locator('.monthly-chart-wrap svg text').filter({ hasText: /^Ene$/i })).toBeVisible();
-    await expect(page.locator('.monthly-chart-wrap svg text').filter({ hasText: /^Dic$/i })).toBeVisible();
+    await expect(page.locator('.monthly-chart-wrap svg text').filter({ hasText: /^ene$/i })).toBeVisible();
+    await expect(page.locator('.monthly-chart-wrap svg text').filter({ hasText: /^dic$/i })).toBeVisible();
+    await expect(page.locator('.monthly-chart-wrap svg text').filter({ hasText: /No hay datos/i })).toHaveCount(0);
+    // Desktop keeps the value label on months with data
+    await expect(page.locator('.monthly-chart-wrap svg text').filter({ hasText: /100/ })).toBeVisible();
+    const svgBox = await page.locator('.monthly-chart-wrap svg').boundingBox();
+    const wrapBox = await page.locator('.monthly-chart-wrap').boundingBox();
+    expect(svgBox && wrapBox).toBeTruthy();
+    expect(Math.abs((svgBox?.width || 0) - (wrapBox?.width || 0))).toBeLessThan(4);
+  });
+
+  test('D5b) Mobile chart: abbreviated months, no value labels, no No hay datos', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await setupMockApi(page, {
+      expenses: [
+        {
+          id: 'exp_y2026_m',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          submittedBy: 'admin-1',
+          date: '2026-03-10',
+          description: 'Gasto mobile QA',
+          amount: 100,
+          amountEUR: 100,
+          currency: 'EUR',
+          category: 'Software',
+          status: 'approved',
+          expenseType: 'expense',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 100, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_ops',
+          auditTrailJson: '[]',
+          commentsJson: '[]',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+        {
+          id: 'inv_y2026_m',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          submittedBy: 'admin-1',
+          date: '2026-03-12',
+          description: 'Factura mobile QA',
+          amount: 50,
+          amountEUR: 50,
+          currency: 'EUR',
+          category: 'Software',
+          status: 'approved',
+          expenseType: 'invoice',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 50, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_ops',
+          auditTrailJson: '[]',
+          commentsJson: '[]',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ],
+    });
+    await loginAs(page, 'admin@solana.test');
+    await clickSidebarSection(page, 'Informes');
+    const chart = page.locator('.monthly-chart-wrap');
+    await expect(chart.locator('svg')).toBeVisible();
+    await expect(chart.locator('svg text').filter({ hasText: /^ene$/i })).toBeVisible();
+    await expect(chart.locator('svg text').filter({ hasText: /^dic$/i })).toBeVisible();
+    await expect(chart.locator('svg text').filter({ hasText: /No hay datos/i })).toHaveCount(0);
+    // Value labels hidden on mobile — amounts only via tooltip
+    await expect(chart.locator('svg text').filter({ hasText: /€/ })).toHaveCount(0);
+    const svgBox = await chart.locator('svg').boundingBox();
+    const wrapBox = await chart.boundingBox();
+    expect(svgBox && wrapBox).toBeTruthy();
+    expect(Math.abs((svgBox?.width || 0) - (wrapBox?.width || 0))).toBeLessThan(4);
+    // Tap a bar to show tooltip with Gastos + Facturas
+    const barHit = chart.locator('svg rect[fill="transparent"]').first();
+    await barHit.click({ force: true });
+    await expect(page.locator('.chart-tooltip')).toBeVisible();
+    await expect(page.locator('.chart-tooltip')).toContainText(/Gastos/i);
+    await expect(page.locator('.chart-tooltip')).toContainText(/Facturas/i);
   });
 
   test('D6) Multi-year data shows dropdown defaulting to latest year', async ({ page }) => {

@@ -152,9 +152,9 @@
       color:#4B5E52;
     }
     .monthly-chart-wrap{position:relative;width:100%}
-    .monthly-chart-scroll--fit{overflow-x:visible!important}
+    .monthly-chart-scroll--fit{overflow-x:hidden!important}
     .monthly-chart-inner--fit{min-width:0!important;width:100%!important}
-    .monthly-chart-svg--fit{min-width:0!important;width:100%!important}
+    .monthly-chart-svg--fit{min-width:0!important;width:100%!important;height:auto!important;display:block}
     .chart-tooltip{
       position:absolute;
       z-index:20;
@@ -420,7 +420,7 @@
       }
       /* Monthly chart — fit width, no side-scroll */
       .monthly-chart-scroll--fit{
-        overflow-x:visible!important;
+        overflow-x:hidden!important;
       }
       .monthly-chart-inner--fit{
         min-width:0!important;
@@ -429,6 +429,7 @@
       .monthly-chart-svg--fit{
         min-width:0!important;
         width:100%!important;
+        height:auto!important;
       }
       .chart-year-select{
         min-height:44px!important;
@@ -6420,8 +6421,7 @@ function ReportsView(){
     for(let mo=0;mo<12;mo++){
       const d=new Date(chartYear,mo,1);
       const ym=chartYear+"-"+String(mo+1).padStart(2,"0");
-      let label=d.toLocaleDateString("es-ES",{month:"short"}).replace(/\./g,"").trim();
-      label=label.charAt(0).toUpperCase()+label.slice(1);
+      let label=d.toLocaleDateString("es-ES",{month:"short"}).replace(/\./g,"").trim().toLowerCase();
       const rows=(displayExpenses||[]).filter(e=>effectiveDate(e).startsWith(ym));
       const gastos=rows.filter(e=>e.expenseType!=="invoice").reduce((s,e)=>s+eurForExpense(e),0);
       const facturas=rows.filter(e=>e.expenseType==="invoice").reduce((s,e)=>s+eurForExpense(e),0);
@@ -6431,21 +6431,21 @@ function ReportsView(){
   },[chartYear,displayExpenses]);
   const hasChartData=availableYears.length>0;
   const SLOT_COUNT=12;
-  const SIDE_PAD=8;
-  const barClusterFrac=0.34;
-  const CHART_W=SLOT_COUNT*40;
+  const SIDE_PAD=coarseMobile?4:12;
+  // Evenly distribute 12 slots across a wide viewBox; SVG scales to 100% width (no fixed px height).
+  const CHART_W=coarseMobile?360:720;
+  const barClusterFrac=coarseMobile?0.42:0.48;
   const GROUP_W=CHART_W/SLOT_COUNT;
-  const BAR_CLUSTER_W=GROUP_W*barClusterFrac;
-  const BAR_W=Math.max(4,BAR_CLUSTER_W);
+  const BAR_W=Math.max(coarseMobile?3:6,GROUP_W*barClusterFrac);
   const BAR_OFFSET=(GROUP_W-BAR_W)/2;
-  const CHART_H=160;
-  const TOP_PAD=36;
-  const LABEL_H=20;
+  const CHART_H=coarseMobile?140:168;
+  const TOP_PAD=coarseMobile?20:36;
+  const LABEL_H=coarseMobile?18:22;
   const SVG_H=TOP_PAD+CHART_H+LABEL_H;
   const SVG_W=CHART_W+SIDE_PAD*2;
   const maxVal=Math.max(...chartMonths.map(m=>m.total),1);
-  const chartMonthLabelFs=coarseMobile?9:10;
-  const chartValueLabelFs=coarseMobile?9:11;
+  const chartMonthLabelFs=coarseMobile?8:11;
+  const chartValueLabelFs=11;
   const positionChartTip=useCallback((clientX,clientY,index,m)=>{
     const wrap=chartWrapRef.current;
     if(!wrap)return;
@@ -6525,12 +6525,13 @@ function ReportsView(){
           </div>
         </div>
         <div ref={chartWrapRef} className="monthly-chart-wrap">
-        <div className="monthly-chart-scroll monthly-chart-scroll--fit" style={{width:"100%",minHeight:200,display:"block",overflowX:"visible"}}>
+        <div className="monthly-chart-scroll monthly-chart-scroll--fit" style={{width:"100%",display:"block",overflowX:"hidden"}}>
           <div className="monthly-chart-inner monthly-chart-inner--fit" style={{width:"100%",minWidth:0}}>
-          <svg className="monthly-chart-svg--fit" width="100%" height={SVG_H}
+          <svg className="monthly-chart-svg--fit" width="100%"
             viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+            preserveAspectRatio="xMidYMid meet"
             xmlns="http://www.w3.org/2000/svg"
-            style={{width:"100%",minHeight:200,display:"block",minWidth:0}}>
+            style={{width:"100%",height:"auto",display:"block",minWidth:0}}>
 
             {/* 4 gridlines */}
             {[0.25,0.5,0.75,1].map(f=>{
@@ -6549,6 +6550,7 @@ function ReportsView(){
               const gY = TOP_PAD + CHART_H - gH;
               const fY = gY - fH;
               const stackTop = fY;
+              const cx = SIDE_PAD + i * GROUP_W + GROUP_W / 2;
               const monthFrom=`${m.ym}-01`;
               const lastDay=new Date(Number(m.ym.slice(0,4)),Number(m.ym.slice(5,7)),0).getDate();
               const monthTo=`${m.ym}-${String(lastDay).padStart(2,"0")}`;
@@ -6582,16 +6584,16 @@ function ReportsView(){
               return (
                 <g key={m.ym}>
                   {m.total===0&&(
-                    <text
-                      x={SIDE_PAD + i * GROUP_W + GROUP_W / 2}
-                      y={TOP_PAD + CHART_H / 2}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fontSize="9"
-                      fill="#B8C4BC"
-                      opacity="0.85"
+                    <line
+                      x1={cx-Math.max(3,BAR_W*0.35)}
+                      y1={TOP_PAD+CHART_H}
+                      x2={cx+Math.max(3,BAR_W*0.35)}
+                      y2={TOP_PAD+CHART_H}
+                      stroke="#D8DFD9"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
                       pointerEvents="none"
-                    >No hay datos</text>
+                    />
                   )}
                   {gH>0&&(
                     <rect x={x} y={gY} width={BAR_W} height={gH}
@@ -6615,8 +6617,8 @@ function ReportsView(){
                       onClick={onBarClick}
                     />
                   )}
-                  {m.total>0&&<text
-                    x={SIDE_PAD + i * GROUP_W + GROUP_W / 2}
+                  {!coarseMobile&&m.total>0&&<text
+                    x={cx}
                     y={stackTop - 5}
                     textAnchor="middle"
                     fontSize={chartValueLabelFs}
@@ -6624,7 +6626,7 @@ function ReportsView(){
                     fontWeight="600"
                     pointerEvents="none"
                   >{fmt(m.total)}</text>}
-                  <text x={SIDE_PAD + i * GROUP_W + GROUP_W / 2} y={TOP_PAD+CHART_H+14}
+                  <text x={cx} y={TOP_PAD+CHART_H+14}
                     textAnchor="middle" fontSize={chartMonthLabelFs} fill="#9CAA9F" pointerEvents="none">
                     {m.label}
                   </text>
