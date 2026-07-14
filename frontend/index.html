@@ -6551,11 +6551,11 @@ function ReportsView(){
             xmlns="http://www.w3.org/2000/svg"
             style={{width:"100%",height:SVG_H,display:"block",minWidth:0}}>
 
-            {/* Subtle reference lines only — keep data-ink clean */}
-            {[0.5,1].map(f=>{
+            {/* Subtle mid-track reference lines — baseline drawn separately */}
+            {[1/3,2/3].map(f=>{
               const y = TOP_PAD + CHART_H * (1 - f);
               return <line key={f} x1="0" y1={y} x2={SVG_W} y2={y}
-                stroke="#EDE9E2" strokeWidth="1" strokeDasharray="4,5" opacity="0.85"/>;
+                stroke="#EDE9E2" strokeWidth="1" strokeDasharray="4,5" opacity="0.8"/>;
             })}
             {/* Baseline */}
             <line x1="0" y1={TOP_PAD+CHART_H} x2={SVG_W} y2={TOP_PAD+CHART_H}
