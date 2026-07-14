@@ -153,6 +153,128 @@
       .calendar-month-panel--dir-next.calendar-month-panel--enter.calendar-month-panel--active,.calendar-month-panel--dir-prev.calendar-month-panel--enter.calendar-month-panel--active{opacity:1}
       .calendar-month-panel--leave.calendar-month-panel--active{opacity:0.6}
     }
+    /* ── Mobile / touch readability (HIG 44pt · Material 48dp · WCAG 2.5.5) ── */
+    @media (max-width:767px),(pointer:coarse){
+      .auth-inp,.inp,select.inp,textarea.inp,input.inp{
+        font-size:16px!important;
+        min-height:44px;
+      }
+      .lbl{font-size:13px!important;}
+      .btn-primary,.auth-btn{
+        min-height:52px!important;
+        font-size:16px!important;
+        padding:12px 18px!important;
+      }
+      .btn-secondary,.btn-danger{
+        min-height:44px!important;
+        font-size:16px!important;
+        padding:10px 16px!important;
+      }
+      .btn-sm{
+        min-height:44px!important;
+        min-width:44px;
+        font-size:14px!important;
+        padding:8px 14px!important;
+      }
+      .touch-icon-btn{
+        min-width:44px!important;
+        min-height:44px!important;
+        padding:10px!important;
+        display:inline-flex!important;
+        align-items:center!important;
+        justify-content:center!important;
+        font-size:13px!important;
+      }
+      .touch-clear-link{
+        min-height:44px!important;
+        padding:10px 8px!important;
+        font-size:14px!important;
+      }
+      .filter-pill-btn{
+        min-height:44px!important;
+        font-size:14px!important;
+        padding:8px 12px!important;
+      }
+      .filter-pill-menu label{
+        min-height:44px;
+        padding:10px 12px!important;
+        font-size:16px!important;
+        gap:10px!important;
+      }
+      .filter-pill-menu input[type="checkbox"]{
+        width:18px;
+        height:18px;
+        flex-shrink:0;
+      }
+      .touch-chip{
+        min-height:44px!important;
+        padding:8px 14px!important;
+        font-size:13px!important;
+      }
+      .row-hover{
+        min-height:52px;
+        padding-top:12px!important;
+        padding-bottom:12px!important;
+      }
+      .touch-list-title{font-size:16px!important;}
+      .touch-list-meta{font-size:13px!important;}
+      .touch-list-amount{font-size:16px!important;}
+      .toast{font-size:14px!important;padding:12px 16px!important;}
+    }
+    @media (max-width:767px){
+      h1{font-size:18px!important;}
+      h2{font-size:16px!important;}
+      .card{padding:16px!important;}
+      .card.row-hover{padding:14px 16px!important;margin-bottom:10px!important;}
+      .mob-main-scroll{padding:16px 14px 96px!important;}
+      .mob-nav-item{
+        min-height:52px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        padding:10px 4px 8px!important;
+      }
+      .mob-nav-item span{font-size:13px!important;}
+      .mob-nav-item span span[style*="borderRadius:10"]{
+        min-width:18px!important;
+        min-height:18px!important;
+        font-size:9px!important;
+      }
+      .mob-header-bar{padding:10px 14px!important;}
+      .mob-header-bar .touch-icon-btn,.mob-header-bar button{
+        min-height:44px!important;
+      }
+      .mob-overlay-body{padding:16px!important;padding-bottom:80px!important;}
+      .mob-overlay-header{padding:10px 14px!important;}
+      .mob-overlay-header .touch-icon-btn{
+        min-width:44px!important;
+        min-height:44px!important;
+        font-size:22px!important;
+      }
+      .modal-panel .btn-primary,.modal-panel .btn-secondary,.modal-panel .btn-danger{
+        min-height:52px!important;
+        font-size:16px!important;
+      }
+      .expense-form-fields-wrap .lbl{font-size:13px!important;}
+      .expense-form-fields-wrap{font-size:16px;}
+    }
+    @media (max-width:767px),(pointer:coarse){
+      .mob-only .btn-primary,.mob-only .btn-secondary,.mob-only .btn-danger{
+        min-height:52px!important;
+      }
+      input[type="date"],input[type="email"],input[type="password"],input[type="text"],input[type="number"],select,textarea{
+        font-size:16px!important;
+      }
+      input[type="date"]{
+        min-height:44px;
+      }
+      .touch-cal-nav{
+        min-width:44px!important;
+        min-height:44px!important;
+        padding:8px 12px!important;
+        font-size:18px!important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -3813,7 +3935,7 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
               <input className="auth-inp" style={{...AUTH.inp,paddingRight:52}} type={showNw?"text":"password"} value={nw}
                 onChange={e=>{setNw(e.target.value);setMsg("");}}
                 onKeyDown={e=>e.key==="Enter"&&!saving&&doChange()} autoFocus disabled={saving||ok}/>
-              <button type="button" style={PW_TOGGLE_STYLE} onClick={()=>setShowNw(v=>!v)}>{showNw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+              <button type="button" className="touch-icon-btn" style={PW_TOGGLE_STYLE} onClick={()=>setShowNw(v=>!v)}>{showNw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
             </div>
           </div>
           <div style={{marginBottom:16}}>
@@ -3822,7 +3944,7 @@ function ForcePasswordChange({user, passwords, savePasswords, saveUsers, users, 
               <input className="auth-inp" style={{...AUTH.inp,paddingRight:52}} type={showCn?"text":"password"} value={cn}
                 onChange={e=>{setCn(e.target.value);setMsg("");}}
                 onKeyDown={e=>e.key==="Enter"&&!saving&&doChange()} disabled={saving||ok}/>
-              <button type="button" style={PW_TOGGLE_STYLE} onClick={()=>setShowCn(v=>!v)}>{showCn?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+              <button type="button" className="touch-icon-btn" style={PW_TOGGLE_STYLE} onClick={()=>setShowCn(v=>!v)}>{showCn?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
             </div>
           </div>
           {msg&&<div style={AUTH.errorBanner}>{msg}</div>}
@@ -4111,6 +4233,7 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
               />
               <button
                 type="button"
+                className="touch-icon-btn"
                 style={PW_TOGGLE_STYLE}
                 onClick={() => setShowPw(v => !v)}
               >
@@ -4123,6 +4246,7 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
           <div style={{ textAlign: "right", marginBottom: 18 }}>
             <button
               type="button"
+              className="touch-clear-link"
               onClick={() => { setForgotOpen(v => !v); clearMessages(); }}
               style={{ ...AUTH.link, fontSize: 11, color: "#9a7860" }}
             >
@@ -4163,6 +4287,7 @@ function LoginScreen({ users, onLogin, passwords, sessionRestoreAttempted }) {
           {/* Enviar */}
           <button
             type="button"
+            className="auth-btn"
             style={loading ? { ...AUTH.btnPrimary, ...AUTH.btnPrimaryLoading } : AUTH.btnPrimary}
             onMouseEnter={e => {
               if (!loading) Object.assign(e.currentTarget.style, AUTH.btnPrimaryHover);
@@ -5432,13 +5557,13 @@ function MultiFilterMenu({prefix,options,selected,onChange,allLabel,minWidth}){
   const summary=multiFilterSummary(prefix,selected,options,allLabel);
   return(
     <div ref={ref} style={{position:"relative",flexShrink:0}}>
-      <button type="button" className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:minWidth||120,cursor:"pointer",textAlign:"left",background:allActive?"#FAFAF9":"#FFF8F3",borderColor:allActive?"#DDD6CC":G,fontFamily:"inherit"}}
+      <button type="button" className="inp filter-pill-btn" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:minWidth||120,cursor:"pointer",textAlign:"left",background:allActive?"#FAFAF9":"#FFF8F3",borderColor:allActive?"#DDD6CC":G,fontFamily:"inherit"}}
         onClick={()=>setOpen(o=>!o)} aria-expanded={open}>
         {summary}
         <span style={{float:"right",color:"#9CAA9F",marginLeft:6,fontSize:9}}>{open?"▲":"▼"}</span>
       </button>
       {open&&(
-        <div style={{position:"absolute",top:"100%",left:0,marginTop:4,zIndex:30,background:"#fff",border:"1.5px solid #DDD6CC",borderRadius:7,boxShadow:"0 4px 14px rgba(0,0,0,0.08)",minWidth:Math.max(minWidth||140,160),padding:"4px 0"}}>
+        <div className="filter-pill-menu" style={{position:"absolute",top:"100%",left:0,marginTop:4,zIndex:30,background:"#fff",border:"1.5px solid #DDD6CC",borderRadius:7,boxShadow:"0 4px 14px rgba(0,0,0,0.08)",minWidth:Math.max(minWidth||140,160),padding:"4px 0"}}>
           <label style={{display:"flex",alignItems:"center",gap:7,padding:"5px 10px",fontSize:11,cursor:"pointer",color:"#4B5E52"}}>
             <input type="checkbox" checked={allActive} onChange={()=>onChange([])}/>
             <span>{allLabel}</span>
@@ -5506,7 +5631,7 @@ function ExpensesView(){
       <input className="inp" style={{width:"100%",padding:"7px 11px",fontSize:12,marginBottom:10,boxSizing:"border-box"}}
         placeholder={t("filter.codeSearch")} value={expSrc}
         onChange={e=>setExpSrc(e.target.value)}/>
-      <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+      <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:12,rowGap:10,columnGap:10}}>
         <MultiFilterMenu prefix="Estado" options={statusFilterOpts} selected={expFlt} onChange={setExpFlt} allLabel={t("filter.all")} minWidth={140}/>
         <MultiFilterMenu prefix="Tipo" options={kindFilterOpts} selected={expKindFlt} onChange={setExpKindFlt} allLabel={t("filter.all")} minWidth={130}/>
         <MultiFilterMenu prefix={t("filter.category")} options={catFilterOpts} selected={catFlt} onChange={setCatFlt} allLabel={t("filter.all")} minWidth={110}/>
@@ -5535,7 +5660,7 @@ function ExpensesView(){
           </div>
         </div>
         {(activeFilterCount>0||!!expSrc)&&(
-          <button type="button" style={{fontSize:11,color:T,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontWeight:600,textDecoration:"underline",textUnderlineOffset:2}}
+          <button type="button" className="touch-clear-link" style={{fontSize:11,color:T,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontWeight:600,textDecoration:"underline",textUnderlineOffset:2}}
             onClick={clearAllFilters}>
             {t("filter.clearFilters")}
           </button>
@@ -5563,7 +5688,7 @@ function ExpensesView(){
                 onClick={()=>{setDetailId(e.id);setPanel("detail");resetForm();}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                    <span style={{fontSize:12,fontWeight:600}}>{rowTitle}</span>
+                    <span className="touch-list-title" style={{fontSize:12,fontWeight:600}}>{rowTitle}</span>
                     {isInvRow&&(
                       <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:F,color:"#fff",flexShrink:0,display:"inline-block"}}>FACTURA</span>
                     )}
@@ -5583,7 +5708,7 @@ function ExpensesView(){
                     >{t("status."+st)}</span>
                     {splitPill(e.paidBy,t)}
                   </div>
-                  <div style={{fontSize:10,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                  <div className="touch-list-meta" style={{fontSize:10,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                     <span>{isInvRow&&e.dueDate?`${t("expenses.vence")} ${fmtDate(e.dueDate)}`:fmtDate(e.date)}</span>
                     <span>{t("filter.submitter")}: {submitterName} · {e.category}</span>
                   </div>
@@ -5599,7 +5724,7 @@ function ExpensesView(){
                         {(e.receiptType||e.receiptPath||"").includes("pdf")?"PDF":"IMG"}
                       </span>
                     )}
-                    <div style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(e)}</div>
+                    <div className="touch-list-amount" style={{fontSize:13,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(e)}</div>
                   </div>
                 </div>
               </div>
@@ -5731,7 +5856,7 @@ function ApprovalsView(){
         <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
-              <span style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{rowTitle}</span>
+              <span className="touch-list-title" style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{rowTitle}</span>
               <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,flexShrink:0,
                 background:isInv?"#EDE9FE":"#fde8d6",
                 color:isInv?F:G}}>
@@ -5739,41 +5864,45 @@ function ApprovalsView(){
               </span>
               {splitPill(item.paidBy,t)}
             </div>
-            <div style={{fontSize:10,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            <div className="touch-list-meta" style={{fontSize:10,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
               <span style={{color:"#9CAA9F"}}>{isInv?"Vence: ":""}{fmtDate(rowDate)} · {deptName} · </span>
               <span style={{color:"#4B5E52",fontWeight:600}}>{ownerName}</span>
             </div>
           </div>
-          <div style={{width:118,textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-            <div style={{fontSize:15,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums"}}>{fmtExpenseAmt(item)}</div>
-            <div style={{display:"flex",gap:5,alignItems:"center",justifyContent:"flex-end",flexWrap:"wrap",minHeight:22}}>
-              <span
-                className={statusToneClass(st)}
-                style={{
-                  padding:"1px 6px",
-                  borderRadius:11,
-                  fontSize:9,
-                  fontWeight:700,
-                  ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
-                }}
-              >
-                {t("status."+st)}
-              </span>
-            </div>
-            <div style={{minHeight:24,display:"flex",justifyContent:"flex-end",alignItems:"flex-start",width:"100%"}}>
-              {canActOnRow&&(
-                <button
-                  type="button"
-                  className="btn-sm"
-                  style={{fontSize:10,padding:"2px 8px"}}
-                  onClick={e => {
-                    e.stopPropagation();
-                    openApprovalDetail(item.id);
+          <div style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2,minWidth:132}}>
+            <div className="touch-list-amount" style={{fontSize:14,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums",lineHeight:1.2}}>{fmtExpenseAmt(item)}</div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+              <div style={{minWidth:62,display:"flex",justifyContent:"flex-end",alignItems:"center"}}>
+                {canActOnRow?(
+                  <button
+                    type="button"
+                    className="btn-sm"
+                    style={{fontSize:10,padding:"2px 8px"}}
+                    onClick={e => {
+                      e.stopPropagation();
+                      openApprovalDetail(item.id);
+                    }}
+                  >
+                    {t("action.review")}
+                  </button>
+                ):(
+                  <span style={{display:"inline-block",width:62,minHeight:1}} aria-hidden="true"/>
+                )}
+              </div>
+              <div style={{minWidth:62,display:"flex",justifyContent:"flex-end",alignItems:"center"}}>
+                <span
+                  className={statusToneClass(st)}
+                  style={{
+                    padding:"1px 6px",
+                    borderRadius:11,
+                    fontSize:9,
+                    fontWeight:700,
+                    ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
                   }}
                 >
-                  {t("action.review")}
-                </button>
-              )}
+                  {t("status."+st)}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -5827,7 +5956,7 @@ function ApprovalsView(){
             const border=active?(k==="invoice"?F:G):"#DDD6CC";
             const color=active?"#fff":"#4B5E52";
             return(
-              <button key={k} type="button" style={{padding:"3px 12px",borderRadius:18,fontSize:11,fontWeight:600,border:`1.5px solid ${border}`,background:fill,color,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setTypeFilter(k)}>
+              <button key={k} type="button" className="touch-chip" style={{padding:"3px 12px",borderRadius:18,fontSize:11,fontWeight:600,border:`1.5px solid ${border}`,background:fill,color,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setTypeFilter(k)}>
                 {lb} ({cnt})
               </button>
             );
@@ -5974,12 +6103,12 @@ function PaymentCalendar({reportExpenses}){
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,gap:4}}>
-        <button style={{border:"none",background:"#F5F0EA",borderRadius:6,padding:"4px 10px",fontSize:14,cursor:"pointer",fontWeight:600,marginTop:2,flexShrink:0}} onClick={()=>navigateMonth(-1)}>‹</button>
+        <button type="button" className="touch-cal-nav" style={{border:"none",background:"#F5F0EA",borderRadius:6,padding:"4px 10px",fontSize:14,cursor:"pointer",fontWeight:600,marginTop:2,flexShrink:0}} onClick={()=>navigateMonth(-1)}>‹</button>
         <div className="calendar-month-viewport" style={{flex:1,minWidth:0}}>
           {leaving&&renderMonthPanel(leaving.date,true)}
           {renderMonthPanel(cur,false)}
         </div>
-        <button style={{border:"none",background:"#F5F0EA",borderRadius:6,padding:"4px 10px",fontSize:14,cursor:"pointer",fontWeight:600,marginTop:2,flexShrink:0}} onClick={()=>navigateMonth(1)}>›</button>
+        <button type="button" className="touch-cal-nav" style={{border:"none",background:"#F5F0EA",borderRadius:6,padding:"4px 10px",fontSize:14,cursor:"pointer",fontWeight:600,marginTop:2,flexShrink:0}} onClick={()=>navigateMonth(1)}>›</button>
       </div>
       {selDay!=null&&(
         <div style={{marginTop:10,background:"#F5F0EA",borderRadius:8,padding:"10px 12px"}}>
@@ -7605,7 +7734,7 @@ function SettingsView(){
               <label className="lbl">{t("label.currentPassword")}</label>
               <div style={{position:"relative"}}>
                 <input className="inp" style={{paddingRight:52}} type={showPwCur?"text":"password"} value={pwForm.cur} onChange={e=>setPwForm(p=>({...p,cur:e.target.value}))} autoComplete="current-password"/>
-                <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwCur(v=>!v)}>{showPwCur?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+                <button type="button" className="touch-icon-btn" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwCur(v=>!v)}>{showPwCur?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
               </div>
             </div>
           )}
@@ -7613,14 +7742,14 @@ function SettingsView(){
             <label className="lbl">{t("label.newPassword")}</label>
             <div style={{position:"relative"}}>
               <input className="inp" style={{paddingRight:52}} type={showPwNw?"text":"password"} value={pwForm.nw} onChange={e=>setPwForm(p=>({...p,nw:e.target.value}))} autoComplete="new-password"/>
-              <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwNw(v=>!v)}>{showPwNw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+              <button type="button" className="touch-icon-btn" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwNw(v=>!v)}>{showPwNw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
             </div>
           </div>
           <div>
             <label className="lbl">{t("label.confirmPassword")}</label>
             <div style={{position:"relative"}}>
               <input className="inp" style={{paddingRight:52}} type={showPwCn?"text":"password"} value={pwForm.cn} onChange={e=>setPwForm(p=>({...p,cn:e.target.value}))} autoComplete="new-password"/>
-              <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwCn(v=>!v)}>{showPwCn?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+              <button type="button" className="touch-icon-btn" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowPwCn(v=>!v)}>{showPwCn?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
             </div>
           </div>
         </div>
@@ -7760,7 +7889,7 @@ function SettingsView(){
                   <label className="lbl">{t("label.tempPassword")}</label>
                   <div style={{position:"relative",marginBottom:8}}>
                     <input className="inp" style={{fontSize:14,paddingRight:52}} type={showResetPw?"text":"password"} value={resetPwInput} onChange={e=>setResetPwInput(e.target.value)} placeholder="mín. 8 caracteres"/>
-                    <button type="button" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowResetPw(v=>!v)}>{showResetPw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
+                    <button type="button" className="touch-icon-btn" style={SETTINGS_PW_TOGGLE_STYLE} onClick={()=>setShowResetPw(v=>!v)}>{showResetPw?t("login.hidePw")||"Ocultar":t("login.showPw")||"Ver"}</button>
                   </div>
                   <div style={{display:"flex",gap:6}}>
                     <button type="button" className="btn-primary" style={{flex:1,fontSize:11,padding:"5px 8px"}} disabled={resetBusy} onClick={async()=>{
@@ -9709,7 +9838,7 @@ function SolanaExpenses(){
     <Ctx.Provider value={ctxVal}>
       <div style={{display:"flex",height:"100vh",width:"100vw",fontFamily:"'DM Sans',system-ui,sans-serif",background:"#F5F0EA",color:"#1a1008",overflow:"hidden",WebkitOverflowScrolling:"touch"}}>
         {AUTH_URL&&!online&&(
-          <div style={{position:"fixed",top:0,left:0,right:0,zIndex:7500,background:"rgba(245,240,234,0.95)",color:"#6b4a38",fontSize:11,padding:"7px 14px",textAlign:"center",borderBottom:"1px solid rgba(204,78,0,0.1)",fontWeight:500}}>
+          <div style={{position:"fixed",top:0,left:0,right:0,zIndex:7500,background:"rgba(245,240,234,0.95)",color:"#6b4a38",fontSize:11,padding:"7px 14px",textAlign:"center",borderBottom:"1px solid rgba(204,78,0,0.1)",fontWeight:500,pointerEvents:"none"}}>
             Sin conexión, los cambios se guardarán localmente
           </div>
         )}
@@ -9821,7 +9950,7 @@ function SolanaExpenses(){
         {/* Content area */}
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0,minHeight:0}}>
           {/* Mobile header */}
-          <div className="mob-only" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+          <div className="mob-only mob-header-bar" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="light" size="sm"/></div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <button type="button" onClick={()=>go("settings")} style={{flexShrink:0,maxWidth:140,padding:"4px 8px",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit"}} aria-label={t("nav.settings")}>
@@ -9831,7 +9960,7 @@ function SolanaExpenses(){
           </div>
 
           <div style={{flex:1,overflow:"hidden",display:"flex",minWidth:0,minHeight:0}}>
-            <div style={{flex:1,overflowY:"auto",padding:"14px 12px 80px",minWidth:0,WebkitOverflowScrolling:"touch"}}>
+            <div className="mob-main-scroll" style={{flex:1,overflowY:"auto",padding:"14px 12px 80px",minWidth:0,WebkitOverflowScrolling:"touch"}}>
               {view==="dashboard"&&<DashboardView/>}
               {view==="expenses" &&<ExpensesView/>}
               {view==="approvals"&&<ApprovalsView/>}
@@ -9848,7 +9977,7 @@ function SolanaExpenses(){
           {/* Mobile bottom nav — badge inline, no absolute positioning */}
           <div className="mob-only" style={{background:"#fff",borderTop:"1px solid #E5DDD2",display:"flex",flexShrink:0,position:"fixed",bottom:0,left:0,right:0,zIndex:50}}>
             {mobNav.map(n=>(
-              <div key={n.id} style={{flex:1,padding:"8px 2px 6px",textAlign:"center",cursor:"pointer",borderTop:`2px solid ${view===n.id?G:"transparent"}`}} onClick={()=>go(n.id)}>
+              <div key={n.id} className="mob-nav-item" style={{flex:1,padding:"8px 2px 6px",textAlign:"center",cursor:"pointer",borderTop:`2px solid ${view===n.id?G:"transparent"}`}} onClick={()=>go(n.id)}>
                 <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4,fontSize:11,fontWeight:view===n.id?700:500,color:view===n.id?G:"#6B7B72",maxWidth:"100%"}}>
                   <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.label}</span>
                   {n.badge>0&&<span style={{background:BL,color:"#fff",borderRadius:10,minWidth:14,height:14,padding:"0 3px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
@@ -9861,22 +9990,22 @@ function SolanaExpenses(){
         {/* Mobile new expense overlay */}
         {panel==="new"&&view==="expenses"&&(
           <div className="mob-only" style={{position:"fixed",inset:0,background:"#F5F0EA",zIndex:100,display:"flex",flexDirection:"column"}}>
-            <div style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
-              <button style={{border:"none",background:"none",color:"#FAF7F2",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>{resetForm();setPanel(null);}}>&#8592;</button>
+            <div className="mob-overlay-header" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
+              <button type="button" className="touch-icon-btn" aria-label="Volver" style={{border:"none",background:"none",color:"#FAF7F2",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>{resetForm();setPanel(null);}}>&#8592;</button>
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#FAF7F2"}}>{form.expenseType==="invoice"?t("dash.newInvoice"):t("form.newExpense")}</div>
             </div>
-            <div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:18}}><NewPanel/></div>
+            <div className="mob-overlay-body" style={{flex:1,overflowY:"auto",padding:12,paddingBottom:18}}><NewPanel/></div>
           </div>
         )}
 
         {/* Mobile expense detail overlay */}
         {panel==="detail"&&detailId&&(
           <div className="mob-only panel-slide" style={{position:"fixed",inset:0,background:"#F5F0EA",zIndex:100,display:"flex",flexDirection:"column"}}>
-            <div style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
-              <button type="button" aria-label="Volver" style={{border:"none",background:"none",color:"#FAF7F2",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>{setDetailId(null);setPanel(null);}}>&#8592;</button>
+            <div className="mob-overlay-header" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
+              <button type="button" className="touch-icon-btn" aria-label="Volver" style={{border:"none",background:"none",color:"#FAF7F2",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>{setDetailId(null);setPanel(null);}}>&#8592;</button>
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,flex:1}}>{mobDetailTitle}</div>
             </div>
-            <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:12,paddingBottom:72}}><DetailPanel/></div>
+            <div className="mob-overlay-body" style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:12,paddingBottom:72}}><DetailPanel/></div>
           </div>
         )}
 

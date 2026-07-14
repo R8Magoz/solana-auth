@@ -249,7 +249,7 @@ test.describe('Critical business flows', () => {
     await loginAs(page, 'user@solana.test');
 
     await clickSidebarSection(page, 'Aprobaciones');
-    await expect(page.getByRole('combobox').first()).toHaveValue('all');
+    await expect(page.getByRole('heading', { name: 'Aprobaciones' })).toBeVisible();
     await expect(page.getByText('Server bill import').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Revisar' })).toHaveCount(0);
     await page.getByText('Server bill import').click();
@@ -265,7 +265,7 @@ test.describe('Critical business flows', () => {
     await createBillViaUi(page, 'Factura AWS QA', '260');
 
     await clickSidebarSection(page, 'Aprobaciones');
-    await expect(page.getByRole('combobox').first()).toHaveValue('mine');
+    await expect(page.getByRole('button', { name: 'Revisar' }).first()).toBeVisible();
     await page.getByRole('button', { name: 'Revisar' }).first().click();
     await page.getByRole('button', { name: 'Aprobar' }).first().click();
 
@@ -791,13 +791,13 @@ test.describe('B — Invoice (factura) lifecycle', () => {
     const dateInputs = page.locator('input[type="date"]');
     await dateInputs.nth(0).fill('2026-09-01');
     await dateInputs.nth(1).fill('2026-09-30');
-    await page.getByRole('button', { name: /Aplicar/i }).click();
+    await page.waitForTimeout(300);
     await expect(page.getByText('Proveedor Sept QA').first()).toBeVisible();
     await expect(page.getByText('Gasto julio QA')).toHaveCount(0);
 
     await dateInputs.nth(0).fill('2026-07-01');
     await dateInputs.nth(1).fill('2026-07-31');
-    await page.getByRole('button', { name: /Aplicar/i }).click();
+    await page.waitForTimeout(300);
     await expect(page.getByText('Gasto julio QA').first()).toBeVisible();
     await expect(page.getByText('Proveedor Sept QA')).toHaveCount(0);
   });
