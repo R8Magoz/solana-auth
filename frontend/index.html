@@ -6637,15 +6637,17 @@ function ReportsView(){
                   )}
                   {!coarseMobile&&m.total>0&&<text
                     x={cx}
-                    y={stackTop - 5}
+                    y={stackTop - 4}
                     textAnchor="middle"
                     fontSize={chartValueLabelFs}
-                    fill="#4B5E52"
-                    fontWeight="600"
+                    fill="#6B7B72"
+                    fontWeight="500"
+                    fontFamily="DM Sans, system-ui, sans-serif"
                     pointerEvents="none"
                   >{fmt(m.total)}</text>}
-                  <text x={cx} y={TOP_PAD+CHART_H+14}
-                    textAnchor="middle" fontSize={chartMonthLabelFs} fill="#9CAA9F" pointerEvents="none">
+                  <text x={cx} y={TOP_PAD+CHART_H+13}
+                    textAnchor="middle" fontSize={chartMonthLabelFs} fill="#9CAA9F"
+                    fontFamily="DM Sans, system-ui, sans-serif" pointerEvents="none">
                     {m.label}
                   </text>
                 </g>
