@@ -319,22 +319,25 @@ export async function assertPostRefetchStatus(
   await expect(panel.getByText(statusPattern).first()).toBeVisible();
 }
 
+const DEFAULT_MOCK_DEPARTMENTS: DeptRow[] = [
+  { id: 'dept_ops', name: 'Operaciones', budget: 3000, archived: false, createdAt: Date.now() },
+  { id: 'dept_fin', name: 'Finanzas', budget: 5000, archived: false, createdAt: Date.now() },
+  { id: 'dept_estrategia', name: 'Estrategia', budget: 4000, archived: false, createdAt: Date.now() },
+];
+
 export function createMockApiState(
   seed?: {
     expenses?: ExpenseRow[];
     users?: User[];
     settingsCategories?: unknown[];
     departmentApprovers?: Record<string, string[]>;
+    departments?: DeptRow[];
   },
 ): MockApiState {
   return {
     users: seed?.users ?? makeUsers(),
     expenses: seed?.expenses ?? [],
-    departments: [
-      { id: 'dept_ops', name: 'Operaciones', budget: 3000, archived: false, createdAt: Date.now() },
-      { id: 'dept_fin', name: 'Finanzas', budget: 5000, archived: false, createdAt: Date.now() },
-      { id: 'dept_estrategia', name: 'Estrategia', budget: 4000, archived: false, createdAt: Date.now() },
-    ],
+    departments: seed?.departments ?? DEFAULT_MOCK_DEPARTMENTS,
     tokens: new Map<string, { userId: string; role: string }>(),
     passwords: new Map<string, string>(Object.entries(PASSWORDS)),
     settings: {
@@ -892,6 +895,7 @@ export async function setupMockApi(
     users?: User[];
     settingsCategories?: unknown[];
     departmentApprovers?: Record<string, string[]>;
+    departments?: DeptRow[];
   },
 ): Promise<MockApiState> {
   const state = createMockApiState(seed);

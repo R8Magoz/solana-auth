@@ -941,8 +941,10 @@ test.describe('C — Permissions and profile', () => {
     await setupMockApi(page, {
       departmentApprovers: { dept_branding: ['user-1'] },
       departments: [
-        { id: 'dept_branding', name: 'Branding', budget: 10000, archived: false, createdAt: Date.now(), approverIds: ['user-1'] },
-        ...defaultMockDepartments(),
+        { id: 'dept_branding', name: 'Branding', budget: 10000, archived: false, createdAt: Date.now() },
+        { id: 'dept_ops', name: 'Operaciones', budget: 3000, archived: false, createdAt: Date.now() },
+        { id: 'dept_fin', name: 'Finanzas', budget: 5000, archived: false, createdAt: Date.now() },
+        { id: 'dept_estrategia', name: 'Estrategia', budget: 4000, archived: false, createdAt: Date.now() },
       ],
       expenses: [
         {
