@@ -120,6 +120,21 @@
     .sidebar-user-menu__item:hover{background:rgba(250,247,242,0.12)}
     .sidebar-user-menu__item--destructive{color:rgba(250,247,242,0.92)}
     .sidebar-user-menu__item--destructive:hover{background:rgba(220,38,38,0.18);color:#fecaca}
+    /* Aprobaciones card layout (desktop defaults via inline; mobile overrides below) */
+    .approval-card-action-cluster{
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:8px;
+      flex-shrink:0;
+    }
+    .approval-review-slot{
+      display:inline-block;
+      min-width:62px;
+      min-height:1px;
+      flex-shrink:0;
+    }
+    .chart-range-toggle{display:none}
     .calendar-month-viewport{position:relative;overflow:hidden}
     .calendar-month-panel{width:100%;transition:transform 250ms cubic-bezier(0.4,0,0.2,1),opacity 250ms cubic-bezier(0.4,0,0.2,1);will-change:transform,opacity}
     .calendar-month-panel--enter{position:relative;z-index:2}
@@ -274,6 +289,118 @@
         padding:8px 12px!important;
         font-size:18px!important;
       }
+      /* Aprobaciones card — aligned action row on mobile */
+      .approval-card-layout{
+        display:grid!important;
+        grid-template-columns:1fr auto!important;
+        grid-template-rows:auto auto!important;
+        gap:6px 8px!important;
+        align-items:start!important;
+      }
+      .approval-card-body{grid-column:1;grid-row:1;min-width:0}
+      .approval-card-side{display:contents!important}
+      .approval-card-amount{grid-column:2;grid-row:1;justify-self:end}
+      .approval-card-action{
+        grid-column:1/-1;
+        grid-row:2;
+        display:flex!important;
+        align-items:center!important;
+        justify-content:flex-end!important;
+        gap:8px!important;
+        margin-top:0!important;
+        width:100%!important;
+      }
+      .approval-review-btn{
+        min-height:44px!important;
+        min-width:72px!important;
+        padding:8px 14px!important;
+        font-size:14px!important;
+      }
+      .approval-review-slot{
+        min-width:72px!important;
+        min-height:44px!important;
+      }
+      /* Gastos / Informes header action pair */
+      .page-header-actions{
+        width:100%;
+        display:flex!important;
+        gap:9px!important;
+        flex-wrap:nowrap!important;
+      }
+      .page-header-actions .btn-primary,
+      .page-header-actions .btn-secondary{
+        flex:1 1 0!important;
+        min-height:44px!important;
+        font-size:14px!important;
+        padding:10px 12px!important;
+        text-align:center;
+        white-space:nowrap;
+      }
+      .page-export-btn{
+        min-height:44px!important;
+        font-size:14px!important;
+        padding:10px 16px!important;
+      }
+      /* Monthly chart — fit width, no side-scroll */
+      .monthly-chart-scroll--fit{
+        overflow-x:visible!important;
+      }
+      .monthly-chart-inner--fit{
+        min-width:0!important;
+        width:100%!important;
+      }
+      .monthly-chart-svg--fit{
+        min-width:0!important;
+        width:100%!important;
+      }
+      .chart-range-toggle{display:inline-flex;gap:4px;margin-left:auto;flex-shrink:0}
+      .chart-range-toggle button{
+        min-height:32px;
+        padding:4px 10px;
+        font-size:11px;
+        font-weight:600;
+        border-radius:14px;
+        border:1.5px solid #DDD6CC;
+        background:#fff;
+        color:#4B5E52;
+        cursor:pointer;
+        font-family:inherit;
+      }
+      .chart-range-toggle button.chart-range-toggle--active{
+        border-color:var(--color-accent);
+        background:var(--color-accent);
+        color:#fff;
+      }
+      /* Payment calendar — full-width touch cells */
+      .payment-cal-grid{
+        gap:3px!important;
+      }
+      .payment-cal-weekday{
+        font-size:10px!important;
+        padding:4px 0!important;
+      }
+      .payment-cal-cell{
+        aspect-ratio:1!important;
+        min-height:44px!important;
+        min-width:0!important;
+        padding:4px 2px!important;
+        display:flex!important;
+        flex-direction:column!important;
+        align-items:center!important;
+        justify-content:flex-start!important;
+      }
+      .payment-cal-cell-day{
+        font-size:14px!important;
+        line-height:1.2!important;
+      }
+      .payment-cal-dots{
+        gap:2px!important;
+        margin-top:3px!important;
+      }
+      .payment-cal-dot{
+        width:8px!important;
+        height:8px!important;
+      }
     }
   </style>
 </head>
@@ -290,6 +417,18 @@
    State shared via React.createContext
 ───────────────────────────────────────────────────────────────────────────── */
 const{useState,useEffect,useRef,useCallback,useMemo,createContext,useContext}=React;
+
+function useCoarseMobile(){
+  const [coarse,setCoarse]=useState(()=>typeof window!=="undefined"&&window.matchMedia("(max-width:767px),(pointer:coarse)").matches);
+  useEffect(()=>{
+    const mq=window.matchMedia("(max-width:767px),(pointer:coarse)");
+    const onChange=()=>setCoarse(mq.matches);
+    onChange();
+    mq.addEventListener("change",onChange);
+    return()=>mq.removeEventListener("change",onChange);
+  },[]);
+  return coarse;
+}
 
 /** Persist state in sessionStorage (tab session only). Removes key when value equals default. */
 function useSessionState(key,defaultVal){
@@ -5619,11 +5758,11 @@ function ExpensesView(){
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:8}}>
-        <div style={{minWidth:0}}>
+        <div style={{minWidth:0,flex:"1 1 100%"}}>
           <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.expenses")}</h1>
           <p style={{fontSize:13,color:"#6B7B72",margin:0}}>{t("page.expensesDefBody")}</p>
         </div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
+        <div className="page-header-actions" style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
           <button type="button" className="btn-primary" style={{fontSize:11,padding:"4px 12px",background:T}} onClick={openNew}>{t("action.newExpense")}</button>
           <button type="button" className="btn-secondary" style={{fontSize:11,padding:"4px 12px",borderColor:T,color:T}} disabled={filtered.length===0} onClick={exportFilteredXlsx}>{t("action.exportXLSX")}</button>
         </div>
@@ -5853,8 +5992,8 @@ function ApprovalsView(){
     const showVoteFooter=st==="pending"&&rowApproverIds.length>0;
     return(
       <div key={item.id} className="card row-hover" style={{marginBottom:6,padding:"11px 14px",background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={()=>openApprovalDetail(item.id)}>
-        <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-          <div style={{flex:1,minWidth:0}}>
+        <div className="approval-card-layout" style={{display:"flex",alignItems:"flex-start",gap:10}}>
+          <div className="approval-card-body" style={{flex:1,minWidth:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
               <span className="touch-list-title" style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{rowTitle}</span>
               <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,flexShrink:0,
@@ -5869,27 +6008,10 @@ function ApprovalsView(){
               <span style={{color:"#4B5E52",fontWeight:600}}>{ownerName}</span>
             </div>
           </div>
-          <div style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2,minWidth:132}}>
-            <div className="touch-list-amount" style={{fontSize:14,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums",lineHeight:1.2}}>{fmtExpenseAmt(item)}</div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
-              <div style={{minWidth:62,display:"flex",justifyContent:"flex-end",alignItems:"center"}}>
-                {canActOnRow?(
-                  <button
-                    type="button"
-                    className="btn-sm"
-                    style={{fontSize:10,padding:"2px 8px"}}
-                    onClick={e => {
-                      e.stopPropagation();
-                      openApprovalDetail(item.id);
-                    }}
-                  >
-                    {t("action.review")}
-                  </button>
-                ):(
-                  <span style={{display:"inline-block",width:62,minHeight:1}} aria-hidden="true"/>
-                )}
-              </div>
-              <div style={{minWidth:62,display:"flex",justifyContent:"flex-end",alignItems:"center"}}>
+          <div className="approval-card-side" style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2,minWidth:132}}>
+            <div className="approval-card-amount touch-list-amount" style={{fontSize:14,fontWeight:700,color:G,fontVariantNumeric:"tabular-nums",lineHeight:1.2}}>{fmtExpenseAmt(item)}</div>
+            <div className="approval-card-action">
+              <div className="approval-card-action-cluster">
                 <span
                   className={statusToneClass(st)}
                   style={{
@@ -5902,6 +6024,21 @@ function ApprovalsView(){
                 >
                   {t("status."+st)}
                 </span>
+                {canActOnRow?(
+                  <button
+                    type="button"
+                    className="btn-sm approval-review-btn"
+                    style={{fontSize:10,padding:"2px 8px"}}
+                    onClick={e => {
+                      e.stopPropagation();
+                      openApprovalDetail(item.id);
+                    }}
+                  >
+                    {t("action.review")}
+                  </button>
+                ):(
+                  <span className="approval-review-slot" aria-hidden="true"/>
+                )}
               </div>
             </div>
           </div>
@@ -6084,15 +6221,15 @@ function PaymentCalendar({reportExpenses}){
             <div style={{fontSize:10,color:"#6B7B72",marginTop:2,fontVariantNumeric:"tabular-nums"}}>{t("cal.monthProjected",{amount:fmt(md.monthProjected)})}</div>
           )}
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:3,marginTop:12}}>
-          {dayLabels.map((d,i)=><div key={i} style={{textAlign:"center",fontSize:8,fontWeight:600,color:"#9CAA9F",padding:"2px 0"}}>{d}</div>)}
+        <div className="payment-cal-weekdays" style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:3,marginTop:12}}>
+          {dayLabels.map((d,i)=><div key={i} className="payment-cal-weekday" style={{textAlign:"center",fontSize:8,fontWeight:600,color:"#9CAA9F",padding:"2px 0"}}>{d}</div>)}
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+        <div className="payment-cal-grid" style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
           {md.cells.map((d,i)=>(
-            <div key={i} onClick={()=>!isLeave&&d&&setSelDay(selDay===d?null:d)} style={{minHeight:32,borderRadius:5,background:d&&isToday(d)?"rgba(204,78,0,0.08)":d&&md.events[d]?"#FFFBF5":"#FAFAF8",border:d&&isToday(d)?`1.5px solid ${G}`:!isLeave&&d&&selDay===d?"1.5px solid "+T:"1px solid transparent",padding:"3px 2px",cursor:!isLeave&&d?"pointer":"default",transition:"border 0.1s"}}>
-              {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(md.events[d]||[]).map((ev,j)=>{
+            <div key={i} className="payment-cal-cell" onClick={()=>!isLeave&&d&&setSelDay(selDay===d?null:d)} style={{minHeight:32,borderRadius:5,background:d&&isToday(d)?"rgba(204,78,0,0.08)":d&&md.events[d]?"#FFFBF5":"#FAFAF8",border:d&&isToday(d)?`1.5px solid ${G}`:!isLeave&&d&&selDay===d?"1.5px solid "+T:"1px solid transparent",padding:"3px 2px",cursor:!isLeave&&d?"pointer":"default",transition:"border 0.1s"}}>
+              {d&&<><div className="payment-cal-cell-day" style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div className="payment-cal-dots" style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(md.events[d]||[]).map((ev,j)=>{
                 const dotColor=ev.type==="invoice"?F:G;
-                return <div key={j} title={ev.virtual?`${ev.label} (${t("cal.projected")})`:ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.virtual?"transparent":dotColor,border:ev.virtual?`1.5px solid ${dotColor}`:"none",boxSizing:"border-box"}}/>;
+                return <div key={j} className="payment-cal-dot" title={ev.virtual?`${ev.label} (${t("cal.projected")})`:ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.virtual?"transparent":dotColor,border:ev.virtual?`1.5px solid ${dotColor}`:"none",boxSizing:"border-box"}}/>;
               })}</div></>}
             </div>
           ))}
@@ -6155,6 +6292,11 @@ function reportsApiDateRange(){
 }
 function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDateFrom,setDateTo,setDetailId,setPanel,resetForm,departments}=useApp();
+  const coarseMobile=useCoarseMobile();
+  const [chartSpan,setChartSpan]=useState(()=>(typeof window!=="undefined"&&window.matchMedia("(max-width:767px),(pointer:coarse)").matches)?6:12);
+  useEffect(()=>{
+    if(coarseMobile)setChartSpan(s=>s===12?6:s);
+  },[coarseMobile]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [ivaFilter, setIvaFilter] = useState("with");
   const displayExpenses = (expenses || []).filter(e => {
@@ -6231,15 +6373,18 @@ function ReportsView(){
     }
     return{months:fullMonthlyData,sparse:false,dataMonthCount};
   },[fullMonthlyData]);
-  const chartMonths = monthlyChart.months;
+  const desktopChartMonths=monthlyChart.months;
+  const chartMonths=coarseMobile
+    ?(chartSpan===6?fullMonthlyData.slice(-6):fullMonthlyData)
+    :desktopChartMonths;
   const SLOT_COUNT = chartMonths.length;
   const SIDE_PAD = 8;
-  const useWideBars = monthlyChart.dataMonthCount>0 && monthlyChart.dataMonthCount<4;
+  const useWideBars = !coarseMobile && monthlyChart.dataMonthCount>0 && monthlyChart.dataMonthCount<4;
   const barClusterFrac = useWideBars ? 0.5 : 0.3;
-  const MIN_BAR_USER = 40;
+  const MIN_BAR_USER = coarseMobile ? 28 : 40;
   const minBarForSizing = useWideBars ? MIN_BAR_USER : 3;
   const minChartWForBars = SLOT_COUNT*minBarForSizing/barClusterFrac;
-  const CHART_W = Math.max(960, minChartWForBars);
+  const CHART_W = coarseMobile ? SLOT_COUNT*48 : Math.max(960, minChartWForBars);
   const GROUP_W = CHART_W / SLOT_COUNT;
   const BAR_CLUSTER_W = GROUP_W * barClusterFrac;
   const BAR_W = Math.max(3, BAR_CLUSTER_W);
@@ -6250,7 +6395,9 @@ function ReportsView(){
   const SVG_H = TOP_PAD + CHART_H + LABEL_H;
   const SVG_W = CHART_W + SIDE_PAD * 2;
   const maxVal = Math.max(...chartMonths.map(m => m.total), 1);
-  const chartMinWidthPx = Math.ceil(SVG_W);
+  const chartMinWidthPx = coarseMobile ? undefined : Math.ceil(SVG_W);
+  const chartMonthLabelFs = coarseMobile ? 10 : 9;
+  const chartValueLabelFs = coarseMobile ? 10 : 11;
   const exportExcel=()=>{
     void downloadExpensesXlsx(displayExpenses,{tag:statusFilter,t,user,saveExp,expenses});
     dispatchSolanaToast(t("action.exportXLSX"),"success",3000);
@@ -6272,14 +6419,24 @@ function ReportsView(){
             <option value="both">Con y sin IVA</option>
             <option value="without">Sin IVA</option>
           </select>
-          <button type="button" className="btn-secondary" style={{fontSize:11,padding:"4px 12px"}} disabled={displayExpenses.length===0} onClick={exportExcel}>{t("action.exportXLSX")}</button>
+          <button type="button" className="btn-secondary page-export-btn" style={{fontSize:11,padding:"4px 12px"}} disabled={displayExpenses.length===0} onClick={exportExcel}>{t("action.exportXLSX")}</button>
         </div>
       </div>
       <div className="card" style={{marginBottom:11,width:"100%"}}>
-        <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:10}}>
-          {monthlyChart.sparse ? "Gasto por mes" : "Gasto por mes (12 meses)"}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+          <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E"}}>
+            {coarseMobile
+              ?(chartSpan===6?"Gasto por mes (6 meses)":"Gasto por mes (12 meses)")
+              :(monthlyChart.sparse ? "Gasto por mes" : "Gasto por mes (12 meses)")}
+          </div>
+          {coarseMobile&&(
+            <div className="chart-range-toggle">
+              <button type="button" className={chartSpan===6?"chart-range-toggle--active":""} onClick={()=>setChartSpan(6)}>6 meses</button>
+              <button type="button" className={chartSpan===12?"chart-range-toggle--active":""} onClick={()=>setChartSpan(12)}>12 meses</button>
+            </div>
+          )}
         </div>
-        {monthlyChart.sparse && (
+        {monthlyChart.sparse&&!coarseMobile && (
           <div style={{fontSize:10,color:"#9CAA9F",marginBottom:8,lineHeight:1.35}}>
             Mostrando {chartMonths.length} meses (incluye meses de contexto sin movimientos)
           </div>
@@ -6294,12 +6451,12 @@ function ReportsView(){
             <span style={{fontSize:11,color:"#4B5E52"}}>Facturas</span>
           </div>
         </div>
-        <div style={{width:"100%",minHeight:200,display:"block",overflowX:"auto"}}>
-          <div style={{minWidth:chartMinWidthPx,width:"100%"}}>
-          <svg width="100%" height={SVG_H}
+        <div className={`monthly-chart-scroll${coarseMobile?" monthly-chart-scroll--fit":""}`} style={{width:"100%",minHeight:200,display:"block",overflowX:coarseMobile?"visible":"auto"}}>
+          <div className={`monthly-chart-inner${coarseMobile?" monthly-chart-inner--fit":""}`} style={chartMinWidthPx?{minWidth:chartMinWidthPx,width:"100%"}:{width:"100%"}}>
+          <svg className={coarseMobile?"monthly-chart-svg--fit":""} width="100%" height={SVG_H}
             viewBox={`0 0 ${SVG_W} ${SVG_H}`}
             xmlns="http://www.w3.org/2000/svg"
-            style={{width:"100%",minHeight:200,display:"block",minWidth:chartMinWidthPx}}>
+            style={chartMinWidthPx?{width:"100%",minHeight:200,display:"block",minWidth:chartMinWidthPx}:{width:"100%",minHeight:200,display:"block"}}>
 
             {/* 4 gridlines */}
             {[0.25,0.5,0.75,1].map(f=>{
@@ -6356,12 +6513,12 @@ function ReportsView(){
                     x={SIDE_PAD + i * GROUP_W + GROUP_W / 2}
                     y={stackTop - 5}
                     textAnchor="middle"
-                    fontSize="11"
+                    fontSize={chartValueLabelFs}
                     fill="#4B5E52"
                     fontWeight="600"
                   >{fmt(m.total)}</text>}
                   <text x={SIDE_PAD + i * GROUP_W + GROUP_W / 2} y={TOP_PAD+CHART_H+14}
-                    textAnchor="middle" fontSize="9" fill="#9CAA9F">
+                    textAnchor="middle" fontSize={chartMonthLabelFs} fill="#9CAA9F">
                     {m.label}
                   </text>
                 </g>
