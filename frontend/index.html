@@ -416,7 +416,7 @@
    All view components defined OUTSIDE SolanaExpenses → fixes focus loss bug
    State shared via React.createContext
 ───────────────────────────────────────────────────────────────────────────── */
-const{useState,useEffect,useRef,useCallback,useMemo,createContext,useContext}=React;
+const{useState,useEffect,useLayoutEffect,useRef,useCallback,useMemo,createContext,useContext}=React;
 
 function useCoarseMobile(){
   const [coarse,setCoarse]=useState(()=>typeof window!=="undefined"&&window.matchMedia("(max-width:767px),(pointer:coarse)").matches);
@@ -8493,6 +8493,7 @@ function SolanaExpenses(){
   const idleTimer   =useRef(null);
   const idleDeadlineRef = useRef(0);
   const warnTimer   =useRef(null);
+  const mainScrollRef = useRef(null);
   const [aNote,   setANote]   =useState({});
   const [departments,setDepartments]=useState([]);
   const refreshDepartments=useCallback(async()=>{
@@ -8609,6 +8610,11 @@ function SolanaExpenses(){
     window.addEventListener("popstate",onPopState);
     return()=>window.removeEventListener("popstate",onPopState);
   },[user,parseViewFromPath]);
+
+  useLayoutEffect(()=>{
+    const el=mainScrollRef.current;
+    if(el)el.scrollTop=0;
+  },[view]);
 
   /* ── SAVES ──────────────────────────────────────────────────────────────── */
   const saveUsers   =d=>{
@@ -10119,7 +10125,7 @@ function SolanaExpenses(){
           </div>
 
           <div style={{flex:1,overflow:"hidden",display:"flex",minWidth:0,minHeight:0}}>
-            <div className="mob-main-scroll" style={{flex:1,overflowY:"auto",padding:"14px 12px 80px",minWidth:0,WebkitOverflowScrolling:"touch"}}>
+            <div ref={mainScrollRef} className="mob-main-scroll" style={{flex:1,overflowY:"auto",padding:"14px 12px 80px",minWidth:0,WebkitOverflowScrolling:"touch"}}>
               {view==="dashboard"&&<DashboardView/>}
               {view==="expenses" &&<ExpensesView/>}
               {view==="approvals"&&<ApprovalsView/>}
