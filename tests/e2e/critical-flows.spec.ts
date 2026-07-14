@@ -1325,6 +1325,60 @@ test.describe('D — Informes (Reports)', () => {
     await expect(page.locator('.chart-tooltip')).toContainText(/Facturas/i);
   });
 
+  test('D5c) Mobile hardware Back closes expense detail overlay without leaving app', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await setupMockApi(page, {
+      expenses: [
+        {
+          id: 'exp_back_1',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          submittedBy: 'admin-1',
+          date: '2026-03-10',
+          description: 'Back nav QA',
+          amount: 90,
+          amountEUR: 90,
+          currency: 'EUR',
+          category: 'Software',
+          status: 'approved',
+          expenseType: 'expense',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 90, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_ops',
+          auditTrailJson: '[]',
+          commentsJson: '[]',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ],
+    });
+    await loginAs(page, 'admin@solana.test');
+    await page.locator('.mob-nav-item').filter({ hasText: 'Gastos' }).click();
+    await expect(page.getByRole('heading', { name: /Gastos/i })).toBeVisible();
+    await page.getByText('Back nav QA').first().click();
+    const mobOverlay = page.locator('.mob-only.panel-slide').filter({ has: page.getByRole('button', { name: 'Volver' }) });
+    await expect(mobOverlay).toBeVisible();
+    await expect(mobOverlay.getByText(/Back nav QA|Detalle/i).first()).toBeVisible();
+    // Hardware/gesture Back → popstate
+    await page.goBack();
+    await expect(mobOverlay).toHaveCount(0);
+    // Still in the app on Gastos
+    await expect(page.getByRole('heading', { name: /Gastos/i })).toBeVisible();
+    await expect(page.getByText('Back nav QA').first()).toBeVisible();
+    // Re-open and close via on-screen ← — history stays in sync (no stale reopen on next Back)
+    await page.getByText('Back nav QA').first().click();
+    await expect(mobOverlay).toBeVisible();
+    await mobOverlay.getByRole('button', { name: 'Volver' }).click();
+    await expect(mobOverlay).toHaveCount(0);
+    await page.goBack();
+    await expect(mobOverlay).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /Panel|Dashboard|Gastos/i }).first()).toBeVisible();
+  });
+
   test('D6) Multi-year data shows dropdown defaulting to latest year', async ({ page }) => {
     await setupMockApi(page, {
       expenses: [
