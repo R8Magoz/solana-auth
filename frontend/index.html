@@ -5545,7 +5545,7 @@ function ExpensesView(){
         {filtered.length===0&&<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{t("empty.expenses")}</div>}
         {monthGroups.map(group=>(
           <div key={group.ym}>
-            <div style={{position:"sticky",top:0,zIndex:2,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 13px",background:"#F5F0EA",borderBottom:"1px solid #EDE8E0",fontSize:11,fontWeight:600,color:"#4B5E52"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 13px",background:"#F5F0EA",borderBottom:"1px solid #EDE8E0",fontSize:11,fontWeight:600,color:"#4B5E52"}}>
               <span>{group.label}</span>
               <span style={{fontVariantNumeric:"tabular-nums",color:G}}>{fmt(group.total)}</span>
             </div>
