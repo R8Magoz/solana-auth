@@ -9838,7 +9838,7 @@ function SolanaExpenses(){
     <Ctx.Provider value={ctxVal}>
       <div style={{display:"flex",height:"100vh",width:"100vw",fontFamily:"'DM Sans',system-ui,sans-serif",background:"#F5F0EA",color:"#1a1008",overflow:"hidden",WebkitOverflowScrolling:"touch"}}>
         {AUTH_URL&&!online&&(
-          <div style={{position:"fixed",top:0,left:0,right:0,zIndex:7500,background:"rgba(245,240,234,0.95)",color:"#6b4a38",fontSize:11,padding:"7px 14px",textAlign:"center",borderBottom:"1px solid rgba(204,78,0,0.1)",fontWeight:500}}>
+          <div style={{position:"fixed",top:0,left:0,right:0,zIndex:7500,background:"rgba(245,240,234,0.95)",color:"#6b4a38",fontSize:11,padding:"7px 14px",textAlign:"center",borderBottom:"1px solid rgba(204,78,0,0.1)",fontWeight:500,pointerEvents:"none"}}>
             Sin conexión, los cambios se guardarán localmente
           </div>
         )}
