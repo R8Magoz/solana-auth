@@ -1188,6 +1188,149 @@ test.describe('D — Informes (Reports)', () => {
     await expect(page.getByText('Exportar CSV')).toHaveCount(0);
     await expect(page.getByText('Exportar PDF')).toHaveCount(0);
   });
+
+  test('D4) Chart empty state shows disclaimer and no year dropdown', async ({ page }) => {
+    await setupMockApi(page, { expenses: [] });
+    await loginAs(page, 'admin@solana.test');
+    await clickSidebarSection(page, 'Informes');
+    await expect(page.getByTestId('chart-empty-disclaimer')).toBeVisible();
+    await expect(page.getByTestId('chart-empty-disclaimer')).toContainText(/Aún no hay gastos registrados/i);
+    await expect(page.getByTestId('chart-year-select')).toHaveCount(0);
+    await expect(page.getByTestId('chart-year-label')).toHaveCount(0);
+    await expect(page.locator('.monthly-chart-wrap svg')).toHaveCount(0);
+  });
+
+  test('D5) Single year of data shows year label without dropdown', async ({ page }) => {
+    await setupMockApi(page, {
+      expenses: [
+        {
+          id: 'exp_y2026_a',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          submittedBy: 'admin-1',
+          date: '2026-03-10',
+          description: 'Gasto 2026 QA',
+          amount: 100,
+          amountEUR: 100,
+          currency: 'EUR',
+          category: 'Software',
+          status: 'approved',
+          expenseType: 'expense',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 100, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_ops',
+          auditTrailJson: '[]',
+          commentsJson: '[]',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ],
+    });
+    await loginAs(page, 'admin@solana.test');
+    await clickSidebarSection(page, 'Informes');
+    await expect(page.getByTestId('chart-empty-disclaimer')).toHaveCount(0);
+    await expect(page.getByTestId('chart-year-select')).toHaveCount(0);
+    await expect(page.getByTestId('chart-year-label')).toHaveText('2026');
+    await expect(page.locator('.monthly-chart-wrap svg text').filter({ hasText: /^Ene$/i })).toBeVisible();
+    await expect(page.locator('.monthly-chart-wrap svg text').filter({ hasText: /^Dic$/i })).toBeVisible();
+  });
+
+  test('D6) Multi-year data shows dropdown defaulting to latest year', async ({ page }) => {
+    await setupMockApi(page, {
+      expenses: [
+        {
+          id: 'exp_y2025',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          submittedBy: 'admin-1',
+          date: '2025-06-01',
+          description: 'Gasto 2025 QA',
+          amount: 80,
+          amountEUR: 80,
+          currency: 'EUR',
+          category: 'Software',
+          status: 'approved',
+          expenseType: 'expense',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 80, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_ops',
+          auditTrailJson: '[]',
+          commentsJson: '[]',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+        {
+          id: 'exp_y2026',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          submittedBy: 'admin-1',
+          date: '2026-02-15',
+          description: 'Gasto 2026 multi QA',
+          amount: 150,
+          amountEUR: 150,
+          currency: 'EUR',
+          category: 'Marketing',
+          status: 'approved',
+          expenseType: 'expense',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 150, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_ops',
+          auditTrailJson: '[]',
+          commentsJson: '[]',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+        {
+          id: 'inv_y2025',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          submittedBy: 'admin-1',
+          date: '2025-01-10',
+          dueDate: '2025-11-20',
+          description: 'Factura 2025 QA',
+          vendor: 'Vendor 2025',
+          amount: 200,
+          amountEUR: 200,
+          currency: 'EUR',
+          category: 'Software',
+          status: 'approved',
+          expenseType: 'invoice',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 200, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_ops',
+          auditTrailJson: '[]',
+          commentsJson: '[]',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ],
+    });
+    await loginAs(page, 'admin@solana.test');
+    await clickSidebarSection(page, 'Informes');
+    const yearSelect = page.getByTestId('chart-year-select');
+    await expect(yearSelect).toBeVisible();
+    await expect(yearSelect).toHaveValue('2026');
+    await expect(yearSelect.locator('option')).toHaveCount(2);
+    await yearSelect.selectOption('2025');
+    await expect(yearSelect).toHaveValue('2025');
+    await expect(page.locator('.monthly-chart-wrap svg')).toBeVisible();
+  });
 });
 
 test.describe('E — Seguimiento (Audit trail)', () => {
