@@ -1303,7 +1303,9 @@ test.describe('D — Informes (Reports)', () => {
       ],
     });
     await loginAs(page, 'admin@solana.test');
-    await clickSidebarSection(page, 'Informes');
+    // Mobile uses bottom nav (sidebar is .dt-only)
+    await page.locator('.mob-nav-item').filter({ hasText: 'Informes' }).click();
+    await expect(page.getByRole('heading', { name: /Informes/i })).toBeVisible();
     const chart = page.locator('.monthly-chart-wrap');
     await expect(chart.locator('svg')).toBeVisible();
     await expect(chart.locator('svg text').filter({ hasText: /^ene$/i })).toBeVisible();
