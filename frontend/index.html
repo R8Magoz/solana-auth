@@ -491,7 +491,7 @@ function isMultiFilterActive(selected,optionCount){
    Primary  G  Brand orange — primary (gasto)
    Factura  #5B21B6  Deep violet — factura actions/badges
    Accent   #C4622D  Terracotta — earthy complement (from brand palette grid)
-   Badge    #b85c1a  Muted orange — notification badges
+   Badge    #7A4F9A  Purple — informational notification counts
    Hover    #a83f00  Primary hover (darker orange)
    ────────────────────────────────────────────────────────────────────────── */
 const G  = "var(--color-brand)"; // brand primary (gasto)
@@ -502,7 +502,9 @@ const FH = "var(--color-factura-hover)"; // factura hover
 const FT = "var(--color-factura-tint)"; // factura tint
 const T  = "var(--color-accent)"; // terracotta accent — earthy complement, in palette grid
 const BILL_COLOR = F; // factura color
-const BL = "var(--color-badge)"; // muted orange for notification badges
+const BL = "var(--color-badge)"; // legacy badge token (settings accordion counts)
+const NOTIF_BADGE = "#7A4F9A"; // informational nav/count notification purple
+const NOTIF_TINT = "#F0E9F5"; // soft purple informational banner background
 /** Shown when a user id is not in the local users list (e.g. server sync lag). */
 const UNKNOWN_USER_NAME="Usuario";
 
@@ -3292,7 +3294,7 @@ function SidebarNavItem({active,label,badge,onClick}){
     >
       <span style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
         <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
-        {badge>0&&<span style={{background:BL,color:"#fff",borderRadius:10,minWidth:16,height:16,padding:"0 4px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,flexShrink:0,lineHeight:1}}>{badge}</span>}
+        {badge>0&&<span style={{background:NOTIF_BADGE,color:"#fff",borderRadius:10,minWidth:16,height:16,padding:"0 4px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,flexShrink:0,lineHeight:1}}>{badge}</span>}
       </span>
     </div>
   );
@@ -5493,11 +5495,11 @@ function DashboardView(){
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.dashboard")}</h1>
       <p style={{fontSize:13,color:"#6B7B72",marginBottom:16}}>{t("dash.welcome")}, {user.name.split(" ")[0]}</p>
       {myPending.length>0&&(
-        <div style={{background:"#fdf0e6",border:"1px solid #f0c4a8",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
+        <div style={{background:NOTIF_TINT,border:"1px solid rgba(122,79,154,0.22)",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
           <div>
-            <div style={{fontSize:13,fontWeight:600,color:"#8a3a00"}}>{myPending.length} pendiente(s) de tu aprobación</div>
+            <div style={{fontSize:13,fontWeight:600,color:NOTIF_BADGE}}>{myPending.length} pendiente(s) de tu aprobación</div>
           </div>
-          <button className="btn-sm" style={{fontSize:12}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
+          <button className="btn-sm" style={{fontSize:12,background:T,color:"#fff"}} onClick={()=>go("approvals")}>{t("dash.review")}</button>
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:16}}>
@@ -10137,7 +10139,7 @@ function SolanaExpenses(){
               <div key={n.id} className="mob-nav-item" style={{flex:1,padding:"8px 2px 6px",textAlign:"center",cursor:"pointer",borderTop:`2px solid ${view===n.id?G:"transparent"}`}} onClick={()=>go(n.id)}>
                 <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4,fontSize:11,fontWeight:view===n.id?700:500,color:view===n.id?G:"#6B7B72",maxWidth:"100%"}}>
                   <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.label}</span>
-                  {n.badge>0&&<span style={{background:BL,color:"#fff",borderRadius:10,minWidth:14,height:14,padding:"0 3px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
+                  {n.badge>0&&<span style={{background:NOTIF_BADGE,color:"#fff",borderRadius:10,minWidth:14,height:14,padding:"0 3px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:700,flexShrink:0,lineHeight:1}}>{n.badge}</span>}
                 </span>
               </div>
             ))}
