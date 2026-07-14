@@ -99,6 +99,7 @@
     .budget-bar-fill{height:100%;width:100%;border-radius:4px;transform-origin:left center;transform:scaleX(var(--budget-scale,0));transition:transform 0.4s var(--motion-ease-standard)}
     .budget-bar-fill--load{animation:budgetBarFill 400ms var(--motion-ease-standard) forwards}
     .kpi-progress-fill{height:100%;width:100%;border-radius:4px;transform-origin:left center;transform:scaleX(var(--budget-scale,0))}
+    .kpi-progress-fill--from-right{transform-origin:right center}
     .kpi-progress-fill--load{animation:budgetBarFill 400ms var(--motion-ease-standard) forwards}
     .inp--invalid{border-color:#DC2626!important;box-shadow:0 0 0 1px #DC2626}
     .inp--shake{animation:fieldShake 300ms ease}
@@ -140,6 +141,7 @@
       .modal-overlay--open .modal-panel,.modal-overlay--closing .modal-panel{animation:none;opacity:1;transform:none}
       .modal-overlay--closing .modal-panel{opacity:0;transition:opacity 40ms ease}
       .budget-bar-fill--load,.kpi-progress-fill--load{animation:none;transform:scaleX(var(--budget-scale,1));transition:opacity 40ms ease}
+      .kpi-progress-fill--from-right.kpi-progress-fill--load,.kpi-progress-fill--from-right:not(.kpi-progress-fill--load){transform-origin:right center}
       .inp--shake{animation:none}
       .btn-primary:active,.btn-secondary:active,.btn-danger:active,.btn-sm:active{transform:none}
       .status-approved,.status-pending,.status-rejected,.badge.status-approved,.badge.status-pending,.badge.status-rejected{transition:opacity 40ms ease}
@@ -156,6 +158,7 @@
 <body>
 <div id="root"></div>
   <script>
+  // Must match tests/e2e/helpers/mockApi.ts MOCK_AUTH_BASE — never commit localhost here (breaks CI login).
   window.__SOLANA_AUTH_URL__ = "https://solana-auth.onrender.com";
 </script>
 <script type="text/babel">
@@ -186,6 +189,42 @@ function useSessionState(key,defaultVal){
     });
   },[key,defaultVal]);
   return[val,setter];
+}
+/** Multi-select filter helpers ([] = all). Migrates legacy "all" or single string from session. */
+function asMultiFilter(val){
+  if(val==null||val==="all")return[];
+  if(Array.isArray(val))return val.filter(v=>v!=null&&v!=="");
+  if(typeof val==="string"&&val)return[val];
+  return[];
+}
+function isMultiFilterAll(selected,optionCount){
+  const s=asMultiFilter(selected);
+  if(s.length===0)return true;
+  if(optionCount<=1)return false;
+  return s.length>=optionCount;
+}
+function toggleMultiFilterValue(selected,value,optionValues){
+  const all=optionValues.length;
+  const cur=asMultiFilter(selected);
+  const wasAll=cur.length===0||(all>1&&cur.length>=all);
+  if(wasAll)return[value];
+  const set=new Set(cur);
+  if(set.has(value))set.delete(value);
+  else set.add(value);
+  if(set.size===0||(all>1&&set.size>=all))return[];
+  return[...set];
+}
+function multiFilterSummary(prefix,selected,options,allLabel){
+  const s=asMultiFilter(selected);
+  if(s.length===0||(options.length>1&&s.length>=options.length))return`${prefix}: ${allLabel}`;
+  if(s.length===1){
+    const opt=options.find(o=>o.value===s[0]);
+    return`${prefix}: ${opt?opt.label:s[0]}`;
+  }
+  return`${prefix}: ${s.length}`;
+}
+function isMultiFilterActive(selected,optionCount){
+  return!isMultiFilterAll(selected,optionCount);
 }
 /* ── BRAND PALETTE ─────────────────────────────────────────────────────────
    Primary  G  Brand orange — primary (gasto)
@@ -225,6 +264,7 @@ const TR = {
     "action.approve": "Aprobar",
     "action.reject": "Rechazar",
     "action.reconsider": "Reconsiderar",
+    "action.stopRecurrence": "Detener recurrencia",
     "action.reopen": "Reabrir",
     "action.save": "Guardar",
     "action.cancel": "Cancelar",
@@ -615,9 +655,14 @@ const TR = {
     "expenses.dueDate": "Fecha vencimiento",
     "expenses.cadence": "Cadencia",
     "expenses.recurringPreview": "Próxima: {{date}}",
+    "expense.recurrenceStopped": "Recurrencia detenida el {{date}}",
+    "cal.projected": "previsto",
+    "cal.monthProjected": "{{amount}} previsto",
+    "cal.legendProjected": "Previsto (recurrente)",
     "expenses.filterAll": "Todos",
     "expenses.filterExpenses": "Gastos",
     "expenses.filterInvoices": "Facturas",
+    "expenses.filteredTotal": "Total: {{amount}}",
     "expenses.vence": "Vence el:",
     "expenses.cadenceOnce": "Una vez",
     "expenses.cadenceMonthly": "Mensual",
@@ -689,6 +734,9 @@ const TR = {
     "settings.ivaNameField": "Nombre",
     "settings.saveIvaTypes": "Guardar tipos",
     "settings.sectionCategories": "Categorías",
+    "settings.categoryReorder": "Reordenar categoría",
+    "action.moveCategoryUp": "Mover arriba",
+    "action.moveCategoryDown": "Mover abajo",
     "audit.resubmitted": "Reenviado para aprobación",
     "audit.comment_added": "Comentario añadido",
     "audit.pending_reset": "Vuelto a pendiente tras edición",
@@ -2143,6 +2191,7 @@ function expenseFromApi(row){
     ivaRate,
     ivaAmount,
     comments,
+    commentsSeenAt:row.commentsSeenAt!=null?Number(row.commentsSeenAt):undefined,
     seenBy:[],
     departmentId:row.departmentId||null,
     expenseType:row.expenseType||"expense",
@@ -2152,6 +2201,10 @@ function expenseFromApi(row){
     deferredPayment: row.deferredPayment === true || row.deferredPayment === 1,
     recurring:Number(row.recurring)===1?1:0,
     recurrenceRule:row.recurrenceRule||null,
+    recurrenceSeriesId:row.recurrenceSeriesId||null,
+    recurrenceAnchorDate:row.recurrenceAnchorDate||null,
+    recurrenceEndDate:row.recurrenceEndDate||null,
+    originRecurrenceId:row.originRecurrenceId||null,
     createdAt:row.createdAt!=null?new Date(Number(row.createdAt)).toISOString():undefined,
     updatedAt:row.updatedAt!=null?new Date(Number(row.updatedAt)).toISOString():undefined,
   },"expense");
@@ -2175,6 +2228,112 @@ function expenseIsRecurringNonOnce(e){
   if(ck)return ck!=="once";
   const rule=String(e.recurrenceRule||"").toLowerCase().trim();
   return e.recurring===1&&!!rule&&rule!=="once";
+}
+function recurrenceEffectiveDate(e){
+  if(!e)return null;
+  const isInv=e.expenseType==="invoice";
+  const raw=isInv?(e.dueDate||e.date):e.date;
+  return raw?String(raw).slice(0,10):null;
+}
+function isRecurrenceSeriesActive(e){
+  if(!e||Number(e.recurring)!==1)return false;
+  const rule=String(e.recurrenceRule||"").trim();
+  return expenseIsRecurringNonOnce(e)&&!!rule;
+}
+/** Mirror server/recurrence.js nextDueDate (UTC). */
+function nextRecurrenceDueDate(isoDate,rule){
+  if(!isoDate||!rule)return null;
+  const r=String(rule).trim();
+  const parts=String(isoDate).slice(0,10).split("-").map(Number);
+  if(parts.length!==3||parts.some(n=>!Number.isFinite(n)))return null;
+  let y=parts[0],m=parts[1]-1,d=parts[2];
+  if(r==="weekly"){const dt=new Date(Date.UTC(y,m,d));dt.setUTCDate(dt.getUTCDate()+7);return dt.toISOString().slice(0,10);}
+  if(r==="biweekly"){const dt=new Date(Date.UTC(y,m,d));dt.setUTCDate(dt.getUTCDate()+14);return dt.toISOString().slice(0,10);}
+  if(r==="daily"){const dt=new Date(Date.UTC(y,m,d));dt.setUTCDate(dt.getUTCDate()+1);return dt.toISOString().slice(0,10);}
+  if(r.startsWith("custom:")){
+    const tail=r.slice(7);
+    const match=tail.match(/^(\d+)(days|weeks|months|years)$/);
+    if(match){
+      const n=parseInt(match[1],10);
+      const unit=match[2];
+      const dt=new Date(Date.UTC(y,m,d));
+      if(unit==="days"){dt.setUTCDate(dt.getUTCDate()+n);return dt.toISOString().slice(0,10);}
+      if(unit==="weeks"){dt.setUTCDate(dt.getUTCDate()+n*7);return dt.toISOString().slice(0,10);}
+      if(unit==="months"){dt.setUTCMonth(dt.getUTCMonth()+n);return dt.toISOString().slice(0,10);}
+      if(unit==="years"){dt.setUTCFullYear(dt.getUTCFullYear()+n);return dt.toISOString().slice(0,10);}
+    }
+    const legacy=parseInt(tail,10);
+    const n=Number.isFinite(legacy)&&legacy>=1?legacy:1;
+    const dt2=new Date(Date.UTC(y,m,d));
+    dt2.setUTCMonth(dt2.getUTCMonth()+n);
+    return dt2.toISOString().slice(0,10);
+  }
+  if(r==="monthly")m+=1;
+  else if(r==="quarterly")m+=3;
+  else if(r==="yearly")y+=1;
+  else return null;
+  const dt=new Date(Date.UTC(y,m,d));
+  return dt.toISOString().slice(0,10);
+}
+function buildMaterializedRecurrenceDateKeys(expenses){
+  const keys=new Set();
+  (expenses||[]).forEach(e=>{
+    const sid=e.recurrenceSeriesId||e.id;
+    const eff=recurrenceEffectiveDate(e);
+    if(sid&&eff)keys.add(`${sid}|${eff}`);
+  });
+  return keys;
+}
+function enumerateRecurrenceDatesInRange(anchorDate,rule,rangeStart,rangeEnd,endDate){
+  const dates=[];
+  if(!anchorDate||!rule)return dates;
+  let cur=anchorDate;
+  const seen=new Set();
+  while(dates.length<400){
+    if(!cur||seen.has(cur))break;
+    seen.add(cur);
+    if(endDate&&cur>endDate)break;
+    if(rangeEnd&&cur>rangeEnd)break;
+    if(cur>=rangeStart)dates.push(cur);
+    const next=nextRecurrenceDueDate(cur,rule);
+    if(!next||next===cur)break;
+    cur=next;
+  }
+  return dates;
+}
+function projectVirtualRecurrenceEvents(srcExpenses,year,mon,cats,users){
+  const rangeStart=`${year}-${String(mon+1).padStart(2,"0")}-01`;
+  const rangeEnd=`${year}-${String(mon+1).padStart(2,"0")}-${String(new Date(year,mon+1,0).getDate()).padStart(2,"0")}`;
+  const materialized=buildMaterializedRecurrenceDateKeys(srcExpenses);
+  const virtual=[];
+  const anchors=(srcExpenses||[]).filter(e=>isRecurrenceSeriesActive(e)&&getItemStatus(e,cats,users)!=="deleted");
+  anchors.forEach(anchor=>{
+    const seriesId=anchor.recurrenceSeriesId||anchor.id;
+    const anchorDate=anchor.recurrenceAnchorDate?String(anchor.recurrenceAnchorDate).slice(0,10):recurrenceEffectiveDate(anchor);
+    if(!anchorDate)return;
+    const endDate=anchor.recurrenceEndDate?String(anchor.recurrenceEndDate).slice(0,10):null;
+    const dates=enumerateRecurrenceDatesInRange(anchorDate,anchor.recurrenceRule,rangeStart,rangeEnd,endDate);
+    const isInv=anchor.expenseType==="invoice";
+    const label=isInv?(anchor.vendor||anchor.proveedor||anchor.description):anchor.description;
+    const amount=eurForExpense(anchor);
+    dates.forEach(dt=>{
+      const key=`${seriesId}|${dt}`;
+      if(materialized.has(key))return;
+      const parts=parseCalendarDayParts(dt);
+      if(!parts||parts.y!==year||parts.m!==mon)return;
+      virtual.push({
+        type:isInv?"invoice":"expense",
+        id:anchor.id,
+        anchorId:anchor.id,
+        label,
+        amount,
+        virtual:true,
+        date:dt,
+        day:parts.d,
+      });
+    });
+  });
+  return virtual;
 }
 function addMonthsToISODate(iso,n){
   if(!iso||String(iso).length<10)return"";
@@ -2476,7 +2635,41 @@ const SPLIT_PILL_STYLE={display:"inline-flex",alignItems:"center",gap:2,fontSize
 const splitPill=(paidBy,t)=>{
   const n=(paidBy||[]).length;
   if(n<=1)return null;
-  return <span style={SPLIT_PILL_STYLE} aria-label={`${t("label.splitBadge")}: ${n}`}>{t("label.splitBadge")} · {n}</span>;
+  return <span style={SPLIT_PILL_STYLE} aria-label={`${t("label.splitBadge")}: ${n}`}><SplitDivergeIcon size={10} color="#4B5E52"/><span aria-hidden="true">{n}</span></span>;
+};
+const commentTsMs=(c)=>{
+  if(!c)return 0;
+  if(c.at)return new Date(c.at).getTime()||0;
+  if(c.createdAt!=null)return Number(c.createdAt)||0;
+  return 0;
+};
+const commentsSeenTsMs=(e,userId)=>{
+  if(e&&e.commentsSeenAt!=null){
+    const v=e.commentsSeenAt;
+    if(typeof v==="number")return v;
+    const t=new Date(v).getTime();
+    return isNaN(t)?0:t;
+  }
+  if(!userId)return 0;
+  try{
+    const map=JSON.parse(localStorage.getItem("sol-comments-seen-"+userId)||"{}");
+    if(map&&map[e.id]!=null)return Number(map[e.id])||0;
+  }catch(err){}
+  return 0;
+};
+const expenseIsOwnerOrSubmitter=(e,userId)=>{
+  if(!e||!userId)return false;
+  return e.submittedBy===userId||e.ownerId===userId||e.userId===userId;
+};
+const expenseHasUnreadComments=(e,userId)=>{
+  if(!expenseIsOwnerOrSubmitter(e,userId))return false;
+  const seenAt=commentsSeenTsMs(e,userId);
+  return (e.comments||[]).some(c=>{
+    const by=c&&(c.by||c.userId);
+    if(!by||by===userId)return false;
+    if(!String(c.text||"").trim())return false;
+    return commentTsMs(c)>seenAt;
+  });
 };
 const deptLabel=(departmentId,departments,fallback="—")=>{
   if(!departmentId)return fallback;
@@ -4488,7 +4681,7 @@ function NewPanel(){
 
 /* ── DETAIL PANEL ──────────────────────────────────────────────────────────── */
 function DetailPanel(){
-  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,reconsiderExpense,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markExpenseRead,ivaRates,departments,defaultDeptId,resetForm,
+  const{t,expenses,cats,users,detailId,setDetailId,setPanel,isAdmin,user,aNote,setANote,approve,reconsiderExpense,removeAttachment,editExp,deleteExp,fixResubmitExpense,addExpenseComment,markCommentsSeen,stopRecurrence,ivaRates,departments,defaultDeptId,resetForm,
         fileRef,startCam,receiptAltHandlerRef}=useApp();
   const [editMode,setEditMode]=useState(false);
   const [ef,setEf]=useState({});        // edit form fields
@@ -4504,7 +4697,7 @@ function DetailPanel(){
   const [editSaving,setEditSaving]=useState(false);
   const e=expenses.find(x=>x.id===detailId);
   useEffect(()=>{
-    if(detailId)markExpenseRead(detailId);
+    if(detailId)markCommentsSeen(detailId);
   },[detailId]);
   useEffect(()=>{
     if(!editMode){receiptAltHandlerRef.current=null;return;}
@@ -4879,6 +5072,23 @@ function DetailPanel(){
       {e._apiType==="expense"&&e.status==="rejected"&&e.rejectionNote&&(
         <div style={{marginTop:9,padding:"8px 10px",background:"#FEE2E2",borderRadius:8,fontSize:11,color:"#991B1B"}}><strong>Motivo:</strong> {e.rejectionNote}</div>
       )}
+      {expenseIsRecurringNonOnce(e)&&(
+        <div style={{marginTop:9,padding:"8px 10px",background:"#F5F0EA",borderRadius:8,fontSize:11}}>
+          {isRecurrenceSeriesActive(e)?(
+            <>
+              <div style={{color:"#6B7B72",marginBottom:6}}>{recurrenceRuleLabel(e.recurrenceRule,t)}</div>
+              {(user.id===(e.ownerId||e.submittedBy)||isAdmin)&&(
+                <button type="button" className="btn-secondary" style={{width:"100%",padding:"7px",fontSize:12,fontWeight:600}}
+                  onClick={()=>stopRecurrence(e.id)}>
+                  {t("action.stopRecurrence")}
+                </button>
+              )}
+            </>
+          ):e.recurrenceEndDate?(
+            <div style={{color:"#6B7B72"}}>{t("expense.recurrenceStopped",{date:fmtDate(e.recurrenceEndDate)})}</div>
+          ):null}
+        </div>
+      )}
       <div style={{marginTop:9,overflow:"visible",minHeight:"auto"}}>
         <AttachmentViewer
           receipt={e.receipt}
@@ -4986,6 +5196,9 @@ function DashboardView(){
   const spentActive=deptBudgetActive.reduce((s,d)=>s+Number(d.spent||0),0);
   const budgetRemainingTotal=budgetTotalActive-spentActive;
   const budgetProgressPct=budgetTotalActive>0 ? (spentActive/budgetTotalActive)*100 : 0;
+  const budgetAvailablePct=budgetTotalActive>0
+    ? Math.max(0,Math.min(100,Math.round((budgetRemainingTotal/budgetTotalActive)*1000)/10))
+    : 0;
   const [billsWindow,setBillsWindow]=useState("15d");
   const [dashBudgetAnim,setDashBudgetAnim]=useState(true);
   useEffect(()=>{
@@ -5052,8 +5265,10 @@ function DashboardView(){
           const fixedKpiBg="#F5F0EA";
           const fixedKpiText="#6B7B72";
 
-          const renderKpiCard=(key,label,val,bg,text,progressFill,showProgress=false,valueFontSize=22,labelColor="#9CAA9F",progressTrack="#EDE8E0",progressLabel="",progressLabelColor="#6B7B72")=> {
+          const renderKpiCard=(key,label,val,bg,text,progressFill,showProgress=false,valueFontSize=22,labelColor="#9CAA9F",progressTrack="#EDE8E0",progressLabel="",progressLabelColor="#6B7B72",progressPct=null,progressFromRight=false)=> {
             const kpi=fmtKpi(val);
+            const barPct=progressPct!=null?progressPct:budgetProgressPct;
+            const scale=Math.max(0,Math.min(100,barPct))/100;
             return(
               <div key={key} className="card" style={{background:bg,border:"1px solid rgba(0,0,0,0.02)"}}>
                 <div style={{fontSize:10,color:labelColor,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{label}</div>
@@ -5062,13 +5277,13 @@ function DashboardView(){
                 </div>
                 {showProgress&&(
                   <>
-                  <div style={{height:8,background:progressTrack,borderRadius:4,marginTop:10,overflow:"hidden"}}>
+                  <div style={{height:8,background:progressTrack,borderRadius:4,marginTop:10,overflow:"hidden",display:progressFromRight?"flex":"block",justifyContent:progressFromRight?"flex-end":"stretch"}}>
                     <div
-                      className={`kpi-progress-fill${dashBudgetAnim?" kpi-progress-fill--load":""}`}
+                      className={`kpi-progress-fill${progressFromRight?" kpi-progress-fill--from-right":""}${dashBudgetAnim?" kpi-progress-fill--load":""}`}
                       style={{
                         background:progressFill,
-                        "--budget-scale":Math.max(0,Math.min(100,budgetProgressPct))/100,
-                        ...(dashBudgetAnim?{}:{transform:`scaleX(${Math.max(0,Math.min(100,budgetProgressPct))/100})`}),
+                        "--budget-scale":scale,
+                        ...(dashBudgetAnim?{}:{transform:`scaleX(${scale})`,transformOrigin:progressFromRight?"right center":"left center"}),
                       }}
                     />
                   </div>
@@ -5082,9 +5297,9 @@ function DashboardView(){
           return(
             <>
               {renderKpiCard("k-total",totalKpiLabel,dashTotApproved,totalKpiBg,totalKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetProgressPct.toFixed(1)}% usado`,budgetHealth.kpiLabelColor)}
-              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetProgressPct.toFixed(1)}% disponible`,budgetHealth.kpiLabelColor)}
+              {renderKpiCard("k-budget",budgetKpiLabel,budgetRemainingTotal,budgetKpiBg,budgetKpiText,budgetHealth.kpiProgress,true,28,budgetHealth.kpiLabelColor,budgetHealth.kpiProgressTrack,`${budgetAvailablePct.toFixed(1)}% disponible`,budgetHealth.kpiLabelColor,budgetAvailablePct,true)}
               {renderKpiCard("k-month",monthLabel,mTotal,monthKpiBg,monthKpiText,null,false,22,"#9CAA9F")}
-              <div style={{cursor:"pointer"}} onClick={() => { go("expenses"); setRecurringFlt("recurring"); }}>
+              <div style={{cursor:"pointer"}} onClick={() => { go("expenses"); setRecurringFlt(["recurring"]); }}>
                 {renderKpiCard("k-fixed",fixedKpiLabel,totFixed,fixedKpiBg,fixedKpiText,null,false)}
               </div>
             </>
@@ -5201,166 +5416,132 @@ function DashboardView(){
   );
 }
 
+/* ── MULTI-SELECT FILTER MENU ─────────────────────────────────────────────── */
+function MultiFilterMenu({prefix,options,selected,onChange,allLabel,minWidth}){
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(!open)return;
+    const onDoc=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
+    document.addEventListener("mousedown",onDoc);
+    return()=>document.removeEventListener("mousedown",onDoc);
+  },[open]);
+  const optionValues=options.map(o=>o.value);
+  const sel=asMultiFilter(selected);
+  const allActive=isMultiFilterAll(selected,options.length);
+  const summary=multiFilterSummary(prefix,selected,options,allLabel);
+  return(
+    <div ref={ref} style={{position:"relative",flexShrink:0}}>
+      <button type="button" className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:minWidth||120,cursor:"pointer",textAlign:"left",background:allActive?"#FAFAF9":"#FFF8F3",borderColor:allActive?"#DDD6CC":G,fontFamily:"inherit"}}
+        onClick={()=>setOpen(o=>!o)} aria-expanded={open}>
+        {summary}
+        <span style={{float:"right",color:"#9CAA9F",marginLeft:6,fontSize:9}}>{open?"▲":"▼"}</span>
+      </button>
+      {open&&(
+        <div style={{position:"absolute",top:"100%",left:0,marginTop:4,zIndex:30,background:"#fff",border:"1.5px solid #DDD6CC",borderRadius:7,boxShadow:"0 4px 14px rgba(0,0,0,0.08)",minWidth:Math.max(minWidth||140,160),padding:"4px 0"}}>
+          <label style={{display:"flex",alignItems:"center",gap:7,padding:"5px 10px",fontSize:11,cursor:"pointer",color:"#4B5E52"}}>
+            <input type="checkbox" checked={allActive} onChange={()=>onChange([])}/>
+            <span>{allLabel}</span>
+          </label>
+          {options.map(opt=>(
+            <label key={opt.value} style={{display:"flex",alignItems:"center",gap:7,padding:"5px 10px",fontSize:11,cursor:"pointer",color:"#4B5E52"}}>
+              <input type="checkbox" checked={!allActive&&sel.includes(opt.value)} onChange={()=>onChange(toggleMultiFilterValue(selected,opt.value,optionValues))}/>
+              <span>{opt.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── EXPENSES VIEW ─────────────────────────────────────────────────────────── */
 function ExpensesView(){
-  const{t,expenses,cats,users,byStatus,filtered,expFlt,setExpFlt,expSrc,setExpSrc,
+  const{t,expenses,cats,users,filtered,expFlt,setExpFlt,expSrc,setExpSrc,
         catFlt,setCatFlt,submFlt,setSubmFlt,dateFrom,setDateFrom,dateTo,setDateTo,activeFilterCount,
-        detailId,setDetailId,panel,setPanel,openNew,resetForm,isAdmin,user,aNote,setANote,approve,clearMyExpenseFilter,totApproved,
-        expKindFlt,setExpKindFlt,recurringFlt,setRecurringFlt,saveExp}=useApp();
-  const [filtersOpen,setFiltersOpen]=useState(true);
-  const pendingTotal=expenses.filter(e=>getItemStatus(e,cats)==="pending").reduce((s,e)=>s+eurForExpense(e),0);
-  const naturalFrom = expenses.length
-    ? expenses.reduce((min, e) => effectiveDate(e) < min ? effectiveDate(e) : min, effectiveDate(expenses[0]))
-    : "";
-  const naturalTo = expenses.length
-    ? expenses.reduce((max, e) => effectiveDate(e) > max ? effectiveDate(e) : max, effectiveDate(expenses[0]))
-    : "";
-
-  const [pendingFrom, setPendingFrom] = React.useState(naturalFrom);
-  const [pendingTo,   setPendingTo]   = React.useState(naturalTo);
-
-  const isDefaultRange = pendingFrom === naturalFrom && pendingTo === naturalTo;
+        detailId,setDetailId,panel,setPanel,openNew,resetForm,expKindFlt,setExpKindFlt,saveExp,user}=useApp();
+  const statusFilterOpts=useMemo(()=>[
+    {value:"pending",label:t("status.pending")},
+    {value:"approved",label:t("status.approved")},
+    {value:"rejected",label:t("status.rejected")},
+  ],[t]);
+  const kindFilterOpts=useMemo(()=>[
+    {value:"expense",label:t("expenses.filterExpenses")},
+    {value:"invoice",label:t("expenses.filterInvoices")},
+  ],[t]);
+  const catFilterOpts=useMemo(()=>cats.filter(c=>!c.archived).map(c=>({value:c.name,label:tCat(c.name,t)})),[cats,t]);
+  const submFilterOpts=useMemo(()=>(users||[]).filter(u=>u.accountStatus==="active"&&u.id!=="system").map(u=>({value:u.id,label:u.name})),[users]);
+  const kindSel=asMultiFilter(expKindFlt);
   const monthGroups=React.useMemo(()=>groupExpensesByMonth(filtered),[filtered]);
+  const filteredTotal=React.useMemo(()=>filtered.reduce((s,e)=>s+(Number(e?.amount)||0),0),[filtered]);
+  const dateRangeActive=!!(dateFrom||dateTo);
   const exportFilteredXlsx=()=>{
     void downloadExpensesXlsx(filtered,{tag:"gastos-filtrados",t,user,saveExp,expenses});
     dispatchSolanaToast(t("action.exportXLSX"),"success",3000);
   };
+  const clearAllFilters=()=>{
+    try{
+      ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
+    }catch(e){}
+    setExpFlt([]);
+    setCatFlt([]);
+    setSubmFlt([]);
+    setDateFrom("");
+    setDateTo("");
+    setExpSrc("");
+    setExpKindFlt([]);
+  };
   return(
     <div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
-        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G}}>{t("nav.expenses")}</h1>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:8}}>
+        <div style={{minWidth:0}}>
+          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:G,marginBottom:3}}>{t("nav.expenses")}</h1>
+          <p style={{fontSize:13,color:"#6B7B72",margin:0}}>{t("page.expensesDefBody")}</p>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
+          <button type="button" className="btn-primary" style={{fontSize:11,padding:"4px 12px",background:T}} onClick={openNew}>{t("action.newExpense")}</button>
+          <button type="button" className="btn-secondary" style={{fontSize:11,padding:"4px 12px",borderColor:T,color:T}} disabled={filtered.length===0} onClick={exportFilteredXlsx}>{t("action.exportXLSX")}</button>
+        </div>
       </div>
-      <div style={{fontSize:12,color:"#6B7B72",marginBottom:11,background:"#F5F0EA",borderRadius:7,padding:"7px 11px"}}>
-        {t("page.expensesDefBody")}
-      </div>
-      {(() => {
-        const cPending=byStatus.pending?.length||0;
-        const cApproved=byStatus.approved?.length||0;
-        const cRejected=byStatus.rejected?.length||0;
-        return (
-          <>
-      <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
-        <input className="inp" style={{flex:1,minWidth:200,padding:"5px 9px",fontSize:12}}
-          placeholder={t("filter.codeSearch")} value={expSrc}
-          onChange={e=>setExpSrc(e.target.value)}/>
-        <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:140,cursor:"pointer"}}
-          value={expFlt} onChange={e=>setExpFlt(e.target.value)}>
-          <option value="all">Estado: Todos</option>
-          <option value="pending">Pendiente</option>
-          <option value="approved">Aprobado</option>
-          <option value="rejected">Rechazado</option>
-        </select>
-        <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:130,cursor:"pointer"}}
-          value={expKindFlt} onChange={e=>setExpKindFlt(e.target.value)}>
-          <option value="all">Tipo: Todos</option>
-          <option value="expense">Gastos</option>
-          <option value="invoice">Facturas</option>
-        </select>
-        <button className="btn-primary" style={{fontSize:12,padding:"6px 12px"}} onClick={openNew}>{t("action.newExpense")}</button>
-        <button type="button" className="btn-secondary" style={{fontSize:12,padding:"6px 12px"}} disabled={filtered.length===0} onClick={exportFilteredXlsx}>{t("action.exportXLSX")}</button>
-      </div>
-      <div style={{fontSize:11,color:"#9CAA9F",marginBottom:6}}>
-        {cPending} pendiente{cPending!==1?"s":""} · {cApproved} aprobado{cApproved!==1?"s":""}
-        {cRejected>0 ? ` · ${cRejected} rechazado${cRejected!==1?"s":""}` : ""}
-      </div>
-      <div style={{marginBottom:7}}>
-        <button
-          style={{fontSize:11,color:"#6B7B72",background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit"}}
-          onClick={()=>setFiltersOpen(p=>!p)}
-        >
-          {filtersOpen ? "Menos filtros" : "Más filtros"}
-          {activeFilterCount > 0 && ` (${activeFilterCount})`}
-        </button>
-      </div>
-      {filtersOpen&&(
-      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:9}}>
-        <select className="inp" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:110,cursor:"pointer"}}
-          value={catFlt} onChange={e=>setCatFlt(e.target.value)}>
-          <option value="all" disabled={catFlt==="all"} hidden={catFlt==="all"}>{t("filter.category")}: {t("filter.all")}</option>
-          {cats.filter(c=>!c.archived).map(c=><option key={c.id} value={c.name}>{tCat(c.name,t)}</option>)}
-        </select>
-        <select className="inp"
-          style={{width:"auto",fontSize:11,padding:"4px 8px",minWidth:120,cursor:"pointer"}}
-          value={submFlt}
-          onChange={e=>setSubmFlt(e.target.value)}>
-          <option value="all" disabled={submFlt==="all"} hidden={submFlt==="all"}>Enviado por: Todos</option>
-          {(users||[])
-            .filter(u=>u.accountStatus==="active"&&u.id!=="system")
-            .map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-        </select>
-        <select className="inp" style={{width:"auto",fontSize:11,padding:"5px 8px",minWidth:140}}
-          value={recurringFlt} onChange={e => setRecurringFlt(e.target.value)}>
-          <option value="all">Costes fijos: Todos</option>
-          <option value="recurring">Costes fijos</option>
-          <option value="recurring_pending">Costes fijos · pendientes</option>
-          <option value="recurring_paid">Costes fijos · aprobados</option>
-        </select>
+      <input className="inp" style={{width:"100%",padding:"7px 11px",fontSize:12,marginBottom:10,boxSizing:"border-box"}}
+        placeholder={t("filter.codeSearch")} value={expSrc}
+        onChange={e=>setExpSrc(e.target.value)}/>
+      <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+        <MultiFilterMenu prefix="Estado" options={statusFilterOpts} selected={expFlt} onChange={setExpFlt} allLabel={t("filter.all")} minWidth={140}/>
+        <MultiFilterMenu prefix="Tipo" options={kindFilterOpts} selected={expKindFlt} onChange={setExpKindFlt} allLabel={t("filter.all")} minWidth={130}/>
+        <MultiFilterMenu prefix={t("filter.category")} options={catFilterOpts} selected={catFlt} onChange={setCatFlt} allLabel={t("filter.all")} minWidth={110}/>
+        <MultiFilterMenu prefix="Enviado por" options={submFilterOpts} selected={submFlt} onChange={setSubmFlt} allLabel={t("filter.all")} minWidth={120}/>
         <div style={{display:"flex",alignItems:"center",border:"1.5px solid",
-          borderColor:isDefaultRange?"#DDD6CC":G,borderRadius:7,
+          borderColor:dateRangeActive?T:"#DDD6CC",borderRadius:7,
           overflow:"hidden",background:"#FAFAF9",height:32,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px",
             borderRight:"1px solid #EDE8E0"}}>
             <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
-              textTransform:"uppercase",letterSpacing:"0.05em"}}>Desde</span>
+              textTransform:"uppercase",letterSpacing:"0.05em"}}>{t("filter.dateFrom")}</span>
             <input type="date" style={{border:"none",background:"transparent",
               fontSize:12,color:G,outline:"none",cursor:"pointer",
               fontFamily:"inherit",width:110}}
-              value={pendingFrom}
-              onChange={e => setPendingFrom(e.target.value)}/>
+              value={dateFrom}
+              onChange={e=>setDateFrom(e.target.value)}/>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px"}}>
             <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
-              textTransform:"uppercase",letterSpacing:"0.05em"}}>Hasta</span>
+              textTransform:"uppercase",letterSpacing:"0.05em"}}>{t("filter.dateTo")}</span>
             <input type="date" style={{border:"none",background:"transparent",
               fontSize:12,color:G,outline:"none",cursor:"pointer",
               fontFamily:"inherit",width:110}}
-              value={pendingTo}
-              onChange={e => setPendingTo(e.target.value)}/>
+              value={dateTo}
+              onChange={e=>setDateTo(e.target.value)}/>
           </div>
         </div>
-        <button
-          disabled={isDefaultRange && (!catFlt||catFlt==="all") && (!submFlt||submFlt==="all") && !expSrc}
-          style={{padding:"5px 14px",borderRadius:7,fontSize:12,fontWeight:600,
-            border:"none",cursor:isDefaultRange?"default":"pointer",
-            background:isDefaultRange?"#EDE8E0":G,
-            color:isDefaultRange?"#9CAA9F":"#fff",
-            fontFamily:"inherit",height:32,display:"flex",alignItems:"center",gap:6}}
-          onClick={()=>{
-            setDateFrom(isDefaultRange ? "" : pendingFrom);
-            setDateTo(isDefaultRange ? "" : pendingTo);
-          }}>
-          Aplicar
-          {!isDefaultRange && (
-            <span style={{background:"rgba(255,255,255,0.25)",borderRadius:8,
-              fontSize:10,padding:"1px 5px",fontWeight:700}}>
-              {[catFlt&&catFlt!=="all"?catFlt:"",submFlt&&submFlt!=="all"?submFlt:"",!isDefaultRange?"range":"",expSrc].filter(Boolean).length}
-            </span>
-          )}
-        </button>
-        <button style={{padding:"4px 10px",borderRadius:18,fontSize:11,fontWeight:600,border:"1.5px solid "+G,background:"transparent",color:G,cursor:"pointer"}}
-          onClick={()=>{
-            try{
-              ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
-            }catch(e){}
-            setExpFlt("all");
-            setCatFlt("all");
-            setSubmFlt("all");
-            setDateFrom("");
-            setDateTo("");
-            setExpSrc("");
-            setExpKindFlt("all");
-            setRecurringFlt("all");
-            setPendingFrom(naturalFrom);
-            setPendingTo(naturalTo);
-          }}>
-          {t("filter.clearFilters")} ({activeFilterCount + (expSrc?1:0)})
-        </button>
+        {(activeFilterCount>0||!!expSrc)&&(
+          <button type="button" style={{fontSize:11,color:T,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontWeight:600,textDecoration:"underline",textUnderlineOffset:2}}
+            onClick={clearAllFilters}>
+            {t("filter.clearFilters")}
+          </button>
+        )}
       </div>
-      )}
-          </>
-        );
-      })()}
-      <div className="card" style={{padding:0,overflow:"hidden"}}>
+      <div className="card" style={{padding:0,overflow:"visible"}}>
         {filtered.length===0&&<div style={{padding:24,textAlign:"center",color:"#9CAA9F",fontSize:12}}>{t("empty.expenses")}</div>}
         {monthGroups.map(group=>(
           <div key={group.ym}>
@@ -5386,7 +5567,7 @@ function ExpensesView(){
                     {isInvRow&&(
                       <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:F,color:"#fff",flexShrink:0,display:"inline-block"}}>FACTURA</span>
                     )}
-                    {!isInvRow&&expKindFlt!=="invoice"&&(
+                    {!isInvRow&&(kindSel.length===0||kindSel.includes("expense"))&&(
                       <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.05em",background:G,color:"#fff",flexShrink:0,display:"inline-block"}}>GASTO</span>
                     )}
                     <span
@@ -5400,7 +5581,7 @@ function ExpensesView(){
                         ...(statusToneClass(st)?{}:{background:(ST[st]||ST.pending).bg,color:(ST[st]||ST.pending).color}),
                       }}
                     >{t("status."+st)}</span>
-                    {(e.paidBy||[]).length>1&&<span title={t("label.splitBadge")} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:7,fontSize:9,fontWeight:700,background:"#EDE8E0",color:"#4B5E52",flexShrink:0,fontVariantNumeric:"tabular-nums"}} aria-label={`${t("label.splitBadge")}: ${(e.paidBy||[]).length}`}><span>{(e.paidBy||[]).length}</span></span>}
+                    {splitPill(e.paidBy,t)}
                   </div>
                   <div style={{fontSize:10,color:"#9CAA9F",marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                     <span>{isInvRow&&e.dueDate?`${t("expenses.vence")} ${fmtDate(e.dueDate)}`:fmtDate(e.date)}</span>
@@ -5410,7 +5591,6 @@ function ExpensesView(){
                 </div>
                 <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5,flexShrink:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    {(e.comments||[]).length>0&&<span style={{minWidth:15,minHeight:15,borderRadius:"50%",background:BL,color:"#fff",fontSize:8,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"0 4px"}} aria-hidden="true">{(e.comments||[]).length}</span>}
                     {(e.receiptPath||(e.receipt&&!e._apiType))&&(
                       <span style={{
                         fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:4,
@@ -5428,8 +5608,12 @@ function ExpensesView(){
         })}
           </div>
         ))}
+        {filtered.length>0&&(
+          <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",padding:"12px 13px",borderTop:"1px solid #EDE8E0",background:"#FAFAF8"}}>
+            <span style={{fontSize:12,fontWeight:700,color:"#1A2B1E",fontVariantNumeric:"tabular-nums"}}>{t("expenses.filteredTotal",{amount:fmt(filteredTotal)})}</span>
+          </div>
+        )}
       </div>
-      {panel==="detail"&&detailId&&<div className="mob-only" style={{marginTop:11,background:"#fff",borderRadius:11,padding:14}}><DetailPanel/></div>}
     </div>
   );
 }
@@ -5468,9 +5652,13 @@ function ReceiptThumb({expenseId}){
 
 /* ── APPROVALS ─────────────────────────────────────────────────────────────── */
 function ApprovalsView(){
-  const{t,expenses,cats,users,departments,isAdmin,isApprover,user,aNote,setANote,approve,go,setView,setDetailId,setPanel,resetForm}=useApp();
+  const{t,expenses,cats,users,departments,isAdmin,isApprover,user,aNote,setANote,approve,setDetailId,setPanel,resetForm}=useApp();
+  const openApprovalDetail=(id)=>{
+    resetForm();
+    setDetailId(id);
+    setPanel("detail");
+  };
   const [typeFilter,setTypeFilter]=useState("all");
-  const [assigneeFilter,setAssigneeFilter]=useState("");
   const getU=id=>users.find(u=>u.id===id)||{name:UNKNOWN_USER_NAME,color:"#999"};
   const priorityForItem=(item)=>{
     const ids=effectiveExpenseApproverIds(item,cats,users);
@@ -5500,15 +5688,7 @@ function ApprovalsView(){
     if(typeFilter==="expense")return e.expenseType!=="invoice";
     return e.expenseType==="invoice";
   });
-  const pendingMineFilter=(item)=>{
-    const ids=effectiveExpenseApproverIds(item,cats,users);
-    if(!ids.includes(user.id))return false;
-    const vote=approvalVoteFor(item.approvals||{},user.id,users);
-    return vote!=="approved"&&vote!=="rejected";
-  };
-  const hasPendingMine=kindFiltered.some(pendingMineFilter);
-  const effectiveAssigneeFilter=assigneeFilter||(hasPendingMine?"mine":"all");
-  const assigneeFiltered=effectiveAssigneeFilter==="mine"?kindFiltered.filter(pendingMineFilter):kindFiltered;
+  const assigneeFiltered=kindFiltered;
   const isDesignatedOnAny=kindFiltered.some(item=>effectiveExpenseApproverIds(item,cats,users).includes(user.id));
   const showActionSections=isApprover||isDesignatedOnAny;
   const sectionForItem=(item)=>{
@@ -5547,11 +5727,7 @@ function ApprovalsView(){
     const canActOnRow=canActOnExpenseItem(item,user,cats,users);
     const showVoteFooter=st==="pending"&&rowApproverIds.length>0;
     return(
-      <div key={item.id} className="card row-hover" style={{marginBottom:6,padding:"11px 14px",background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={() => {
-        resetForm();
-        go("expenses");
-        setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
-      }}>
+      <div key={item.id} className="card row-hover" style={{marginBottom:6,padding:"11px 14px",background:cardBg,opacity:st==="deleted"?0.4:1,border:cardBorder,cursor:"pointer"}} onClick={()=>openApprovalDetail(item.id)}>
         <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
@@ -5592,9 +5768,7 @@ function ApprovalsView(){
                   style={{fontSize:10,padding:"2px 8px"}}
                   onClick={e => {
                     e.stopPropagation();
-                    resetForm();
-                    go("expenses");
-                    setTimeout(() => { setDetailId(item.id); setPanel("detail"); }, 50);
+                    openApprovalDetail(item.id);
                   }}
                 >
                   {t("action.review")}
@@ -5642,10 +5816,6 @@ function ApprovalsView(){
         </p>
       )}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
-        <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 10px"}} value={effectiveAssigneeFilter} onChange={e=>setAssigneeFilter(e.target.value)}>
-          <option value="mine">Pendientes de mí</option>
-          <option value="all">Todas</option>
-        </select>
         <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
           {[
             ["all",t("expenses.filterAll"),cAll],
@@ -5718,15 +5888,23 @@ function buildCalendarMonth(date,srcExpenses,cats,users){
         id:e.id,
         label:isInv?(e.vendor||e.proveedor||e.description):e.description,
         amount:eurForExpense(e),
+        virtual:false,
       });
     }
   });
-  const monthTotal=Object.values(events).reduce((s,dayEvents)=>s+dayEvents.reduce((ds,ev)=>ds+ev.amount,0),0);
+  const virtualEvents=projectVirtualRecurrenceEvents(srcExpenses,year,mon,cats,users);
+  virtualEvents.forEach(ev=>{
+    const day=ev.day;
+    if(!events[day])events[day]=[];
+    events[day].push(ev);
+  });
+  const monthTotal=Object.values(events).reduce((s,dayEvents)=>s+dayEvents.filter(ev=>!ev.virtual).reduce((ds,ev)=>ds+ev.amount,0),0);
+  const monthProjected=Object.values(events).reduce((s,dayEvents)=>s+dayEvents.filter(ev=>ev.virtual).reduce((ds,ev)=>ds+ev.amount,0),0);
   const cells=[];
   for(let i=0;i<firstDay;i++)cells.push(null);
   for(let d=1;d<=daysInMonth;d++)cells.push(d);
   const monthName=(()=>{const mn=date.toLocaleString("es-ES",{month:"long"});const yr=date.getFullYear();return mn.charAt(0).toUpperCase()+mn.slice(1)+" "+yr;})();
-  return{year,mon,events,cells,monthTotal,monthName};
+  return{year,mon,events,cells,monthTotal,monthProjected,monthName};
 }
 function PaymentCalendar({reportExpenses}){
   const{expenses,cats,users,t,go,setDetailId,setPanel,resetForm}=useApp();
@@ -5773,6 +5951,9 @@ function PaymentCalendar({reportExpenses}){
         <div style={{textAlign:"center"}}>
           <div style={{fontWeight:700,fontSize:13,textTransform:"capitalize"}}>{md.monthName}</div>
           <div style={{fontSize:13,color:"#1A2B1E",fontWeight:400,marginTop:2,fontVariantNumeric:"tabular-nums"}}>{fmt(md.monthTotal)}</div>
+          {md.monthProjected>0&&(
+            <div style={{fontSize:10,color:"#6B7B72",marginTop:2,fontVariantNumeric:"tabular-nums"}}>{t("cal.monthProjected",{amount:fmt(md.monthProjected)})}</div>
+          )}
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:3,marginTop:12}}>
           {dayLabels.map((d,i)=><div key={i} style={{textAlign:"center",fontSize:8,fontWeight:600,color:"#9CAA9F",padding:"2px 0"}}>{d}</div>)}
@@ -5780,7 +5961,10 @@ function PaymentCalendar({reportExpenses}){
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
           {md.cells.map((d,i)=>(
             <div key={i} onClick={()=>!isLeave&&d&&setSelDay(selDay===d?null:d)} style={{minHeight:32,borderRadius:5,background:d&&isToday(d)?"rgba(204,78,0,0.08)":d&&md.events[d]?"#FFFBF5":"#FAFAF8",border:d&&isToday(d)?`1.5px solid ${G}`:!isLeave&&d&&selDay===d?"1.5px solid "+T:"1px solid transparent",padding:"3px 2px",cursor:!isLeave&&d?"pointer":"default",transition:"border 0.1s"}}>
-              {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(md.events[d]||[]).map((ev,j)=><div key={j} title={ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?F:G}}/>)}</div></>}
+              {d&&<><div style={{fontSize:9,fontWeight:isToday(d)?700:400,color:isToday(d)?G:"#4B5E52",textAlign:"center"}}>{d}</div><div style={{display:"flex",flexWrap:"wrap",gap:1,justifyContent:"center",marginTop:1}}>{(md.events[d]||[]).map((ev,j)=>{
+                const dotColor=ev.type==="invoice"?F:G;
+                return <div key={j} title={ev.virtual?`${ev.label} (${t("cal.projected")})`:ev.label} style={{width:5,height:5,borderRadius:"50%",background:ev.virtual?"transparent":dotColor,border:ev.virtual?`1.5px solid ${dotColor}`:"none",boxSizing:"border-box"}}/>;
+              })}</div></>}
             </div>
           ))}
         </div>
@@ -5804,16 +5988,27 @@ function PaymentCalendar({reportExpenses}){
             ?<div style={{fontSize:11,color:"#9CAA9F"}}>Sin movimientos</div>
             :(currentMonth.events[selDay]||[]).map((ev,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,marginBottom:3,gap:6}}>
-              <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}><span style={{width:5,height:5,borderRadius:"50%",background:ev.type==="invoice"?F:G,display:"inline-block",flexShrink:0}}/><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</span></span>
-              <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0}}>{fmt(ev.amount)}</span>
+              <span style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}>
+                <span style={{width:5,height:5,borderRadius:"50%",background:ev.virtual?"transparent":(ev.type==="invoice"?F:G),border:ev.virtual?`1.5px solid ${ev.type==="invoice"?F:G}`:"none",display:"inline-block",flexShrink:0,boxSizing:"border-box"}}/>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}{ev.virtual?` (${t("cal.projected")})`:""}</span>
+              </span>
+              <span style={{fontWeight:700,fontVariantNumeric:"tabular-nums",flexShrink:0,color:ev.virtual?"#6B7B72":"inherit"}}>{fmt(ev.amount)}</span>
+              {!ev.virtual&&(
               <button style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{resetForm();go("expenses");setTimeout(()=>{setDetailId(ev.id);setPanel("detail");},50);}}>{t("action.viewAll")}</button>
+              )}
+              {ev.virtual&&(
+              <button style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${G}`,background:"transparent",color:G,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{resetForm();setDetailId(ev.anchorId||ev.id);setPanel("detail");}}>{t("action.review")}</button>
+              )}
             </div>
           ))}
         </div>
       )}
-      <div style={{display:"flex",gap:12,marginTop:8,fontSize:9}}>
+      <div style={{display:"flex",gap:12,marginTop:8,fontSize:9,flexWrap:"wrap"}}>
         <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:F,display:"inline-block"}}/>{t("expenses.typeInvoice")}</span>
         <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:G,display:"inline-block"}}/>{t("nav.expenses")}</span>
+        {currentMonth.monthProjected>0&&(
+        <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"transparent",border:`1.5px solid ${G}`,display:"inline-block",boxSizing:"border-box"}}/>{t("cal.legendProjected")}</span>
+        )}
       </div>
     </div>
   );
@@ -5872,8 +6067,8 @@ function ReportsView(){
   const catTotals=cats.filter(c=>!c.archived).map(c=>({
     cat:c.name,
     total:displayExpenses.filter(e=>e.category===c.name&&expenseCountsTowardDeptSpend(e,cats,users)).reduce((s,e)=>s+eurForExpense(e),0),
-  })).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
-  const maxC=catTotals[0]?.total||1;
+  })).filter(x=>x.total>0);
+  const maxC=catTotals.length?Math.max(...catTotals.map(c=>c.total),0):0;
   const fullMonthlyData = React.useMemo(()=>{
     const months = [];
     const now = new Date();
@@ -5999,7 +6194,7 @@ function ReportsView(){
               const lastDay=new Date(Number(m.ym.slice(0,4)),Number(m.ym.slice(5,7)),0).getDate();
               const monthTo=`${m.ym}-${String(lastDay).padStart(2,"0")}`;
               const openMonth=()=>{
-                setExpFlt("all");
+                setExpFlt([]);
                 setDateFrom(monthFrom);
                 setDateTo(monthTo);
                 setView("expenses");
@@ -6057,7 +6252,10 @@ function ReportsView(){
       <div className="card" style={{marginBottom:11}}>
         <div style={{fontWeight:600,fontSize:13,color:"#1A2B1E",marginBottom:12}}>{t("reports.byCategory")}<span style={{fontSize:10,color:"#9CAA9F",fontWeight:400}}>{filterLabel}</span></div>
         {catTotals.length===0&&<div style={{color:"#9CAA9F",fontSize:12}}>Sin datos para el filtro seleccionado</div>}
-        {catTotals.map(({cat,total})=>(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt(cat);setExpFlt("all");go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{tCat(cat,t)}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:G,width:`${total/maxC*100}%`,transition:"width 0.4s"}}/></div></div>))}
+        {catTotals.map(({cat,total})=>{
+          const barPct=maxC>0?Math.min(100,Math.max(0,(total/maxC)*100)):0;
+          return(<div key={cat} className="row-hover" style={{marginBottom:9,cursor:"pointer",borderRadius:6,padding:"2px 4px",margin:"0 -4px 9px"}} onClick={()=>{setCatFlt([cat]);setExpFlt([]);go("expenses");}}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontWeight:500}}>{tCat(cat,t)}</span><span style={{fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmt(total)}</span></div><div style={{height:3,background:"#EDE8E0",borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:G,width:`${barPct}%`,transition:"width 0.4s"}}/></div></div>);
+        })}
       </div>
       <div style={{borderTop:"1px solid #F0EBE3",margin:"2px 0 12px"}}/>
       {/* Per person — approved share + submitted count + expandable log */}
@@ -6100,17 +6298,19 @@ function ReportsView(){
                         return(
                           <div
                             key={row.id}
-                            style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:i<userRows.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}}
+                            style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0",borderBottom:i<userRows.length-1?"1px solid #F5F0EA":"none",cursor:"pointer"}}
                             onClick={()=>{resetForm();setView("expenses");setDetailId(row.id);setPanel("detail");}}
                           >
-                            <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#EDE9FE":"#fde8d6",color:kind==="invoice"?F:G}}>
-                              {kind==="invoice"?"FACTURA":"GASTO"}
-                            </span>
                             <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                {row.description||"Sin descripción"}
+                              <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+                                <span style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>
+                                  {row.description||"Sin descripción"}
+                                </span>
+                                <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,flexShrink:0,background:kind==="invoice"?"#EDE9FE":"#fde8d6",color:kind==="invoice"?F:G}}>
+                                  {kind==="invoice"?"FACTURA":"GASTO"}
+                                </span>
                               </div>
-                              <div style={{fontSize:10,color:"#9CAA9F"}}>
+                              <div style={{fontSize:10,color:"#9CAA9F",marginTop:2}}>
                                 {fmtDate(row.date)} · {deptLabel(row.departmentId,departments)}
                               </div>
                             </div>
@@ -7107,13 +7307,6 @@ function SettingsView(){
   const [backupsMsg,setBackupsMsg]=useState("");
   const [appIvaDefaultDraft,setAppIvaDefaultDraft]=useState(()=>readIvaDefault());
   const [appCatsDraft,setAppCatsDraft]=useState(()=>cats.map(c=>({...c})));
-  const [appCurrency,setAppCurrency]=useState(()=>{
-    try{
-      const raw=localStorage.getItem("sol-currency");
-      const code=raw?JSON.parse(raw):"EUR";
-      return String(code||"EUR").toUpperCase().slice(0,3);
-    }catch(e){return"EUR";}
-  });
   const [ivaDefault,setIvaDefault]=useState(()=>readIvaDefault());
   useEffect(()=>{setIvaDefault(readIvaDefault());},[ivaRates]);
   useEffect(()=>{setAppIvaDefaultDraft(readIvaDefault());},[ivaRates]);
@@ -7215,6 +7408,30 @@ function SettingsView(){
       prev.map(c => (c.id === catId ? { ...c, ...changes } : c))
     );
   };
+  const [catDragId,setCatDragId]=useState(null);
+  const [catDropIdx,setCatDropIdx]=useState(null);
+  const catMotionOk=typeof window!=="undefined"&&!window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reorderCatsDraft=(fromIdx,toIdx)=>{
+    if(fromIdx===toIdx||fromIdx<0||toIdx<0)return;
+    setAppCatsDraft(prev=>{
+      const next=[...prev];
+      const [item]=next.splice(fromIdx,1);
+      next.splice(toIdx,0,item);
+      return next;
+    });
+  };
+  const moveCategoryById=(catId,delta)=>{
+    setAppCatsDraft(prev=>{
+      const idx=prev.findIndex(c=>c.id===catId);
+      if(idx<0)return prev;
+      const to=idx+delta;
+      if(to<0||to>=prev.length)return prev;
+      const next=[...prev];
+      const [item]=next.splice(idx,1);
+      next.splice(to,0,item);
+      return next;
+    });
+  };
   const toggleDeptApprover = (deptId, userId) => {
     setAppDeptApproversDraft(prev => {
       const current = Array.isArray(prev[deptId]) ? prev[deptId] : [];
@@ -7269,28 +7486,6 @@ function SettingsView(){
   const approverCandidates = users.filter(u =>
     u.accountStatus === 'active' && u.id !== 'system'
   );
-  const saveAppCurrency=async()=>{
-    setAppSetErr("");setAppSetMsg("");
-    setAppSaving("currency");
-    const code=String(appCurrency||"EUR").toUpperCase().slice(0,3);
-    if(!code){setAppSetErr("Moneda no válida.");toastSaveFailed("Moneda no válida.");setAppSaving(null);return;}
-    try{
-      if(AUTH_URL){
-        const tok=appSettingsToken()||(API.token?String(API.token):"");
-        if(!tok){setAppSetErr(t("msg.sessionExpired"));toastSaveFailed(t("msg.sessionExpired"));return;}
-        try{
-          const r=await fetch(AUTH_URL+"/settings/currency",{method:"PUT",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify({value:code})});
-          const d=await r.json().catch(()=>({}));
-          if(!r.ok){const errMsg=d.error||t("msg.genericShort");setAppSetErr(errMsg);toastSaveFailed(errMsg);return;}
-        }catch(e){setAppSetErr(t("signup.serverDown"));toastSaveFailed(t("signup.serverDown"));return;}
-      }
-      try{localStorage.setItem("sol-currency",JSON.stringify(code));}catch(e){}
-      setAppCurrency(code);
-      applyServerSettings({currency:code});
-      setAppSetMsg("Moneda guardada.");
-      toastSaved("Moneda");
-    }finally{setAppSaving(null);}
-  };
   const saveIvaDefault=v=>{
     const n=Number(v);
     if(Number.isNaN(n))return;
@@ -7696,27 +7891,79 @@ function SettingsView(){
 
         <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"14px 0"}}/>
         <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Categorías</div>
-        <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:8}}>
+        <div style={{fontSize:10,color:"#9CAA9F",marginBottom:6}}>Arrastra el asa ⠿ para reordenar. Usa ↑↓ en móvil.</div>
+        <div
+          style={{display:"flex",flexDirection:"column",gap:4,marginBottom:8}}
+          onDragOver={e=>{if(!catDragId)return;e.preventDefault();}}
+          onDrop={e=>{
+            e.preventDefault();
+            if(!catDragId)return;
+            const fromIdx=appCatsDraft.findIndex(x=>x.id===catDragId);
+            if(fromIdx>=0&&fromIdx!==appCatsDraft.length-1)reorderCatsDraft(fromIdx,appCatsDraft.length-1);
+            setCatDragId(null);
+            setCatDropIdx(null);
+          }}
+        >
           {appCatsDraft.map((c,idx)=>(
-            <div key={c.id||("tmp-"+idx)} style={{display:"flex",gap:7,alignItems:"center"}}>
-              <input className="inp" style={{flex:1,fontSize:13,opacity:c.archived?0.65:1}} value={c.name||""} onChange={e=>updateCategory(c.id,{name:e.target.value})}/>
-              <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>updateCategory(c.id,{archived:!c.archived})}>
-                {c.archived?"Restaurar":"Archivar"}
-              </button>
-            </div>
+            <React.Fragment key={c.id||("tmp-"+idx)}>
+              {catDropIdx===idx&&catDragId&&catDragId!==c.id&&(
+                <div style={{height:2,background:G,borderRadius:1,margin:"0 2px",opacity:0.9}} aria-hidden="true"/>
+              )}
+              <div
+                onDragOver={e=>{
+                  if(!catDragId||catDragId===c.id)return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect="move";
+                  setCatDropIdx(idx);
+                }}
+                onDrop={e=>{
+                  e.preventDefault();
+                  if(!catDragId)return;
+                  const fromIdx=appCatsDraft.findIndex(x=>x.id===catDragId);
+                  if(fromIdx>=0&&fromIdx!==idx)reorderCatsDraft(fromIdx,idx);
+                  setCatDragId(null);
+                  setCatDropIdx(null);
+                }}
+                style={{
+                  display:"flex",
+                  gap:6,
+                  alignItems:"center",
+                  padding:"4px 6px",
+                  borderRadius:7,
+                  border:catDragId===c.id?"1px dashed #DDD6CC":"1px solid transparent",
+                  background:catDragId===c.id?"#FAF7F2":"transparent",
+                  opacity:catDragId===c.id&&catMotionOk?0.65:1,
+                  transition:catMotionOk?"opacity var(--motion-duration-micro)":"none",
+                }}
+              >
+                <span
+                  draggable
+                  aria-label={t("settings.categoryReorder")}
+                  title={t("settings.categoryReorder")}
+                  onDragStart={e=>{
+                    setCatDragId(c.id);
+                    e.dataTransfer.effectAllowed="move";
+                    try{e.dataTransfer.setData("text/plain",String(c.id));}catch(err){}
+                  }}
+                  onDragEnd={()=>{setCatDragId(null);setCatDropIdx(null);}}
+                  style={{cursor:"grab",color:"#9CAA9F",fontSize:15,lineHeight:1,padding:"2px 4px",userSelect:"none",flexShrink:0,touchAction:"none"}}
+                >⠿</span>
+                <input className="inp" style={{flex:1,fontSize:13,opacity:c.archived?0.65:1,minWidth:0}} value={c.name||""} onChange={e=>updateCategory(c.id,{name:e.target.value})}/>
+                <div style={{display:"flex",flexDirection:"column",gap:2,flexShrink:0}}>
+                  <button type="button" className="btn-secondary" style={{fontSize:9,padding:"1px 5px",lineHeight:1.2,minWidth:24}} disabled={idx===0} aria-label={t("action.moveCategoryUp")} onClick={()=>moveCategoryById(c.id,-1)}>↑</button>
+                  <button type="button" className="btn-secondary" style={{fontSize:9,padding:"1px 5px",lineHeight:1.2,minWidth:24}} disabled={idx===appCatsDraft.length-1} aria-label={t("action.moveCategoryDown")} onClick={()=>moveCategoryById(c.id,1)}>↓</button>
+                </div>
+                <button type="button" className="btn-secondary" style={{fontSize:10,padding:"4px 8px",flexShrink:0}} onClick={()=>updateCategory(c.id,{archived:!c.archived})}>
+                  {c.archived?"Restaurar":"Archivar"}
+                </button>
+              </div>
+            </React.Fragment>
           ))}
         </div>
         <div style={{display:"flex",gap:7,marginBottom:12}}>
           <button type="button" className="btn-sm" style={{fontSize:10}} onClick={()=>setAppCatsDraft(prev=>[...prev,{id:"c_"+Date.now(),name:"Nueva categoría",archived:false}])}>Añadir categoría</button>
           <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} disabled={appSaving==="cats"} onClick={()=>void saveAppCategories()}>{appSaving==="cats"?"Guardando…":"Guardar categorías"}</button>
         </div>
-
-        <hr style={{border:"none",borderTop:"1px solid #E8E2DC",margin:"14px 0"}}/>
-        <div style={{fontWeight:600,fontSize:12,color:G,marginBottom:8}}>Currency</div>
-        <label className="lbl">Moneda base</label>
-        <input className="inp" style={{maxWidth:120,fontSize:13,marginBottom:6,textTransform:"uppercase"}} maxLength={3} value={appCurrency} onChange={e=>setAppCurrency(String(e.target.value||"").toUpperCase().replace(/[^A-Z]/g,"").slice(0,3))}/>
-        <div style={{fontSize:10,color:"#9CAA9F",marginBottom:8}}>Solo afecta a etiquetas visuales. Los importes ya registrados no se convierten.</div>
-        <button type="button" className="btn-primary" style={{fontSize:11,padding:"5px 10px"}} disabled={appSaving==="currency"} onClick={()=>void saveAppCurrency()}>{appSaving==="currency"?"Guardando…":"Guardar moneda"}</button>
       </AccordionSection>
 
       {AUTH_URL&&<PendingUsersPanel/>}
@@ -7904,27 +8151,27 @@ function SolanaExpenses(){
   },[user]);
   const [detailId,setDetailId]=useState(null);
   const [panel,   setPanel]   =useState(null);
-  const [expFlt,  setExpFlt]  =useSessionState("sol-flt-status","all");
+  const [expFlt,  setExpFlt]  =useSessionState("sol-flt-status",[]);
   const [expSrc,  setExpSrc]  =useState("");
-  const [catFlt,  setCatFlt]  =useSessionState("sol-flt-cat","all");   // category name or "all"
-  const [submFlt, setSubmFlt] =useSessionState("sol-flt-subm","all");   // userId or "all"
+  const [catFlt,  setCatFlt]  =useSessionState("sol-flt-cat",[]);
+  const [submFlt, setSubmFlt] =useSessionState("sol-flt-subm",[]);
   const [dateFrom,setDateFrom]=useSessionState("sol-flt-from","");   // YYYY-MM-DD or ""
   const [dateTo,  setDateTo]  =useSessionState("sol-flt-to","");   // YYYY-MM-DD or ""
-  const [expKindFlt,setExpKindFlt]=useSessionState("sol-flt-kind","all");
-  const [recurringFlt,setRecurringFlt]=useSessionState("sol-flt-recurring","all");
+  const [expKindFlt,setExpKindFlt]=useSessionState("sol-flt-kind",[]);
+  const [recurringFlt,setRecurringFlt]=useSessionState("sol-flt-recurring",[]);
   const myExpFilterClearedRef=useRef(false);
   const resetExpenseFiltersToDefault=useCallback(()=>{
     try{
       ["sol-flt-status","sol-flt-cat","sol-flt-subm","sol-flt-from","sol-flt-to","sol-flt-kind","sol-flt-recurring"].forEach(k=>sessionStorage.removeItem(k));
     }catch(e){}
-    setExpFlt("all");
-    setCatFlt("all");
-    setSubmFlt("all");
+    setExpFlt([]);
+    setCatFlt([]);
+    setSubmFlt([]);
     setDateFrom("");
     setDateTo("");
     setExpSrc("");
-    setExpKindFlt("all");
-    setRecurringFlt("all");
+    setExpKindFlt([]);
+    setRecurringFlt([]);
   },[setExpFlt,setCatFlt,setSubmFlt,setDateFrom,setDateTo,setExpSrc,setExpKindFlt,setRecurringFlt]);
 
   const [form,    setForm]    =useState(()=>{
@@ -8038,7 +8285,7 @@ function SolanaExpenses(){
 
   const clearMyExpenseFilter=useCallback(()=>{
     myExpFilterClearedRef.current=true;
-    setSubmFlt("all");
+    setSubmFlt([]);
   },[setSubmFlt]);
   const onSignOut=useCallback(()=>{
     myExpFilterClearedRef.current=false;
@@ -9050,19 +9297,67 @@ function SolanaExpenses(){
       auditTrail:[...(e.auditTrail||[]),{action:"comment_added",by:user.id,at:at,note:tx}],
     }));
   };
-  const markExpenseRead=(expId)=>{
+  const markCommentsSeen=(expId)=>{
     const exp=expenses.find(e=>e.id===expId);
-    if(!exp||(exp.seenBy||[]).includes(user.id))return;
-    // Persist to localStorage keyed by user
-    try{
-      const key="sol-seen-"+user.id;
-      const seen=JSON.parse(localStorage.getItem(key)||"[]");
-      if(!seen.includes(expId)){
-        seen.push(expId);
-        localStorage.setItem(key,JSON.stringify(seen));
+    if(!exp)return;
+    const now=Date.now();
+    const applyLocal=()=>{
+      try{
+        const key="sol-comments-seen-"+user.id;
+        const map=JSON.parse(localStorage.getItem(key)||"{}");
+        map[expId]=now;
+        localStorage.setItem(key,JSON.stringify(map));
+      }catch(e){}
+      saveExp(prev=>prev.map(e=>e.id!==expId?e:{...e,commentsSeenAt:now}));
+    };
+    if(AUTH_URL){
+      void (async()=>{
+        try{
+          await API.post("/expenses/"+encodeURIComponent(expId)+"/mark-comments-seen",{});
+          saveExp(prev=>prev.map(e=>e.id!==expId?e:{...e,commentsSeenAt:now}));
+        }catch(e){applyLocal();}
+      })();
+      return;
+    }
+    applyLocal();
+  };
+
+  const stopRecurrence=(expId)=>{
+    const exp=expenses.find(e=>e.id===expId);
+    if(!exp)return;
+    const isOwner=exp.submittedBy===user.id||(exp.ownerId&&exp.ownerId===user.id);
+    if(!isOwner&&!isAdmin)return;
+    void (async()=>{
+      const ok=await confirmUI("¿Detener la recurrencia? Las ocurrencias futuras dejarán de mostrarse en el calendario.");
+      if(!ok)return;
+      if(AUTH_URL){
+        try{
+          const result=await API.post("/expenses/"+encodeURIComponent(expId)+"/stop-recurrence",{});
+          const updated=result?.expense?expenseFromApi(result.expense):null;
+          const seriesId=updated?.recurrenceSeriesId||exp.recurrenceSeriesId||expId;
+          const endDate=updated?.recurrenceEndDate||new Date().toISOString().slice(0,10);
+          saveExp(prev=>prev.map(e=>{
+            const sid=e.recurrenceSeriesId||e.id;
+            if(sid!==seriesId&&e.id!==expId)return e;
+            if(e.id===expId||e.id===seriesId)return updated?{...e,...updated,recurring:0,recurrenceEndDate:endDate}:e;
+            return e;
+          }));
+          dispatchSolanaToast("Recurrencia detenida.","info");
+        }catch(err){
+          dispatchSolanaToast(err?.message||"No se pudo detener la recurrencia.","error");
+        }
+        return;
       }
-    }catch(e){}
-    saveExp(expenses.map(e=>e.id!==expId?e:{...e,seenBy:[...new Set([...(e.seenBy||[]),user.id])]}));
+      const today=new Date().toISOString().slice(0,10);
+      const seriesId=exp.recurrenceSeriesId||expId;
+      saveExp(prev=>prev.map(e=>{
+        const sid=e.recurrenceSeriesId||e.id;
+        if(sid!==seriesId&&e.id!==expId)return e;
+        if(e.id===expId||e.id===seriesId)return{...e,recurring:0,recurrenceEndDate:today};
+        return e;
+      }));
+      dispatchSolanaToast("Recurrencia detenida.","info");
+    })();
   };
 
   /* ── APPROVE ────────────────────────────────────────────────────────────── */
@@ -9246,7 +9541,16 @@ function SolanaExpenses(){
     approved:expVisible.filter(e=>getItemStatus(e,cats,users)==="approved"),
     rejected:expVisible.filter(e=>getItemStatus(e,cats,users)==="rejected"),
   };
-  const filteredBase=(byStatus[expFlt]||expVisible).filter(e=>{
+  const filteredBase=(()=>{
+    const statusSel=asMultiFilter(expFlt);
+  const catSel=asMultiFilter(catFlt);
+  const submSel=asMultiFilter(submFlt);
+  const kindSel=asMultiFilter(expKindFlt);
+    let base=expVisible;
+    if(statusSel.length>0){
+      base=expVisible.filter(e=>statusSel.includes(getItemStatus(e,cats,users)));
+    }
+    return base.filter(e=>{
     const src=expSrc.toLowerCase().trim();
     if(src){
       const matchDesc=e.description.toLowerCase().includes(src);
@@ -9254,39 +9558,38 @@ function SolanaExpenses(){
       const matchVendor=e.expenseType==="invoice"&&String(e.vendor||"").toLowerCase().includes(src);
       if(!matchDesc&&!matchCode&&!matchVendor)return false;
     }
-    if(catFlt&&catFlt!=="all"&&e.category!==catFlt)return false;
-    if(submFlt&&submFlt!=="all"){
-      const matchesSubm=e.submittedBy===submFlt;
-      const matchesOwner=e.ownerId===submFlt;
+    if(catSel.length>0&&!catSel.includes(e.category))return false;
+    if(submSel.length>0){
+      const matchesSubm=submSel.some(id=>e.submittedBy===id);
+      const matchesOwner=submSel.some(id=>e.ownerId===id);
       if(!matchesSubm&&!matchesOwner)return false;
     }
     const refDate=effectiveDate(e);
     if(dateFrom&&refDate<dateFrom)return false;
     if(dateTo&&refDate>dateTo)return false;
-    if(expKindFlt==="invoice"&&e.expenseType!=="invoice")return false;
-    if(expKindFlt==="expense"&&e.expenseType==="invoice")return false;
+    if(kindSel.length>0){
+      const kind=e.expenseType==="invoice"?"invoice":"expense";
+      if(!kindSel.includes(kind))return false;
+    }
     return true;
   });
+  })();
+  const recurringSel=asMultiFilter(recurringFlt);
   let recurringFiltered = filteredBase;
-  if (recurringFlt === "recurring") {
+  if (recurringSel.includes("recurring")) {
     recurringFiltered = filteredBase.filter(e => expenseIsRecurringNonOnce(e));
-  } else if (recurringFlt === "recurring_pending") {
-    recurringFiltered = filteredBase.filter(e =>
-      expenseIsRecurringNonOnce(e) && e.status !== "approved"
-    );
-  } else if (recurringFlt === "recurring_paid") {
-    recurringFiltered = filteredBase.filter(e =>
-      expenseIsRecurringNonOnce(e) && e.status === "approved"
-    );
   }
   const filtered=recurringFiltered;
   const dateFilterActive = dateFrom !== "" || dateTo !== "";
+  const catOptionCount=cats.filter(c=>!c.archived).length;
+  const submOptionCount=(users||[]).filter(u=>u.accountStatus==="active"&&u.id!=="system").length;
   const activeFilterCount = [
-    catFlt && catFlt !== "all" ? catFlt : "",
-    submFlt && submFlt !== "all" ? submFlt : "",
+    isMultiFilterActive(expFlt,3) ? "status" : "",
+    isMultiFilterActive(catFlt,catOptionCount) ? "cat" : "",
+    isMultiFilterActive(submFlt,submOptionCount) ? "subm" : "",
     dateFilterActive ? "range" : "",
-    expKindFlt !== "all" ? "kind" : "",
-    recurringFlt !== "all" ? "recurring" : "",
+    isMultiFilterActive(expKindFlt,2) ? "kind" : "",
+    isMultiFilterActive(recurringFlt,1) ? "recurring" : "",
   ].filter(Boolean).length;
   const isApprover = Object.values(deptApprovers || {}).some(
     ids => Array.isArray(ids) && ids.includes(user?.id)
@@ -9330,24 +9633,22 @@ function SolanaExpenses(){
     return s+invoiceForecastMonthlyEUR(e);
   },0);
 
-  const go=v=>{setView(v);if(v!=="expenses"){setDetailId(null);setPanel(null);}};
-  const rpOpen=view==="expenses"&&(panel==="new"||(panel==="detail"&&detailId));
+  const go=v=>{
+    setView(v);
+    if(v!=="expenses"&&v!=="approvals"){
+      setDetailId(null);
+      setPanel(null);
+    }else if(panel==="new"&&v!=="expenses"){
+      setPanel(null);
+    }
+  };
+  const rpOpen=(panel==="detail"&&detailId)||(panel==="new"&&view==="expenses");
   const totalBadge=myPending.length;
-  const expenseNavBadge=expenses.filter(e=>{
-    if((e.seenBy||[]).includes(user.id))return false;
-    const seenKey="sol-seen-"+user.id;
-    const localSeen=(()=>{try{return JSON.parse(localStorage.getItem(seenKey)||"[]");}catch(e){return[];}})();
-    if(localSeen.includes(e.id))return false;
-    const isSubmitter=e.submittedBy===user.id;
-    const isCommenter=(e.comments||[]).some(c=>c.by===user.id);
-    const isPaidBy=(e.paidBy||[]).some(p=>p.userId===user.id);
-    if(!isSubmitter&&!isCommenter&&!isPaidBy)return false;
-    return(e.comments||[]).length>0;
-  }).length;
+  const expenseNavBadge=expenses.filter(e=>expenseHasUnreadComments(e,user.id)).length;
   const goToMyRejected=()=>{
     myExpFilterClearedRef.current=true;
-    setExpFlt("rejected");
-    setSubmFlt(user.id);
+    setExpFlt(["rejected"]);
+    setSubmFlt([user.id]);
     setView("expenses");
     setDetailId(null);
     setPanel(null);
@@ -9367,6 +9668,12 @@ function SolanaExpenses(){
     {id:"reports",label:t("nav.reports"),badge:0},
   ];
   const sessionUser=resolveSessionUser(user,users);
+  const mobDetailExp=detailId?expenses.find(e=>e.id===detailId):null;
+  const mobDetailTitle=(()=>{
+    const desc=String(mobDetailExp?.description||mobDetailExp?.vendor||"").trim();
+    if(!desc)return "Detalle de gasto";
+    return desc.length>40?desc.slice(0,40)+"…":desc;
+  })();
 
   /* ── CONTEXT VALUE ──────────────────────────────────────────────────────── */
   const ctxVal={
@@ -9391,7 +9698,7 @@ function SolanaExpenses(){
     clearMyExpenseFilter,
     importRef,
     removeAttachment,editExp,deleteExp,adminIds,
-    fixResubmitExpense,addExpenseComment,markExpenseRead,
+    fixResubmitExpense,addExpenseComment,markCommentsSeen,stopRecurrence,
     goToMyRejected,
     onSignOut,
     setUser,
@@ -9559,6 +9866,17 @@ function SolanaExpenses(){
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#FAF7F2"}}>{form.expenseType==="invoice"?t("dash.newInvoice"):t("form.newExpense")}</div>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:18}}><NewPanel/></div>
+          </div>
+        )}
+
+        {/* Mobile expense detail overlay */}
+        {panel==="detail"&&detailId&&(
+          <div className="mob-only panel-slide" style={{position:"fixed",inset:0,background:"#F5F0EA",zIndex:100,display:"flex",flexDirection:"column"}}>
+            <div style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
+              <button type="button" aria-label="Volver" style={{border:"none",background:"none",color:"#FAF7F2",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>{setDetailId(null);setPanel(null);}}>&#8592;</button>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#FAF7F2",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,flex:1}}>{mobDetailTitle}</div>
+            </div>
+            <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:12,paddingBottom:72}}><DetailPanel/></div>
           </div>
         )}
 

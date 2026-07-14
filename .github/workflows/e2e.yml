@@ -23,6 +23,9 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
 
+      - name: Assert AUTH_URL matches E2E mock base
+        run: grep -q 'window.__SOLANA_AUTH_URL__ = "https://solana-auth.onrender.com"' frontend/index.html
+
       - name: Run E2E tests
         run: npx playwright test tests/e2e/critical-flows.spec.ts --reporter=list --workers=1
 

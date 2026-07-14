@@ -38,14 +38,23 @@ function nextDueDate(isoDate, rule) {
     dt.setUTCDate(dt.getUTCDate() + 14);
     return dt.toISOString().slice(0, 10);
   }
+  if (r === 'daily') {
+    const dt = new Date(Date.UTC(y, m, d));
+    dt.setUTCDate(dt.getUTCDate() + 1);
+    return dt.toISOString().slice(0, 10);
+  }
 
   if (r.startsWith('custom:')) {
     const tail = r.slice(7);
-    const match = tail.match(/^(\d+)(weeks|months|years)$/);
+    const match = tail.match(/^(\d+)(days|weeks|months|years)$/);
     if (match) {
       const n = parseInt(match[1], 10);
       const unit = match[2];
       const dt = new Date(Date.UTC(y, m, d));
+      if (unit === 'days') {
+        dt.setUTCDate(dt.getUTCDate() + n);
+        return dt.toISOString().slice(0, 10);
+      }
       if (unit === 'weeks') {
         dt.setUTCDate(dt.getUTCDate() + n * 7);
         return dt.toISOString().slice(0, 10);
@@ -79,4 +88,100 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-module.exports = { nextDueDate, todayISO, RULES, RECURRENCE_RULES, isValidRecurrenceRule };
+function addMonthsISO(isoDate, months) {
+  if (!isoDate) return null;
+  const parts = isoDate.split('-').map(Number);
+  if (parts.length !== 3) return null;
+  const dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  dt.setUTCMonth(dt.getUTCMonth() + months);
+  return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * Effective calendar date for an expense row (invoice → dueDate).
+ * @param {{ expenseType?: string, dueDate?: string|null, date?: string|null }} row
+ */
+function recurrenceEffectiveDate(row) {
+  if (!row) return null;
+  const isInv = String(row.expenseType || 'expense') === 'invoice';
+  const raw = isInv ? (row.dueDate || row.date) : row.date;
+  return raw ? String(raw).slice(0, 10) : null;
+}
+
+/**
+ * List occurrence dates from anchor forward within [rangeStart, rangeEnd] (inclusive).
+ * @param {string} anchorDate YYYY-MM-DD
+ * @param {string} rule recurrence rule
+ * @param {{ rangeStart?: string, rangeEnd?: string, endDate?: string|null, maxCount?: number }} [opts]
+ */
+function enumerateOccurrenceDates(anchorDate, rule, opts = {}) {
+  const dates = [];
+  if (!anchorDate || !rule) return dates;
+  const rangeStart = opts.rangeStart || anchorDate;
+  const rangeEnd = opts.rangeEnd;
+  const endDate = opts.endDate ? String(opts.endDate).slice(0, 10) : null;
+  const maxCount = opts.maxCount != null ? opts.maxCount : 400;
+  let cur = anchorDate;
+  const seen = new Set();
+  while (dates.length < maxCount) {
+    if (!cur || seen.has(cur)) break;
+    seen.add(cur);
+    if (endDate && cur > endDate) break;
+    if (rangeEnd && cur > rangeEnd) break;
+    if (cur >= rangeStart) dates.push(cur);
+    const next = nextDueDate(cur, rule);
+    if (!next || next === cur) break;
+    cur = next;
+  }
+  return dates;
+}
+
+/**
+ * Project virtual occurrences for an active recurring anchor.
+ * @param {object} anchor expense row
+ * @param {Set<string>} materializedKeys keys `${seriesId}|${YYYY-MM-DD}`
+ * @param {{ rangeStart: string, rangeEnd: string }} range
+ */
+function projectOccurrences(anchor, materializedKeys, range) {
+  if (!anchor || Number(anchor.recurring) !== 1 || !anchor.recurrenceRule) return [];
+  const seriesId = anchor.recurrenceSeriesId || anchor.id;
+  const anchorDate = anchor.recurrenceAnchorDate
+    ? String(anchor.recurrenceAnchorDate).slice(0, 10)
+    : recurrenceEffectiveDate(anchor);
+  if (!anchorDate) return [];
+  const endDate = anchor.recurrenceEndDate ? String(anchor.recurrenceEndDate).slice(0, 10) : null;
+  const dates = enumerateOccurrenceDates(anchorDate, anchor.recurrenceRule, {
+    rangeStart: range.rangeStart,
+    rangeEnd: range.rangeEnd,
+    endDate,
+  });
+  const out = [];
+  for (const dt of dates) {
+    const key = `${seriesId}|${dt}`;
+    if (materializedKeys.has(key)) continue;
+    out.push({
+      seriesId,
+      date: dt,
+      virtual: true,
+      anchorId: anchor.id,
+      expenseType: anchor.expenseType || 'expense',
+      amountEUR: anchor.amountEUR != null ? anchor.amountEUR : anchor.amount,
+      label: String(anchor.expenseType || '') === 'invoice'
+        ? (anchor.vendor || anchor.description || '')
+        : (anchor.description || ''),
+    });
+  }
+  return out;
+}
+
+module.exports = {
+  nextDueDate,
+  todayISO,
+  addMonthsISO,
+  RULES,
+  RECURRENCE_RULES,
+  isValidRecurrenceRule,
+  recurrenceEffectiveDate,
+  enumerateOccurrenceDates,
+  projectOccurrences,
+};
