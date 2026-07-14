@@ -135,6 +135,64 @@
       flex-shrink:0;
     }
     .chart-range-toggle{display:none}
+    .monthly-chart-wrap{position:relative;width:100%}
+    .chart-tooltip{
+      position:absolute;
+      z-index:20;
+      width:172px;
+      padding:10px 12px;
+      border-radius:10px;
+      background:#fff;
+      box-shadow:0 4px 16px rgba(60,10,55,0.12),0 1px 4px rgba(0,0,0,0.06);
+      border:1px solid rgba(0,0,0,0.06);
+      font-family:'DM Sans',system-ui,sans-serif;
+      pointer-events:none;
+      animation:chartTipIn var(--motion-duration-micro) var(--motion-ease-standard) forwards;
+    }
+    @keyframes chartTipIn{
+      from{opacity:0;transform:translateY(4px)}
+      to{opacity:1;transform:translateY(0)}
+    }
+    .chart-tooltip__title{font-size:12px;font-weight:700;color:#3C0A37;margin-bottom:8px;line-height:1.25}
+    .chart-tooltip__row{display:flex;align-items:center;gap:6px;font-size:11px;color:#4B5E52;margin-bottom:4px;line-height:1.3}
+    .chart-tooltip__dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .chart-tooltip__total{font-size:11px;font-weight:700;color:#1A2B1E;margin-top:6px;padding-top:6px;border-top:1px solid #F0EBE3}
+    .filter-date-field{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      border:1.5px solid #DDD6CC;
+      border-radius:7px;
+      background:#FAFAF9;
+      padding:5px 10px;
+      flex-shrink:0;
+      height:32px;
+      box-sizing:border-box;
+    }
+    .filter-date-field--active{border-color:var(--color-accent);background:#FFF8F3}
+    .filter-date-label{
+      font-size:9px;
+      color:#9CAA9F;
+      font-weight:500;
+      text-transform:uppercase;
+      letter-spacing:0.05em;
+      flex-shrink:0;
+      white-space:nowrap;
+    }
+    .filter-date-inp{
+      border:none;
+      background:transparent;
+      outline:none;
+      font-family:'DM Sans',system-ui,sans-serif;
+      font-size:12px;
+      color:#4B5E52;
+      cursor:pointer;
+      padding:0;
+      min-width:0;
+      width:auto;
+      color-scheme:light;
+    }
+    .filter-date-inp::-webkit-calendar-picker-indicator{cursor:pointer;opacity:0.55;margin-left:2px}
     .calendar-month-viewport{position:relative;overflow:hidden}
     .calendar-month-panel{width:100%;transition:transform 250ms cubic-bezier(0.4,0,0.2,1),opacity 250ms cubic-bezier(0.4,0,0.2,1);will-change:transform,opacity}
     .calendar-month-panel--enter{position:relative;z-index:2}
@@ -160,6 +218,7 @@
       .inp--shake{animation:none}
       .btn-primary:active,.btn-secondary:active,.btn-danger:active,.btn-sm:active{transform:none}
       .status-approved,.status-pending,.status-rejected,.badge.status-approved,.badge.status-pending,.badge.status-rejected{transition:opacity 40ms ease}
+      .chart-tooltip{animation:none;opacity:1;transform:none}
       .sidebar-user-row__chevron,.sidebar-user-row__chevron--open{transition:none}
       .sidebar-user-row__chevron--open{transform:rotate(180deg)}
       .calendar-month-panel{transition:opacity 100ms ease}
@@ -401,6 +460,8 @@
         width:8px!important;
         height:8px!important;
       }
+      .filter-date-field{min-height:44px;height:auto;padding:8px 12px}
+      .filter-date-inp{font-size:16px!important}
     }
   </style>
 </head>
@@ -5740,7 +5801,6 @@ function ExpensesView(){
   const kindSel=asMultiFilter(expKindFlt);
   const monthGroups=React.useMemo(()=>groupExpensesByMonth(filtered),[filtered]);
   const filteredTotal=React.useMemo(()=>filtered.reduce((s,e)=>s+(Number(e?.amount)||0),0),[filtered]);
-  const dateRangeActive=!!(dateFrom||dateTo);
   const exportFilteredXlsx=()=>{
     void downloadExpensesXlsx(filtered,{tag:"gastos-filtrados",t,user,saveExp,expenses});
     dispatchSolanaToast(t("action.exportXLSX"),"success",3000);
@@ -5777,29 +5837,14 @@ function ExpensesView(){
         <MultiFilterMenu prefix="Tipo" options={kindFilterOpts} selected={expKindFlt} onChange={setExpKindFlt} allLabel={t("filter.all")} minWidth={130}/>
         <MultiFilterMenu prefix={t("filter.category")} options={catFilterOpts} selected={catFlt} onChange={setCatFlt} allLabel={t("filter.all")} minWidth={110}/>
         <MultiFilterMenu prefix="Enviado por" options={submFilterOpts} selected={submFlt} onChange={setSubmFlt} allLabel={t("filter.all")} minWidth={120}/>
-        <div style={{display:"flex",alignItems:"center",border:"1.5px solid",
-          borderColor:dateRangeActive?T:"#DDD6CC",borderRadius:7,
-          overflow:"hidden",background:"#FAFAF9",height:32,flexShrink:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px",
-            borderRight:"1px solid #EDE8E0"}}>
-            <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
-              textTransform:"uppercase",letterSpacing:"0.05em"}}>{t("filter.dateFrom")}</span>
-            <input type="date" style={{border:"none",background:"transparent",
-              fontSize:12,color:G,outline:"none",cursor:"pointer",
-              fontFamily:"inherit",width:110}}
-              value={dateFrom}
-              onChange={e=>setDateFrom(e.target.value)}/>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 10px"}}>
-            <span style={{fontSize:9,color:"#9CAA9F",fontWeight:500,
-              textTransform:"uppercase",letterSpacing:"0.05em"}}>{t("filter.dateTo")}</span>
-            <input type="date" style={{border:"none",background:"transparent",
-              fontSize:12,color:G,outline:"none",cursor:"pointer",
-              fontFamily:"inherit",width:110}}
-              value={dateTo}
-              onChange={e=>setDateTo(e.target.value)}/>
-          </div>
-        </div>
+        <label className={`filter-date-field${dateFrom?" filter-date-field--active":""}`}>
+          <span className="filter-date-label">{t("filter.dateFrom")}</span>
+          <input type="date" className="filter-date-inp" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/>
+        </label>
+        <label className={`filter-date-field${dateTo?" filter-date-field--active":""}`}>
+          <span className="filter-date-label">{t("filter.dateTo")}</span>
+          <input type="date" className="filter-date-inp" value={dateTo} onChange={e=>setDateTo(e.target.value)}/>
+        </label>
         {(activeFilterCount>0||!!expSrc)&&(
           <button type="button" className="touch-clear-link" style={{fontSize:11,color:T,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontWeight:600,textDecoration:"underline",textUnderlineOffset:2}}
             onClick={clearAllFilters}>
@@ -6292,10 +6337,21 @@ function reportsApiDateRange(){
     to:`${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`,
   };
 }
+function formatChartMonthLong(ym){
+  const parts=String(ym||"").split("-");
+  if(parts.length<2)return String(ym||"");
+  const d=new Date(Number(parts[0]),Number(parts[1])-1,1);
+  const s=d.toLocaleDateString("es-ES",{month:"long",year:"numeric"});
+  return s.charAt(0).toUpperCase()+s.slice(1);
+}
 function ReportsView(){
   const{t,expenses,cats,users,totApproved,totFixed,user,saveExp,adminIds,go,setCatFlt,setView,setExpFlt,setDateFrom,setDateTo,setDetailId,setPanel,resetForm,departments}=useApp();
   const coarseMobile=useCoarseMobile();
   const [chartSpan,setChartSpan]=useState(()=>(typeof window!=="undefined"&&window.matchMedia("(max-width:767px),(pointer:coarse)").matches)?6:12);
+  const [chartTip,setChartTip]=useState(null);
+  const chartWrapRef=useRef(null);
+  const CHART_TIP_W=172;
+  const CHART_TIP_H=108;
   useEffect(()=>{
     if(coarseMobile)setChartSpan(s=>s===12?6:s);
   },[coarseMobile]);
@@ -6400,6 +6456,26 @@ function ReportsView(){
   const chartMinWidthPx = coarseMobile ? undefined : Math.ceil(SVG_W);
   const chartMonthLabelFs = coarseMobile ? 10 : 9;
   const chartValueLabelFs = coarseMobile ? 10 : 11;
+  const positionChartTip=useCallback((clientX,clientY,index,m)=>{
+    const wrap=chartWrapRef.current;
+    if(!wrap)return;
+    const rect=wrap.getBoundingClientRect();
+    let left=clientX-rect.left-CHART_TIP_W/2;
+    let top=clientY-rect.top-CHART_TIP_H-10;
+    left=Math.max(6,Math.min(rect.width-CHART_TIP_W-6,left));
+    if(top<6)top=clientY-rect.top+14;
+    top=Math.max(6,Math.min(rect.height-CHART_TIP_H-6,top));
+    setChartTip({
+      index,
+      left,
+      top,
+      label:formatChartMonthLong(m.ym),
+      gastos:m.gastos,
+      facturas:m.facturas,
+      total:m.total,
+    });
+  },[]);
+  const hideChartTip=useCallback(()=>setChartTip(null),[]);
   const exportExcel=()=>{
     void downloadExpensesXlsx(displayExpenses,{tag:statusFilter,t,user,saveExp,expenses});
     dispatchSolanaToast(t("action.exportXLSX"),"success",3000);
@@ -6453,6 +6529,7 @@ function ReportsView(){
             <span style={{fontSize:11,color:"#4B5E52"}}>Facturas</span>
           </div>
         </div>
+        <div ref={chartWrapRef} className="monthly-chart-wrap">
         <div className={`monthly-chart-scroll${coarseMobile?" monthly-chart-scroll--fit":""}`} style={{width:"100%",minHeight:200,display:"block",overflowX:coarseMobile?"visible":"auto"}}>
           <div className={`monthly-chart-inner${coarseMobile?" monthly-chart-inner--fit":""}`} style={chartMinWidthPx?{minWidth:chartMinWidthPx,width:"100%"}:{width:"100%"}}>
           <svg className={coarseMobile?"monthly-chart-svg--fit":""} width="100%" height={SVG_H}
@@ -6477,7 +6554,6 @@ function ReportsView(){
               const gY = TOP_PAD + CHART_H - gH;
               const fY = gY - fH;
               const stackTop = fY;
-              const tooltipBreakdown = `Gastos: ${fmt(m.gastos)}\nFacturas: ${fmt(m.facturas)}`;
               const monthFrom=`${m.ym}-01`;
               const lastDay=new Date(Number(m.ym.slice(0,4)),Number(m.ym.slice(5,7)),0).getDate();
               const monthTo=`${m.ym}-${String(lastDay).padStart(2,"0")}`;
@@ -6490,8 +6566,36 @@ function ReportsView(){
                 setPanel(null);
                 resetForm();
               };
+              const onBarPointer=(e)=>{
+                if(!coarseMobile)positionChartTip(e.clientX,e.clientY,i,m);
+              };
+              const onBarClick=(e)=>{
+                if(coarseMobile){
+                  if(chartTip&&chartTip.index===i){
+                    hideChartTip();
+                    openMonth();
+                  }else{
+                    positionChartTip(e.clientX,e.clientY,i,m);
+                  }
+                }else{
+                  hideChartTip();
+                  openMonth();
+                }
+              };
               return (
-                <g key={m.ym} onClick={openMonth} style={{cursor:"pointer"}}>
+                <g key={m.ym}>
+                  <rect
+                    x={SIDE_PAD+i*GROUP_W}
+                    y={TOP_PAD}
+                    width={GROUP_W}
+                    height={CHART_H+LABEL_H}
+                    fill="transparent"
+                    style={{cursor:"pointer"}}
+                    onMouseEnter={onBarPointer}
+                    onMouseMove={onBarPointer}
+                    onMouseLeave={coarseMobile?undefined:hideChartTip}
+                    onClick={onBarClick}
+                  />
                   {m.total===0&&(
                     <text
                       x={SIDE_PAD + i * GROUP_W + GROUP_W / 2}
@@ -6501,16 +6605,13 @@ function ReportsView(){
                       fontSize="9"
                       fill="#B8C4BC"
                       opacity="0.85"
+                      pointerEvents="none"
                     >No hay datos</text>
                   )}
                   {gH>0&&<rect x={x} y={gY} width={BAR_W} height={gH}
-                    fill={G} rx="2" opacity="0.9">
-                    <title>{tooltipBreakdown}</title>
-                  </rect>}
+                    fill={G} rx="2" opacity="0.9" pointerEvents="none"/>}
                   {fH>0&&<rect x={x} y={fY} width={BAR_W} height={fH}
-                    fill={F} rx="2" opacity="0.9">
-                    <title>{tooltipBreakdown}</title>
-                  </rect>}
+                    fill={F} rx="2" opacity="0.9" pointerEvents="none"/>}
                   {m.total>0&&<text
                     x={SIDE_PAD + i * GROUP_W + GROUP_W / 2}
                     y={stackTop - 5}
@@ -6518,9 +6619,10 @@ function ReportsView(){
                     fontSize={chartValueLabelFs}
                     fill="#4B5E52"
                     fontWeight="600"
+                    pointerEvents="none"
                   >{fmt(m.total)}</text>}
                   <text x={SIDE_PAD + i * GROUP_W + GROUP_W / 2} y={TOP_PAD+CHART_H+14}
-                    textAnchor="middle" fontSize={chartMonthLabelFs} fill="#9CAA9F">
+                    textAnchor="middle" fontSize={chartMonthLabelFs} fill="#9CAA9F" pointerEvents="none">
                     {m.label}
                   </text>
                 </g>
@@ -6528,6 +6630,21 @@ function ReportsView(){
             })}
           </svg>
           </div>
+        </div>
+        {chartTip&&(
+          <div className="chart-tooltip" role="tooltip" style={{left:chartTip.left,top:chartTip.top}}>
+            <div className="chart-tooltip__title">{chartTip.label}</div>
+            <div className="chart-tooltip__row">
+              <span className="chart-tooltip__dot" style={{background:T}} aria-hidden="true"/>
+              <span>Gastos: {fmt(chartTip.gastos)}</span>
+            </div>
+            <div className="chart-tooltip__row">
+              <span className="chart-tooltip__dot" style={{background:NOTIF_BADGE}} aria-hidden="true"/>
+              <span>Facturas: {fmt(chartTip.facturas)}</span>
+            </div>
+            <div className="chart-tooltip__total">Total: {fmt(chartTip.total)}</div>
+          </div>
+        )}
         </div>
       </div>
       {/* By category */}
