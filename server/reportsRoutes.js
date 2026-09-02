@@ -330,7 +330,7 @@ function createReportsRouter({ requireAdminSession, requireAuth, userStore }) {
           `SELECT expenseType, amount, currency, amountEUR, status, date, dueDate
            FROM expenses
            WHERE ${EFFECTIVE_DATE_SQL} >= ? AND ${EFFECTIVE_DATE_SQL} <= ?
-             AND status != 'deleted'`,
+             AND status = 'approved'`,
         )
         .all(from, to);
 
@@ -383,29 +383,31 @@ function createReportsRouter({ requireAdminSession, requireAuth, userStore }) {
     for (const e of expenses) {
       const amt = eurAmount(e);
       const isInvoice = e.expenseType === 'invoice';
-      if (isInvoice) {
-        totalBills += amt;
-      } else {
-        totalExpenses += amt;
-        const cat = e.category || '—';
-        byCategory[cat] = (byCategory[cat] || 0) + amt;
+      const isApproved = e.status === 'approved';
 
-        const uname = userMap[e.userId] || e.userId || '—';
-        byUser[uname] = (byUser[uname] || 0) + amt;
+      if (isApproved) {
+        if (isInvoice) {
+          totalBills += amt;
+        } else {
+          totalExpenses += amt;
+          const cat = e.category || '—';
+          byCategory[cat] = (byCategory[cat] || 0) + amt;
 
-        const eff = effectiveDateForRow(e);
-        const monthKey = eff && eff.length >= 7 ? eff.slice(0, 7) : '—';
-        byMonth[monthKey] = (byMonth[monthKey] || 0) + amt;
-      }
+          const uname = userMap[e.userId] || e.userId || '—';
+          byUser[uname] = (byUser[uname] || 0) + amt;
 
-      if (
-        e.status === 'approved' &&
-        !isInvoice &&
-        e.departmentId != null &&
-        String(e.departmentId).trim() !== ''
-      ) {
-        const depId = String(e.departmentId);
-        byDepartment[depId] = (byDepartment[depId] || 0) + amt;
+          const eff = effectiveDateForRow(e);
+          const monthKey = eff && eff.length >= 7 ? eff.slice(0, 7) : '—';
+          byMonth[monthKey] = (byMonth[monthKey] || 0) + amt;
+        }
+
+        if (
+          e.departmentId != null &&
+          String(e.departmentId).trim() !== ''
+        ) {
+          const depId = String(e.departmentId);
+          byDepartment[depId] = (byDepartment[depId] || 0) + amt;
+        }
       }
 
       if (e.status === 'approved') approvedN += 1;
