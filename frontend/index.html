@@ -182,11 +182,26 @@
     @media(prefers-reduced-motion:reduce){
       .auth-inp,.auth-btn{transition:none!important;}
     }
-    .solana-wordmark-wrap,.solana-wordmark{
+    .solana-wordmark-wrap:not(.solana-logo-surface),.solana-wordmark:not(.solana-wordmark-img){
       background:none!important;
       background-color:transparent!important;
       box-shadow:none!important;
       border:none!important;
+    }
+    .solana-logo-surface{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:var(--color-white);
+      border-radius:10px;
+      padding:8px 12px;
+      box-sizing:border-box;
+    }
+    .solana-logo-surface--harina{background:var(--color-bg-warm);}
+    .solana-logo-surface--sidebar{
+      background:var(--color-white);
+      padding:6px 8px 10px;
+      border-radius:8px;
     }
     .solana-wordmark-img{
       display:block;
@@ -3742,19 +3757,26 @@ class AppErrorBoundary extends React.Component{
 /* ── SOLANA LOGO (brand logotype image) ─────────────────────────────────────
    Logo asset only — #455371 lives in logo.png, not in UI tokens.
 ────────────────────────────────────────────────────────────────────────── */
-function SolanaLogo({theme="light", size="md", variant:_v}){
-  const heights={sm:26,md:38,lg:52};
-  const h=heights[size]||38;
+function SolanaLogo({theme:_theme="light", size="md", variant="default"}){
+  const heights={sm:44,md:72,lg:120};
+  const authH=96;
+  const h=variant==="auth"?authH:(heights[size]||heights.md);
+  const aspect=534/800;
+  const maxW=Math.round(h*aspect);
+  const surfaceClass=variant==="splash"
+    ?"solana-logo-surface solana-logo-surface--harina"
+    :variant==="sidebar"
+      ?"solana-logo-surface solana-logo-surface--sidebar"
+      :"solana-logo-surface";
   return(
-    <div className="solana-wordmark-wrap" style={{
-      display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:1,
-      background:"none",backgroundColor:"transparent",border:"none",boxShadow:"none",padding:0,margin:0,
+    <div className={`solana-wordmark-wrap ${surfaceClass}`} style={{
+      display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:1,margin:0,
     }} aria-label="SOLANA">
       <img
         className="solana-wordmark solana-wordmark-img"
         src="/logo.png"
         alt="Solana"
-        style={{height:h,width:"auto",maxWidth:Math.round(h*2.2)}}
+        style={{height:h,width:"auto",maxWidth:maxW,maxHeight:h}}
       />
     </div>
   );
@@ -4141,7 +4163,8 @@ const AUTH={
     border:"1px solid var(--color-surface-track)",width:"100%",maxWidth:400},
   /* Logo lockup (no fill — logo PNG alpha shows against AUTH.page) */
   logoWrap:{display:"flex",flexDirection:"column",alignItems:"center",
-    marginBottom:28,textAlign:"center",background:"transparent",backgroundColor:"transparent"},
+    marginBottom:28,textAlign:"center",background:"var(--color-white)",
+    backgroundColor:"var(--color-white)",borderRadius:12,padding:"12px 16px"},
   title:{fontFamily:THEME.font.sans,fontSize:22,fontWeight:700,
     color:G,marginTop:16,marginBottom:4,lineHeight:1.2},
   subtitle:{fontSize:13,color:"var(--color-brown-muted)",marginBottom:0,lineHeight:1.5},
@@ -10403,7 +10426,7 @@ function SolanaExpenses(){
       <LoginScreen users={users} onLogin={u=>{appLog("info","auth:login",{userId:u.id,role:u.role});try{localStorage.setItem(LAST_ACTIVITY_KEY,String(Date.now()));}catch(e){}setIdleTrackingEnabled(true);setUser(u);}} passwords={passwords} sessionRestoreAttempted={sessionRestoreAttempted}/>
     </div>
     <div style={{position:"fixed",inset:0,background:"var(--color-bg-warm)",display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms cubic-bezier(0.22,1,0.36,1), opacity 400ms cubic-bezier(0.22,1,0.36,1)",transitionDelay:appReady?"600ms":"0ms"}}>
-      <div style={{opacity:1}}><SolanaLogo theme="light" size="lg"/></div>
+      <div style={{opacity:1}}><SolanaLogo size="lg" variant="splash"/></div>
     </div>
   </div>;
   // F3: Force password change for users created with a temporary password
@@ -10686,9 +10709,9 @@ function SolanaExpenses(){
           </div>
         )}
         {/* Desktop sidebar */}
-        <div className="dt-only" style={{width:198,background:"var(--color-white)",borderRight:"1px solid var(--color-border-panel)",display:"flex",flexDirection:"column",padding:"15px 8px",flexShrink:0,overflowY:"auto"}}>
-          <div style={{padding:"3px 6px 14px",borderBottom:"1px solid var(--color-border-panel)",marginBottom:9,cursor:"pointer"}} onClick={()=>go("dashboard")}>
-            <SolanaLogo theme="light" size="md"/>
+        <div className="dt-only" style={{width:220,background:"var(--color-white)",borderRight:"1px solid var(--color-border-panel)",display:"flex",flexDirection:"column",padding:"15px 10px",flexShrink:0,overflowY:"auto"}}>
+          <div style={{padding:"2px 4px 12px",borderBottom:"1px solid var(--color-border-panel)",marginBottom:9,cursor:"pointer"}} onClick={()=>go("dashboard")}>
+            <SolanaLogo size="md" variant="sidebar"/>
             <div className="sidebar-tagline">Gestión de gastos</div>
           </div>
           {navItems.map(n=>(
@@ -10724,7 +10747,7 @@ function SolanaExpenses(){
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0,minHeight:0}}>
           {/* Mobile header */}
           <div className="mob-only mob-header-bar" style={{background:"var(--color-white)",borderBottom:"1px solid var(--color-border-panel)",padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-            <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="dark" size="sm"/></div>
+            <div style={{cursor:"pointer",display:"flex",alignItems:"center"}} onClick={()=>go("dashboard")}><SolanaLogo size="sm"/></div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <button type="button" onClick={()=>go("settings")} style={{flexShrink:0,maxWidth:140,padding:"4px 8px",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit"}} aria-label={t("nav.settings")}>
                 <span style={{fontSize:10,fontWeight:600,color:G,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</span>
