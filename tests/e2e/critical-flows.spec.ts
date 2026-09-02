@@ -2049,3 +2049,57 @@ test.describe('G — Recurrence materialize & próximas facturas', () => {
     }
   });
 });
+
+test.describe('H — Toast positioning', () => {
+  test('H1) Desktop toasts are top-center and non-blocking', async ({ page }) => {
+    await setupMockApi(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await loginAs(page, 'admin@solana.test');
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent('solana-toast', {
+          detail: { message: 'Toast position desktop QA', kind: 'success' },
+        }),
+      );
+    });
+    const slot = page.locator('.toast-slot');
+    await expect(slot).toBeVisible();
+    await expect(slot.locator('.toast')).toHaveText('Toast position desktop QA');
+    const metrics = await slot.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return {
+        pointerEvents: style.pointerEvents,
+        centerX: rect.left + rect.width / 2,
+        viewportW: window.innerWidth,
+      };
+    });
+    expect(metrics.pointerEvents).toBe('none');
+    expect(Math.abs(metrics.centerX - metrics.viewportW / 2)).toBeLessThan(8);
+  });
+
+  test('H2) Mobile toasts remain top-right', async ({ page }) => {
+    await setupMockApi(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginAs(page, 'admin@solana.test');
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent('solana-toast', {
+          detail: { message: 'Toast position mobile QA', kind: 'info' },
+        }),
+      );
+    });
+    const slot = page.locator('.toast-slot');
+    await expect(slot).toBeVisible();
+    const metrics = await slot.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        centerX: rect.left + rect.width / 2,
+        distFromRight: window.innerWidth - rect.right,
+        viewportW: window.innerWidth,
+      };
+    });
+    expect(metrics.distFromRight).toBeLessThan(20);
+    expect(metrics.centerX).toBeGreaterThan(metrics.viewportW * 0.55);
+  });
+});
