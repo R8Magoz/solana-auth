@@ -46,8 +46,6 @@ export const PASSWORDS: Record<string, string> = {
 
 export const MOCK_AUTH_BASE = 'https://solana-auth.onrender.com';
 
-const _attached = new WeakMap<Page, boolean>();
-
 function buildTraceCode(createdAtMs: number, amountEur: number, expenseId: string): string {
   const ts = Number(createdAtMs);
   const d = new Date(Number.isFinite(ts) ? ts : Date.now());
@@ -61,6 +59,78 @@ function buildTraceCode(createdAtMs: number, amountEur: number, expenseId: strin
   const suffix = id.replace(/^exp_/, '').slice(0, 4).toLowerCase();
   return suffix ? `${base}_${suffix}` : base;
 }
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const mockRecurrence = require('../../../server/recurrence.js');
+
+function runMockExpenseMaintenance(state: MockApiState): number {
+  const today = mockRecurrence.todayISO();
+  const all = state.expenses.filter((e) => String(e.status || '') !== 'deleted');
+  const keys = mockRecurrence.buildMaterializedDateKeys(all);
+  const anchors = all.filter((r) => mockRecurrence.isRecurrenceSeriesActiveRow(r, today));
+  let created = 0;
+  const now = Date.now();
+  for (const anchor of anchors) {
+    const seriesId = String(anchor.recurrenceSeriesId || anchor.id);
+    const dueDates = mockRecurrence.dueOccurrenceDatesForMaterialization(anchor, keys, today);
+    const isInv = String(anchor.expenseType || 'expense') === 'invoice';
+    for (const dt of dueDates) {
+      const id = `exp_mat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const traceCode = buildTraceCode(now, Number(anchor.amountEUR || anchor.amount || 0), id);
+      const row: ExpenseRow = {
+        id,
+        userId: anchor.userId,
+        ownerId: anchor.ownerId || anchor.userId,
+        date: isInv ? String(anchor.date || dt).slice(0, 10) : dt,
+        dueDate: isInv ? dt : null,
+        description: anchor.description,
+        vendor: isInv ? anchor.vendor : undefined,
+        amount: Number(anchor.amount || 0),
+        amountEUR: Number(anchor.amountEUR || anchor.amount || 0),
+        currency: anchor.currency || 'EUR',
+        category: anchor.category || 'Software',
+        status: 'approved',
+        approvedBy: 'auto',
+        approvedAt: now,
+        expenseType: anchor.expenseType || 'expense',
+        departmentId: anchor.departmentId || 'dept_ops',
+        recurring: 0,
+        recurrenceRule: null,
+        recurrenceSeriesId: seriesId,
+        recurrenceAnchorDate: null,
+        recurrenceEndDate: null,
+        originRecurrenceId: anchor.id,
+        approversJson: String(anchor.approversJson || '[]'),
+        approvalVotesJson: String(anchor.approvalVotesJson || '{}'),
+        paidByJson: String(anchor.paidByJson || '[]'),
+        splitMode: anchor.splitMode || null,
+        notes: anchor.notes || '',
+        receiptPath: null,
+        createdAt: now,
+        updatedAt: now,
+        paymentStatus: 'na',
+        deferredPayment: false,
+        paymentTermDays: 0,
+        rejectionNote: null,
+        auditTrailJson: '[]',
+        commentsJson: '[]',
+        traceCode,
+      };
+      state.expenses.push(row);
+      keys.add(mockRecurrence.occurrenceMaterializedKey(seriesId, dt));
+      created += 1;
+    }
+  }
+  return created;
+}
+
+export function deptApprovedSpend(state: MockApiState, deptId: string): number {
+  return state.expenses
+    .filter((e) => e.departmentId === deptId && String(e.status) === 'approved')
+    .reduce((s, e) => s + Number(e.amountEUR || e.amount || 0), 0);
+}
+
+const _attached = new WeakMap<Page, boolean>();
 
 export function makeUsers(): User[] {
   return [
@@ -595,6 +665,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
 
     if ((path === '/expenses' || path === '/expenses/') && method === 'GET') {
       if (!session) return json(401, { error: 'No autorizado.' });
+      runMockExpenseMaintenance(state);
       return json(200, { expenses: attachCommentsSeenToExpenses(state.expenses, session.userId, state) });
     }
 
@@ -850,18 +921,20 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
         return json(200, { ok: true, commentsSeenAt: at });
       }
       if (sub === 'stop-recurrence') {
-        if (Number(e.recurring) !== 1) {
+        const seriesId = String(e.recurrenceSeriesId || id);
+        const anchor = state.expenses.find((x) => x.id === seriesId) || e;
+        if (Number(anchor.recurring) !== 1) {
           return json(400, { error: 'La recurrencia ya está detenida.' });
         }
-        const isOwner = e.ownerId === session.userId || e.userId === session.userId;
+        const isOwner = anchor.ownerId === session.userId || anchor.userId === session.userId;
         if (!isOwner && session.role !== 'admin') {
           return json(403, { error: 'No autorizado.' });
         }
         const today = new Date().toISOString().slice(0, 10);
-        e.recurring = 0;
-        e.recurrenceEndDate = today;
-        e.updatedAt = Date.now();
-        return json(200, { ok: true, expense: e });
+        anchor.recurring = 0;
+        anchor.recurrenceEndDate = today;
+        anchor.updatedAt = Date.now();
+        return json(200, { ok: true, expense: anchor });
       }
     }
 
@@ -949,6 +1022,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
 
     if (path === '/expenses' && method === 'GET') {
       if (!session) return json(401, { error: 'No autorizado.' });
+      runMockExpenseMaintenance(state);
       return json(200, { ok: true, expenses: attachCommentsSeenToExpenses(state.expenses, session.userId, state) });
     }
 

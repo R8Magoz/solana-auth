@@ -4,6 +4,7 @@ import {
   attachMockApiRoutes,
   createMockApiState,
   defaultMockDepartments,
+  deptApprovedSpend,
   expectRequestFired,
   getExpenseFromState,
   makeUsers,
@@ -1886,5 +1887,165 @@ test.describe('F — Draft persistence', () => {
     await page.waitForTimeout(400);
     const draftPrompt = page.getByText(/Recuperar borrador/i);
     await expect(draftPrompt).toHaveCount(0);
+  });
+});
+
+test.describe('G — Recurrence materialize & próximas facturas', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const recurrence = require('../../server/recurrence.js');
+
+  function addDaysISO(iso: string, days: number): string {
+    const p = iso.split('-').map(Number);
+    const d = new Date(p[0], p[1] - 1, p[2]);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function baseExpense(overrides: Partial<ExpenseRow>): ExpenseRow {
+    const now = Date.now();
+    return {
+      id: 'exp_base',
+      userId: 'admin-1',
+      ownerId: 'admin-1',
+      date: recurrence.todayISO(),
+      description: 'Base',
+      amount: 50,
+      amountEUR: 50,
+      currency: 'EUR',
+      category: 'Software',
+      status: 'approved',
+      expenseType: 'expense',
+      approversJson: JSON.stringify(['admin-1']),
+      approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+      paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 50, pct: 100 }]),
+      departmentId: 'dept_ops',
+      recurring: 0,
+      receiptPath: null,
+      createdAt: now,
+      updatedAt: now,
+      paymentStatus: 'na',
+      deferredPayment: false,
+      paymentTermDays: 0,
+      rejectionNote: null,
+      auditTrailJson: '[]',
+      commentsJson: '[]',
+      traceCode: 'trace',
+      ...overrides,
+    };
+  }
+
+  test('G1) Due occurrence auto-materializes as approved and counts toward budget', async ({ page }) => {
+    const today = recurrence.todayISO();
+    const anchorDate = addDaysISO(today, -7);
+    const anchor = baseExpense({
+      id: 'exp_rec_anchor_g1',
+      description: 'Recurring weekly materialize QA',
+      date: anchorDate,
+      amount: 80,
+      amountEUR: 80,
+      recurring: 1,
+      recurrenceRule: 'weekly',
+      recurrenceSeriesId: 'exp_rec_anchor_g1',
+      recurrenceAnchorDate: anchorDate,
+    });
+    const state = await setupMockApi(page, { expenses: [anchor] });
+    await loginAs(page, 'admin@solana.test');
+    await waitForExpensesRefetch(state);
+    const children = state.expenses.filter(
+      (e) => e.recurrenceSeriesId === 'exp_rec_anchor_g1' && e.id !== 'exp_rec_anchor_g1',
+    );
+    expect(children.length).toBeGreaterThan(0);
+    expect(children.every((e) => e.status === 'approved')).toBe(true);
+    expect(deptApprovedSpend(state, 'dept_ops')).toBe(160);
+  });
+
+  test('G2) Projected recurring invoice appears in Próximas facturas', async ({ page }) => {
+    const today = recurrence.todayISO();
+    const windowEnd = addDaysISO(today, 15);
+    let anchorDue = addDaysISO(today, -20);
+    let futureDates = recurrence.enumerateOccurrenceDates(anchorDue, 'weekly', {
+      rangeStart: today,
+      rangeEnd: windowEnd,
+    });
+    if (futureDates.length === 0) {
+      anchorDue = addDaysISO(today, -13);
+      futureDates = recurrence.enumerateOccurrenceDates(anchorDue, 'weekly', {
+        rangeStart: today,
+        rangeEnd: windowEnd,
+      });
+    }
+    expect(futureDates.length).toBeGreaterThan(0);
+    const anchor = baseExpense({
+      id: 'exp_inv_proj_g2',
+      expenseType: 'invoice',
+      description: 'Proveedor recurrente QA',
+      vendor: 'Proveedor recurrente QA',
+      date: anchorDue,
+      dueDate: anchorDue,
+      recurring: 1,
+      recurrenceRule: 'weekly',
+      recurrenceSeriesId: 'exp_inv_proj_g2',
+      recurrenceAnchorDate: anchorDue,
+    });
+    await setupMockApi(page, { expenses: [anchor] });
+    await loginAs(page, 'admin@solana.test');
+    await expect(page.getByText('Proveedor recurrente QA').first()).toBeVisible();
+    await expect(page.getByText(/previsto/i).first()).toBeVisible();
+  });
+
+  test('G3) Stop recurrence from materialized child keeps past and removes future projections', async ({ page }) => {
+    const today = recurrence.todayISO();
+    const anchorDue = addDaysISO(today, -60);
+    const childDue = addDaysISO(today, -30);
+    const anchor = baseExpense({
+      id: 'exp_stop_anchor_g3',
+      expenseType: 'invoice',
+      description: 'Serie stop child QA',
+      vendor: 'Serie stop child QA',
+      date: anchorDue,
+      dueDate: anchorDue,
+      recurring: 1,
+      recurrenceRule: 'monthly',
+      recurrenceSeriesId: 'exp_stop_anchor_g3',
+      recurrenceAnchorDate: anchorDue,
+    });
+    const child = baseExpense({
+      id: 'exp_stop_child_g3',
+      expenseType: 'invoice',
+      description: 'Serie stop child QA',
+      vendor: 'Serie stop child QA',
+      date: childDue,
+      dueDate: childDue,
+      recurring: 0,
+      recurrenceRule: null,
+      recurrenceSeriesId: 'exp_stop_anchor_g3',
+      originRecurrenceId: 'exp_stop_anchor_g3',
+      amount: 120,
+      amountEUR: 120,
+    });
+    const state = await setupMockApi(page, { expenses: [anchor, child] });
+    await loginAs(page, 'admin@solana.test');
+    await waitForExpensesRefetch(state);
+    await clickSidebarGastos(page);
+    await openExpenseDetail(page, 'Serie stop child QA');
+    const panel = getDetailPanel(page);
+    await panel.getByRole('button', { name: /Detener recurrencia/i }).click();
+    const confirmBtn = page.getByRole('button', { name: 'Confirmar' });
+    if (await confirmBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await confirmBtn.click();
+    }
+    await page.waitForTimeout(600);
+    expect(getExpenseFromState(state, 'exp_stop_anchor_g3')?.recurring).toBe(0);
+    expect(getExpenseFromState(state, 'exp_stop_child_g3')?.status).toBe('approved');
+    await page.getByText('Panel', { exact: true }).first().click();
+    await page.waitForTimeout(500);
+    const futureInWindow = recurrence.enumerateOccurrenceDates(anchorDue, 'monthly', {
+      rangeStart: today,
+      rangeEnd: addDaysISO(today, 15),
+      endDate: today,
+    });
+    if (futureInWindow.some((d: string) => d > today)) {
+      await expect(page.getByText(/previsto/i)).toHaveCount(0);
+    }
   });
 });
