@@ -13,22 +13,15 @@ const {
 
 const EUR_SUM = `COALESCE(amountEUR, CASE WHEN UPPER(COALESCE(currency, 'EUR')) = 'EUR' THEN amount ELSE 0 END)`;
 
+/** Approved spend in `expenses` (gastos + facturas as expenseType=invoice). Legacy `bills` table is unused for spend. */
 function spentForDepartment(deptId) {
-  const exp = db
+  const row = db
     .prepare(
       `SELECT COALESCE(SUM(${EUR_SUM}), 0) AS s FROM expenses
        WHERE departmentId = ? AND status = 'approved'`,
     )
     .get(deptId);
-  const bill = db
-    .prepare(
-      `SELECT COALESCE(SUM(${EUR_SUM}), 0) AS s FROM bills
-       WHERE departmentId = ? AND status = 'paid'`,
-    )
-    .get(deptId);
-  const e = Number(exp && exp.s) || 0;
-  const b = Number(bill && bill.s) || 0;
-  return e + b;
+  return Number(row && row.s) || 0;
 }
 
 function rowWithStats(row) {

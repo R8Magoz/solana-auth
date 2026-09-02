@@ -1379,6 +1379,85 @@ test.describe('D — Informes (Reports)', () => {
     await expect(page.getByRole('heading', { name: /Panel|Dashboard|Gastos/i }).first()).toBeVisible();
   });
 
+  test('D7) Department gastado counts only approved expenses and invoices', async ({ page }) => {
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const dateInMonth = `${ym}-15`;
+    const base = {
+      userId: 'admin-1',
+      ownerId: 'admin-1',
+      submittedBy: 'admin-1',
+      currency: 'EUR',
+      category: 'Software',
+      approversJson: JSON.stringify(['admin-1']),
+      approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+      paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 100, pct: 100 }]),
+      splitMode: null,
+      notes: '',
+      receiptPath: null,
+      departmentId: 'dept_ops',
+      auditTrailJson: '[]',
+      commentsJson: '[]',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await setupMockApi(page, {
+      expenses: [
+        {
+          ...base,
+          id: 'exp_pending_dept',
+          status: 'submitted',
+          expenseType: 'expense',
+          description: 'Pending dept QA',
+          amount: 500,
+          amountEUR: 500,
+          date: dateInMonth,
+          approvalVotesJson: '{}',
+        },
+        {
+          ...base,
+          id: 'exp_approved_dept',
+          status: 'approved',
+          expenseType: 'expense',
+          description: 'Approved dept QA',
+          amount: 100,
+          amountEUR: 100,
+          date: dateInMonth,
+        },
+        {
+          ...base,
+          id: 'inv_approved_dept',
+          status: 'approved',
+          expenseType: 'invoice',
+          description: 'Approved invoice dept QA',
+          amount: 50,
+          amountEUR: 50,
+          date: dateInMonth,
+          dueDate: dateInMonth,
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 50, pct: 100 }]),
+        },
+        {
+          ...base,
+          id: 'exp_rejected_dept',
+          status: 'rejected',
+          expenseType: 'expense',
+          description: 'Rejected dept QA',
+          amount: 200,
+          amountEUR: 200,
+          date: dateInMonth,
+          rejectionNote: 'No',
+        },
+      ],
+    });
+    await loginAs(page, 'admin@solana.test');
+    await expect(page.getByText('Presupuestos por departamento', { exact: true })).toBeVisible();
+    const opsRow = page.locator('.card').filter({ hasText: 'Operaciones' }).first();
+    await expect(opsRow).toBeVisible();
+    await expect(opsRow.getByText(/150,00\s*€/)).toBeVisible();
+    await expect(opsRow.getByText(/750,00\s*€/)).toHaveCount(0);
+    await expect(opsRow.getByText(/650,00\s*€/)).toHaveCount(0);
+  });
+
   test('D6) Multi-year data shows dropdown defaulting to latest year', async ({ page }) => {
     await setupMockApi(page, {
       expenses: [

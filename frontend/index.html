@@ -2259,12 +2259,10 @@ const getItemStatus=(item,cats,users)=>{
   if(approverIds.every(id=>v(id)==="approved"))return"approved";
   return"pending";
 };
-/** Aprobados (gasto o factura) cuentan; rechazados no; facturas sin importar estado de pago. */
+/** Only approved gastos and facturas count toward department budget spend. */
 function expenseCountsTowardDeptSpend(e,cats,users){
   if(!e)return false;
-  const st=getItemStatus(e,cats,users);
-  if(st==="rejected")return false;
-  return st==="approved";
+  return expenseAuthoritativeStatus(e,cats,users)==="approved";
 }
 /** @param useServerTotals when true and rows include spent from GET /departments, keep server figures */
 function enrichDepartmentsForUI(depts,expenses,cats,users,useServerTotals){
@@ -7342,10 +7340,9 @@ function fiscalYearRangeFromMmDd(mmdd,now){
 function localApprovedExpenseDeptSpend(expenses,cats,users,fromStr,toStr){
   const out={};
   for(const e of expenses||[]){
-    if(!e||e.expenseType==="invoice")continue;
-    if(getItemStatus(e,cats,users)!=="approved")continue;
-    const ds=e.date||"";
-    if(ds<fromStr||ds>toStr)continue;
+    if(!expenseCountsTowardDeptSpend(e,cats,users))continue;
+    const ds=effectiveDate(e)||"";
+    if(!ds||ds<fromStr||ds>toStr)continue;
     const id=e.departmentId;
     if(!id)continue;
     out[id]=(out[id]||0)+eurForExpense(e);
