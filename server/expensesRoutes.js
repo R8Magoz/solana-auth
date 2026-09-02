@@ -19,6 +19,7 @@ const { buildTraceCode } = require('./lib/traceCode');
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO4217 = /^[A-Z]{3}$/;
 const { nextDueDate, RECURRENCE_RULES, isValidRecurrenceRule, todayISO } = require('./recurrence');
+const { runExpenseMaintenance } = require('./expenseJobs');
 
 const RECURRENCE_RULES_ACCEPTED = [...RECURRENCE_RULES, 'daily'];
 
@@ -760,6 +761,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
 
   router.get('/', (req, res) => {
     try {
+      runExpenseMaintenance(audit);
       const expenses = attachCommentsSeenToExpenses(listExpenses(req), req.userId);
       const refIds = collectReferencedUserIds(expenses);
       const users = userStore.getPublicUsersByIds
@@ -1123,7 +1125,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       if (!info.changes) {
         return res.status(404).json({ error: 'Gasto no encontrado.' });
       }
-      audit('expense_recurrence_stopped', {
+      audit('recurrence_stopped', {
         userId: req.userId,
         targetId: anchor.id,
         seriesId,

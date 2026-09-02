@@ -174,6 +174,67 @@ function projectOccurrences(anchor, materializedKeys, range) {
   return out;
 }
 
+/** Stable idempotency key for a series occurrence date. */
+function occurrenceMaterializedKey(seriesId, date) {
+  const sid = String(seriesId || '').trim();
+  const dt = String(date || '').slice(0, 10);
+  if (!sid || !dt) return '';
+  return `${sid}|${dt}`;
+}
+
+/**
+ * Keys `${seriesId}|YYYY-MM-DD}` for rows that already represent an occurrence.
+ * @param {object[]} rows
+ */
+function buildMaterializedDateKeys(rows) {
+  const keys = new Set();
+  for (const row of rows || []) {
+    const sid = row.recurrenceSeriesId || row.id;
+    const eff = recurrenceEffectiveDate(row);
+    if (sid && eff) keys.add(occurrenceMaterializedKey(sid, eff));
+  }
+  return keys;
+}
+
+/**
+ * Whether a row is an active recurring anchor (still projecting / materializing).
+ * @param {object} row
+ * @param {string} [today]
+ */
+function isRecurrenceSeriesActiveRow(row, today = todayISO()) {
+  if (!row || Number(row.recurring) !== 1) return false;
+  const rule = String(row.recurrenceRule || '').trim();
+  if (!rule || rule === 'once') return false;
+  const end = row.recurrenceEndDate ? String(row.recurrenceEndDate).slice(0, 10) : null;
+  if (end && end < today) return false;
+  return true;
+}
+
+/**
+ * Occurrence dates for an anchor that are due (<= today) and not yet materialized.
+ * @param {object} anchor
+ * @param {Set<string>} materializedKeys
+ * @param {string} [today]
+ */
+function dueOccurrenceDatesForMaterialization(anchor, materializedKeys, today = todayISO()) {
+  if (!isRecurrenceSeriesActiveRow(anchor, today)) return [];
+  const seriesId = anchor.recurrenceSeriesId || anchor.id;
+  const anchorDate = anchor.recurrenceAnchorDate
+    ? String(anchor.recurrenceAnchorDate).slice(0, 10)
+    : recurrenceEffectiveDate(anchor);
+  if (!anchorDate) return [];
+  const endDate = anchor.recurrenceEndDate ? String(anchor.recurrenceEndDate).slice(0, 10) : null;
+  const dates = enumerateOccurrenceDates(anchorDate, anchor.recurrenceRule, {
+    rangeStart: anchorDate,
+    rangeEnd: today,
+    endDate,
+  });
+  return dates.filter((dt) => {
+    const key = occurrenceMaterializedKey(seriesId, dt);
+    return key && !materializedKeys.has(key);
+  });
+}
+
 module.exports = {
   nextDueDate,
   todayISO,
@@ -184,4 +245,8 @@ module.exports = {
   recurrenceEffectiveDate,
   enumerateOccurrenceDates,
   projectOccurrences,
+  occurrenceMaterializedKey,
+  buildMaterializedDateKeys,
+  isRecurrenceSeriesActiveRow,
+  dueOccurrenceDatesForMaterialization,
 };

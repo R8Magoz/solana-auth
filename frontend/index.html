@@ -2578,6 +2578,23 @@ function isRecurrenceSeriesActive(e){
   const rule=String(e.recurrenceRule||"").trim();
   return expenseIsRecurringNonOnce(e)&&!!rule;
 }
+function getRecurrenceAnchor(e,allExpenses){
+  if(!e)return null;
+  const seriesId=e.recurrenceSeriesId||(expenseIsRecurringNonOnce(e)?e.id:null);
+  if(!seriesId)return null;
+  const pool=allExpenses||[];
+  const anchor=pool.find(x=>x.id===seriesId);
+  return anchor||e;
+}
+function belongsToActiveRecurrenceSeries(e,allExpenses){
+  const anchor=getRecurrenceAnchor(e,allExpenses);
+  return anchor&&isRecurrenceSeriesActive(anchor);
+}
+function expenseBelongsToRecurrenceSeries(e){
+  if(!e)return false;
+  if(expenseIsRecurringNonOnce(e))return true;
+  return !!(e.recurrenceSeriesId&&String(e.recurrenceSeriesId).trim());
+}
 /** Mirror server/recurrence.js nextDueDate (UTC). */
 function nextRecurrenceDueDate(isoDate,rule){
   if(!isoDate||!rule)return null;
@@ -5413,11 +5430,11 @@ function DetailPanel(){
       {e._apiType==="expense"&&e.status==="rejected"&&e.rejectionNote&&(
         <div style={{marginTop:9,padding:"8px 10px",background:"#FEE2E2",borderRadius:8,fontSize:11,color:"#991B1B"}}><strong>Motivo:</strong> {e.rejectionNote}</div>
       )}
-      {expenseIsRecurringNonOnce(e)&&(
+      {expenseBelongsToRecurrenceSeries(e)&&(
         <div style={{marginTop:9,padding:"8px 10px",background:"#F5F0EA",borderRadius:8,fontSize:11}}>
-          {isRecurrenceSeriesActive(e)?(
+          {belongsToActiveRecurrenceSeries(e,expenses)?(
             <>
-              <div style={{color:"#6B7B72",marginBottom:6}}>{recurrenceRuleLabel(e.recurrenceRule,t)}</div>
+              <div style={{color:"#6B7B72",marginBottom:6}}>{recurrenceRuleLabel(getRecurrenceAnchor(e,expenses).recurrenceRule,t)}</div>
               {(user.id===(e.ownerId||e.submittedBy)||isAdmin)&&(
                 <button type="button" className="btn-secondary" style={{width:"100%",padding:"7px",fontSize:12,fontWeight:600}}
                   onClick={()=>stopRecurrence(e.id)}>
@@ -5425,8 +5442,8 @@ function DetailPanel(){
                 </button>
               )}
             </>
-          ):e.recurrenceEndDate?(
-            <div style={{color:"#6B7B72"}}>{t("expense.recurrenceStopped",{date:fmtDate(e.recurrenceEndDate)})}</div>
+          ):getRecurrenceAnchor(e,expenses)?.recurrenceEndDate?(
+            <div style={{color:"#6B7B72"}}>{t("expense.recurrenceStopped",{date:fmtDate(getRecurrenceAnchor(e,expenses).recurrenceEndDate)})}</div>
           ):null}
         </div>
       )}
@@ -5548,9 +5565,36 @@ function DashboardView(){
   },[]);
   const billsWindowCfg=UPCOMING_BILL_WINDOWS[billsWindow]||UPCOMING_BILL_WINDOWS["15d"];
   const upcomingBills=[];
+  const todayKey=new Date().toISOString().slice(0,10);
+  const billsMaterialized=buildMaterializedRecurrenceDateKeys(expenses);
+  const billsWindowEnd=addDaysToISODate(todayKey,billsWindowCfg.days);
   expenses.filter(e=>e.expenseType==="invoice"&&getItemStatus(e,cats,users)==="approved"&&e.dueDate).forEach(e=>{
     const diff=daysUntilISO(String(e.dueDate).slice(0,10));
-    if(diff!=null&&diff>=0&&diff<=billsWindowCfg.days)upcomingBills.push({...e,name:e.vendor||e.description,daysUntil:diff});
+    if(diff!=null&&diff>=0&&diff<=billsWindowCfg.days)upcomingBills.push({...e,name:e.vendor||e.description,daysUntil:diff,virtual:false});
+  });
+  expenses.filter(e=>isRecurrenceSeriesActive(e)&&e.expenseType==="invoice").forEach(anchor=>{
+    const seriesId=anchor.recurrenceSeriesId||anchor.id;
+    const anchorDate=anchor.recurrenceAnchorDate?String(anchor.recurrenceAnchorDate).slice(0,10):recurrenceEffectiveDate(anchor);
+    if(!anchorDate)return;
+    const endDate=anchor.recurrenceEndDate?String(anchor.recurrenceEndDate).slice(0,10):null;
+    const dates=enumerateRecurrenceDatesInRange(anchorDate,anchor.recurrenceRule,todayKey,billsWindowEnd,endDate);
+    dates.forEach(dt=>{
+      const key=`${seriesId}|${dt}`;
+      if(billsMaterialized.has(key))return;
+      const diff=daysUntilISO(dt);
+      if(diff==null||diff<0||diff>billsWindowCfg.days)return;
+      upcomingBills.push({
+        id:`proj-${seriesId}-${dt}`,
+        virtual:true,
+        dueDate:dt,
+        name:anchor.vendor||anchor.description,
+        daysUntil:diff,
+        amount:anchor.amount,
+        amountEUR:anchor.amountEUR,
+        currency:anchor.currency,
+        expenseType:"invoice",
+      });
+    });
   });
   upcomingBills.sort((a,b)=>a.daysUntil-b.daysUntil);
   const alerts=React.useMemo(()=>{
@@ -5701,7 +5745,9 @@ function DashboardView(){
         {upcomingBills.length===0
           ?<div style={{fontSize:11,color:"#9CAA9F",padding:"4px 0"}}>{t("dash.noBillsSoon")}</div>
           :upcomingBills.map((b,i)=>{
-            const dueTxt=b.daysUntil===0?t("dash.dueToday"):b.daysUntil===1?t("dash.dueTomorrow"):t("dash.dueIn").replace("{n}",String(b.daysUntil));
+            const dueTxt=b.virtual
+              ?`${t("cal.projected")} · ${b.daysUntil===0?t("dash.dueToday"):b.daysUntil===1?t("dash.dueTomorrow"):t("dash.dueIn").replace("{n}",String(b.daysUntil))}`
+              :b.daysUntil===0?t("dash.dueToday"):b.daysUntil===1?t("dash.dueTomorrow"):t("dash.dueIn").replace("{n}",String(b.daysUntil));
             const dueS=String(b.dueDate||"").slice(0,10);
             const dayBox=dueS.length>=10?parseInt(dueS.slice(8,10),10):"—";
             return(
@@ -9872,7 +9918,8 @@ function SolanaExpenses(){
           saveExp(prev=>prev.map(e=>{
             const sid=e.recurrenceSeriesId||e.id;
             if(sid!==seriesId&&e.id!==expId)return e;
-            if(e.id===expId||e.id===seriesId)return updated?{...e,...updated,recurring:0,recurrenceEndDate:endDate}:e;
+            if(e.id===seriesId)return updated?{...e,...updated,recurring:0,recurrenceEndDate:endDate}:e;
+            if(e.id===expId)return updated?{...e,...updated,recurring:0,recurrenceEndDate:endDate}:e;
             return e;
           }));
           dispatchSolanaToast("Recurrencia detenida.","info");
@@ -9886,7 +9933,8 @@ function SolanaExpenses(){
       saveExp(prev=>prev.map(e=>{
         const sid=e.recurrenceSeriesId||e.id;
         if(sid!==seriesId&&e.id!==expId)return e;
-        if(e.id===expId||e.id===seriesId)return{...e,recurring:0,recurrenceEndDate:today};
+        if(e.id===seriesId)return{...e,recurring:0,recurrenceEndDate:today};
+        if(e.id===expId)return{...e,recurring:0,recurrenceEndDate:today};
         return e;
       }));
       dispatchSolanaToast("Recurrencia detenida.","info");
