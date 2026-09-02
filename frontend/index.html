@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <meta name="theme-color" content="#cc4e00"/>
+  <meta name="theme-color" content="#BC575D"/>
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png"/>
   <link rel="apple-touch-icon" href="/icon-192.png"/>
   <link rel="manifest" href="/manifest.json"/>
@@ -16,7 +16,8 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
     :root {
     /* THEME_TOKENS_START — Phase 1 token values (do not reference vars here) */
@@ -187,6 +188,13 @@
       box-shadow:none!important;
       border:none!important;
     }
+    .solana-wordmark-img{
+      display:block;
+      height:auto;
+      width:auto;
+      max-width:100%;
+      object-fit:contain;
+    }
     .sidebar-tagline{
       font-size:8px;
       color:var(--color-cream);
@@ -332,7 +340,7 @@
       color:var(--color-text-faint);
       font-weight:500;
       text-transform:uppercase;
-      letter-spacing:0.05em;
+      letter-spacing:0.04em;
       flex-shrink:0;
       white-space:nowrap;
     }
@@ -3664,7 +3672,7 @@ function SidebarNavItem({active,label,badge,onClick}){
         padding:"6px 9px",
         borderRadius:6,
         cursor:"pointer",
-        fontSize:11,
+        fontSize:10,
         fontWeight:500,
         marginBottom:2,
         transition:"background 0.15s ease,color 0.15s ease",
@@ -3730,8 +3738,8 @@ class AppErrorBoundary extends React.Component{
   }
 }
 
-/* ── SOLANA WORDMARK (text) ────────────────────────────────────────────────
-   theme="light" = light text on G bars. theme="dark" = brand orange on light UIs.
+/* ── SOLANA LOGO (brand logotype image) ─────────────────────────────────────
+   Logo asset only — #455371 lives in logo.png, not in UI tokens.
 ────────────────────────────────────────────────────────────────────────── */
 function SolanaLogo({theme="light", size="md", variant:_v}){
   const fontSize={sm:20,md:26,lg:40}[size]||26;
@@ -3739,7 +3747,7 @@ function SolanaLogo({theme="light", size="md", variant:_v}){
   const color=onDarkBg?"var(--color-white)":G;
   return(
     <div className="solana-wordmark-wrap" style={{
-      display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:1.05,
+      display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:1,
       background:"none",backgroundColor:"transparent",border:"none",boxShadow:"none",padding:0,margin:0,
     }} aria-label="SOLANA">
       <span className="solana-wordmark" style={{
@@ -4162,7 +4170,7 @@ const AUTH={
     marginBottom:14,lineHeight:1.5},
   /* Footer / secondary links */
   footer:{marginTop:20,textAlign:"center"},
-  link:{background:"none",border:"none",color:G,fontSize:12,
+  link:{background:"none",border:"none",color:"var(--color-factura-hover)",fontSize:12,
     cursor:"pointer",fontFamily:"inherit",textDecoration:"underline",
     padding:"2px 0"},
   muted:{fontSize:11,color:"var(--color-text-faint)",textAlign:"center",marginTop:12},
@@ -6198,7 +6206,7 @@ function ExpensesView(){
           <input type="date" className="filter-date-inp" value={dateTo} onChange={e=>setDateTo(e.target.value)}/>
         </label>
         {(activeFilterCount>0||!!expSrc)&&(
-          <button type="button" className="touch-clear-link" style={{fontSize:11,color:T,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontWeight:600,textDecoration:"underline",textUnderlineOffset:2}}
+          <button type="button" className="touch-clear-link" style={{fontSize:11,color:"var(--color-factura-hover)",background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontWeight:600,textDecoration:"underline",textUnderlineOffset:2}}
             onClick={clearAllFilters}>
             {t("filter.clearFilters")}
           </button>
@@ -6986,7 +6994,7 @@ function ReportsView(){
                     fontSize={chartValueLabelFs}
                     fill="var(--color-text-muted)"
                     fontWeight="500"
-                    fontFamily="DM Sans, system-ui, sans-serif"
+                    fontFamily="var(--font-sans)"
                     pointerEvents="none"
                   >{fmt(m.total)}</text>}
                   <text x={cx} y={TOP_PAD+CHART_H+13}
@@ -10386,11 +10394,11 @@ function SolanaExpenses(){
   };
 
   /* ── EARLY RETURN — after all hooks, before derived values that need user ── */
-  if(!user)return<div style={{position:"relative",minHeight:"100vh",background:G}}>
+  if(!user)return<div style={{position:"relative",minHeight:"100vh",background:"var(--color-bg-warm)"}}>
     <div style={{opacity:appReady?1:0,transition:"opacity 400ms cubic-bezier(0.22,1,0.36,1)",transitionDelay:appReady?"600ms":"0ms"}}>
       <LoginScreen users={users} onLogin={u=>{appLog("info","auth:login",{userId:u.id,role:u.role});try{localStorage.setItem(LAST_ACTIVITY_KEY,String(Date.now()));}catch(e){}setIdleTrackingEnabled(true);setUser(u);}} passwords={passwords} sessionRestoreAttempted={sessionRestoreAttempted}/>
     </div>
-    <div style={{position:"fixed",inset:0,background:G,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms cubic-bezier(0.22,1,0.36,1), opacity 400ms cubic-bezier(0.22,1,0.36,1)",transitionDelay:appReady?"600ms":"0ms"}}>
+    <div style={{position:"fixed",inset:0,background:"var(--color-bg-warm)",display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms cubic-bezier(0.22,1,0.36,1), opacity 400ms cubic-bezier(0.22,1,0.36,1)",transitionDelay:appReady?"600ms":"0ms"}}>
       <div style={{opacity:1}}><SolanaLogo theme="light" size="lg"/></div>
     </div>
   </div>;
@@ -10711,8 +10719,8 @@ function SolanaExpenses(){
         {/* Content area */}
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0,minHeight:0}}>
           {/* Mobile header */}
-          <div className="mob-only mob-header-bar" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-            <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="light" size="sm"/></div>
+          <div className="mob-only mob-header-bar" style={{background:"var(--color-white)",borderBottom:"1px solid var(--color-border-panel)",padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+            <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="dark" size="sm"/></div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <button type="button" onClick={()=>go("settings")} style={{flexShrink:0,maxWidth:140,padding:"4px 8px",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit"}} aria-label={t("nav.settings")}>
                 <span style={{fontSize:11,fontWeight:600,color:"var(--color-cream)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</span>
