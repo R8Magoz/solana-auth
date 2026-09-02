@@ -5,7 +5,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <meta name="theme-color" content="#cc4e00"/>
+  <meta name="theme-color" content="#BC575D"/>
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png"/>
   <link rel="apple-touch-icon" href="/icon-192.png"/>
   <link rel="manifest" href="/manifest.json"/>
@@ -16,60 +16,61 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
     :root {
-    /* THEME_TOKENS_START — Phase 1 token values (do not reference vars here) */
-    --font-sans: 'DM Sans', system-ui, sans-serif;
-    --font-display: 'Playfair Display', serif;
-    --color-text-faint: #9caa9f;
-    --color-bg-warm: #f5f0ea;
-    --color-text-body: #4b5e52;
+    /* THEME_TOKENS_START — Phase 2 Solana brand values */
+    --font-sans: 'JetBrains Mono', ui-monospace, monospace;
+    --font-display: 'JetBrains Mono', ui-monospace, monospace;
+    --color-text-faint: #6e6878;
+    --color-bg-warm: #f3f2ec;
+    --color-text-body: #1a1420;
     --color-rejected-text: #991b1b;
     --color-white: #ffffff;
-    --color-text-muted: #6b7b72;
-    --color-surface-track: #ede8e0;
-    --color-border-default: #ddd6cc;
+    --color-text-muted: #5c5668;
+    --color-surface-track: #e8e6df;
+    --color-border-default: #d8d4cb;
     --color-rejected-bg: #fee2e2;
-    --color-cream: #faf7f2;
+    --color-cream: #f3f2ec;
     --color-approved-text: #065f46;
     --color-danger: #dc2626;
     --color-approved-bg: #d1fae5;
     --color-pending-text-alt: #92400e;
     --color-budget-over-text: #a32d2d;
-    --color-text-toast: #1a1008;
+    --color-text-toast: #1a1420;
     --color-rejected-soft: #eca3a3;
-    --color-surface-card-alt: #fafaf8;
+    --color-surface-card-alt: #ffffff;
     --color-pending-bg: #fef3c7;
     --color-gray-500: #6b7280;
-    --color-brand-deep: #8a3a00;
+    --color-brand-deep: #8e4549;
     --color-budget-over-label: #7f1d1d;
-    --color-surface-brand-tint: #fdf0e6;
+    --color-surface-brand-tint: #f5e8e9;
     --color-amber-600: #d97706;
-    --color-text-dark-green: #1a2b1e;
-    --color-gray-999: #999999;
+    --color-text-dark-green: #1a1420;
+    --color-gray-999: #8a8494;
     --color-approved-text-dark: #166534;
-    --color-brand-peach: #f0c4a8;
+    --color-brand-peach: #e8d4d6;
     --color-green-600: #16a34a;
-    --color-factura: #5b21b6;
+    --color-factura: #6974b7;
     --color-budget-ok-text: #27500a;
     --color-red-300: #fca5a5;
     --color-pending-text: #78350f;
-    --color-brown-muted: #9a7860;
-    --color-brand: #cc4e00;
-    --color-brand-hover: #a83f00;
-    --color-surface-card: #fafaf9;
+    --color-brown-muted: #5c5668;
+    --color-brand: #bc575d;
+    --color-brand-hover: #a34a50;
+    --color-surface-card: #ffffff;
     --color-budget-warn-text: #854f0b;
     --color-budget-over-bg: #fcebeb;
     --color-budget-warn-track: #fde68a;
     --color-amber-bg-pale: #fffbeb;
-    --color-surface-warm: #f0ebe3;
-    --color-factura-hover: #4a1a92;
-    --color-accent: #c4622d;
-    --color-badge: #b85c1a;
-    --color-sidebar-bg: #2b2118;
+    --color-surface-warm: #edeae2;
+    --color-factura-hover: #5662a3;
+    --color-accent: #bc575d;
+    --color-badge: #bc575d;
+    --color-sidebar-bg: #ffffff;
     --color-budget-over-track: #fecaca;
-    --color-surface-peach: #fff8f3;
+    --color-surface-peach: #faf8f5;
     --color-notif-badge: #7a4f9a;
     --color-budget-warn-bg: #faeeda;
     --color-budget-warn-label: #633806;
@@ -77,18 +78,18 @@
     --color-gray-green: #b5c0b8;
     --color-border-light: #e5e0d8;
     --color-amber-500: #f59e0b;
-    --color-violet-bg-pale: #ede9fe;
-    --color-peach-bg: #fde8d6;
-    --color-cream-alt: #faf7f4;
+    --color-violet-bg-pale: #e8ebf5;
+    --color-peach-bg: #f0e4e5;
+    --color-cream-alt: #f3f2ec;
     --color-gray-400: #9ca3af;
     --color-red-500: #ef4444;
     --color-border-warm: #e8e2dc;
     --color-border-panel: #e5ddd2;
     --color-info-bg: #e0f2fe;
     --color-info-border: #7dd3fc;
-    --color-notif-tint: #f0e9f5;
-    --color-brand-mid: #e35900;
-    --color-brown-text: #8b5e3c;
+    --color-notif-tint: #edeef8;
+    --color-brand-mid: #bc575d;
+    --color-brown-text: #5c5668;
     --color-budget-bar-over: #e24b4a;
     --color-budget-bar-warn: #ef9f27;
     --color-budget-bar-ok: #97c459;
@@ -102,63 +103,63 @@
     --color-orange-500: #f97316;
     --color-green-bg-pale: #f0fdf4;
     --color-red-bg-pale: #fff1f2;
-    --color-approvals-section: #3c0a37;
-    --color-cream-white: #fffbf5;
-    --color-surface-neutral: #ede9e2;
+    --color-approvals-section: #6974b7;
+    --color-cream-white: #ffffff;
+    --color-surface-neutral: #edeae2;
     --color-gray-border: #d8dfd9;
-    --color-text-near-black: #1a1a1a;
-    --color-blue-600: #2563eb;
-    --color-text-slate: #5c6b62;
+    --color-text-near-black: #1a1420;
+    --color-blue-600: #6974b7;
+    --color-text-slate: #5c5668;
     --color-red-700: #b91c1c;
     --color-green-500: #22c55e;
     --color-gray-200: #e5e7eb;
     --color-violet-300: #c4b5fd;
     --color-green-300: #86efac;
     --color-green-700: #15803d;
-    --color-violet-bg-light: #f5f3ff;
-    --color-violet-border-light: #ddd6ee;
-    --color-brown-dark: #6b4a38;
-    --color-cream-pink: #faf7f8;
+    --color-violet-bg-light: #f0f2fa;
+    --color-violet-border-light: #d5daee;
+    --color-brown-dark: #1a1420;
+    --color-cream-pink: #f3f2ec;
     --color-black: #000000;
     --alpha-black-06: rgba(0,0,0,0.06);
-    --alpha-cream-12: rgba(250,247,242,0.12);
+    --alpha-cream-12: rgba(26,20,32,0.06);
     --alpha-black-08: rgba(0,0,0,0.08);
-    --alpha-brand-20: rgba(204,78,0,0.2);
-    --alpha-brand-09: rgba(204,78,0,0.09);
+    --alpha-brand-20: rgba(188,87,93,0.2);
+    --alpha-brand-09: rgba(188,87,93,0.09);
     --alpha-approved-12: rgba(6,95,70,0.12);
-    --alpha-cream-92: rgba(250,247,242,0.92);
+    --alpha-cream-92: rgba(26,20,32,0.92);
     --alpha-black-55: rgba(0,0,0,0.55);
-    --alpha-cream-40: rgba(250,247,242,0.4);
-    --alpha-brand-07: rgba(204, 78, 0, 0.07);
-    --alpha-factura-10: rgba(91, 33, 182, 0.10);
+    --alpha-cream-40: rgba(26,20,32,0.55);
+    --alpha-brand-07: rgba(188, 87, 93, 0.07);
+    --alpha-factura-10: rgba(105, 116, 183, 0.10);
     --alpha-rejected-12: rgba(153,27,27,0.12);
     --alpha-black-35: rgba(0,0,0,0.35);
     --alpha-black-25: rgba(0,0,0,0.25);
     --alpha-white-06: rgba(255,255,255,0.06);
-    --alpha-cream-15: rgba(250,247,242,0.15);
+    --alpha-cream-15: rgba(26,20,32,0.08);
     --alpha-black-28: rgba(0,0,0,0.28);
     --alpha-black-12: rgba(0,0,0,0.12);
     --alpha-danger-18: rgba(220,38,38,0.18);
-    --alpha-plum-12: rgba(60,10,55,0.12);
-    --alpha-cream-50: rgba(250,247,242,0.5);
+    --alpha-plum-12: rgba(105,116,183,0.12);
+    --alpha-cream-50: rgba(26,20,32,0.5);
     --alpha-black-90: rgba(0,0,0,0.9);
     --alpha-white-35: rgba(255,255,255,0.35);
     --alpha-black-45: rgba(0,0,0,0.45);
-    --alpha-brand-10: rgba(204,78,0,0.10);
-    --alpha-bg-warm-88: rgba(245,240,234,0.88);
-    --alpha-brand-04: rgba(204,78,0,0.04);
+    --alpha-brand-10: rgba(188,87,93,0.10);
+    --alpha-bg-warm-88: rgba(243,242,236,0.88);
+    --alpha-brand-04: rgba(188,87,93,0.04);
     --alpha-black-09: rgba(0,0,0,0.09);
-    --alpha-bg-warm-97: rgba(245,240,234,0.97);
-    --alpha-brand-14: rgba(204,78,0,0.14);
+    --alpha-bg-warm-97: rgba(243,242,236,0.97);
+    --alpha-brand-14: rgba(188,87,93,0.14);
     --alpha-white-09: rgba(255,255,255,0.09);
-    --alpha-white-07: rgba(255,255,255,0.07);
+    --alpha-white-07: rgba(0,0,0,0.07);
     --alpha-black-05: rgba(0,0,0,0.05);
     --alpha-black-20: rgba(0,0,0,0.2);
     --alpha-notif-22: rgba(122,79,154,0.22);
     --alpha-black-02: rgba(0,0,0,0.02);
     --alpha-black-04: rgba(0,0,0,0.04);
-    --alpha-brand-08: rgba(204,78,0,0.08);
-    --alpha-bg-warm-95: rgba(245,240,234,0.95);
+    --alpha-brand-08: rgba(188,87,93,0.08);
+    --alpha-bg-warm-95: rgba(243,242,236,0.95);
     --alpha-black-92: rgba(0,0,0,0.92);
     --alpha-white-60: rgba(255,255,255,0.6);
     --alpha-white-22: rgba(255,255,255,0.22);
@@ -187,9 +188,16 @@
       box-shadow:none!important;
       border:none!important;
     }
+    .solana-wordmark-img{
+      display:block;
+      height:auto;
+      width:auto;
+      max-width:100%;
+      object-fit:contain;
+    }
     .sidebar-tagline{
       font-size:8px;
-      color:var(--color-cream);
+      color:var(--color-text-muted);
       font-weight:500;
       margin-top:4px;
       padding-left:1px;
@@ -248,16 +256,16 @@
     .status-approved,.status-pending,.status-rejected,.badge.status-approved,.badge.status-pending,.badge.status-rejected{transition:background-color 0.25s ease-in-out,color 0.25s ease-in-out}
     .sidebar-user-row{flex:1;min-width:0;width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:8px;padding:13px 10px;background:var(--alpha-white-06);border:none;cursor:pointer;font-family:inherit;text-align:left;transition:background 0.15s ease}
     .sidebar-user-row--hover{background:var(--alpha-cream-12)}
-    .sidebar-user-row--open{background:var(--color-sidebar-bg)}
-    .sidebar-user-row--active{background:var(--alpha-cream-12)}
-    .sidebar-user-row__name{flex:1;min-width:0;font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color 0.15s ease}
+    .sidebar-user-row--open{background:var(--color-surface-track)}
+    .sidebar-user-row--active{background:var(--alpha-brand-07)}
+    .sidebar-user-row__name{flex:1;min-width:0;font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color 0.15s ease}
     .sidebar-user-row__chevron{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;transition:transform 0.15s ease}
     .sidebar-user-row__chevron--open{transform:rotate(180deg)}
-    .sidebar-user-menu{position:absolute;bottom:100%;left:8px;right:8px;margin-bottom:6px;background:var(--color-sidebar-bg);border:1px solid var(--alpha-cream-15);border-radius:10px;overflow:hidden;z-index:20;box-shadow:0 12px 32px var(--alpha-black-28),0 2px 8px var(--alpha-black-12);padding:4px}
-    .sidebar-user-menu__item{display:block;width:100%;min-height:40px;padding:10px 14px;border:none;border-radius:6px;background:transparent;color:var(--color-cream);font-size:11px;font-weight:500;text-align:left;cursor:pointer;font-family:inherit;transition:background 0.15s ease,color 0.15s ease}
+    .sidebar-user-menu{position:absolute;bottom:100%;left:8px;right:8px;margin-bottom:6px;background:var(--color-white);border:1px solid var(--color-border-panel);border-radius:10px;overflow:hidden;z-index:20;box-shadow:0 12px 32px var(--alpha-black-28),0 2px 8px var(--alpha-black-12);padding:4px}
+    .sidebar-user-menu__item{display:block;width:100%;min-height:40px;padding:10px 14px;border:none;border-radius:6px;background:transparent;color:var(--color-text-body);font-size:10px;font-weight:500;text-align:left;cursor:pointer;font-family:inherit;transition:background 0.15s ease,color 0.15s ease}
     .sidebar-user-menu__item--bordered{margin-bottom:2px}
     .sidebar-user-menu__item:hover{background:var(--alpha-cream-12)}
-    .sidebar-user-menu__item--destructive{color:var(--alpha-cream-92)}
+    .sidebar-user-menu__item--destructive{color:var(--color-danger)}
     .sidebar-user-menu__item--destructive:hover{background:var(--alpha-danger-18);color:var(--color-budget-over-track)}
     /* Aprobaciones card layout (desktop defaults via inline; mobile overrides below) */
     .approval-card-action-cluster{
@@ -275,8 +283,8 @@
     }
     .chart-year-select{
       width:auto;
-      font-size:12px;
-      padding:5px 10px;
+      font-size:11px;
+      padding:4px 8px;
       border:1.5px solid var(--color-border-default);
       border-radius:7px;
       background:var(--color-surface-card);
@@ -328,11 +336,11 @@
     }
     .filter-date-field--active{border-color:var(--color-accent);background:var(--color-surface-peach)}
     .filter-date-label{
-      font-size:9px;
+      font-size:8px;
       color:var(--color-text-faint);
       font-weight:500;
       text-transform:uppercase;
-      letter-spacing:0.05em;
+      letter-spacing:0.04em;
       flex-shrink:0;
       white-space:nowrap;
     }
@@ -341,7 +349,7 @@
       background:transparent;
       outline:none;
       font-family:var(--font-sans);
-      font-size:12px;
+      font-size:11px;
       color:var(--color-text-body);
       cursor:pointer;
       padding:0;
@@ -863,11 +871,11 @@ const THEME = {
 /* THEME_JS_END */
 
 /* ── BRAND PALETTE ─────────────────────────────────────────────────────────
-   Primary  G  Brand orange — primary (gasto)
-   Factura  var(--color-factura)  Deep violet — factura actions/badges
-   Accent   var(--color-accent)  Terracotta — earthy complement (from brand palette grid)
-   Badge    var(--color-notif-badge)  Purple — informational notification counts
-   Hover    var(--color-brand-hover)  Primary hover (darker orange)
+   Primary  G  Teja #BC575D — primary CTAs / gasto accent
+   Factura  F  Azulejo #6974B7 — factura badges / secondary links
+   Accent   T  Teja (same as brand) — primary actions
+   Badge    NOTIF_BADGE  Purple #7A4F9A — notification counts (WCAG on white)
+   Hover    GH  Darker teja — primary hover
    ────────────────────────────────────────────────────────────────────────── */
 const G  = THEME.color.brand;
 const GH = THEME.color.brandHover;
@@ -3552,7 +3560,7 @@ function makeBlankForm(expenseType,{user}){
 function SidebarUserRow({name,active,open,onToggle}){
   const [hovered,setHovered]=useState(false);
   const showHover=hovered&&!open&&!active;
-  const nameColor="var(--color-cream)";
+  const nameColor=active?G:"var(--color-text-body)";
   const rowClass=[
     "sidebar-user-row",
     open?" sidebar-user-row--open":"",
@@ -3664,13 +3672,13 @@ function SidebarNavItem({active,label,badge,onClick}){
         padding:"6px 9px",
         borderRadius:6,
         cursor:"pointer",
-        fontSize:11,
+        fontSize:10,
         fontWeight:500,
         marginBottom:2,
         transition:"background 0.15s ease,color 0.15s ease",
-        background:active?"var(--alpha-cream-12)":(showHover?"var(--alpha-cream-12)":"transparent"),
-        color:active?"var(--color-cream)":(showHover?"var(--alpha-cream-92)":"var(--alpha-cream-50)"),
-        borderLeft:`3px solid ${active?T:"transparent"}`,
+        background:active?"var(--alpha-brand-07)":(showHover?"var(--alpha-black-04)":"transparent"),
+        color:active?G:(showHover?"var(--color-text-body)":"var(--color-text-muted)"),
+        borderLeft:`3px solid ${active?G:"transparent"}`,
         display:"flex",
         alignItems:"center",
         justifyContent:"space-between",
@@ -3730,25 +3738,23 @@ class AppErrorBoundary extends React.Component{
   }
 }
 
-/* ── SOLANA WORDMARK (text) ────────────────────────────────────────────────
-   theme="light" = light text on G bars. theme="dark" = brand orange on light UIs.
+/* ── SOLANA LOGO (brand logotype image) ─────────────────────────────────────
+   Logo asset only — #455371 lives in logo.png, not in UI tokens.
 ────────────────────────────────────────────────────────────────────────── */
 function SolanaLogo({theme="light", size="md", variant:_v}){
-  const fontSize={sm:20,md:26,lg:40}[size]||26;
-  const onDarkBg=theme==="light";
-  const color=onDarkBg?"var(--color-white)":G;
+  const heights={sm:26,md:38,lg:52};
+  const h=heights[size]||38;
   return(
     <div className="solana-wordmark-wrap" style={{
-      display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:1.05,
+      display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",lineHeight:1,
       background:"none",backgroundColor:"transparent",border:"none",boxShadow:"none",padding:0,margin:0,
     }} aria-label="SOLANA">
-      <span className="solana-wordmark" style={{
-        fontFamily:THEME.font.display,
-        fontSize,
-        fontWeight:600,
-        color,
-        letterSpacing:"0.18em",
-      }}>SOLANA</span>
+      <img
+        className="solana-wordmark solana-wordmark-img"
+        src="/logo.png"
+        alt="Solana"
+        style={{height:h,width:"auto",maxWidth:Math.round(h*2.2)}}
+      />
     </div>
   );
 }
@@ -4135,7 +4141,7 @@ const AUTH={
   /* Logo lockup (no fill — logo PNG alpha shows against AUTH.page) */
   logoWrap:{display:"flex",flexDirection:"column",alignItems:"center",
     marginBottom:28,textAlign:"center",background:"transparent",backgroundColor:"transparent"},
-  title:{fontFamily:THEME.font.display,fontSize:22,fontWeight:700,
+  title:{fontFamily:THEME.font.sans,fontSize:22,fontWeight:700,
     color:G,marginTop:16,marginBottom:4,lineHeight:1.2},
   subtitle:{fontSize:13,color:"var(--color-brown-muted)",marginBottom:0,lineHeight:1.5},
   /* Form */
@@ -4146,7 +4152,7 @@ const AUTH={
     fontFamily:"inherit",outline:"none",boxSizing:"border-box",transition:"border-color 0.15s"},
   inpFocus:{borderColor:G,boxShadow:"0 0 0 3px var(--alpha-brand-09)"},
   /* Buttons */
-  btnPrimary:{width:"100%",background:G,color:"var(--color-cream)",border:"none",
+  btnPrimary:{width:"100%",background:G,color:"var(--color-white)",border:"none",
     borderRadius:9,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",
     fontFamily:"inherit",transition:"background 0.15s,transform 0.1s,opacity 0.15s"},
   btnPrimaryHover:{background:"var(--color-brand-hover)"},
@@ -4162,7 +4168,7 @@ const AUTH={
     marginBottom:14,lineHeight:1.5},
   /* Footer / secondary links */
   footer:{marginTop:20,textAlign:"center"},
-  link:{background:"none",border:"none",color:G,fontSize:12,
+  link:{background:"none",border:"none",color:F,fontSize:12,
     cursor:"pointer",fontFamily:"inherit",textDecoration:"underline",
     padding:"2px 0"},
   muted:{fontSize:11,color:"var(--color-text-faint)",textAlign:"center",marginTop:12},
@@ -5903,7 +5909,7 @@ function DashboardView(){
   },[departmentsWithStats]);
   return(
     <div>
-      <h1 style={{fontFamily:THEME.font.display,fontSize:24,color:G,marginBottom:3}}>{t("nav.dashboard")}</h1>
+      <h1 style={{fontFamily:THEME.font.sans,fontSize:22,fontWeight:700,color:G,marginBottom:3}}>{t("nav.dashboard")}</h1>
       <p style={{fontSize:13,color:"var(--color-text-muted)",marginBottom:16}}>{t("dash.welcome")}, {user.name.split(" ")[0]}</p>
       {myPending.length>0&&(
         <div style={{background:NOTIF_TINT,border:"1px solid var(--alpha-notif-22)",borderRadius:11,padding:"10px 13px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:9,flexWrap:"wrap"}}>
@@ -6111,14 +6117,14 @@ function MultiFilterMenu({prefix,options,selected,onChange,allLabel,minWidth}){
   const summary=multiFilterSummary(prefix,selected,options,allLabel);
   return(
     <div ref={ref} style={{position:"relative",flexShrink:0}}>
-      <button type="button" className="inp filter-pill-btn" style={{padding:"5px 8px",fontSize:11,width:"auto",minWidth:minWidth||120,cursor:"pointer",textAlign:"left",background:allActive?"var(--color-surface-card)":"var(--color-surface-peach)",borderColor:allActive?"var(--color-border-default)":G,fontFamily:"inherit"}}
+      <button type="button" className="inp filter-pill-btn" style={{padding:"4px 7px",fontSize:10,width:"auto",minWidth:minWidth||120,cursor:"pointer",textAlign:"left",background:allActive?"var(--color-surface-card)":"var(--color-surface-peach)",borderColor:allActive?"var(--color-border-default)":G,fontFamily:"inherit"}}
         onClick={()=>setOpen(o=>!o)} aria-expanded={open}>
         {summary}
         <span style={{float:"right",color:"var(--color-text-faint)",marginLeft:6,fontSize:9}}>{open?"▲":"▼"}</span>
       </button>
       {open&&(
         <div className="filter-pill-menu" style={{position:"absolute",top:"100%",left:0,marginTop:4,zIndex:30,background:"var(--color-white)",border:"1.5px solid var(--color-border-default)",borderRadius:7,boxShadow:"0 4px 14px var(--alpha-black-08)",minWidth:Math.max(minWidth||140,160),padding:"4px 0"}}>
-          <label style={{display:"flex",alignItems:"center",gap:7,padding:"5px 10px",fontSize:11,cursor:"pointer",color:"var(--color-text-body)"}}>
+          <label style={{display:"flex",alignItems:"center",gap:7,padding:"5px 10px",fontSize:10,cursor:"pointer",color:"var(--color-text-body)"}}>
             <input type="checkbox" checked={allActive} onChange={()=>onChange([])}/>
             <span>{allLabel}</span>
           </label>
@@ -6173,7 +6179,7 @@ function ExpensesView(){
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:8}}>
         <div style={{minWidth:0,flex:"1 1 100%"}}>
-          <h1 style={{fontFamily:THEME.font.display,fontSize:24,color:G,marginBottom:3}}>{t("nav.expenses")}</h1>
+          <h1 style={{fontFamily:THEME.font.sans,fontSize:22,fontWeight:700,color:G,marginBottom:3}}>{t("nav.expenses")}</h1>
           <p style={{fontSize:13,color:"var(--color-text-muted)",margin:0}}>{t("page.expensesDefBody")}</p>
         </div>
         <div className="page-header-actions" style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
@@ -6198,7 +6204,7 @@ function ExpensesView(){
           <input type="date" className="filter-date-inp" value={dateTo} onChange={e=>setDateTo(e.target.value)}/>
         </label>
         {(activeFilterCount>0||!!expSrc)&&(
-          <button type="button" className="touch-clear-link" style={{fontSize:11,color:T,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontWeight:600,textDecoration:"underline",textUnderlineOffset:2}}
+          <button type="button" className="touch-clear-link" style={{fontSize:11,color:F,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontWeight:600,textDecoration:"underline",textUnderlineOffset:2}}
             onClick={clearAllFilters}>
             {t("filter.clearFilters")}
           </button>
@@ -6369,7 +6375,7 @@ function ApprovalsView(){
   const renderSectionDivider=(label,color)=>(
     <div style={{marginTop:24,marginBottom:12,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{position:"absolute",left:0,right:0,top:"50%",height:1,background:"var(--color-border-default)"}} aria-hidden="true"/>
-      <span style={{position:"relative",background:"var(--color-bg-warm)",padding:"0 10px",fontFamily:THEME.font.display,fontSize:13,letterSpacing:"0.08em",textTransform:"uppercase",color,fontWeight:600}}>{label}</span>
+      <span style={{position:"relative",background:"var(--color-bg-warm)",padding:"0 10px",fontFamily:THEME.font.sans,fontSize:11,letterSpacing:"0.06em",textTransform:"uppercase",color,fontWeight:700}}>{label}</span>
     </div>
   );
   const renderApprovalCard=(item)=>{
@@ -6472,7 +6478,7 @@ function ApprovalsView(){
   const cInv=baseList.filter(e=>e.expenseType==="invoice").length;
   return(
     <div>
-      <h1 style={{fontFamily:THEME.font.display,fontSize:24,color:G,marginBottom:3}}>{t("nav.approvals")}</h1>
+      <h1 style={{fontFamily:THEME.font.sans,fontSize:22,fontWeight:700,color:G,marginBottom:3}}>{t("nav.approvals")}</h1>
       <p style={{fontSize:13,color:"var(--color-text-muted)",marginBottom:14}}>{AUTH_URL?"Gastos enviados al servidor pendientes de decisión.":t("dash.bothMustApprove")}</p>
       {!isAdmin && !isApprover && (
         <p style={{fontSize:12,color:"var(--color-text-faint)",marginBottom:12}}>
@@ -6833,7 +6839,7 @@ function ReportsView(){
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:6}}>
-        <h1 style={{fontFamily:THEME.font.display,fontSize:24,color:G}}>{t("reports.title")}</h1>
+        <h1 style={{fontFamily:THEME.font.sans,fontSize:22,fontWeight:700,color:G}}>{t("reports.title")}</h1>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <select className="inp" style={{width:"auto",fontSize:11,padding:"4px 8px"}}
             value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
@@ -6986,12 +6992,12 @@ function ReportsView(){
                     fontSize={chartValueLabelFs}
                     fill="var(--color-text-muted)"
                     fontWeight="500"
-                    fontFamily="DM Sans, system-ui, sans-serif"
+                    fontFamily="var(--font-sans)"
                     pointerEvents="none"
                   >{fmt(m.total)}</text>}
                   <text x={cx} y={TOP_PAD+CHART_H+13}
                     textAnchor="middle" fontSize={chartMonthLabelFs} fill="var(--color-text-faint)"
-                    fontFamily="DM Sans, system-ui, sans-serif" pointerEvents="none">
+                    fontFamily="var(--font-sans)" pointerEvents="none">
                     {m.label}
                   </text>
                 </g>
@@ -8347,7 +8353,7 @@ function SettingsView(){
 
   return(
     <div style={{maxWidth:540}}>
-      <h1 style={{fontFamily:THEME.font.display,fontSize:24,color:G,marginBottom:12}}>{t("nav.settings")}</h1>
+      <h1 style={{fontFamily:THEME.font.sans,fontSize:22,fontWeight:700,color:G,marginBottom:12}}>{t("nav.settings")}</h1>
 
       {/* ── Profile (all users) ── */}
       <AccordionSection title={t("settings.accordion.profile")}>
@@ -10386,11 +10392,11 @@ function SolanaExpenses(){
   };
 
   /* ── EARLY RETURN — after all hooks, before derived values that need user ── */
-  if(!user)return<div style={{position:"relative",minHeight:"100vh",background:G}}>
+  if(!user)return<div style={{position:"relative",minHeight:"100vh",background:"var(--color-bg-warm)"}}>
     <div style={{opacity:appReady?1:0,transition:"opacity 400ms cubic-bezier(0.22,1,0.36,1)",transitionDelay:appReady?"600ms":"0ms"}}>
       <LoginScreen users={users} onLogin={u=>{appLog("info","auth:login",{userId:u.id,role:u.role});try{localStorage.setItem(LAST_ACTIVITY_KEY,String(Date.now()));}catch(e){}setIdleTrackingEnabled(true);setUser(u);}} passwords={passwords} sessionRestoreAttempted={sessionRestoreAttempted}/>
     </div>
-    <div style={{position:"fixed",inset:0,background:G,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms cubic-bezier(0.22,1,0.36,1), opacity 400ms cubic-bezier(0.22,1,0.36,1)",transitionDelay:appReady?"600ms":"0ms"}}>
+    <div style={{position:"fixed",inset:0,background:"var(--color-bg-warm)",display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",opacity:appReady?0:1,transform:appReady?"translateY(-40%)":"translateY(0)",transition:"transform 400ms cubic-bezier(0.22,1,0.36,1), opacity 400ms cubic-bezier(0.22,1,0.36,1)",transitionDelay:appReady?"600ms":"0ms"}}>
       <div style={{opacity:1}}><SolanaLogo theme="light" size="lg"/></div>
     </div>
   </div>;
@@ -10662,9 +10668,9 @@ function SolanaExpenses(){
               border:"1px solid var(--color-surface-track)"}}>
               <div style={{marginBottom:20}}><SolanaLogo theme="dark" size="md" variant="auth"/></div>
               <div style={{fontSize:18,fontWeight:700,color:G,marginBottom:8,
-                fontFamily:THEME.font.display}}>{t("session.expiredTitle")}</div>
+                fontFamily:THEME.font.sans}}>{t("session.expiredTitle")}</div>
               <p style={{fontSize:13,color:"var(--color-brown-muted)",marginBottom:24,lineHeight:1.6}}>{t("session.expiredMsg")}</p>
-              <button style={{width:"100%",background:G,color:"var(--color-cream)",border:"none",
+              <button style={{width:"100%",background:G,color:"var(--color-white)",border:"none",
                 borderRadius:9,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",
                 fontFamily:"inherit"}}
                 onClick={()=>{setSessionExpired(false);}}>
@@ -10674,15 +10680,15 @@ function SolanaExpenses(){
           </div>
         )}
         {/* Desktop sidebar */}
-        <div className="dt-only" style={{width:198,background:G,display:"flex",flexDirection:"column",padding:"15px 8px",flexShrink:0,overflowY:"auto"}}>
-          <div style={{padding:"3px 6px 14px",borderBottom:"1px solid var(--alpha-white-09)",marginBottom:9,cursor:"pointer"}} onClick={()=>go("dashboard")}>
+        <div className="dt-only" style={{width:198,background:"var(--color-white)",borderRight:"1px solid var(--color-border-panel)",display:"flex",flexDirection:"column",padding:"15px 8px",flexShrink:0,overflowY:"auto"}}>
+          <div style={{padding:"3px 6px 14px",borderBottom:"1px solid var(--color-border-panel)",marginBottom:9,cursor:"pointer"}} onClick={()=>go("dashboard")}>
             <SolanaLogo theme="light" size="md"/>
             <div className="sidebar-tagline">Gestión de gastos</div>
           </div>
           {navItems.map(n=>(
             <SidebarNavItem key={n.id} active={view===n.id} label={n.label} badge={n.badge} onClick={()=>go(n.id)}/>
           ))}
-          <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid var(--alpha-white-07)",position:"relative"}}>
+          <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid var(--color-border-panel)",position:"relative"}}>
             <div style={{marginBottom:8}}>
               <SidebarUserRow
                 name={user.name}
@@ -10711,11 +10717,11 @@ function SolanaExpenses(){
         {/* Content area */}
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0,minHeight:0}}>
           {/* Mobile header */}
-          <div className="mob-only mob-header-bar" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-            <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="light" size="sm"/></div>
+          <div className="mob-only mob-header-bar" style={{background:"var(--color-white)",borderBottom:"1px solid var(--color-border-panel)",padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+            <div style={{cursor:"pointer"}} onClick={()=>go("dashboard")}><SolanaLogo theme="dark" size="sm"/></div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <button type="button" onClick={()=>go("settings")} style={{flexShrink:0,maxWidth:140,padding:"4px 8px",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit"}} aria-label={t("nav.settings")}>
-                <span style={{fontSize:11,fontWeight:600,color:"var(--color-cream)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</span>
+                <span style={{fontSize:10,fontWeight:600,color:G,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</span>
               </button>
             </div>
           </div>
@@ -10751,9 +10757,9 @@ function SolanaExpenses(){
         {/* Mobile new expense overlay */}
         {panel==="new"&&view==="expenses"&&(
           <div className="mob-only" style={{position:"fixed",inset:0,background:"var(--color-bg-warm)",zIndex:100,display:"flex",flexDirection:"column"}}>
-            <div className="mob-overlay-header" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
-              <button type="button" className="touch-icon-btn" aria-label="Volver" style={{border:"none",background:"none",color:"var(--color-cream)",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>dismissOverlay()}>&#8592;</button>
-              <div style={{fontFamily:THEME.font.display,fontSize:15,color:"var(--color-cream)"}}>{form.expenseType==="invoice"?t("dash.newInvoice"):t("form.newExpense")}</div>
+            <div className="mob-overlay-header" style={{background:"var(--color-white)",borderBottom:"1px solid var(--color-border-panel)",padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
+              <button type="button" className="touch-icon-btn" aria-label="Volver" style={{border:"none",background:"none",color:G,fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>dismissOverlay()}>&#8592;</button>
+              <div style={{fontFamily:THEME.font.sans,fontSize:14,fontWeight:700,color:"var(--color-text-body)"}}>{form.expenseType==="invoice"?t("dash.newInvoice"):t("form.newExpense")}</div>
             </div>
             <div className="mob-overlay-body" style={{flex:1,overflowY:"auto",padding:12,paddingBottom:18}}><NewPanel/></div>
           </div>
@@ -10762,9 +10768,9 @@ function SolanaExpenses(){
         {/* Mobile expense detail overlay */}
         {panel==="detail"&&detailId&&(
           <div className="mob-only panel-slide" style={{position:"fixed",inset:0,background:"var(--color-bg-warm)",zIndex:100,display:"flex",flexDirection:"column"}}>
-            <div className="mob-overlay-header" style={{background:G,padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
-              <button type="button" className="touch-icon-btn" aria-label="Volver" style={{border:"none",background:"none",color:"var(--color-cream)",fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>dismissOverlay()}>&#8592;</button>
-              <div style={{fontFamily:THEME.font.display,fontSize:15,color:"var(--color-cream)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,flex:1}}>{mobDetailTitle}</div>
+            <div className="mob-overlay-header" style={{background:"var(--color-white)",borderBottom:"1px solid var(--color-border-panel)",padding:"8px 12px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
+              <button type="button" className="touch-icon-btn" aria-label="Volver" style={{border:"none",background:"none",color:G,fontSize:19,cursor:"pointer",lineHeight:1}} onClick={()=>dismissOverlay()}>&#8592;</button>
+              <div style={{fontFamily:THEME.font.sans,fontSize:14,fontWeight:700,color:"var(--color-text-body)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,flex:1}}>{mobDetailTitle}</div>
             </div>
             <div className="mob-overlay-body" style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:12,paddingBottom:72}}><DetailPanel/></div>
           </div>
