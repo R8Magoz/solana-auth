@@ -554,6 +554,22 @@ function multiFilterSummary(prefix,selected,options,allLabel){
 function isMultiFilterActive(selected,optionCount){
   return!isMultiFilterAll(selected,optionCount);
 }
+/** Gastos status filter keys align with getItemStatus (pending|approved|rejected), not API raw status. */
+function normalizeStatusFilterSel(val){
+  const sel=asMultiFilter(val);
+  if(sel.length===0)return[];
+  const out=new Set();
+  for(const v of sel){
+    if(v==="submitted"||v==="draft")out.add("pending");
+    else if(v!=="deleted")out.add(v);
+  }
+  return[...out];
+}
+function expenseMatchesStatusFilter(exp,statusSel,cats,users){
+  if(!statusSel.length)return true;
+  const st=getItemStatus(exp,cats,users);
+  return statusSel.includes(st);
+}
 /* ── BRAND PALETTE ─────────────────────────────────────────────────────────
    Primary  G  Brand orange — primary (gasto)
    Factura  #5B21B6  Deep violet — factura actions/badges
@@ -2219,18 +2235,8 @@ const availableApprovalActions=(e,user,users,cats)=>{
   return actions;
 };
 const getItemStatus=(item,cats,users)=>{
-  if (item && item._apiType === 'expense' && item.status) {
-    const s = String(item.status);
-    if (s === 'deleted') return 'deleted';
-    if (s === 'rejected') return 'rejected';
-    if (s === 'approved') return 'approved';
-    if (s === 'submitted' || s === 'draft') return 'pending';
-  }
-  if (item && item._apiType === 'expense' && item.status === 'rejected') return 'rejected';
-  if (item && item._apiType === 'expense' && item.status === 'approved') return 'approved';
-  if (item && item._apiType === 'expense' && item.status === 'deleted') return 'deleted';
   if(item&&item._apiType==="expense"&&item.status){
-    const s=item.status;
+    const s=String(item.status);
     if(s==="deleted")return"deleted";
     if(s==="rejected")return"rejected";
     if(s==="approved")return"approved";
@@ -2242,7 +2248,7 @@ const getItemStatus=(item,cats,users)=>{
       }else{
         reqIds=reqIdsRaw;
       }
-      if(reqIds){
+      if(reqIds&&reqIds.length>0){
         const a=item.approvals||{};
         const v=id=>approvalVoteFor(a,id,users);
         if(reqIds.some(id=>v(id)==="rejected"))return"rejected";
@@ -8586,6 +8592,11 @@ function SolanaExpenses(){
   const panelRef=useRef(panel);
   panelRef.current=panel;
   const [expFlt,  setExpFlt]  =useSessionState("sol-flt-status",[]);
+  useEffect(()=>{
+    const cur=asMultiFilter(expFlt);
+    const norm=normalizeStatusFilterSel(expFlt);
+    if(JSON.stringify(cur)!==JSON.stringify(norm))setExpFlt(norm);
+  },[]);
   const [expSrc,  setExpSrc]  =useState("");
   const [catFlt,  setCatFlt]  =useSessionState("sol-flt-cat",[]);
   const [submFlt, setSubmFlt] =useSessionState("sol-flt-subm",[]);
@@ -10050,13 +10061,13 @@ function SolanaExpenses(){
     rejected:expVisible.filter(e=>getItemStatus(e,cats,users)==="rejected"),
   };
   const filteredBase=(()=>{
-    const statusSel=asMultiFilter(expFlt);
+    const statusSel=normalizeStatusFilterSel(expFlt);
   const catSel=asMultiFilter(catFlt);
   const submSel=asMultiFilter(submFlt);
   const kindSel=asMultiFilter(expKindFlt);
     let base=expVisible;
     if(statusSel.length>0){
-      base=expVisible.filter(e=>statusSel.includes(getItemStatus(e,cats,users)));
+      base=expVisible.filter(e=>expenseMatchesStatusFilter(e,statusSel,cats,users));
     }
     return base.filter(e=>{
     const src=expSrc.toLowerCase().trim();

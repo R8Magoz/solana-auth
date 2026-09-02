@@ -288,6 +288,145 @@ test.describe('A — Expense lifecycle', () => {
     await expect(row.getByText(/Pendiente|Enviado|pending/i).first()).toBeVisible();
   });
 
+  test('A1c) Gastos status filters match pending, approved, and rejected', async ({ page }) => {
+    const seedExpenses: ExpenseRow[] = [
+      {
+        id: 'exp_flt_pend',
+        userId: 'admin-1',
+        ownerId: 'admin-1',
+        date: '2026-04-01',
+        description: 'Pendiente filter QA',
+        amount: 100,
+        amountEUR: 100,
+        currency: 'EUR',
+        category: 'Equipment',
+        status: 'submitted',
+        expenseType: 'expense',
+        approversJson: JSON.stringify(['user-1']),
+        approvalVotesJson: '{}',
+        paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 100, pct: 100 }]),
+        departmentId: 'dept_ops',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        auditTrailJson: '[]',
+        commentsJson: '[]',
+        traceCode: 'trace_flt_pend',
+      },
+      {
+        id: 'exp_flt_appr',
+        userId: 'admin-1',
+        ownerId: 'admin-1',
+        date: '2026-04-02',
+        description: 'Aprobado filter QA',
+        amount: 200,
+        amountEUR: 200,
+        currency: 'EUR',
+        category: 'Equipment',
+        status: 'approved',
+        expenseType: 'expense',
+        approversJson: JSON.stringify(['admin-1']),
+        approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+        paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 200, pct: 100 }]),
+        departmentId: 'dept_ops',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        auditTrailJson: '[]',
+        commentsJson: '[]',
+        traceCode: 'trace_flt_appr',
+      },
+      {
+        id: 'exp_flt_rej',
+        userId: 'admin-1',
+        ownerId: 'admin-1',
+        date: '2026-04-03',
+        description: 'Rechazado filter QA',
+        amount: 300,
+        amountEUR: 300,
+        currency: 'EUR',
+        category: 'Equipment',
+        status: 'rejected',
+        expenseType: 'expense',
+        approversJson: JSON.stringify(['admin-1']),
+        approvalVotesJson: JSON.stringify({ 'admin-1': 'rejected' }),
+        paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 300, pct: 100 }]),
+        departmentId: 'dept_ops',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        rejectionNote: 'No',
+        auditTrailJson: '[]',
+        commentsJson: '[]',
+        traceCode: 'trace_flt_rej',
+      },
+      {
+        id: 'exp_flt_vote_rej',
+        userId: 'admin-1',
+        ownerId: 'admin-1',
+        date: '2026-04-04',
+        description: 'Vote rejected filter QA',
+        amount: 150,
+        amountEUR: 150,
+        currency: 'EUR',
+        category: 'Equipment',
+        status: 'submitted',
+        expenseType: 'expense',
+        approversJson: JSON.stringify(['admin-1']),
+        approvalVotesJson: JSON.stringify({ 'admin-1': 'rejected' }),
+        paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 150, pct: 100 }]),
+        departmentId: 'dept_ops',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        rejectionNote: 'Bad',
+        auditTrailJson: '[]',
+        commentsJson: '[]',
+        traceCode: 'trace_flt_vote_rej',
+      },
+    ];
+    await setupMockApi(page, { expenses: seedExpenses });
+    await page.goto('/');
+    await page.evaluate(() => {
+      sessionStorage.setItem('sol-flt-status', JSON.stringify('submitted'));
+    });
+    await loginAs(page, 'admin@solana.test');
+    await clickSidebarGastos(page);
+    await expect(page.getByText('Pendiente filter QA').first()).toBeVisible();
+
+    await toggleGastosMultiFilter(page, 'Estado', 'Pendiente');
+    await expect(page.getByText('Pendiente filter QA').first()).toBeVisible();
+    await expect(page.getByText('Aprobado filter QA')).toHaveCount(0);
+    await expect(page.getByText('Rechazado filter QA')).toHaveCount(0);
+
+    await page.getByRole('button', { name: /^Estado:/ }).first().click();
+    await page.locator('label').filter({ hasText: /^Todos$/ }).first().locator('input[type="checkbox"]').check();
+    await page.getByRole('heading', { name: 'Gastos' }).click();
+    await page.waitForTimeout(300);
+
+    await toggleGastosMultiFilter(page, 'Estado', 'Rechazado');
+    await expect(page.getByText('Rechazado filter QA').first()).toBeVisible();
+    await expect(page.getByText('Vote rejected filter QA').first()).toBeVisible();
+    await expect(page.getByText('Pendiente filter QA')).toHaveCount(0);
+
+    await page.getByRole('button', { name: /^Estado:/ }).first().click();
+    await page.locator('label').filter({ hasText: /^Todos$/ }).first().locator('input[type="checkbox"]').check();
+    await page.getByRole('heading', { name: 'Gastos' }).click();
+    await page.waitForTimeout(300);
+
+    await toggleGastosMultiFilter(page, 'Estado', 'Aprobado');
+    await expect(page.getByText('Aprobado filter QA').first()).toBeVisible();
+    await expect(page.getByText('Pendiente filter QA')).toHaveCount(0);
+
+    await page.getByRole('button', { name: /^Estado:/ }).first().click();
+    await page.locator('label').filter({ hasText: /^Todos$/ }).first().locator('input[type="checkbox"]').check();
+    await page.getByRole('heading', { name: 'Gastos' }).click();
+    await page.waitForTimeout(300);
+
+    await toggleGastosMultiFilter(page, 'Estado', 'Pendiente');
+    await toggleGastosMultiFilter(page, 'Estado', 'Rechazado');
+    await expect(page.getByText('Pendiente filter QA').first()).toBeVisible();
+    await expect(page.getByText('Rechazado filter QA').first()).toBeVisible();
+    await expect(page.getByText('Vote rejected filter QA').first()).toBeVisible();
+    await expect(page.getByText('Aprobado filter QA')).toHaveCount(0);
+  });
+
   test('A1b) New expense stores traceCode and shows it in detail', async ({ page }) => {
     const state = await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');
