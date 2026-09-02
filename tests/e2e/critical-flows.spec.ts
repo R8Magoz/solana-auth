@@ -6,6 +6,7 @@ import {
   defaultMockDepartments,
   expectRequestFired,
   getExpenseFromState,
+  makeUsers,
   setupMockApi,
   waitForExpensesRefetch,
   waitForRequest,
@@ -146,6 +147,21 @@ async function createBillViaUi(page: Page, name: string, amount: string) {
 async function openExpenseDetail(page: Page, descriptionText: string) {
   await page.getByText(descriptionText).first().click();
   await getDetailPanel(page).waitFor({ state: 'visible' });
+}
+
+async function editExpenseDescriptionInPanel(page: Page, newDescription: string) {
+  const panel = getDetailPanel(page);
+  await panel.getByRole('button', { name: /Editar|Edit/i }).first().click({ force: true });
+  await page.waitForTimeout(400);
+  const wrap = panel.locator('.expense-form-fields-wrap');
+  const descField = wrap.getByPlaceholder('Concepto').first();
+  await descField.fill(newDescription);
+  await panel.getByRole('button', { name: /Guardar|Enviar/i }).first().click({ force: true });
+  const confirmBtn = page.getByRole('button', { name: 'Confirmar' });
+  if (await confirmBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await confirmBtn.click();
+  }
+  await page.waitForTimeout(800);
 }
 
 async function rejectExpenseViaUi(page: Page, note = 'No procede QA') {
@@ -792,31 +808,48 @@ test.describe('A — Expense lifecycle', () => {
     await expect(page.getByText('Gasto editado QA').first()).toBeVisible();
   });
 
-  test('A5) Approved gasto cannot be edited by regular user', async ({ page }) => {
-    const state = createMockApiState({
+  test('A6a) Multi-approver edit: editor approver auto-votes, stays pending for others', async ({ page }) => {
+    const mgrId = 'mgr-1';
+    const state = await setupMockApi(page, {
+      users: [
+        ...makeUsers(),
+        {
+          id: mgrId,
+          email: 'mgr@solana.test',
+          name: 'Manager QA',
+          role: 'user',
+          accountStatus: 'active',
+          approvalStatus: 'approved',
+          color: '#888888',
+        },
+      ],
+      departmentApprovers: { dept_ops: ['admin-1', mgrId] },
+      departments: [
+        { id: 'dept_ops', name: 'Operaciones', budget: 3000, archived: false, createdAt: Date.now(), approverIds: ['admin-1', mgrId] },
+        { id: 'dept_fin', name: 'Finanzas', budget: 5000, archived: false, createdAt: Date.now(), approverIds: ['admin-1'] },
+        { id: 'dept_estrategia', name: 'Estrategia', budget: 4000, archived: false, createdAt: Date.now(), approverIds: ['admin-1'] },
+      ],
       expenses: [
         {
-          id: 'exp_appr_1',
+          id: 'exp_multi_edit',
           userId: 'user-1',
           ownerId: 'user-1',
-          submittedBy: 'user-1',
           date: '2026-04-10',
-          description: 'Gasto aprobado bloqueado QA',
-          amount: 100,
-          amountEUR: 100,
+          description: 'Multi approver edit QA',
+          amount: 400,
+          amountEUR: 400,
           currency: 'EUR',
           category: 'Software',
           status: 'approved',
-          approversJson: JSON.stringify(['admin-1']),
-          approvalVotesJson: JSON.stringify({ 'user-1': 'approved' }),
-          paidByJson: JSON.stringify([{ userId: 'user-1', amount: 100, pct: 100 }]),
+          expenseType: 'expense',
+          approversJson: JSON.stringify(['admin-1', mgrId]),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved', [mgrId]: 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'user-1', amount: 400, pct: 100 }]),
           splitMode: null,
           notes: '',
           receiptPath: null,
           departmentId: 'dept_ops',
-          expenseType: 'expense',
-          auditTrail: [],
-          auditTrailJson: JSON.stringify([]),
+          auditTrailJson: '[]',
           commentsJson: '[]',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -827,18 +860,101 @@ test.describe('A — Expense lifecycle', () => {
         },
       ],
     });
-    await attachMockApiRoutes(page, state);
+    await loginAs(page, 'admin@solana.test');
+    await clickSidebarGastos(page);
+    await openExpenseDetail(page, 'Multi approver edit QA');
+    await editExpenseDescriptionInPanel(page, 'Multi approver edited QA');
+    const exp = getExpenseFromState(state, 'exp_multi_edit');
+    expect(exp?.status).toBe('submitted');
+    const votes = JSON.parse(String(exp?.approvalVotesJson || '{}')) as Record<string, string>;
+    expect(votes['admin-1']).toBe('approved');
+    expect(votes[mgrId]).toBeUndefined();
+    await expect(getDetailPanel(page).getByTestId('detail-status-badge')).toHaveAttribute('data-status', 'pending');
+  });
+
+  test('A6b) Sole approver edit re-approves immediately', async ({ page }) => {
+    const state = await setupMockApi(page, {
+      expenses: [
+        {
+          id: 'exp_sole_edit',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          date: '2026-04-11',
+          description: 'Sole approver edit QA',
+          amount: 220,
+          amountEUR: 220,
+          currency: 'EUR',
+          category: 'Software',
+          status: 'approved',
+          expenseType: 'expense',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 220, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_ops',
+          auditTrailJson: '[]',
+          commentsJson: '[]',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          paymentStatus: 'na',
+          deferredPayment: false,
+          paymentTermDays: 0,
+          rejectionNote: null,
+        },
+      ],
+    });
+    await loginAs(page, 'admin@solana.test');
+    await clickSidebarGastos(page);
+    await openExpenseDetail(page, 'Sole approver edit QA');
+    await editExpenseDescriptionInPanel(page, 'Sole approver edited QA');
+    const exp = getExpenseFromState(state, 'exp_sole_edit');
+    expect(exp?.status).toBe('approved');
+    await expect(getDetailPanel(page).getByTestId('detail-status-badge')).toHaveAttribute('data-status', 'approved');
+  });
+
+  test('A6c) Owner non-approver edits approved item → back to pending', async ({ page }) => {
+    const state = await setupMockApi(page, {
+      expenses: [
+        {
+          id: 'exp_owner_edit',
+          userId: 'user-1',
+          ownerId: 'user-1',
+          date: '2026-04-10',
+          description: 'Owner edit approved QA',
+          amount: 100,
+          amountEUR: 100,
+          currency: 'EUR',
+          category: 'Software',
+          status: 'approved',
+          expenseType: 'expense',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: JSON.stringify({ 'admin-1': 'approved' }),
+          paidByJson: JSON.stringify([{ userId: 'user-1', amount: 100, pct: 100 }]),
+          splitMode: null,
+          notes: '',
+          receiptPath: null,
+          departmentId: 'dept_ops',
+          auditTrailJson: '[]',
+          commentsJson: '[]',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          paymentStatus: 'na',
+          deferredPayment: false,
+          paymentTermDays: 0,
+          rejectionNote: null,
+        },
+      ],
+    });
     await loginAs(page, 'user@solana.test');
     await clickSidebarGastos(page);
-    await openExpenseDetail(page, 'Gasto aprobado bloqueado QA');
-    const panel = getDetailPanel(page);
-    const editBtn = panel.getByRole('button', { name: /Editar|Edit/i });
-    const count = await editBtn.count();
-    if (count > 0) {
-      await expect(editBtn.first()).toBeDisabled();
-    } else {
-      expect(count).toBe(0);
-    }
+    await openExpenseDetail(page, 'Owner edit approved QA');
+    await editExpenseDescriptionInPanel(page, 'Owner edited approved QA');
+    const exp = getExpenseFromState(state, 'exp_owner_edit');
+    expect(exp?.status).toBe('submitted');
+    expect(JSON.parse(String(exp?.approvalVotesJson || '{}'))).toEqual({});
+    await expect(getDetailPanel(page).getByTestId('detail-status-badge')).toHaveAttribute('data-status', 'pending');
   });
 });
 
