@@ -4168,7 +4168,7 @@ const AUTH={
     marginBottom:14,lineHeight:1.5},
   /* Footer / secondary links */
   footer:{marginTop:20,textAlign:"center"},
-  link:{background:"none",border:"none",color:F,fontSize:12,
+  link:{background:"none",border:"none",color:"var(--color-factura-hover)",fontSize:12,
     cursor:"pointer",fontFamily:"inherit",textDecoration:"underline",
     padding:"2px 0"},
   muted:{fontSize:11,color:"var(--color-text-faint)",textAlign:"center",marginTop:12},
@@ -6204,7 +6204,7 @@ function ExpensesView(){
           <input type="date" className="filter-date-inp" value={dateTo} onChange={e=>setDateTo(e.target.value)}/>
         </label>
         {(activeFilterCount>0||!!expSrc)&&(
-          <button type="button" className="touch-clear-link" style={{fontSize:11,color:F,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontWeight:600,textDecoration:"underline",textUnderlineOffset:2}}
+          <button type="button" className="touch-clear-link" style={{fontSize:11,color:"var(--color-factura-hover)",background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",fontWeight:600,textDecoration:"underline",textUnderlineOffset:2}}
             onClick={clearAllFilters}>
             {t("filter.clearFilters")}
           </button>
