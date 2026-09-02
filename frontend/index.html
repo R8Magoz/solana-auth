@@ -79,6 +79,9 @@
     .panel-slide{animation:slideIn var(--motion-duration-standard) var(--motion-ease-standard) forwards}
     .expand-down{animation:expandDown var(--motion-duration-standard) var(--motion-ease-standard) forwards;transform-origin:top center}
     .toast-slot{position:fixed;top:16px;right:16px;left:auto;transform:none;z-index:7600;max-width:min(92vw,380px);pointer-events:none}
+    @media(min-width:768px){
+      .toast-slot{left:50%;right:auto;transform:translateX(-50%)}
+    }
     .toast{pointer-events:auto;padding:10px 14px;border-radius:11px;font-size:12px;font-weight:500;font-family:'DM Sans',system-ui,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,0.06);background:#fff;color:#1a1008;border:1px solid rgba(0,0,0,0.06)}
     .toast--success{background:#D1FAE5;color:#065F46;border:1px solid rgba(6,95,70,0.12)}
     .toast--error{background:#FEE2E2;color:#991B1B;border:1px solid rgba(153,27,27,0.12)}
