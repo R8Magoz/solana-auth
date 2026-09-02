@@ -21,6 +21,12 @@ test('favicon links resolve and return brand mark assets', async ({ page }) => {
     expect(ct.includes('image') || ct.includes('icon')).toBeTruthy();
   }
 
+  const fav32 = await page.request.get(base + '/favicon-32.png');
+  const body = await fav32.body();
+  expect(body.length).toBeGreaterThan(100);
+  expect(body[0]).toBe(0x89); // PNG magic
+  expect(body[1]).toBe(0x50);
+
   const themeColor = await page.evaluate(() =>
     document.querySelector('meta[name="theme-color"]')?.getAttribute('content'),
   );
