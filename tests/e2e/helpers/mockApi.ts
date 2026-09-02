@@ -545,6 +545,22 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       return json(200, { ok: true });
     }
 
+    if (path === '/auth/update-profile' && method === 'PUT') {
+      if (!session) return json(401, { error: 'No autorizado.' });
+      const body = safeJson(req.postData());
+      const user = state.users.find((u) => u.id === session.userId);
+      if (!user) return json(404, { error: 'Usuario no encontrado.' });
+      const name = String(body.name || '').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      if (!name) return json(400, { error: 'El nombre es obligatorio.' });
+      if (!email || !email.includes('@')) return json(400, { error: 'Email inválido.' });
+      const other = state.users.find((u) => u.email === email && u.id !== session.userId);
+      if (other) return json(409, { error: 'Ya existe otro usuario con ese correo.' });
+      user.name = name;
+      user.email = email;
+      return json(200, { ok: true, user });
+    }
+
     if (path === '/auth/password' && method === 'POST') {
       if (!session) return json(401, { error: 'No autorizado.' });
       return json(200, { ok: true });

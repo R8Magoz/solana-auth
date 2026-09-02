@@ -7,6 +7,7 @@ import {
   deptApprovedSpend,
   expectRequestFired,
   getExpenseFromState,
+  matchingRequests,
   makeUsers,
   setupMockApi,
   waitForExpensesRefetch,
@@ -1371,6 +1372,37 @@ test.describe('C — Permissions and profile', () => {
     await pwInputs.nth(2).fill('NewPass1!');
     await page.getByRole('button', { name: /Establecer|Guardar|Cambiar|Save/i }).first().click();
     await expect(page.getByText(/Guardado|Contraseña|actualizada|cambiada|ok/i).first()).toBeVisible({ timeout: 8000 });
+  });
+
+  test('C3b) Profile email change shows confirmation; confirm saves, cancel does not submit', async ({ page }) => {
+    const state = await setupMockApi(page);
+    await loginAs(page, 'user@solana.test');
+    await openSettingsViaUserMenu(page);
+    await page.getByText('Tu perfil').first().click();
+    const nameInput = page.locator('input.inp').first();
+    const emailInput = page.locator('input[type="email"]').first();
+    const saveBtn = page.getByTestId('profile-save-btn');
+
+    await nameInput.fill('User QA Renamed');
+    await saveBtn.click();
+    await expect(page.getByText('Perfil actualizado.').first()).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText('Confirmación')).not.toBeVisible();
+
+    await emailInput.fill('renamed@solana.test');
+    const afterEmailAttempt = Date.now();
+    await saveBtn.click();
+    await expect(page.getByText('Confirmación')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/renamed@solana\.test/)).toBeVisible();
+    await page.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(page.getByText('Confirmación')).not.toBeVisible({ timeout: 5000 });
+    expect(matchingRequests(state, 'PUT', '/auth/update-profile', { after: afterEmailAttempt }).length).toBe(0);
+
+    await saveBtn.click();
+    await expect(page.getByText('Confirmación')).toBeVisible({ timeout: 5000 });
+    await page.getByRole('button', { name: 'Confirmar' }).click();
+    await waitForRequest(state, 'PUT', '/auth/update-profile', { after: afterEmailAttempt });
+    await expect(page.getByText('Perfil actualizado.').first()).toBeVisible({ timeout: 8000 });
+    await expect(emailInput).toHaveValue('renamed@solana.test');
   });
 
   test('C5) Assigned approver sees Aprobar/Rechazar buttons regardless of role', async ({ page }) => {
