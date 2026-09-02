@@ -169,6 +169,16 @@ function computeSubmittedVotes(submitterId, approverIds) {
   return { votes, allDone };
 }
 
+/** After edit reset: auto-grant editor's vote if they are a department approver. */
+function computeVotesAfterEditReset(editorUserId, approverIds, userStore) {
+  const canonIds = canonicalizeApproverIds(approverIds, userStore);
+  const votes = {};
+  const editorCanon = resolveApproverTokenToUserId(editorUserId, userStore);
+  if (canonIds.includes(editorCanon)) votes[editorCanon] = 'approved';
+  const allDone = allApproversVotedApproved(canonIds, votes);
+  return { votes, allDone, approverIdsCanon: canonIds };
+}
+
 /**
  * Resolve client tokens to DB user ids — no hardcoded roster.
  * Accepts real user ids (e.g. u_…) or full email when the client sends an email string.
@@ -639,10 +649,30 @@ function getExpenseById(id) {
   return rowToExpense(db.prepare('SELECT * FROM expenses WHERE id = ?').get(id));
 }
 
+function userIsExpenseApprover(req, exp) {
+  if (!exp) return false;
+  const approverIds = canonicalizeApproverIds(
+    getApproverIdsForDepartment(exp.departmentId),
+    userStore,
+  );
+  const uid = resolveApproverTokenToUserId(req.userId, userStore);
+  return approverIds.includes(uid);
+}
+
+function userCanEditExpense(req, exp) {
+  if (!exp) return false;
+  if (isAdminRole(req.userRole)) return true;
+  const uid = req.userId;
+  if (exp.userId === uid || exp.ownerId === uid) return true;
+  return userIsExpenseApprover(req, exp);
+}
+
 function canAccessExpense(req, exp) {
   if (!exp) return false;
   if (isAdminRole(req.userRole)) return true;
-  return exp.userId === req.userId;
+  const uid = req.userId;
+  if (exp.userId === uid || exp.ownerId === uid) return true;
+  return userIsExpenseApprover(req, exp);
 }
 
 function departmentIdFromBody(body, required) {
@@ -1153,13 +1183,8 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
   function putOrPatchExpense(req, res) {
     const exp = getExpenseById(req.params.id);
     if (!exp) return res.status(404).json({ error: 'Gasto no encontrado.' });
-    if (!canAccessExpense(req, exp)) {
+    if (!userCanEditExpense(req, exp)) {
       return res.status(403).json({ error: 'No autorizado.' });
-    }
-
-    const admin = isAdminRole(req.userRole);
-    if (!admin && !['draft', 'submitted', 'rejected'].includes(exp.status)) {
-      return res.status(403).json({ error: 'No se puede editar en este estado.' });
     }
     if (exp.status === 'deleted') {
       return res.status(400).json({ error: 'Gasto eliminado.' });
@@ -1194,7 +1219,7 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     }
     if (status != null) {
       const stIn = String(status).trim().slice(0, 32);
-      if (!admin && !['draft', 'submitted'].includes(stIn)) {
+      if (!isAdminRole(req.userRole) && !['draft', 'submitted'].includes(stIn)) {
         return res.status(403).json({ error: 'Estado no permitido.' });
       }
       if (!['draft', 'submitted', 'approved', 'rejected', 'deleted'].includes(stIn)) {
@@ -1331,8 +1356,10 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
     };
     const fieldChanges = buildExpenseFieldDiff(prev, nextSnapshot);
     const wasApproved = exp.status === 'approved';
+    const wasRejected = exp.status === 'rejected';
     const materialEdit = fieldChanges.length > 0
       && ['submitted', 'approved', 'rejected'].includes(exp.status);
+    const resetApprovalFlow = materialEdit && (wasApproved || wasRejected);
 
     if (materialEdit) {
       nextVotesJson = JSON.stringify({});
@@ -1355,16 +1382,19 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
       } else if (approverIds.length === 0) {
         approverIds = getApproverIdsForDepartment(nextDeptId);
       }
-      approverIds = canonicalizeApproverIds(approverIds, userStore);
-      const { votes, allDone } = computeSubmittedVotes(exp.userId, approverIds);
-      nextApproversJson = JSON.stringify(approverIds);
+      const { votes, allDone, approverIdsCanon } = computeVotesAfterEditReset(
+        req.userId,
+        approverIds,
+        userStore,
+      );
+      nextApproversJson = JSON.stringify(approverIdsCanon);
       nextVotesJson = JSON.stringify(votes);
       nextRejectedBy = null;
       nextRejectedAt = null;
       nextRejectionNote = null;
       if (allDone) {
         finalStatus = 'approved';
-        nextApprovedBy = exp.userId;
+        nextApprovedBy = req.userId;
         nextApprovedAt = now;
       } else {
         nextApprovedBy = null;
@@ -1410,7 +1440,14 @@ function createExpensesRouter({ audit, requireAuth, requireAdminSession, DATA_DI
         targetId: exp.id,
         changes: fieldChanges,
       });
-      if (materialEdit || wasApproved) {
+      if (resetApprovalFlow) {
+        audit('expense_edited_reset_approval', {
+          userId: req.userId,
+          targetId: exp.id,
+          approverIds: parseJsonArray(nextApproversJson),
+          editorId: req.userId,
+        });
+      } else if (materialEdit) {
         audit('expense_reapproval_required', {
           userId: req.userId,
           targetId: exp.id,

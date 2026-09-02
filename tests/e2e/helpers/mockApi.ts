@@ -103,6 +103,17 @@ function parseApprovers(row: ExpenseRow): string[] {
   }
 }
 
+function mockUserCanEditExpense(row: ExpenseRow, session: { userId: string; role: string }): boolean {
+  if (session.role === 'admin') return true;
+  if (row.userId === session.userId || row.ownerId === session.userId) return true;
+  return parseApprovers(row).includes(session.userId);
+}
+
+function allMockApproversApproved(approverIds: string[], votes: Record<string, string>): boolean {
+  if (!approverIds.length) return false;
+  return approverIds.every((id) => votes[id] === 'approved');
+}
+
 function parseVotes(row: ExpenseRow): Record<string, string> {
   try {
     const vj = JSON.parse(String(row.approvalVotesJson || 'null'));
@@ -859,7 +870,7 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       const id = expensePutMatch[1];
       const e = state.expenses.find((x) => x.id === id);
       if (!e) return json(404, { error: 'Gasto no encontrado.' });
-      if (e.status === 'approved' && session.role === 'user') {
+      if (!mockUserCanEditExpense(e, session)) {
         return json(403, { error: 'No autorizado.' });
       }
       const body = safeJson(req.postData());
@@ -898,21 +909,38 @@ export async function attachMockApiRoutes(page: Page, state: MockApiState): Prom
       const fieldChanges = buildExpenseFieldDiff(prevSnapshot, e);
       const materialEdit = fieldChanges.length > 0
         && ['submitted', 'approved', 'rejected'].includes(String(prevSnapshot.status));
+      const wasApprovedOrRejected = ['approved', 'rejected'].includes(String(prevSnapshot.status));
       if (materialEdit) {
         e.approvalVotesJson = '{}';
         e.status = 'submitted';
         e.rejectionNote = null;
+        let approverIds = Array.isArray(body.approvalRequired)
+          ? body.approvalRequired.filter(Boolean).map(String)
+          : parseApprovers(e);
+        if (!approverIds.length) approverIds = parseApprovers(e);
+        const votes: Record<string, string> = {};
+        if (approverIds.includes(session.userId)) {
+          votes[session.userId] = 'approved';
+        }
+        e.approvalVotesJson = JSON.stringify(votes);
+        if (Array.isArray(body.approvalRequired)) {
+          e.approversJson = JSON.stringify(body.approvalRequired.filter(Boolean));
+        }
+        e.status = allMockApproversApproved(approverIds, votes) ? 'approved' : 'submitted';
       }
-      if (body.status !== undefined && body.status !== null) {
+      if (body.status !== undefined && body.status !== null && !materialEdit) {
         e.status = body.status;
       }
-      if (body.status === 'submitted') {
+      if (body.status === 'submitted' && !materialEdit) {
         e.rejectionNote = null;
         pushAudit(e, { action: 'resubmitted', by: session.userId });
       }
       const editedAt = new Date().toISOString();
       const auditArrEdit = parseAudit(e);
       auditArrEdit.push({ action: 'edited', by: session.userId, at: editedAt });
+      if (materialEdit && wasApprovedOrRejected) {
+        auditArrEdit.push({ action: 'expense_edited_reset_approval', by: session.userId, at: editedAt });
+      }
       writeAudit(e, auditArrEdit);
       (e as ExpenseRow & { auditTrail?: unknown[] }).auditTrail = auditArrEdit;
       e.updatedAt = Date.now();

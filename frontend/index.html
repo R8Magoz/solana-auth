@@ -1580,7 +1580,7 @@ function BudgetVsActualRow({t,name,spent,budget,remaining,barColor:barColorIn,no
 }
 const fmtDate=d=>{try{return new Date(d).toLocaleDateString("es-ES",{day:"2-digit",month:"short",year:"numeric"});}catch{return d;}};
 /** Audit actions shown in expense detail timeline (excludes comment_added — use comments[]). */
-const EXPENSE_TIMELINE_AUDIT_ACTIONS=new Set(["submitted","approved","rejected","edited","reapproval_required","auto_approved","attachment_uploaded","attachment_removed","resubmitted"]);
+const EXPENSE_TIMELINE_AUDIT_ACTIONS=new Set(["submitted","approved","rejected","edited","reapproval_required","edited_reset_approval","auto_approved","attachment_uploaded","attachment_removed","resubmitted"]);
 function normalizeExpenseTimelineAt(at){
   if(at==null||at==="")return new Date(0).toISOString();
   if(typeof at==="string"){
@@ -1887,6 +1887,7 @@ const TIMELINE_ACTION_LABEL={
   reconsider_requested:"Reconsiderado",
   attachment_removed:"Adjunto eliminado",attachment_uploaded:"Adjunto subido",
   comment_added:"Nota añadida",reapproval_required:"Requiere nueva revisión",
+  edited_reset_approval:"Edición: reaprobación requerida",
   deleted:"Eliminado",vote_changed:"Voto actualizado",
   approver_removed_autoapprove:"Aprobador eliminado (voto automático)",
 };
@@ -1956,6 +1957,7 @@ function foldReapprovalIntoEdits(events){
 const SERVER_AUDIT_EVENT_TO_ACTION={
   expense_submitted:"submitted",expense_created:"submitted",expense_approved:"approved",
   expense_rejected:"rejected",expense_deleted:"deleted",expense_reapproval_required:"reapproval_required",
+  expense_edited_reset_approval:"edited_reset_approval",
   expense_reconsider_requested:"reconsider_requested",
   expense_vote_changed:"vote_changed",expense_approver_removed_autoapprove:"approver_removed_autoapprove",
   expense_edited:"edited",expense_updated:"updated",expense_receipt_uploaded:"attachment_uploaded",
@@ -5117,7 +5119,7 @@ function DetailPanel(){
     st === 'approved'
       ? { bg: detailAccent, color: '#FAF7F2' }
       : detailSublistStatusTone(st);
-  const canEdit=user.id===e.submittedBy||isAdmin;
+  const canEdit=expenseIsOwnerOrSubmitter(e,user.id)||canActOnExpenseItem(e,user,cats,users)||isAdmin;
   const ivaRowLabel=(()=>{
     if(e.ivaRate===null)return formatIvaOptionLabel(IVA_RATE_SIN_IVA);
     if(e.ivaRate!==undefined&&e.ivaRate!==null){
@@ -5279,7 +5281,7 @@ function DetailPanel(){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11}}>
         <div style={{fontWeight:700,fontSize:editMode?15:14,color:(editMode?editActionColor:G),transition:"color 0.2s ease"}}>{editMode?(isEditInv?"Editar gasto · Factura":"Editar gasto"):"Detalle de gasto"}</div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          {!editMode&&canEdit&&(isAdmin||st!=="approved")&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:`1px solid ${detailAccent}`,background:"transparent",color:detailAccent,cursor:"pointer",fontFamily:"inherit"}} onClick={startEdit}>{t("action.editItem")}</button>}
+          {!editMode&&canEdit&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:`1px solid ${detailAccent}`,background:"transparent",color:detailAccent,cursor:"pointer",fontFamily:"inherit"}} onClick={startEdit}>{t("action.editItem")}</button>}
           {!editMode&&(user.id===e.submittedBy||isAdmin)&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:"1px solid #ECA3A3",background:"transparent",color:"#991B1B",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>deleteExp(e.id)}>{t("action.deleteItem")}</button>}
           <button style={{border:"none",background:"none",color:"#9CAA9F",fontSize:19,cursor:"pointer",lineHeight:1,padding:"0 4px"}} aria-label="Cerrar" onClick={()=>{void (async()=>{if(editMode&&efDirty&&!(await confirmUI(t("expense.unsaved"))))return;receiptAltHandlerRef.current=null;setEditApiReceipt(prev=>{if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}return null;});setEditMode(false);resetForm();dismissOverlay();})();}}>×</button>
         </div>
@@ -5288,7 +5290,7 @@ function DetailPanel(){
       {/* EDIT MODE */}
       {editMode&&(
         <div>
-          {st==="approved"&&<div style={{padding:"6px 9px",background:"#FEF3C7",borderRadius:6,fontSize:10,color:"#92400E",marginBottom:9}}>{t("expense.reapprovalWarning")}</div>}
+          {(st==="approved"||st==="rejected")&&<div style={{padding:"6px 9px",background:"#FEF3C7",borderRadius:6,fontSize:10,color:"#92400E",marginBottom:9}}>{t("expense.reapprovalWarning")}</div>}
           <ExpenseFormFields
             t={t}
             form={ef}
@@ -9725,25 +9727,37 @@ function SolanaExpenses(){
       newApprovals={};
       const approverIdsRc=effectiveExpenseApproverIds({departmentId:updates.departmentId||oldExp.departmentId},cats,users);
       let trailExtra=[...newTrail];
-      if(wasApproved&&approverIdsRc.includes(user.id)){
+      if(approverIdsRc.includes(user.id)){
         newApprovals={[user.id]:"approved"};
-        trailExtra=[...trailExtra,{action:"auto_approved",by:user.id,at:now,meta:{reason:"submitter_is_approver"}}];
+        trailExtra=[...trailExtra,{action:"auto_approved",by:user.id,at:now,meta:{reason:"editor_is_approver"}}];
       }
-      newTrail=[...trailExtra,{action:"reapproval_required",by:user.id,at:now}];
+      const allApproversDone=approverIdsRc.length>0&&approverIdsRc.every(id=>newApprovals[id]==="approved");
+      const resetAction=(wasApproved||wasRejected)?"edited_reset_approval":"reapproval_required";
+      newTrail=[...trailExtra,{action:resetAction,by:user.id,at:now}];
       nextSeen=seenByAfterActor(user.id);
       appLog("info","expense_reapproval",{itemCode:oldExp.itemCode,userId:user.id});
+      const updated={
+        ...oldExp,
+        ...updates,
+        status:allApproversDone?"approved":"submitted",
+        approvals:newApprovals,
+        auditTrail:newTrail,
+        seenBy:nextSeen,
+      };
+      saveExp(expenses.map(e=>e.id===expId?updated:e));
+      appLog("info","expense_edited",{itemCode:oldExp.itemCode,userId:user.id,relevantChanged,wasApproved});
+      if((wasApproved||wasRejected)&&relevantChanged)dispatchSolanaToast(t("expense.reapprovalDone"),"info");
+      return Promise.resolve();
     }
     const updated={
       ...oldExp,
       ...updates,
-      ...((wasApproved||wasRejected||wasSubmitted)&&relevantChanged?{status:'submitted'}:{}),
       approvals:newApprovals,
       auditTrail:newTrail,
       seenBy:nextSeen,
     };
     saveExp(expenses.map(e=>e.id===expId?updated:e));
     appLog("info","expense_edited",{itemCode:oldExp.itemCode,userId:user.id,relevantChanged,wasApproved});
-    if(wasApproved&&relevantChanged)dispatchSolanaToast(t("expense.reapprovalDone"),"info");
     return Promise.resolve();
   };
 
