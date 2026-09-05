@@ -458,7 +458,7 @@ test.describe('A — Expense lifecycle', () => {
     await expect(panel.getByText(String(expense!.traceCode)).first()).toBeVisible();
   });
 
-  test('A1d) Detail header: Eliminar is demoted to overflow menu for gasto and factura', async ({ page }) => {
+  test('A1d) Detail header: Editar + Eliminar same size, demoted color, for gasto and factura', async ({ page }) => {
     await setupMockApi(page, {
       expenses: [
         {
@@ -523,21 +523,19 @@ test.describe('A — Expense lifecycle', () => {
       await openExpenseDetail(page, item.listText);
       const panel = getDetailPanel(page);
       const editBtn = panel.getByRole('button', { name: /^Editar$/i });
+      const delBtn = panel.getByRole('button', { name: /^Eliminar$/i });
       await expect(editBtn).toBeVisible();
+      await expect(delBtn).toBeVisible();
+      await expect(delBtn).toHaveText('Eliminar');
       await expect(panel.getByRole('button', { name: /Eliminar gasto|Eliminar factura/i })).toHaveCount(0);
-      await expect(panel.getByRole('button', { name: /^Eliminar$/i })).toHaveCount(0);
-      const moreBtn = panel.getByRole('button', { name: /Más acciones/i });
-      await expect(moreBtn).toBeVisible();
+      await expect(panel.getByRole('button', { name: /Más acciones/i })).toHaveCount(0);
+      await expect(panel.getByRole('menuitem', { name: /^Eliminar$/i })).toHaveCount(0);
       const editBox = await editBtn.boundingBox();
-      const moreBox = await moreBtn.boundingBox();
+      const delBox = await delBtn.boundingBox();
       expect(editBox).toBeTruthy();
-      expect(moreBox).toBeTruthy();
-      expect(Math.abs((editBox!.height) - (moreBox!.height))).toBeLessThanOrEqual(2);
-      await moreBtn.click();
-      const delItem = panel.getByRole('menuitem', { name: /^Eliminar$/i });
-      await expect(delItem).toBeVisible();
-      await expect(delItem).toHaveText('Eliminar');
-      await delItem.click();
+      expect(delBox).toBeTruthy();
+      expect(Math.abs((editBox!.height) - (delBox!.height))).toBeLessThanOrEqual(2);
+      await delBtn.click();
       await expect(page.getByText('Confirmación')).toBeVisible();
       await page.getByRole('button', { name: 'Cancelar' }).click();
       await expect(page.getByText('Confirmación')).toHaveCount(0);
