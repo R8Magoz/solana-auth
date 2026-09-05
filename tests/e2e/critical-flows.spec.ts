@@ -458,6 +458,92 @@ test.describe('A — Expense lifecycle', () => {
     await expect(panel.getByText(String(expense!.traceCode)).first()).toBeVisible();
   });
 
+  test('A1d) Detail header: Editar + Eliminar same size, demoted color, for gasto and factura', async ({ page }) => {
+    await setupMockApi(page, {
+      expenses: [
+        {
+          id: 'exp_del_gasto',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          submittedBy: 'admin-1',
+          date: '2026-04-10',
+          description: 'Gasto eliminar QA',
+          amount: 55,
+          amountEUR: 55,
+          currency: 'EUR',
+          category: 'Equipment',
+          status: 'submitted',
+          expenseType: 'expense',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: '{}',
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 55, pct: 100 }]),
+          departmentId: 'dept_ops',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          auditTrailJson: '[]',
+          commentsJson: '[]',
+          traceCode: 'trace_del_gasto',
+        },
+        {
+          id: 'exp_del_factura',
+          userId: 'admin-1',
+          ownerId: 'admin-1',
+          submittedBy: 'admin-1',
+          date: '2026-04-11',
+          description: 'Factura eliminar QA',
+          amount: 88,
+          amountEUR: 88,
+          currency: 'EUR',
+          category: 'Software',
+          status: 'submitted',
+          expenseType: 'invoice',
+          vendor: 'Vendor QA',
+          dueDate: '2026-05-11',
+          approversJson: JSON.stringify(['admin-1']),
+          approvalVotesJson: '{}',
+          paidByJson: JSON.stringify([{ userId: 'admin-1', amount: 88, pct: 100 }]),
+          departmentId: 'dept_ops',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          auditTrailJson: '[]',
+          commentsJson: '[]',
+          traceCode: 'trace_del_factura',
+        },
+      ],
+    });
+    await loginAs(page, 'admin@solana.test');
+    await clickSidebarGastos(page);
+
+    for (const item of [
+      { listText: 'Gasto eliminar QA', detailText: 'Gasto eliminar QA', invoice: false },
+      { listText: 'Vendor QA', detailText: 'Factura eliminar QA', invoice: true },
+    ]) {
+      await clickSidebarGastos(page);
+      if (item.invoice) await filterExpenseListToInvoices(page);
+      await openExpenseDetail(page, item.listText);
+      const panel = getDetailPanel(page);
+      const editBtn = panel.getByRole('button', { name: /^Editar$/i });
+      const delBtn = panel.getByRole('button', { name: /^Eliminar$/i });
+      await expect(editBtn).toBeVisible();
+      await expect(delBtn).toBeVisible();
+      await expect(delBtn).toHaveText('Eliminar');
+      await expect(panel.getByRole('button', { name: /Eliminar gasto|Eliminar factura/i })).toHaveCount(0);
+      await expect(panel.getByRole('button', { name: /Más acciones/i })).toHaveCount(0);
+      await expect(panel.getByRole('menuitem', { name: /^Eliminar$/i })).toHaveCount(0);
+      const editBox = await editBtn.boundingBox();
+      const delBox = await delBtn.boundingBox();
+      expect(editBox).toBeTruthy();
+      expect(delBox).toBeTruthy();
+      expect(Math.abs((editBox!.height) - (delBox!.height))).toBeLessThanOrEqual(2);
+      await delBtn.click();
+      await expect(page.getByText('Confirmación')).toBeVisible();
+      await page.getByRole('button', { name: 'Cancelar' }).click();
+      await expect(page.getByText('Confirmación')).toHaveCount(0);
+      await expect(panel.getByText(item.detailText).first()).toBeVisible();
+      await panel.getByRole('button', { name: 'Cerrar' }).click();
+    }
+  });
+
   test('A2) Submit gasto — admin approves — status turns Aprobado', async ({ page }) => {
     const state = await setupMockApi(page);
     await loginAs(page, 'admin@solana.test');

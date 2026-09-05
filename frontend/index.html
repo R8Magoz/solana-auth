@@ -965,8 +965,8 @@ const TR = {
     "action.downloadData": "Descargar datos",
     "action.copyCode": "Copiar código",
     "action.codeCopied": "¡Copiado!",
-    "action.deleteItem": "Eliminar gasto",
-    "action.deleteBill": "Eliminar factura",
+    "action.deleteItem": "Eliminar",
+    "action.deleteBill": "Eliminar",
     "action.deleteConfirm": "¿Eliminar este ítem? Esta acción no se puede deshacer.",
     "action.deleteApproved": "Este ítem ya fue aprobado. Solo un administrador puede eliminarlo.",
     "action.deleteOwnOnly": "Solo puedes eliminar tus propios ítems.",
@@ -5623,8 +5623,8 @@ function DetailPanel(){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11}}>
         <div style={{fontWeight:700,fontSize:editMode?15:14,color:(editMode?editActionColor:G),transition:"color 0.2s ease"}}>{editMode?(isEditInv?"Editar gasto · Factura":"Editar gasto"):"Detalle de gasto"}</div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          {!editMode&&canEdit&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:`1px solid ${detailAccent}`,background:"transparent",color:detailAccent,cursor:"pointer",fontFamily:"inherit"}} onClick={startEdit}>{t("action.editItem")}</button>}
-          {!editMode&&(user.id===e.submittedBy||isAdmin)&&<button style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:"1px solid var(--color-rejected-soft)",background:"transparent",color:"var(--color-rejected-text)",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>deleteExp(e.id)}>{t("action.deleteItem")}</button>}
+          {!editMode&&canEdit&&<button type="button" style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:`1.5px solid ${detailAccent}`,background:"transparent",color:detailAccent,cursor:"pointer",fontFamily:"inherit",fontWeight:700,lineHeight:1.4,height:24,boxSizing:"border-box"}} onClick={startEdit}>{t("action.editItem")}</button>}
+          {!editMode&&(user.id===e.submittedBy||isAdmin)&&<button type="button" style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:"1.5px solid var(--color-rejected-soft)",background:"transparent",color:"var(--color-rejected-text)",cursor:"pointer",fontFamily:"inherit",fontWeight:500,lineHeight:1.4,height:24,boxSizing:"border-box",opacity:0.85}} onClick={()=>deleteExp(e.id)}>{t("action.delete")}</button>}
           <button style={{border:"none",background:"none",color:"var(--color-text-faint)",fontSize:19,cursor:"pointer",lineHeight:1,padding:"0 4px"}} aria-label="Cerrar" onClick={()=>{void (async()=>{if(editMode&&efDirty&&!(await confirmUI(t("expense.unsaved"))))return;receiptAltHandlerRef.current=null;setEditApiReceipt(prev=>{if(prev&&prev.kind==="img"&&prev.url)try{URL.revokeObjectURL(prev.url);}catch(e2){}return null;});setEditMode(false);resetForm();dismissOverlay();})();}}>×</button>
         </div>
       </div>
